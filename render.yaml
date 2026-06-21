@@ -27,6 +27,14 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: SIGNAL_HUB_URL
+        value: https://signalhub-10zp.onrender.com
+      - key: SIGNAL_HUB_PROVIDER_KEY
+        sync: false
+      - key: SIGNAL_HUB_PROVIDER_NAME
+        value: TraderRank Pro
+      - key: SIGNAL_HUB_ORDER_TYPE
+        value: limit
 
   - type: web
     name: traders-web

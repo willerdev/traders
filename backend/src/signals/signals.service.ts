@@ -8,6 +8,7 @@ import { DuplicateDetectionService } from './duplicate-detection.service';
 import { CreateSignalDto } from '../common/dto';
 import { createHash } from 'crypto';
 import { ComplianceService } from '../compliance/compliance.service';
+import { SignalHubService } from './signal-hub.service';
 
 @Injectable()
 export class SignalsService {
@@ -15,6 +16,7 @@ export class SignalsService {
     private prisma: PrismaService,
     private duplicateDetection: DuplicateDetectionService,
     private compliance: ComplianceService,
+    private signalHub: SignalHubService,
   ) {}
 
   private validateEntryRange(dto: CreateSignalDto) {
@@ -139,11 +141,25 @@ export class SignalsService {
       },
     });
 
+    const hubResult = await this.signalHub.forwardSignal(
+      signal.signalId,
+      dto,
+      user.displayName,
+      userId,
+    );
+
     return {
       status: 'accepted',
       signalId: signal.signalId,
       submittedAt: signal.submittedAt,
       entryRange: { min: dto.entryMin, max: dto.entryMax },
+      executionHub: hubResult
+        ? {
+            id: hubResult.id,
+            status: hubResult.status,
+            duplicate: hubResult.duplicate,
+          }
+        : null,
     };
   }
 
