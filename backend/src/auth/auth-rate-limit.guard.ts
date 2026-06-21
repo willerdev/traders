@@ -16,10 +16,19 @@ export class AuthRateLimitGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<{
       ip?: string;
+      headers?: Record<string, string | string[] | undefined>;
       socket?: { remoteAddress?: string };
     }>();
 
-    const key = req.ip || req.socket?.remoteAddress || 'unknown';
+    const forwarded = req.headers?.['x-forwarded-for'];
+    let clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
+    if (typeof forwarded === 'string' && forwarded.length > 0) {
+      clientIp = forwarded.split(',')[0].trim();
+    } else if (Array.isArray(forwarded) && forwarded[0]) {
+      clientIp = forwarded[0].split(',')[0].trim();
+    }
+
+    const key = clientIp;
     const now = Date.now();
     const bucket = buckets.get(key);
 

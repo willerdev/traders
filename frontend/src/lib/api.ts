@@ -1,5 +1,14 @@
-// Browser uses same-origin proxy (see next.config.ts rewrites) to avoid CORS.
+// Browser uses same-origin proxy (app/api/v1/[...path]/route.ts) to avoid CORS.
 const API_BASE = "/api/v1";
+
+function apiErrorMessage(body: unknown, statusText: string): string {
+  if (body && typeof body === "object") {
+    const msg = (body as { message?: unknown }).message;
+    if (Array.isArray(msg)) return msg.join(", ");
+    if (typeof msg === "string" && msg.trim()) return msg;
+  }
+  return statusText || "Request failed";
+}
 
 function readStoredToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -51,7 +60,7 @@ class ApiClient {
 
     if (!res.ok) {
       const error = await res.json().catch(() => ({ message: res.statusText }));
-      throw new Error(error.message || "Request failed");
+      throw new Error(apiErrorMessage(error, res.statusText));
     }
 
     return res.json();
@@ -141,7 +150,7 @@ class ApiClient {
 
       if (!res.ok) {
         const error = await res.json().catch(() => ({ message: res.statusText }));
-        throw new Error(error.message || "Upload failed");
+        throw new Error(apiErrorMessage(error, res.statusText) || "Upload failed");
       }
 
       return res.json() as Promise<{ url: string; filename: string }>;
@@ -163,7 +172,7 @@ class ApiClient {
 
       if (!res.ok) {
         const error = await res.json().catch(() => ({ message: res.statusText }));
-        throw new Error(error.message || "Upload failed");
+        throw new Error(apiErrorMessage(error, res.statusText) || "Upload failed");
       }
 
       return res.json() as Promise<{ url: string; filename: string }>;
@@ -185,7 +194,7 @@ class ApiClient {
 
       if (!res.ok) {
         const error = await res.json().catch(() => ({ message: res.statusText }));
-        throw new Error(error.message || "AI analysis failed");
+        throw new Error(apiErrorMessage(error, res.statusText) || "AI analysis failed");
       }
 
       return res.json() as Promise<{ analysis: SetupAnalysis }>;

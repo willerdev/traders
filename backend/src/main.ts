@@ -14,6 +14,8 @@ async function bootstrap() {
     prefix: '/uploads',
   });
 
+  app.set('trust proxy', 1);
+
   app.enableCors({
     origin: (origin, callback) => {
       const allowed = (process.env.FRONTEND_URL || 'http://localhost:3000')
