@@ -1,0 +1,23 @@
+{
+  "name": "traderrank-pro",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TraderRank Pro — Trader talent-discovery and funding platform",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "cd backend && npm run start:dev",
+    "dev:web": "cd frontend && npm run dev",
+    "build": "npm run build:api && npm run build:web",
+    "build:api": "cd backend && npm run build",
+    "build:web": "cd frontend && npm run build",
+    "db:up": "docker compose up postgres -d",
+    "db:migrate": "cd backend && npx prisma migrate dev",
+    "db:seed": "cd backend && npx prisma db seed",
+    "db:studio": "cd backend && npx prisma studio",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

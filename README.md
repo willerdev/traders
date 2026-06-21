@@ -1,0 +1,177 @@
+# TraderRank Pro
+
+A trader talent-discovery and funding platform where traders compete by submitting trading setups before execution, earning rankings, payouts, and account scaling based on performance.
+
+## Architecture
+
+```
+┌─────────────┐     ┌─────────────┐     ┌──────────────┐
+│  Next.js 15 │────▶│  NestJS API │────▶│  PostgreSQL  │
+│  Frontend   │     │  + Prisma   │     │  Database    │
+└─────────────┘     └─────────────┘     └──────────────┘
+       │                    │
+       └──────── Nginx ─────┘
+```
+
+**Business model:** Registration fees fund operations. Trader payouts come from subscription revenue, premium memberships, signal marketplace fees, copy-trading commissions, and sponsorships.
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Next.js, TypeScript, Tailwind CSS, Framer Motion, Zustand |
+| Backend | NestJS, TypeScript, Prisma ORM |
+| Database | PostgreSQL (Neon) + optional Data API |
+| Auth | JWT, Google OAuth, Email, Wallet (MetaMask) |
+| Payments | USDT (TRC20/BEP20) via NOWPayments |
+| Storage | AWS S3 Compatible |
+| Deploy | Docker, Nginx, VPS-ready |
+
+## Quick Start
+
+### Prerequisites
+
+- Node.js 20+
+- Docker & Docker Compose
+- PostgreSQL (or use Docker)
+
+### 1. Start the database
+
+```bash
+npm run db:up
+```
+
+### 2. Configure environment
+
+```bash
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env.local
+```
+
+### 3. Install dependencies
+
+```bash
+npm install
+cd backend && npm install
+cd ../frontend && npm install
+```
+
+### 4. Run migrations & seed
+
+```bash
+npm run db:migrate
+npm run db:seed
+```
+
+### 5. Start development servers
+
+```bash
+npm run dev
+```
+
+- **Frontend:** http://localhost:3000
+- **API:** http://localhost:4000/api/v1
+- **Swagger:** http://localhost:4000/api/docs
+
+### Neon Data API (optional)
+
+For HTTP/REST access to Postgres (PostgREST-compatible), set in `backend/.env`:
+
+```bash
+NEON_DATA_API_URL="https://ep-wispy-haze-aic3iki0.apirest.c-4.us-east-1.aws.neon.tech/neondb/rest/v1"
+NEON_DATA_API_JWT="your-jwt-bearer-token"
+```
+
+The Data API requires a JWT bearer token (Neon Auth or an external provider like Clerk/Auth0). The NestJS API continues to use Prisma via `DATABASE_URL` as the primary path; the optional `NeonDataClient` in `backend/src/prisma/neon-data.client.ts` is available for fast read queries once JWT is configured.
+
+### Docker (full stack)
+
+```bash
+npm run docker:up
+```
+
+## Core Features
+
+### Virtual Funded Accounts
+- Starting balance: **$1,000**
+- Fixed risk: **2%** ($20 max per trade)
+- Automatic scaling: Bronze ($1K) → Elite ($25K)
+
+### Signal Submission
+- Immutable records with unique Signal ID
+- Duplicate detection (90% similarity threshold)
+- Screenshot hash anti-reuse
+
+### Scoring Engine
+| Event | Points |
+|-------|--------|
+| Win | +10 |
+| Loss | -5 |
+| RR 1:2 bonus | +5 |
+| RR 1:3 bonus | +10 |
+| RR 1:4 bonus | +15 |
+
+### Losing Streak System
+- 3 losses → Warning
+- 5 losses → Score reduction (10%)
+- 10 losses → Account reset
+
+### Weekly Payouts
+- Trader: **40%** of virtual profit
+- Platform: **60%**
+- Funded by revenue streams (not registration fees)
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/auth/register` | Register with email |
+| POST | `/auth/login` | Email login |
+| POST | `/auth/wallet` | MetaMask wallet login |
+| GET | `/users/dashboard` | Trader dashboard data |
+| POST | `/signals` | Submit trading signal |
+| GET | `/leaderboard` | Rankings |
+| POST | `/payments/registration` | Pay 5 USDT fee |
+| GET | `/payouts` | Payout history |
+| GET | `/analytics/dashboard` | Admin analytics |
+
+## User Roles
+
+- **Trader** — Submit signals, track performance, request payouts
+- **Moderator** — Review suspicious activity, manage disputes
+- **Admin** — Full platform management and analytics
+
+## Project Structure
+
+```
+discover/
+├── frontend/          # Next.js 15 app
+│   ├── src/app/       # Pages (dashboard, submit, leaderboard...)
+│   ├── src/components/# UI components
+│   └── src/stores/    # Zustand state
+├── backend/           # NestJS API
+│   ├── src/auth/      # JWT + OAuth + Wallet auth
+│   ├── src/signals/   # Signal submission + duplicate detection
+│   ├── src/scoring/   # Trade scoring engine
+│   ├── src/payouts/   # Weekly payout engine
+│   ├── src/leaderboard/
+│   └── prisma/        # Database schema
+├── nginx/             # Reverse proxy config
+└── docker-compose.yml
+```
+
+## Future-Ready Architecture
+
+Designed to support:
+- Copy Trading
+- AI Trade Analysis
+- Telegram Signal Bot
+- Mobile App
+- Multi-language Support
+- Real Funded Accounts
+- Broker API Integrations
+- Affiliate Program
+
+## License
+
+Proprietary — All rights reserved.

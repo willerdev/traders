@@ -1,0 +1,471 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  TRADER
+  MODERATOR
+  ADMIN
+}
+
+enum UserStatus {
+  PENDING_VERIFICATION
+  PENDING_PAYMENT
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+enum RankTier {
+  BRONZE
+  SILVER
+  GOLD
+  DIAMOND
+  ELITE
+}
+
+enum TradeDirection {
+  BUY
+  SELL
+}
+
+enum SignalStatus {
+  PENDING
+  OPEN
+  WON
+  LOST
+  CANCELLED
+  REJECTED_DUPLICATE
+}
+
+enum PayoutStatus {
+  PENDING
+  APPROVED
+  PAID
+  REJECTED
+}
+
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  EXPIRED
+}
+
+enum ViolationType {
+  DUPLICATE_SIGNAL
+  DUPLICATE_TRADE
+  MULTIPLE_ACCOUNTS
+  IP_ABUSE
+  TRADE_MANIPULATION
+  SCREENSHOT_REUSE
+}
+
+enum SubscriptionPlan {
+  FREE
+  PREMIUM
+  PRO
+}
+
+enum WalletTxType {
+  TP_REWARD
+  DEPOSIT
+  PAYOUT
+  ADJUSTMENT
+}
+
+enum KycStatus {
+  NOT_STARTED
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum KycDocumentType {
+  PASSPORT
+  NATIONAL_ID
+  DRIVERS_LICENSE
+}
+
+model User {
+  id                String     @id @default(cuid())
+  email             String?    @unique
+  passwordHash      String?
+  googleId          String?    @unique
+  walletAddress     String?    @unique
+  displayName       String
+  avatarUrl         String?
+  role              UserRole   @default(TRADER)
+  status            UserStatus @default(PENDING_VERIFICATION)
+  emailVerified     Boolean    @default(false)
+  emailVerifyToken  String?
+  registrationPaid  Boolean    @default(false)
+  termsAcceptedAt   DateTime?
+  lastLoginIp       String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  virtualAccount VirtualAccount?
+  signals        Signal[]
+  tradeScores    TradeScore[]
+  rankings       Ranking[]
+  payouts        Payout[]
+  subscriptions  Subscription[]
+  payments       Payment[]
+  violations     Violation[]
+  riskFlags      RiskFlag[]
+  walletTransactions WalletTransaction[]
+  signalDrafts       SignalDraft[]
+  profile            UserProfile?
+  kyc                KycVerification?
+
+  @@index([status])
+  @@index([role])
+  @@map("users")
+}
+
+model UserProfile {
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  firstName    String?
+  lastName     String?
+  phone        String?
+  dateOfBirth  DateTime?
+  country      String?
+  state        String?
+  city         String?
+  addressLine1 String?
+  addressLine2 String?
+  postalCode   String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model KycVerification {
+  id               String           @id @default(cuid())
+  userId           String           @unique
+  status           KycStatus        @default(NOT_STARTED)
+  documentType     KycDocumentType?
+  documentNumber   String?
+  documentFrontUrl String?
+  documentBackUrl  String?
+  selfieUrl        String?
+  rejectionReason  String?
+  submittedAt      DateTime?
+  reviewedAt       DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("kyc_verifications")
+}
+
+model VirtualAccount {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  balance             Decimal  @default(1000) @db.Decimal(12, 2)
+  tier                RankTier @default(BRONZE)
+  riskPercent         Decimal  @default(2) @db.Decimal(5, 2)
+  maxRiskPerTrade     Decimal  @default(20) @db.Decimal(12, 2)
+  weeklyProfit        Decimal  @default(0) @db.Decimal(12, 2)
+  totalProfit         Decimal  @default(0) @db.Decimal(12, 2)
+  winRate             Decimal  @default(0) @db.Decimal(5, 2)
+  score               Int      @default(0)
+  consecutiveWins     Int      @default(0)
+  consecutiveLosses   Int      @default(0)
+  maxDrawdown         Decimal  @default(0) @db.Decimal(5, 2)
+  currentDrawdown     Decimal  @default(0) @db.Decimal(5, 2)
+  totalTrades         Int      @default(0)
+  winningTrades       Int      @default(0)
+  losingTrades        Int      @default(0)
+  streakWarningIssued Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("virtual_accounts")
+}
+
+model Signal {
+  id              String         @id @default(cuid())
+  signalId        String         @unique @default(cuid())
+  userId          String
+  symbol          String
+  direction       TradeDirection
+  entryMin        Decimal        @db.Decimal(18, 8)
+  entryMax        Decimal        @db.Decimal(18, 8)
+  stopLoss        Decimal        @db.Decimal(18, 8)
+  takeProfit      Decimal        @db.Decimal(18, 8)
+  riskRewardRatio Decimal        @db.Decimal(5, 2)
+  description     String
+  screenshotUrl   String
+  screenshotHash  String?
+  status          SignalStatus   @default(PENDING)
+  submittedAt     DateTime       @default(now())
+  resolvedAt      DateTime?
+  pnl             Decimal?       @db.Decimal(12, 2)
+  pointsAwarded   Int            @default(0)
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trade      Trade?
+  tradeScore TradeScore?
+
+  @@index([userId])
+  @@index([symbol, direction])
+  @@index([submittedAt])
+  @@index([status])
+  @@map("signals")
+}
+
+model SignalDraft {
+  id            String          @id @default(cuid())
+  userId        String
+  symbol        String?
+  direction     TradeDirection?
+  entryMin      Decimal?        @db.Decimal(18, 8)
+  entryMax      Decimal?        @db.Decimal(18, 8)
+  stopLoss      Decimal?        @db.Decimal(18, 8)
+  takeProfit    Decimal?        @db.Decimal(18, 8)
+  description   String?
+  screenshotUrl String?
+  aiFilled      Boolean         @default(false)
+  progress      Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+  @@map("signal_drafts")
+}
+
+model Trade {
+  id           String         @id @default(cuid())
+  signalId     String         @unique
+  userId       String
+  symbol       String
+  direction    TradeDirection
+  entryMin     Decimal        @db.Decimal(18, 8)
+  entryMax     Decimal        @db.Decimal(18, 8)
+  entryPrice   Decimal?       @db.Decimal(18, 8)
+  stopLoss     Decimal        @db.Decimal(18, 8)
+  takeProfit   Decimal        @db.Decimal(18, 8)
+  exitPrice    Decimal?       @db.Decimal(18, 8)
+  pnl          Decimal?       @db.Decimal(12, 2)
+  isWin        Boolean?
+  activatedAt  DateTime?
+  closedAt     DateTime?
+  createdAt    DateTime       @default(now())
+
+  signal Signal @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("trades")
+}
+
+model WalletTransaction {
+  id           String       @id @default(cuid())
+  userId       String
+  amount       Decimal      @db.Decimal(12, 2)
+  type         WalletTxType
+  referenceId  String?
+  description  String
+  balanceAfter Decimal?     @db.Decimal(12, 2)
+  createdAt    DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([type])
+  @@map("wallet_transactions")
+}
+
+model TradeScore {
+  id               String   @id @default(cuid())
+  userId           String
+  signalId         String   @unique
+  basePoints       Int      @default(0)
+  rrBonus          Int      @default(0)
+  consistencyBonus Int      @default(0)
+  totalPoints      Int      @default(0)
+  weekNumber       Int
+  year             Int
+  createdAt        DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  signal Signal @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  @@index([userId, year, weekNumber])
+  @@map("trade_scores")
+}
+
+model Ranking {
+  id            String   @id @default(cuid())
+  userId        String
+  tier          RankTier @default(BRONZE)
+  rank          Int
+  score         Int      @default(0)
+  profit        Decimal  @default(0) @db.Decimal(12, 2)
+  winRate       Decimal  @default(0) @db.Decimal(5, 2)
+  drawdown      Decimal  @default(0) @db.Decimal(5, 2)
+  consistency   Decimal  @default(0) @db.Decimal(5, 2)
+  weekNumber    Int
+  year          Int
+  calculatedAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, year, weekNumber])
+  @@index([year, weekNumber, rank])
+  @@map("rankings")
+}
+
+model Leaderboard {
+  id           String   @id @default(cuid())
+  userId       String
+  displayName  String
+  tier         RankTier
+  rank         Int
+  score        Int
+  profit       Decimal  @db.Decimal(12, 2)
+  winRate      Decimal  @db.Decimal(5, 2)
+  drawdown     Decimal  @db.Decimal(5, 2)
+  consistency  Decimal  @db.Decimal(5, 2)
+  weekNumber   Int
+  year         Int
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, year, weekNumber])
+  @@index([year, weekNumber, rank])
+  @@map("leaderboard")
+}
+
+model Payout {
+  id              String       @id @default(cuid())
+  userId          String
+  virtualProfit   Decimal      @db.Decimal(12, 2)
+  traderShare     Decimal      @db.Decimal(12, 2)
+  platformShare   Decimal      @db.Decimal(12, 2)
+  traderPercent   Decimal      @default(40) @db.Decimal(5, 2)
+  status          PayoutStatus @default(PENDING)
+  weekNumber      Int
+  year            Int
+  walletAddress   String?
+  requestedAt     DateTime     @default(now())
+  processedAt     DateTime?
+  notes           String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@map("payouts")
+}
+
+model Subscription {
+  id        String           @id @default(cuid())
+  userId    String
+  plan      SubscriptionPlan @default(FREE)
+  startsAt  DateTime         @default(now())
+  expiresAt DateTime?
+  isActive  Boolean          @default(true)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("subscriptions")
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  userId          String
+  amount          Decimal       @db.Decimal(18, 8)
+  currency        String        @default("USDT")
+  network         String
+  status          PaymentStatus @default(PENDING)
+  gatewayId       String?
+  gatewayResponse Json?
+  txHash          String?
+  purpose         String        @default("registration")
+  createdAt       DateTime      @default(now())
+  confirmedAt     DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@map("payments")
+}
+
+model Violation {
+  id          String        @id @default(cuid())
+  userId      String
+  type        ViolationType
+  description String
+  evidence    Json?
+  resolved    Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("violations")
+}
+
+model RiskFlag {
+  id        String   @id @default(cuid())
+  userId    String
+  reason    String
+  severity  Int      @default(1)
+  metadata  Json?
+  resolved  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("risk_flags")
+}
+
+model PlatformConfig {
+  id                    String  @id @default("default")
+  registrationFeeUsdt   Decimal @default(5) @db.Decimal(10, 2)
+  traderPayoutPercent   Decimal @default(40) @db.Decimal(5, 2)
+  platformPayoutPercent Decimal @default(60) @db.Decimal(5, 2)
+  riskPercent           Decimal @default(2) @db.Decimal(5, 2)
+  startingBalance       Decimal @default(1000) @db.Decimal(12, 2)
+  winPoints             Int     @default(10)
+  lossPoints            Int     @default(-5)
+  duplicateThreshold    Decimal @default(0.9) @db.Decimal(3, 2)
+  entryTolerancePercent Decimal @default(0.2) @db.Decimal(5, 2)
+  tpRewardUsd           Decimal @default(10) @db.Decimal(10, 2)
+  requireKycForPayouts  Boolean @default(true)
+
+  @@map("platform_config")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  adminId   String
+  action    String
+  targetId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([adminId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
