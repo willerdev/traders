@@ -1,4 +1,5 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
+// Browser uses same-origin proxy (see next.config.ts rewrites) to avoid CORS.
+const API_BASE = "/api/v1";
 
 function readStoredToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -36,10 +37,17 @@ class ApiClient {
       headers.Authorization = `Bearer ${this.token}`;
     }
 
-    const res = await fetch(`${API_BASE}${path}`, {
-      ...options,
-      headers,
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}${path}`, {
+        ...options,
+        headers,
+      });
+    } catch {
+      throw new Error(
+        "Cannot reach the API. If you're running locally, start the backend with: cd backend && npm run start:dev",
+      );
+    }
 
     if (!res.ok) {
       const error = await res.json().catch(() => ({ message: res.statusText }));

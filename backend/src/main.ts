@@ -15,7 +15,22 @@ async function bootstrap() {
   });
 
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: (origin, callback) => {
+      const allowed = (process.env.FRONTEND_URL || 'http://localhost:3000')
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean);
+
+      if (process.env.NODE_ENV !== 'production') {
+        allowed.push('http://localhost:3000', 'http://127.0.0.1:3000');
+      }
+
+      if (!origin || allowed.includes(origin)) {
+        callback(null, origin ?? allowed[0]);
+      } else {
+        callback(null, false);
+      }
+    },
     credentials: true,
   });
 

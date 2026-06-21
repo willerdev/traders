@@ -141,7 +141,7 @@ export class SignalsService {
       },
     });
 
-    const hubResult = await this.signalHub.forwardSignal(
+    const forwardResult = await this.signalHub.forwardSignal(
       signal.signalId,
       dto,
       user.displayName,
@@ -153,13 +153,20 @@ export class SignalsService {
       signalId: signal.signalId,
       submittedAt: signal.submittedAt,
       entryRange: { min: dto.entryMin, max: dto.entryMax },
-      executionHub: hubResult
+      executionHub: forwardResult.hub
         ? {
-            id: hubResult.id,
-            status: hubResult.status,
-            duplicate: hubResult.duplicate,
+            id: forwardResult.hub.id,
+            status: forwardResult.hub.status,
+            duplicate: forwardResult.hub.duplicate,
           }
         : null,
+      executionValidation: {
+        approved: forwardResult.validation.approved,
+        adjusted: forwardResult.validation.adjusted,
+        issues: forwardResult.validation.issues,
+        rejectReason: forwardResult.validation.rejectReason,
+        sentPrices: forwardResult.validation.sentPrices,
+      },
     };
   }
 

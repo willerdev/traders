@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TradeDirection } from '@prisma/client';
 import { CreateSignalDto } from '../common/dto';
+import { SignalValidationService } from '../ai/signal-validation.service';
 
 type SignalHubAction =
   | 'open'
@@ -36,6 +37,23 @@ export interface SignalHubResult {
   duplicate: boolean;
 }
 
+export interface ForwardSignalResult {
+  hub: SignalHubResult | null;
+  validation: {
+    approved: boolean;
+    adjusted: boolean;
+    issues: string[];
+    rejectReason?: string;
+    sentPrices?: {
+      symbol: string;
+      direction: string;
+      entry: number;
+      sl: number;
+      tp: number;
+    };
+  };
+}
+
 @Injectable()
 export class SignalHubService {
   private readonly logger = new Logger(SignalHubService.name);
@@ -44,7 +62,10 @@ export class SignalHubService {
   private readonly providerName: string;
   private readonly orderType: SignalHubOrderType;
 
-  constructor(private config: ConfigService) {
+  constructor(
+    private config: ConfigService,
+    private signalValidation: SignalValidationService,
+  ) {
     this.baseUrl =
       this.config.get<string>('SIGNAL_HUB_URL') ||
       'https://signalhub-10zp.onrender.com';
@@ -103,13 +124,45 @@ export class SignalHubService {
     dto: CreateSignalDto,
     displayName: string,
     userId: string,
-  ): Promise<SignalHubResult | null> {
-    if (!this.isConfigured) {
-      this.logger.warn('Signal Hub skipped — SIGNAL_HUB_PROVIDER_KEY not set');
-      return null;
+  ): Promise<ForwardSignalResult> {
+    const validation = await this.signalValidation.validateAndCorrect(dto);
+
+    if (!validation.approved) {
+      this.logger.warn(
+        `Signal Hub skipped ${externalId}: ${validation.rejectReason}`,
+      );
+      return {
+        hub: null,
+        validation: {
+          approved: false,
+          adjusted: validation.adjusted,
+          issues: validation.issues,
+          rejectReason: validation.rejectReason,
+        },
+      };
     }
 
-    const payload = this.buildPayload(externalId, dto, displayName, userId);
+    if (!this.isConfigured) {
+      this.logger.warn('Signal Hub skipped — SIGNAL_HUB_PROVIDER_KEY not set');
+      return {
+        hub: null,
+        validation: {
+          approved: true,
+          adjusted: validation.adjusted,
+          issues: validation.issues,
+        },
+      };
+    }
+
+    const safeDto = validation.dto;
+    const payload = this.buildPayload(externalId, safeDto, displayName, userId);
+    const sentPrices = {
+      symbol: payload.symbol,
+      direction: payload.direction,
+      entry: payload.entry,
+      sl: payload.sl,
+      tp: payload.tp,
+    };
 
     try {
       const res = await fetch(`${this.baseUrl}/v1/signals`, {
@@ -129,18 +182,42 @@ export class SignalHubService {
         this.logger.error(
           `Signal Hub rejected ${externalId}: ${res.status} ${JSON.stringify(body)}`,
         );
-        return null;
+        return {
+          hub: null,
+          validation: {
+            approved: true,
+            adjusted: validation.adjusted,
+            issues: validation.issues,
+            sentPrices,
+          },
+        };
       }
 
       this.logger.log(
         `Signal Hub accepted ${externalId} → hub id ${body.id} (${body.status})`,
       );
-      return body;
+      return {
+        hub: body,
+        validation: {
+          approved: true,
+          adjusted: validation.adjusted,
+          issues: validation.issues,
+          sentPrices,
+        },
+      };
     } catch (err) {
       this.logger.error(
         `Signal Hub request failed for ${externalId}: ${(err as Error).message}`,
       );
-      return null;
+      return {
+        hub: null,
+        validation: {
+          approved: true,
+          adjusted: validation.adjusted,
+          issues: validation.issues,
+          sentPrices,
+        },
+      };
     }
   }
 }
