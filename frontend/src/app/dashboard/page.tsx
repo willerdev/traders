@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -9,23 +9,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuthStore, useDashboardStore } from "@/stores/auth";
-import { Send, ArrowRight, CreditCard } from "lucide-react";
+import { Send, ArrowRight } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
 import { OpenPositionsCard } from "@/components/dashboard/open-positions";
-import { PromoCodeForm } from "@/components/payments/promo-code-form";
+import { RegistrationCheckout } from "@/components/payments/registration-checkout";
 
 export default function DashboardPage() {
   const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const { data, loading, error, fetchDashboard } = useDashboardStore();
-
-  const [payLoading, setPayLoading] = useState(false);
-
-  function refreshAfterPromo() {
-    fetchDashboard();
-  }
 
   useEffect(() => {
     const token = useAuthStore.getState().token;
@@ -39,18 +33,8 @@ export default function DashboardPage() {
     fetchDashboard();
   }, [isAuthenticated, router, fetchDashboard]);
 
-  async function handlePayRegistration() {
-    setPayLoading(true);
-    try {
-      const result = await api.payments.createRegistration("TRC20");
-      if (result.invoiceUrl) {
-        window.open(result.invoiceUrl, "_blank");
-      }
-    } catch {
-      /* handled by API */
-    } finally {
-      setPayLoading(false);
-    }
+  async function handleRegistrationComplete() {
+    await fetchDashboard();
   }
 
   if (loading && !data) {
@@ -106,33 +90,21 @@ export default function DashboardPage() {
       {data.onboarding && (
         <OnboardingChecklist
           onboarding={data.onboarding}
-          onPayRegistration={handlePayRegistration}
-          onPromoApplied={refreshAfterPromo}
-          payLoading={payLoading}
+          onComplete={handleRegistrationComplete}
         />
       )}
 
       {data.user.status === "PENDING_PAYMENT" && !data.onboarding && (
         <Card className="mb-6 border-primary/30 bg-primary/5">
-          <CardContent className="flex flex-col gap-4 pt-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="font-semibold text-white">Complete Registration</p>
-                <p className="text-sm text-gray-400">
-                  Pay 5 USDT via NOWPayments, or use promo code{" "}
-                  <strong className="text-primary">win2026</strong> for 100% off
-                </p>
-              </div>
-              <Button
-                className="gap-2 shrink-0"
-                onClick={handlePayRegistration}
-                disabled={payLoading}
-              >
-                <CreditCard className="h-4 w-4" />
-                {payLoading ? "Creating invoice..." : "Pay with Crypto"}
-              </Button>
-            </div>
-            <PromoCodeForm onSuccess={refreshAfterPromo} />
+          <CardHeader>
+            <CardTitle>Complete Registration</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-4 text-sm text-gray-400">
+              Pay 5 USDT in-app or use promo{" "}
+              <strong className="text-primary">win2026</strong> for 100% off.
+            </p>
+            <RegistrationCheckout onComplete={handleRegistrationComplete} />
           </CardContent>
         </Card>
       )}

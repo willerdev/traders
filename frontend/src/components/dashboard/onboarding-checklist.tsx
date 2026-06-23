@@ -4,9 +4,8 @@ import Link from "next/link";
 import { CheckCircle2, Circle, ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PromoCodeForm } from "@/components/payments/promo-code-form";
+import { RegistrationCheckout } from "@/components/payments/registration-checkout";
 import type { OnboardingStatus } from "@/lib/api";
-import { useState } from "react";
 
 const STEPS = [
   {
@@ -67,16 +66,11 @@ function normalizeOnboarding(onboarding: OnboardingStatus) {
 
 export function OnboardingChecklist({
   onboarding,
-  onPayRegistration,
-  onPromoApplied,
-  payLoading,
+  onComplete,
 }: {
   onboarding: OnboardingStatus;
-  onPayRegistration?: () => void;
-  onPromoApplied?: () => void;
-  payLoading?: boolean;
+  onComplete?: () => void;
 }) {
-  const [showPromo, setShowPromo] = useState(false);
   const state = normalizeOnboarding(onboarding);
   const completed = STEPS.filter((s) => {
     if (s.key === "kycApproved") return state.kycApproved;
@@ -107,67 +101,43 @@ export function OnboardingChecklist({
               : state[step.key];
           const isKycPending =
             step.key === "kycApproved" && onboarding.kycStatus === "PENDING";
+          const isRegistration = step.key === "registrationPaid";
 
           return (
-            <div
-              key={step.key}
-              className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] px-3 py-2.5"
-            >
-              <div className="flex min-w-0 items-center gap-3">
-                {done ? (
-                  <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
-                ) : (
-                  <Circle className="h-5 w-5 shrink-0 text-muted" />
-                )}
-                <div>
-                  <p
-                    className={`text-sm font-medium ${done ? "text-muted line-through" : "text-foreground"}`}
-                  >
-                    {step.label}
-                  </p>
-                  {isKycPending && (
-                    <p className="text-xs text-rank-gold">Under review</p>
+            <div key={step.key} className="space-y-0">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] px-3 py-2.5">
+                <div className="flex min-w-0 items-center gap-3">
+                  {done ? (
+                    <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
+                  ) : (
+                    <Circle className="h-5 w-5 shrink-0 text-muted" />
                   )}
-                </div>
-              </div>
-              {!done && !isKycPending && (
-                step.key === "registrationPaid" && onPayRegistration ? (
-                  <div className="flex shrink-0 flex-col items-end gap-2">
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => setShowPromo((v) => !v)}
-                      >
-                        Promo
-                      </Button>
-                      <Button size="sm" onClick={onPayRegistration} disabled={payLoading}>
-                        {payLoading ? "..." : "Pay 5 USDT"}
-                      </Button>
-                    </div>
+                  <div>
+                    <p
+                      className={`text-sm font-medium ${done ? "text-muted line-through" : "text-foreground"}`}
+                    >
+                      {step.label}
+                    </p>
+                    {isKycPending && (
+                      <p className="text-xs text-rank-gold">Under review</p>
+                    )}
                   </div>
-                ) : (
+                </div>
+                {!done && !isKycPending && !isRegistration && (
                   <Link href={step.href}>
                     <Button size="sm" variant="secondary" className="gap-1">
                       {step.action}
                       <ChevronRight className="h-3 w-3" />
                     </Button>
                   </Link>
-                )
+                )}
+              </div>
+              {isRegistration && !done && (
+                <RegistrationCheckout onComplete={onComplete} compact />
               )}
             </div>
           );
         })}
-        {showPromo && !state.registrationPaid && (
-          <div className="mt-3 rounded-lg border border-[var(--color-border)] p-4">
-            <PromoCodeForm
-              onSuccess={() => {
-                setShowPromo(false);
-                onPromoApplied?.();
-              }}
-            />
-          </div>
-        )}
       </CardContent>
     </Card>
   );

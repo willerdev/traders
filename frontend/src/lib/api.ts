@@ -258,8 +258,12 @@ class ApiClient {
         amount?: number;
         currency?: string;
         network?: string;
-        invoiceUrl?: string;
+        payAddress?: string;
+        payAmount?: number;
         payCurrency?: string;
+        gatewayPaymentId?: number;
+        liveStatus?: string;
+        invoiceUrl?: string;
         gateway?: string;
         success?: boolean;
         message?: string;
@@ -269,6 +273,16 @@ class ApiClient {
         method: "POST",
         body: JSON.stringify({ network, promoCode }),
       }),
+    getStatus: (paymentId: string) =>
+      this.request<{
+        payment: { id: string; status: string; amount: number };
+        liveStatus?: string;
+        actuallyPaid?: number;
+        payAmount?: number;
+        payAddress?: string;
+        progress: string;
+        confirmed: boolean;
+      }>(`/payments/${paymentId}/status`),
     applyPromo: (code: string) =>
       this.request<{
         success?: boolean;

@@ -136,24 +136,19 @@ export class PaymentsService {
       };
     }
 
-    const frontendUrl =
-      this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000';
-
-    const invoice = await this.nowPayments.createInvoice({
+    const npPayment = await this.nowPayments.createPayment({
       amount: fee,
       orderId: payment.id,
       network,
       description: 'TraderRank Pro registration fee',
-      successUrl: `${frontendUrl}/dashboard?payment=success`,
-      cancelUrl: `${frontendUrl}/register?payment=cancelled`,
       ipnCallbackUrl: this.ipnUrl(),
     });
 
     await this.prisma.payment.update({
       where: { id: payment.id },
       data: {
-        gatewayId: invoice.id,
-        gatewayResponse: invoice as object,
+        gatewayId: String(npPayment.payment_id),
+        gatewayResponse: npPayment as object,
       },
     });
 
@@ -162,9 +157,12 @@ export class PaymentsService {
       amount: fee,
       currency: 'USDT',
       network,
-      payCurrency: this.nowPayments.mapNetworkToCurrency(network),
+      payCurrency: npPayment.pay_currency,
+      payAmount: npPayment.pay_amount,
+      payAddress: npPayment.pay_address,
+      gatewayPaymentId: npPayment.payment_id,
+      liveStatus: npPayment.payment_status,
       gateway: 'NOWPayments',
-      invoiceUrl: invoice.invoice_url,
       orderId: payment.id,
     };
   }
@@ -181,6 +179,34 @@ export class PaymentsService {
       finalAmount: validation.finalAmount,
       freeRegistration: validation.finalAmount <= 0,
     };
+  }
+
+  private async confirmPayment(
+    payment: { id: string; userId: string; status: string },
+    gatewayPayload: object,
+    gatewayId?: string,
+  ) {
+    if (payment.status === 'CONFIRMED') {
+      return { alreadyConfirmed: true, paymentId: payment.id };
+    }
+
+    await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: 'CONFIRMED',
+        gatewayId: gatewayId ?? undefined,
+        gatewayResponse: gatewayPayload,
+        confirmedAt: new Date(),
+      },
+    });
+
+    await this.prisma.user.update({
+      where: { id: payment.userId },
+      data: { registrationPaid: true },
+    });
+
+    await this.authService.activateAccount(payment.userId);
+    return { status: 'confirmed', paymentId: payment.id };
   }
 
   async handleIpn(payload: {
@@ -202,24 +228,12 @@ export class PaymentsService {
     const status = payload.payment_status?.toLowerCase();
     const confirmed = ['finished', 'confirmed', 'sent'].includes(status || '');
 
-    if (confirmed && payment.status !== 'CONFIRMED') {
-      await this.prisma.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: 'CONFIRMED',
-          gatewayId: String(payload.payment_id ?? payment.gatewayId),
-          gatewayResponse: payload as object,
-          confirmedAt: new Date(),
-        },
-      });
-
-      await this.prisma.user.update({
-        where: { id: payment.userId },
-        data: { registrationPaid: true },
-      });
-
-      await this.authService.activateAccount(payment.userId);
-      return { status: 'confirmed', paymentId: payment.id };
+    if (confirmed) {
+      return this.confirmPayment(
+        payment,
+        payload as object,
+        String(payload.payment_id ?? payment.gatewayId),
+      );
     }
 
     if (status === 'failed' || status === 'expired') {
@@ -236,21 +250,82 @@ export class PaymentsService {
   }
 
   async getPaymentStatus(userId: string, paymentId: string) {
-    const payment = await this.prisma.payment.findFirst({
+    let payment = await this.prisma.payment.findFirst({
       where: { id: paymentId, userId },
     });
     if (!payment) throw new NotFoundException('Payment not found');
 
-    if (payment.gatewayId && this.nowPayments.isConfigured) {
+    let liveStatus: string | undefined;
+    let actuallyPaid: number | undefined;
+    let payAmount: number | undefined;
+    let payAddress: string | undefined;
+
+    const gatewayId = payment.gatewayId;
+    if (
+      gatewayId &&
+      !gatewayId.startsWith('pending_') &&
+      !gatewayId.startsWith('promo_') &&
+      this.nowPayments.isConfigured
+    ) {
       try {
-        const live = await this.nowPayments.getPaymentStatus(payment.gatewayId);
-        return { payment, liveStatus: live.payment_status };
+        const live = await this.nowPayments.getPaymentStatus(gatewayId);
+        liveStatus = live.payment_status;
+        actuallyPaid = live.actually_paid;
+        payAmount = live.pay_amount;
+        payAddress = live.pay_address;
+
+        const status = live.payment_status?.toLowerCase();
+        const confirmed = ['finished', 'confirmed', 'sent'].includes(
+          status || '',
+        );
+
+        if (confirmed && payment.status !== 'CONFIRMED') {
+          await this.confirmPayment(payment, live as object, gatewayId);
+          payment = await this.prisma.payment.findFirstOrThrow({
+            where: { id: paymentId, userId },
+          });
+        } else if (status === 'failed' || status === 'expired') {
+          await this.prisma.payment.update({
+            where: { id: payment.id },
+            data: {
+              status: status === 'failed' ? 'FAILED' : 'EXPIRED',
+              gatewayResponse: live as object,
+            },
+          });
+          payment = await this.prisma.payment.findFirstOrThrow({
+            where: { id: paymentId, userId },
+          });
+        }
       } catch {
-        return { payment };
+        /* use stored payment */
       }
     }
 
-    return { payment };
+    const stored = payment.gatewayResponse as Record<string, unknown> | null;
+    payAddress =
+      payAddress || (stored?.pay_address as string | undefined);
+    payAmount = payAmount ?? (stored?.pay_amount as number | undefined);
+
+    return {
+      payment,
+      liveStatus,
+      actuallyPaid,
+      payAmount,
+      payAddress,
+      progress: this.mapPaymentProgress(liveStatus ?? payment.status),
+      confirmed: payment.status === 'CONFIRMED',
+    };
+  }
+
+  private mapPaymentProgress(status: string): string {
+    const s = status.toLowerCase();
+    if (['finished', 'confirmed', 'sent'].includes(s)) return 'complete';
+    if (s === 'confirming') return 'confirming';
+    if (s === 'partially_paid') return 'partial';
+    if (s === 'failed') return 'failed';
+    if (s === 'expired') return 'expired';
+    if (s === 'confirmed') return 'complete';
+    return 'waiting';
   }
 
   async getPaymentHistory(userId: string) {
