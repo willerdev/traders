@@ -29,7 +29,8 @@ Return ONLY valid JSON with this exact shape (no markdown):
 }
 
 Rules:
-- symbol: uppercase trading pair (e.g. EURUSD, BTCUSD, XAUUSD, NAS100)
+- symbol: uppercase broker symbol (e.g. EURUSD, BTCUSD, XAUUSD, NAS100, VIX75, VIX10, VIX25, VIX50)
+- TradingView "Volatility 75 (1s) Index" or similar → use VIX75
 - direction: exactly "BUY" or "SELL"
 - entryMin must be less than entryMax
 - For BUY: stopLoss below entry zone, takeProfit above entry zone
@@ -102,6 +103,16 @@ export class VisionService {
     return this.parseAnalysis(content);
   }
 
+  private normalizeSymbolFromChart(raw: string): string {
+    let symbol = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (/VOLATILITY75|VIX75|VOL75|^V75$/.test(symbol)) return 'VIX75';
+    if (/VOLATILITY10|VIX10|VOL10/.test(symbol)) return 'VIX10';
+    if (/VOLATILITY25|VIX25|VOL25/.test(symbol)) return 'VIX25';
+    if (/VOLATILITY50|VIX50|VOL50/.test(symbol)) return 'VIX50';
+    if (/VOLATILITY100|VIX100|VOL100/.test(symbol)) return 'VIX100';
+    return symbol;
+  }
+
   private parseAnalysis(raw: string): ChartAnalysisResult {
     let parsed: Record<string, unknown>;
     try {
@@ -115,9 +126,7 @@ export class VisionService {
       throw new InternalServerErrorException('Could not parse AI response');
     }
 
-    const symbol = String(parsed.symbol || '')
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, '');
+    const symbol = this.normalizeSymbolFromChart(String(parsed.symbol || ''));
     const direction = String(parsed.direction || '').toUpperCase();
     const entryMin = Number(parsed.entryMin);
     const entryMax = Number(parsed.entryMax);

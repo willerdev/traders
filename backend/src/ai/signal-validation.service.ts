@@ -44,18 +44,21 @@ Return ONLY valid JSON (no markdown):
 }
 
 Rules:
-- approved: false only if the signal is unsafe or unfixable (nonsense symbol, SL/TP on wrong side with no clear fix, prices impossible for the instrument)
+- approved: false ONLY for unsafe/unfixable structural issues (SL/TP on wrong side, entryMin >= entryMax, nonsense prices like 0 or negative)
+- Do NOT reject signals solely because the symbol is unfamiliar — brokers support many synthetic/CFD symbols
 - adjusted: true if you changed any numeric field or symbol/direction
 - For BUY: stopLoss < entryMin, takeProfit > entryMax
 - For SELL: stopLoss > entryMax, takeProfit < entryMin
 - entryMin must be < entryMax
 - XAUUSD/gold prices are typically 1000–5000 (catch missing digits like 265.5 → 2655.0)
 - FX majors (EURUSD etc.) typically 0.5–2.0
-- Indices (NAS100, US30) typically 10000–50000
+- US indices (NAS100, US30) typically 10000–50000
+- Synthetic volatility indices (VIX75, VIX10, VIX25, VIX50, VIX100, VOL75, etc.) often trade 100–50000 — approve if SL/TP logic is correct
+- TradingView/Deriv names like "Volatility 75 Index" → normalize to VIX75
 - Crypto (BTCUSD) can be very large — still check SL/TP logic
-- Normalize symbol to uppercase letters/numbers only (e.g. XAUUSD, EURUSD)
+- Normalize symbol to uppercase letters/numbers only (e.g. XAUUSD, VIX75)
 - direction must be exactly "BUY" or "SELL"
-- If fixable, set approved true with corrected values; if not fixable, approved false with rejectReason`;
+- If SL/TP logic is valid, approve even for uncommon symbols; only reject when structure is broken`;
 
 @Injectable()
 export class SignalValidationService {
@@ -76,11 +79,66 @@ export class SignalValidationService {
     return Boolean(this.apiKey);
   }
 
+  /** Map chart/TradingView names to MT5 broker symbols. */
+  private normalizeSymbol(raw: string): string {
+    let symbol = raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+    const aliases: Record<string, string> = {
+      VOLATILITY75: 'VIX75',
+      VOLATILITY75INDEX: 'VIX75',
+      VOLATILITY75SINDEX: 'VIX75',
+      VOL75: 'VIX75',
+      V75: 'VIX75',
+      VIX75S: 'VIX75',
+      VIX75INDEX: 'VIX75',
+      VOLATILITY10: 'VIX10',
+      VOL10: 'VIX10',
+      VIX10S: 'VIX10',
+      VOLATILITY25: 'VIX25',
+      VOL25: 'VIX25',
+      VOLATILITY50: 'VIX50',
+      VOL50: 'VIX50',
+      VOLATILITY100: 'VIX100',
+      VOL100: 'VIX100',
+      GOLD: 'XAUUSD',
+      NASDAQ: 'NAS100',
+    };
+
+    return aliases[symbol] || symbol;
+  }
+
+  private normalizeDto(dto: CreateSignalDto): CreateSignalDto {
+    const symbol = this.normalizeSymbol(dto.symbol);
+    if (symbol === dto.symbol) return dto;
+    return { ...dto, symbol };
+  }
+
+  /** AI sometimes rejects valid CFD/synthetic symbols — override when structure is sound. */
+  private isSymbolOnlyRejection(
+    rejectReason?: string,
+    issues: string[] = [],
+  ): boolean {
+    const text = [rejectReason, ...issues].join(' ').toLowerCase();
+    const patterns = [
+      'invalid symbol',
+      'unknown instrument',
+      'does not match',
+      'unrecognized symbol',
+      'nonsense symbol',
+      'invalid and prices',
+      'not a known',
+      'unable to fix',
+      'no known instrument',
+      'unfamiliar symbol',
+    ];
+    return patterns.some((p) => text.includes(p));
+  }
+
   private ruleCheck(dto: CreateSignalDto): string[] {
     const issues: string[] = [];
 
-    const symbol = dto.symbol.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (!symbol || symbol.length < 3) {
+    const symbol = this.normalizeSymbol(dto.symbol);
+    if (!symbol || symbol.length < 2) {
       issues.push('Invalid or missing symbol');
     }
 
@@ -115,9 +173,9 @@ export class SignalValidationService {
     original: CreateSignalDto,
     corrected: Record<string, unknown>,
   ): CreateSignalDto {
-    const symbol = String(corrected.symbol || original.symbol)
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, '');
+    const symbol = this.normalizeSymbol(
+      String(corrected.symbol || original.symbol),
+    );
     const direction = String(corrected.direction || original.direction).toUpperCase();
     const entryMin = Number(corrected.entryMin ?? original.entryMin);
     const entryMax = Number(corrected.entryMax ?? original.entryMax);
@@ -201,6 +259,7 @@ export class SignalValidationService {
   }
 
   async validateAndCorrect(dto: CreateSignalDto): Promise<SignalValidationResult> {
+    dto = this.normalizeDto(dto);
     const ruleIssues = this.ruleCheck(dto);
     if (ruleIssues.length > 0 && !this.isConfigured) {
       return {
@@ -270,6 +329,25 @@ export class SignalValidationService {
       }
 
       const result = this.parseAiResponse(content, dto);
+      if (
+        !result.approved &&
+        ruleIssues.length === 0 &&
+        this.isSymbolOnlyRejection(result.rejectReason, result.issues)
+      ) {
+        this.logger.log(
+          `Approving ${dto.symbol} despite AI symbol caution — SL/TP structure is valid`,
+        );
+        return {
+          approved: true,
+          adjusted: dto.symbol !== result.dto.symbol,
+          dto,
+          issues: [
+            ...result.issues,
+            'Symbol accepted: valid setup structure (synthetic/CFD symbol)',
+          ],
+        };
+      }
+
       if (result.adjusted) {
         this.logger.log(
           `DeepSeek adjusted signal ${dto.symbol}: ${result.issues.join(', ') || 'minor corrections'}`,
