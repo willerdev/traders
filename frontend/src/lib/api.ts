@@ -59,11 +59,23 @@ class ApiClient {
     }
 
     if (!res.ok) {
-      const error = await res.json().catch(() => ({ message: res.statusText }));
+      const text = await res.text();
+      let error: { message?: unknown } = { message: res.statusText };
+      try {
+        if (text) error = JSON.parse(text) as { message?: unknown };
+      } catch {
+        throw new Error(
+          text.slice(0, 120) || "Request failed — invalid server response",
+        );
+      }
       throw new Error(apiErrorMessage(error, res.statusText));
     }
 
-    return res.json();
+    try {
+      return await res.json();
+    } catch {
+      throw new Error("Invalid response from server — try again shortly");
+    }
   }
 
   auth = {

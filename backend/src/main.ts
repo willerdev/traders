@@ -27,6 +27,9 @@ async function bootstrap() {
         allowed.push('http://localhost:3000', 'http://127.0.0.1:3000');
       }
 
+      // Custom domains (e.g. thetradeguard.com)
+      allowed.push('https://thetradeguard.com', 'https://www.thetradeguard.com');
+
       if (!origin || allowed.includes(origin)) {
         callback(null, origin ?? allowed[0]);
       } else {

@@ -45,13 +45,24 @@ async function proxyRequest(req: NextRequest, path: string[]) {
     );
   }
 
+  const body = await res.arrayBuffer();
+
   const responseHeaders = new Headers();
   res.headers.forEach((value, key) => {
-    if (key.toLowerCase() === "transfer-encoding") return;
+    const lower = key.toLowerCase();
+    // Do not forward length/encoding — fetch decompresses bodies; wrong
+    // Content-Length truncates JSON (breaks login with parse error ~517).
+    if (
+      lower === "transfer-encoding" ||
+      lower === "content-length" ||
+      lower === "content-encoding"
+    ) {
+      return;
+    }
     responseHeaders.set(key, value);
   });
 
-  return new NextResponse(await res.arrayBuffer(), {
+  return new NextResponse(body, {
     status: res.status,
     headers: responseHeaders,
   });
