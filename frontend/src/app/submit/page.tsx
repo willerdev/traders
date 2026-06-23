@@ -86,6 +86,11 @@ export default function SubmitSignalPage() {
       rejectReason?: string;
     };
   } | null>(null);
+  const [hubHealth, setHubHealth] = useState<{
+    configured: boolean;
+    keyHint?: string | null;
+    baseUrl?: string;
+  } | null>(null);
   const [setupFile, setSetupFile] = useState<File | null>(null);
   const [setupPreview, setSetupPreview] = useState<string | null>(null);
   const [screenshotUrl, setScreenshotUrl] = useState("");
@@ -114,6 +119,17 @@ export default function SubmitSignalPage() {
     if (!isAuthenticated) router.push("/login");
     else void loadDrafts();
   }, [isAuthenticated, router, loadDrafts]);
+
+  useEffect(() => {
+    if (!success || success.executionHub?.id) {
+      setHubHealth(null);
+      return;
+    }
+    void api.signals
+      .hubHealth()
+      .then(setHubHealth)
+      .catch(() => setHubHealth(null));
+  }, [success]);
 
   const buildDraftPayload = useCallback(() => {
     const payload: Parameters<typeof api.signals.createDraft>[0] = {
@@ -361,10 +377,9 @@ export default function SubmitSignalPage() {
   }
 
   if (success) {
-    const mt5Queued = success.execution?.forwarded && success.executionHub;
-    const mt5Failed =
-      !success.execution?.forwarded ||
-      success.executionValidation?.approved === false;
+    const mt5Queued = Boolean(success.executionHub?.id);
+    const validationFailed = success.executionValidation?.approved === false;
+    const mt5Failed = !mt5Queued;
 
     return (
       <div className="mx-auto max-w-lg px-4 py-16 text-center">
@@ -423,25 +438,44 @@ export default function SubmitSignalPage() {
               <div className="mt-4 rounded-lg border border-rank-gold/30 bg-rank-gold/5 p-4 text-left text-sm">
                 <p className="font-medium text-rank-gold">Why MT5 did not receive it</p>
                 <ul className="mt-2 list-disc space-y-1 pl-4 text-muted">
-                  {success.executionValidation?.approved === false && (
+                  {validationFailed && (
                     <li>
                       AI validation rejected:{" "}
-                      {success.executionValidation.rejectReason ||
-                        success.executionValidation.issues.join("; ") ||
+                      {success.executionValidation?.rejectReason ||
+                        success.executionValidation?.issues.join("; ") ||
                         "signal failed checks"}
                     </li>
                   )}
-                  {success.execution?.hubError && (
+                  {!validationFailed && success.execution?.hubError && (
                     <li>{success.execution.hubError}</li>
                   )}
-                  {!success.execution?.hubError &&
-                    success.executionValidation?.approved !== false && (
-                      <li>
-                        Signal Hub is not configured on the server — set{" "}
-                        <code className="text-foreground">SIGNAL_HUB_PROVIDER_KEY</code> in Render
-                        backend env and redeploy.
-                      </li>
+                  {!validationFailed &&
+                    !success.execution?.hubError &&
+                    success.executionValidation?.issues &&
+                    success.executionValidation.issues.length > 0 && (
+                      <li>{success.executionValidation.issues.join("; ")}</li>
                     )}
+                  {!validationFailed && hubHealth && !hubHealth.configured && (
+                    <li>
+                      Backend API reports Signal Hub key is missing. Add{" "}
+                      <code className="text-foreground">SIGNAL_HUB_PROVIDER_KEY</code> on the{" "}
+                      <strong className="text-foreground">traders-api</strong> Render service
+                      (not the frontend), then redeploy the backend.
+                    </li>
+                  )}
+                  {!validationFailed && hubHealth?.configured && (
+                    <li>
+                      Provider key is loaded on the backend ({hubHealth.keyHint}). The Signal
+                      Hub API rejected or could not reach MT5 — check hub logs on the dashboard.
+                    </li>
+                  )}
+                  {!validationFailed && !hubHealth && !success.execution?.hubError && (
+                    <li>
+                      Could not reach Signal Hub. Redeploy the backend after setting{" "}
+                      <code className="text-foreground">SIGNAL_HUB_PROVIDER_KEY</code> on{" "}
+                      <strong className="text-foreground">traders-api</strong> in Render.
+                    </li>
+                  )}
                 </ul>
               </div>
             )}

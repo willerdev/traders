@@ -158,6 +158,7 @@ class ApiClient {
         providerName: string;
         orderType: string;
         lotScale: number | null;
+        keyHint?: string | null;
       }>("/signals/hub/health"),
     list: () => this.request<SignalRecord[]>("/signals"),
     executionStatus: (signalId: string) =>

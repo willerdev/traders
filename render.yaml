@@ -33,6 +33,7 @@ services:
         value: deepseek-chat
       - key: SIGNAL_HUB_URL
         value: https://signalhub-10zp.onrender.com
+      # Set on traders-api only — frontend does not read this key
       - key: SIGNAL_HUB_PROVIDER_KEY
         sync: false
       - key: SIGNAL_HUB_PROVIDER_NAME

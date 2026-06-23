@@ -159,9 +159,15 @@ export class SignalsService {
       entryRange: { min: dto.entryMin, max: dto.entryMax },
       execution: {
         forwarded: forwardResult.forwarded,
-        hubError: forwardResult.hubError,
+        hubError:
+          forwardResult.hubError ||
+          (forwardResult.forwarded
+            ? undefined
+            : 'Signal Hub did not accept this setup'),
         sendername: this.signalHub.toSenderName(user.displayName, userId),
-        orderType: forwardResult.hub?.payload?.order_type ?? undefined,
+        orderType:
+          (forwardResult.hub?.payload?.order_type as string | undefined) ||
+          undefined,
       },
       executionHub: forwardResult.hub
         ? {

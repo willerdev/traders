@@ -107,7 +107,6 @@ export interface ForwardSignalResult {
 export class SignalHubService {
   private readonly logger = new Logger(SignalHubService.name);
   private readonly baseUrl: string;
-  private readonly providerKey: string;
   private readonly providerName: string;
   private readonly orderType: SignalHubOrderType;
   private readonly lotScale: number | null;
@@ -119,25 +118,40 @@ export class SignalHubService {
   ) {
     this.baseUrl =
       this.config.get<string>('SIGNAL_HUB_URL') ||
+      process.env.SIGNAL_HUB_URL ||
       'https://signalhub-10zp.onrender.com';
-    this.providerKey =
-      this.config.get<string>('SIGNAL_HUB_PROVIDER_KEY') || '';
     this.providerName =
       this.config.get<string>('SIGNAL_HUB_PROVIDER_NAME') ||
+      process.env.SIGNAL_HUB_PROVIDER_NAME ||
       'TraderRank Pro';
     this.orderType =
       (this.config.get<string>('SIGNAL_HUB_ORDER_TYPE') as SignalHubOrderType) ||
+      (process.env.SIGNAL_HUB_ORDER_TYPE as SignalHubOrderType) ||
       'limit';
-    const scale = Number(this.config.get<string>('SIGNAL_HUB_LOT_SCALE'));
+    const scale = Number(
+      this.config.get<string>('SIGNAL_HUB_LOT_SCALE') ||
+        process.env.SIGNAL_HUB_LOT_SCALE,
+    );
     this.lotScale = Number.isFinite(scale) ? scale : 1.0;
-    const apiPublic = this.config.get<string>('API_PUBLIC_URL')?.replace(/\/$/, '');
+    const apiPublic =
+      this.config.get<string>('API_PUBLIC_URL')?.replace(/\/$/, '') ||
+      process.env.API_PUBLIC_URL?.replace(/\/$/, '');
     this.callbackUrl = apiPublic
       ? `${apiPublic}/api/v1/signals/hub/callback`
       : null;
   }
 
+  /** Read at request time — Render env updates need redeploy, not app restart hacks. */
+  private getProviderKey(): string {
+    const raw =
+      this.config.get<string>('SIGNAL_HUB_PROVIDER_KEY') ||
+      process.env.SIGNAL_HUB_PROVIDER_KEY ||
+      '';
+    return raw.trim().replace(/^['"]+|['"]+$/g, '');
+  }
+
   get isConfigured(): boolean {
-    return Boolean(this.providerKey);
+    return this.getProviderKey().length > 0;
   }
 
   toSenderName(displayName: string, userId: string): string {
@@ -164,11 +178,12 @@ export class SignalHubService {
     }
 
     try {
+      const providerKey = this.getProviderKey();
       const res = await fetch(`${this.baseUrl}${path}`, {
         ...options,
         headers: {
           'Content-Type': 'application/json',
-          'x-provider-key': this.providerKey,
+          'x-provider-key': providerKey,
           ...(options.headers as Record<string, string>),
         },
       });
@@ -300,12 +315,14 @@ export class SignalHubService {
   }
 
   async getHubHealth() {
+    const key = this.getProviderKey();
     return {
-      configured: this.isConfigured,
+      configured: key.length > 0,
       baseUrl: this.baseUrl,
       providerName: this.providerName,
       orderType: this.orderType,
       lotScale: this.lotScale,
+      keyHint: key ? `${key.slice(0, 10)}…` : null,
     };
   }
 
