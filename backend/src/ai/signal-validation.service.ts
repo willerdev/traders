@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TradeDirection } from '@prisma/client';
 import { CreateSignalDto } from '../common/dto';
+import { normalizeChartSymbol } from './chart-setup.util';
 
 export interface SignalValidationResult {
   approved: boolean;
@@ -53,10 +54,9 @@ Rules:
 - XAUUSD/gold prices are typically 1000–5000 (catch missing digits like 265.5 → 2655.0)
 - FX majors (EURUSD etc.) typically 0.5–2.0
 - US indices (NAS100, US30) typically 10000–50000
-- Synthetic volatility indices (VIX10, VIX25, VIX50, VIX75, VIX100, 1HZ25V) often trade 50,000–900,000 — approve if SL/TP logic is correct
-- TradingView/Deriv names like "Volatility 75 Index" → normalize to VIX75
-- Crypto (BTCUSD) can be very large — still check SL/TP logic
-- Normalize symbol to uppercase letters/numbers only (e.g. XAUUSD, VIX75)
+- Synthetic volatility indices (1HZ10V, 1HZ25V, 1HZ50V, 1HZ75V, 1HZ100V) often trade 50,000–900,000 — approve if SL/TP logic is correct
+- TradingView/Deriv "Volatility 75 (1s) Index" or VIX75 1s → use MT5 symbol 1HZ75V (not VIX75)
+- Normalize symbols to the broker ticker MT5 expects (e.g. 1HZ75V, XAUUSD)
 - direction must be exactly "BUY" or "SELL"
 - If SL/TP logic is valid, approve even for uncommon symbols; only reject when structure is broken`;
 
@@ -81,33 +81,7 @@ export class SignalValidationService {
 
   /** Map chart/TradingView names to MT5 broker symbols. */
   private normalizeSymbol(raw: string): string {
-    let symbol = raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-
-    const aliases: Record<string, string> = {
-      VOLATILITY75: 'VIX75',
-      VOLATILITY75INDEX: 'VIX75',
-      VOLATILITY75SINDEX: 'VIX75',
-      VOL75: 'VIX75',
-      V75: 'VIX75',
-      VIX75S: 'VIX75',
-      VIX75INDEX: 'VIX75',
-      VOLATILITY10: 'VIX10',
-      VOL10: 'VIX10',
-      VIX10S: 'VIX10',
-      VOLATILITY25: 'VIX25',
-      VOL25: 'VIX25',
-      VIX25S: 'VIX25',
-      '1HZ25V': 'VIX25',
-      HZ25V: 'VIX25',
-      VOLATILITY50: 'VIX50',
-      VOL50: 'VIX50',
-      VOLATILITY100: 'VIX100',
-      VOL100: 'VIX100',
-      GOLD: 'XAUUSD',
-      NASDAQ: 'NAS100',
-    };
-
-    return aliases[symbol] || symbol;
+    return normalizeChartSymbol(raw);
   }
 
   private normalizeDto(dto: CreateSignalDto): CreateSignalDto {

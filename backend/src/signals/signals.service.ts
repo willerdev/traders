@@ -12,6 +12,7 @@ import { CreateSignalDto } from '../common/dto';
 import { createHash } from 'crypto';
 import { ComplianceService } from '../compliance/compliance.service';
 import { ForwardSignalResult, SignalHubService } from './signal-hub.service';
+import { normalizeChartSymbol } from '../ai/chart-setup.util';
 
 @Injectable()
 export class SignalsService {
@@ -60,6 +61,7 @@ export class SignalsService {
   }
 
   async submit(userId: string, dto: CreateSignalDto) {
+    dto = { ...dto, symbol: normalizeChartSymbol(dto.symbol) };
     this.validateEntryRange(dto);
 
     await this.compliance.requireActiveTrader(userId);

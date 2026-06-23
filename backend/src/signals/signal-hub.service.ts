@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { TradeDirection } from '@prisma/client';
 import { CreateSignalDto } from '../common/dto';
 import { SignalValidationService } from '../ai/signal-validation.service';
+import { normalizeChartSymbol } from '../ai/chart-setup.util';
 
 export type SignalHubAction =
   | 'open'
@@ -235,7 +236,7 @@ export class SignalHubService {
       external_id: externalId,
       action: 'open',
       order_type: this.getOrderType(),
-      symbol: dto.symbol.trim().toUpperCase(),
+      symbol: normalizeChartSymbol(dto.symbol),
       direction: this.toDirection(dto.direction),
       entry: (dto.entryMin + dto.entryMax) / 2,
       sl: dto.stopLoss,

@@ -25,7 +25,7 @@ const VISION_PROMPT = `You are an expert trading chart analyst. Extract trade pa
 
 Return ONLY valid JSON (no markdown):
 {
-  "symbol": "VIX25",
+  "symbol": "1HZ25V",
   "direction": "BUY",
   "entryMin": 839132.0,
   "entryMax": 839500.0,
@@ -40,14 +40,14 @@ CRITICAL — TradingView position tool:
 - Read the numeric labels on the tool lines (entry, SL, TP) — not just candle prices
 - entryMin = bottom of entry zone, entryMax = top of entry zone (entryMin < entryMax always)
 
-Symbol mapping:
-- Volatility 25 (1s) Index, 1HZ25V → VIX25
-- Volatility 75 (1s) Index, 1HZ75V → VIX75
-- Volatility 10/50/100 → VIX10, VIX50, VIX100
-- XAUUSD, EURUSD, NAS100, BTCUSD as shown
+Symbol mapping (use MT5 broker tickers, not shorthand):
+- Volatility 25 (1s) Index → 1HZ25V
+- Volatility 75 (1s) Index → 1HZ75V
+- Volatility 10/50/100 (1s) → 1HZ10V, 1HZ50V, 1HZ100V
+- XAUUSD, EURUSD, NAS100, BTCUSD as shown on the chart
 
 Price rules:
-- Synthetic volatility indices (VIX10/25/50/75/100) often trade 50,000–900,000 — keep full magnitude (839132 not 839.132)
+- Synthetic volatility indices (1HZ10V/25V/50V/75V/100V) often trade 50,000–900,000 — keep full magnitude (839132 not 839.132)
 - Strip thousand separators: "842,351.73" → 842351.73
 - For BUY: stopLoss < entryMin AND takeProfit > entryMax
 - For SELL: stopLoss > entryMax AND takeProfit < entryMin
