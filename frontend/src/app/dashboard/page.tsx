@@ -13,6 +13,7 @@ import { Send, ArrowRight, CreditCard } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
+import { OpenPositionsCard } from "@/components/dashboard/open-positions";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -141,6 +142,8 @@ export default function DashboardPage() {
       )}
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        <OpenPositionsCard />
+
         <Card>
           <CardHeader>
             <CardTitle>Recent Signals</CardTitle>
