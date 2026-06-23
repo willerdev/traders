@@ -83,6 +83,15 @@ export class SignalsController {
     return this.signalsService.getExecutionStatus(req.user.id, signalId);
   }
 
+  @Post('hub/resend/:signalId')
+  @UseGuards(JwtAuthGuard)
+  resendHub(
+    @Request() req: { user: { id: string } },
+    @Param('signalId') signalId: string,
+  ) {
+    return this.signalsService.resendToHub(req.user.id, signalId);
+  }
+
   @Post('hub/positions/close-all')
   @UseGuards(JwtAuthGuard)
   hubCloseAll(@Request() req: { user: { id: string } }) {

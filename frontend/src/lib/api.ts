@@ -160,6 +160,31 @@ class ApiClient {
         lotScale: number | null;
         keyHint?: string | null;
       }>("/signals/hub/health"),
+    resendHub: (signalId: string) =>
+      this.request<{
+        status: string;
+        signalId: string;
+        submittedAt: string;
+        entryRange: { min: number; max: number };
+        execution?: {
+          forwarded: boolean;
+          hubError?: string;
+          sendername?: string;
+          orderType?: string;
+        };
+        executionHub?: {
+          id: string;
+          status: string;
+          duplicate: boolean;
+          progress?: { stage: string; message: string; executed: boolean };
+        } | null;
+        executionValidation?: {
+          approved: boolean;
+          adjusted: boolean;
+          issues: string[];
+          rejectReason?: string;
+        };
+      }>(`/signals/hub/resend/${signalId}`, { method: "POST" }),
     list: () => this.request<SignalRecord[]>("/signals"),
     executionStatus: (signalId: string) =>
       this.request<HubSignalStatus>(`/signals/hub/execution/${signalId}`),

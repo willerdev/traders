@@ -20,6 +20,7 @@ import {
   Trash2,
   Plus,
   Save,
+  RefreshCw,
 } from "lucide-react";
 
 const EMPTY_FORM = {
@@ -53,6 +54,55 @@ function draftLabel(draft: SignalDraft) {
   return "Untitled setup";
 }
 
+type SubmitResult = {
+  signalId: string;
+  entryRange?: { min: number; max: number };
+  execution?: {
+    forwarded: boolean;
+    hubError?: string;
+    sendername?: string;
+    orderType?: string;
+  };
+  executionHub?: {
+    id: string;
+    status: string;
+    duplicate: boolean;
+    progress?: { stage: string; message: string; executed: boolean };
+  } | null;
+  executionValidation?: {
+    approved: boolean;
+    adjusted: boolean;
+    issues: string[];
+    rejectReason?: string;
+  };
+};
+
+function formatHubError(raw?: string): string {
+  if (!raw) return "";
+  try {
+    const match = raw.match(/^Signal Hub \d+: ([\s\S]+)$/);
+    const jsonText = match?.[1];
+    if (jsonText) {
+      const detail = JSON.parse(jsonText) as Array<{
+        msg?: string;
+        loc?: Array<string | number>;
+      }>;
+      if (Array.isArray(detail) && detail.length > 0) {
+        return detail
+          .map((item) => {
+            const field = item.loc?.filter((p) => p !== "body").join(".") || "";
+            return field && item.msg ? `${field}: ${item.msg}` : item.msg || "";
+          })
+          .filter(Boolean)
+          .join(" ");
+      }
+    }
+  } catch {
+    /* fall through */
+  }
+  return raw;
+}
+
 export default function SubmitSignalPage() {
   const router = useRouter();
   const { isAuthenticated } = useAuthStore();
@@ -64,28 +114,8 @@ export default function SubmitSignalPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [aiFilled, setAiFilled] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState<{
-    signalId: string;
-    entryRange?: { min: number; max: number };
-    execution?: {
-      forwarded: boolean;
-      hubError?: string;
-      sendername?: string;
-      orderType?: string;
-    };
-    executionHub?: {
-      id: string;
-      status: string;
-      duplicate: boolean;
-      progress?: { stage: string; message: string; executed: boolean };
-    } | null;
-    executionValidation?: {
-      approved: boolean;
-      adjusted: boolean;
-      issues: string[];
-      rejectReason?: string;
-    };
-  } | null>(null);
+  const [success, setSuccess] = useState<SubmitResult | null>(null);
+  const [resending, setResending] = useState(false);
   const [hubHealth, setHubHealth] = useState<{
     configured: boolean;
     keyHint?: string | null;
@@ -376,6 +406,26 @@ export default function SubmitSignalPage() {
     }
   }
 
+  async function handleResendToMt5() {
+    if (!success?.signalId) return;
+    setResending(true);
+    setError("");
+    try {
+      const result = await api.signals.resendHub(success.signalId);
+      setSuccess({
+        signalId: result.signalId,
+        entryRange: result.entryRange,
+        execution: result.execution,
+        executionHub: result.executionHub,
+        executionValidation: result.executionValidation,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not resend to MT5");
+    } finally {
+      setResending(false);
+    }
+  }
+
   if (success) {
     const mt5Queued = Boolean(success.executionHub?.id);
     const validationFailed = success.executionValidation?.approved === false;
@@ -447,7 +497,7 @@ export default function SubmitSignalPage() {
                     </li>
                   )}
                   {!validationFailed && success.execution?.hubError && (
-                    <li>{success.execution.hubError}</li>
+                    <li>{formatHubError(success.execution.hubError)}</li>
                   )}
                   {!validationFailed &&
                     !success.execution?.hubError &&
@@ -455,7 +505,10 @@ export default function SubmitSignalPage() {
                     success.executionValidation.issues.length > 0 && (
                       <li>{success.executionValidation.issues.join("; ")}</li>
                     )}
-                  {!validationFailed && hubHealth && !hubHealth.configured && (
+                  {!validationFailed &&
+                    !success.execution?.hubError &&
+                    hubHealth &&
+                    !hubHealth.configured && (
                     <li>
                       Backend API reports Signal Hub key is missing. Add{" "}
                       <code className="text-foreground">SIGNAL_HUB_PROVIDER_KEY</code> on the{" "}
@@ -463,13 +516,18 @@ export default function SubmitSignalPage() {
                       (not the frontend), then redeploy the backend.
                     </li>
                   )}
-                  {!validationFailed && hubHealth?.configured && (
+                  {!validationFailed &&
+                    !success.execution?.hubError &&
+                    hubHealth?.configured && (
                     <li>
                       Provider key is loaded on the backend ({hubHealth.keyHint}). The Signal
-                      Hub API rejected or could not reach MT5 — check hub logs on the dashboard.
+                      Hub API rejected or could not reach MT5 — try resending below or check hub
+                      logs on the dashboard.
                     </li>
                   )}
-                  {!validationFailed && !hubHealth && !success.execution?.hubError && (
+                  {!validationFailed &&
+                    !hubHealth &&
+                    !success.execution?.hubError && (
                     <li>
                       Could not reach Signal Hub. Redeploy the backend after setting{" "}
                       <code className="text-foreground">SIGNAL_HUB_PROVIDER_KEY</code> on{" "}
@@ -480,7 +538,17 @@ export default function SubmitSignalPage() {
               </div>
             )}
 
-            <div className="mt-6 flex gap-3 justify-center">
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+              {mt5Failed && (
+                <Button
+                  className="gap-2"
+                  onClick={handleResendToMt5}
+                  disabled={resending}
+                >
+                  <RefreshCw className={`h-4 w-4 ${resending ? "animate-spin" : ""}`} />
+                  {resending ? "Resending…" : "Resend to MT5"}
+                </Button>
+              )}
               <Button onClick={() => router.push("/dashboard")}>
                 View Dashboard
               </Button>
@@ -494,6 +562,9 @@ export default function SubmitSignalPage() {
                 Submit Another
               </Button>
             </div>
+            {error && (
+              <p className="mt-4 text-sm text-danger">{error}</p>
+            )}
           </CardContent>
         </Card>
       </div>

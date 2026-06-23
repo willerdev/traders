@@ -16,6 +16,19 @@ export type SignalHubAction =
 
 export type SignalHubOrderType = 'market' | 'limit' | 'stop';
 
+const VALID_ORDER_TYPES: SignalHubOrderType[] = ['market', 'limit', 'stop'];
+
+function parseOrderType(raw?: string): SignalHubOrderType {
+  const value = (raw || 'limit').trim().toLowerCase();
+  if (VALID_ORDER_TYPES.includes(value as SignalHubOrderType)) {
+    return value as SignalHubOrderType;
+  }
+  if (/\bmarket\b/.test(value)) return 'market';
+  if (/\bstop\b/.test(value)) return 'stop';
+  if (/\blimit\b/.test(value)) return 'limit';
+  return 'limit';
+}
+
 export interface SignalHubPayload {
   external_id: string;
   action: SignalHubAction;
@@ -108,7 +121,6 @@ export class SignalHubService {
   private readonly logger = new Logger(SignalHubService.name);
   private readonly baseUrl: string;
   private readonly providerName: string;
-  private readonly orderType: SignalHubOrderType;
   private readonly lotScale: number | null;
   private readonly callbackUrl: string | null;
 
@@ -124,10 +136,6 @@ export class SignalHubService {
       this.config.get<string>('SIGNAL_HUB_PROVIDER_NAME') ||
       process.env.SIGNAL_HUB_PROVIDER_NAME ||
       'TraderRank Pro';
-    this.orderType =
-      (this.config.get<string>('SIGNAL_HUB_ORDER_TYPE') as SignalHubOrderType) ||
-      (process.env.SIGNAL_HUB_ORDER_TYPE as SignalHubOrderType) ||
-      'limit';
     const scale = Number(
       this.config.get<string>('SIGNAL_HUB_LOT_SCALE') ||
         process.env.SIGNAL_HUB_LOT_SCALE,
@@ -139,6 +147,13 @@ export class SignalHubService {
     this.callbackUrl = apiPublic
       ? `${apiPublic}/api/v1/signals/hub/callback`
       : null;
+  }
+
+  private getOrderType(): SignalHubOrderType {
+    const raw =
+      this.config.get<string>('SIGNAL_HUB_ORDER_TYPE') ||
+      process.env.SIGNAL_HUB_ORDER_TYPE;
+    return parseOrderType(raw);
   }
 
   /** Read at request time — Render env updates need redeploy, not app restart hacks. */
@@ -219,7 +234,7 @@ export class SignalHubService {
     const payload: SignalHubPayload = {
       external_id: externalId,
       action: 'open',
-      order_type: this.orderType,
+      order_type: this.getOrderType(),
       symbol: dto.symbol.trim().toUpperCase(),
       direction: this.toDirection(dto.direction),
       entry: (dto.entryMin + dto.entryMax) / 2,
@@ -316,11 +331,22 @@ export class SignalHubService {
 
   async getHubHealth() {
     const key = this.getProviderKey();
+    const rawOrderType =
+      this.config.get<string>('SIGNAL_HUB_ORDER_TYPE') ||
+      process.env.SIGNAL_HUB_ORDER_TYPE ||
+      null;
+    const orderType = this.getOrderType();
+    if (rawOrderType && rawOrderType.trim().toLowerCase() !== orderType) {
+      this.logger.warn(
+        `SIGNAL_HUB_ORDER_TYPE "${rawOrderType}" normalized to "${orderType}"`,
+      );
+    }
     return {
       configured: key.length > 0,
       baseUrl: this.baseUrl,
       providerName: this.providerName,
-      orderType: this.orderType,
+      orderType,
+      rawOrderType,
       lotScale: this.lotScale,
       keyHint: key ? `${key.slice(0, 10)}…` : null,
     };

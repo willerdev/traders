@@ -2,6 +2,7 @@ import {
   Injectable,
   BadRequestException,
   ForbiddenException,
+  NotFoundException,
   ServiceUnavailableException,
   Logger,
 } from '@nestjs/common';
@@ -10,7 +11,7 @@ import { DuplicateDetectionService } from './duplicate-detection.service';
 import { CreateSignalDto } from '../common/dto';
 import { createHash } from 'crypto';
 import { ComplianceService } from '../compliance/compliance.service';
-import { SignalHubService } from './signal-hub.service';
+import { ForwardSignalResult, SignalHubService } from './signal-hub.service';
 
 @Injectable()
 export class SignalsService {
@@ -152,10 +153,74 @@ export class SignalsService {
       userId,
     );
 
+    return this.buildForwardResponse(
+      signal.signalId,
+      signal.submittedAt,
+      dto,
+      user.displayName,
+      userId,
+      forwardResult,
+      'accepted',
+    );
+  }
+
+  async resendToHub(userId: string, signalId: string) {
+    await this.compliance.requireActiveTrader(userId);
+
+    const signal = await this.prisma.signal.findFirst({
+      where: { signalId, userId },
+    });
+    if (!signal) throw new NotFoundException('Signal not found');
+    if (signal.status === 'REJECTED_DUPLICATE') {
+      throw new BadRequestException('Cannot resend a rejected duplicate signal');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const dto: CreateSignalDto = {
+      symbol: signal.symbol,
+      direction: signal.direction,
+      entryMin: Number(signal.entryMin),
+      entryMax: Number(signal.entryMax),
+      stopLoss: Number(signal.stopLoss),
+      takeProfit: Number(signal.takeProfit),
+      riskRewardRatio: Number(signal.riskRewardRatio),
+      description: signal.description,
+      screenshotUrl: signal.screenshotUrl,
+    };
+
+    const forwardResult = await this.signalHub.forwardSignal(
+      signal.signalId,
+      dto,
+      user.displayName,
+      userId,
+    );
+
+    return this.buildForwardResponse(
+      signal.signalId,
+      signal.submittedAt,
+      dto,
+      user.displayName,
+      userId,
+      forwardResult,
+      forwardResult.forwarded ? 'resent' : 'resend_failed',
+    );
+  }
+
+  private buildForwardResponse(
+    signalId: string,
+    submittedAt: Date,
+    dto: CreateSignalDto,
+    displayName: string,
+    userId: string,
+    forwardResult: ForwardSignalResult,
+    status: 'accepted' | 'resent' | 'resend_failed',
+  ) {
     return {
-      status: 'accepted',
-      signalId: signal.signalId,
-      submittedAt: signal.submittedAt,
+      status,
+      signalId,
+      submittedAt,
       entryRange: { min: dto.entryMin, max: dto.entryMax },
       execution: {
         forwarded: forwardResult.forwarded,
@@ -164,7 +229,7 @@ export class SignalsService {
           (forwardResult.forwarded
             ? undefined
             : 'Signal Hub did not accept this setup'),
-        sendername: this.signalHub.toSenderName(user.displayName, userId),
+        sendername: this.signalHub.toSenderName(displayName, userId),
         orderType:
           (forwardResult.hub?.payload?.order_type as string | undefined) ||
           undefined,
