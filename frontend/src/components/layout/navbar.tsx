@@ -9,7 +9,6 @@ import {
   Wallet,
   Settings,
   LogOut,
-  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth";
@@ -92,7 +91,7 @@ function SidebarNav({
 }
 
 function Sidebar({ pathname }: { pathname: string }) {
-  const { logout, user } = useAuthStore();
+  const { logout } = useAuthStore();
 
   return (
     <aside
@@ -117,30 +116,6 @@ function Sidebar({ pathname }: { pathname: string }) {
       </div>
 
       <div className="border-t border-[var(--color-border)] p-2">
-        {user?.role === "ADMIN" && (
-          <Link
-            href="/admin"
-            title="Admin"
-            className={cn(
-              "mb-1 flex w-full items-center rounded-lg py-2.5 pl-[0.85rem] pr-3 text-sm font-medium transition-colors",
-              pathname === "/admin"
-                ? "bg-primary/10 text-primary"
-                : "text-muted hover:bg-foreground/5 hover:text-foreground",
-            )}
-          >
-            <Shield className="h-5 w-5 shrink-0" />
-            <span
-              className={cn(
-                "ml-3 overflow-hidden whitespace-nowrap transition-all duration-300",
-                "max-w-0 opacity-0",
-                "group-hover/sidebar:max-w-[10rem] group-hover/sidebar:opacity-100",
-                "group-focus-within/sidebar:max-w-[10rem] group-focus-within/sidebar:opacity-100",
-              )}
-            >
-              Admin
-            </span>
-          </Link>
-        )}
         <Link
           href="/settings"
           title="Settings"

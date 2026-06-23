@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Param,
+  Query,
   UseGuards,
   Request,
 } from '@nestjs/common';
@@ -42,6 +43,41 @@ export class AdminController {
     @Body('reason') reason: string,
   ) {
     return this.adminService.rejectKyc(userId, req.user.id, reason || 'Rejected');
+  }
+
+  @Get('users')
+  listUsers(
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.adminService.listUsers(
+      limit ? Number(limit) : 50,
+      offset ? Number(offset) : 0,
+    );
+  }
+
+  @Get('signals')
+  listSignals(
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.adminService.listSignals(
+      limit ? Number(limit) : 50,
+      offset ? Number(offset) : 0,
+    );
+  }
+
+  @Get('payouts')
+  listPayouts(
+    @Query('status') status?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.adminService.listPayouts(
+      status,
+      limit ? Number(limit) : 50,
+      offset ? Number(offset) : 0,
+    );
   }
 
   @Get('payouts/pending')

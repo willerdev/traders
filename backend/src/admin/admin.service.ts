@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { PayoutStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PayoutService } from '../payouts/payout.service';
 import { AnalyticsService } from '../analytics/analytics.service';
@@ -116,6 +117,83 @@ export class AdminService {
         },
       },
     });
+  }
+
+  async listUsers(limit = 50, offset = 0) {
+    const take = Math.min(Math.max(limit, 1), 100);
+    const skip = Math.max(offset, 0);
+
+    const [items, count] = await Promise.all([
+      this.prisma.user.findMany({
+        take,
+        skip,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          email: true,
+          displayName: true,
+          role: true,
+          status: true,
+          registrationPaid: true,
+          createdAt: true,
+          kyc: { select: { status: true } },
+          virtualAccount: { select: { tier: true, score: true, totalProfit: true } },
+          _count: { select: { signals: true, payouts: true } },
+        },
+      }),
+      this.prisma.user.count(),
+    ]);
+
+    return { items, count, limit: take, offset: skip };
+  }
+
+  async listSignals(limit = 50, offset = 0) {
+    const take = Math.min(Math.max(limit, 1), 100);
+    const skip = Math.max(offset, 0);
+
+    const [items, count] = await Promise.all([
+      this.prisma.signal.findMany({
+        take,
+        skip,
+        orderBy: { submittedAt: 'desc' },
+        include: {
+          user: { select: { id: true, displayName: true, email: true } },
+        },
+      }),
+      this.prisma.signal.count(),
+    ]);
+
+    return { items, count, limit: take, offset: skip };
+  }
+
+  async listPayouts(status?: string, limit = 50, offset = 0) {
+    const take = Math.min(Math.max(limit, 1), 100);
+    const skip = Math.max(offset, 0);
+    const where = status
+      ? { status: status as PayoutStatus }
+      : {};
+
+    const [items, count] = await Promise.all([
+      this.prisma.payout.findMany({
+        where,
+        take,
+        skip,
+        orderBy: { requestedAt: 'desc' },
+        include: {
+          user: {
+            select: {
+              id: true,
+              displayName: true,
+              email: true,
+              kyc: { select: { status: true } },
+            },
+          },
+        },
+      }),
+      this.prisma.payout.count({ where }),
+    ]);
+
+    return { items, count, limit: take, offset: skip };
   }
 
   async approvePayout(payoutId: string, adminId: string) {
