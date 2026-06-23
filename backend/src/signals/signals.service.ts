@@ -2,6 +2,8 @@ import {
   Injectable,
   BadRequestException,
   ForbiddenException,
+  ServiceUnavailableException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
@@ -12,6 +14,8 @@ import { SignalHubService } from './signal-hub.service';
 
 @Injectable()
 export class SignalsService {
+  private readonly logger = new Logger(SignalsService.name);
+
   constructor(
     private prisma: PrismaService,
     private duplicateDetection: DuplicateDetectionService,
@@ -185,5 +189,95 @@ export class SignalsService {
 
     if (!signal) throw new BadRequestException('Signal not found');
     return signal;
+  }
+
+  private async hubContext(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new BadRequestException('User not found');
+    if (!this.signalHub.isConfigured) {
+      throw new ServiceUnavailableException('Signal Hub is not configured');
+    }
+    return {
+      user,
+      sendername: this.signalHub.toSenderName(user.displayName, userId),
+    };
+  }
+
+  async getExecutionStatus(userId: string, signalId: string) {
+    const { sendername } = await this.hubContext(userId);
+    const signal = await this.prisma.signal.findFirst({
+      where: { signalId, userId },
+    });
+    if (!signal) throw new BadRequestException('Signal not found');
+
+    const hub = await this.signalHub.getByExternalId(signal.signalId, sendername);
+    if (!hub) {
+      throw new ServiceUnavailableException('Could not fetch execution status');
+    }
+    return hub;
+  }
+
+  async getExecutionLogs(
+    userId: string,
+    filters?: { signal_id?: string; limit?: number; offset?: number },
+  ) {
+    const { sendername } = await this.hubContext(userId);
+    const logs = await this.signalHub.getLogs(sendername, filters);
+    if (!logs) {
+      throw new ServiceUnavailableException('Could not fetch execution logs');
+    }
+    return logs;
+  }
+
+  async getOpenPositions(userId: string) {
+    const { sendername } = await this.hubContext(userId);
+    const positions = await this.signalHub.getPositions(sendername);
+    if (!positions) {
+      throw new ServiceUnavailableException('Could not fetch open positions');
+    }
+    return positions;
+  }
+
+  async closePosition(userId: string, ticket: number) {
+    const { sendername } = await this.hubContext(userId);
+    const result = await this.signalHub.closePosition(ticket, sendername);
+    if (!result) {
+      throw new ServiceUnavailableException('Could not close position');
+    }
+    return result;
+  }
+
+  async closeAllPositions(userId: string) {
+    const { sendername } = await this.hubContext(userId);
+    const result = await this.signalHub.closeAllPositions(sendername);
+    if (!result) {
+      throw new ServiceUnavailableException('Could not close positions');
+    }
+    return result;
+  }
+
+  async listHubSignals(
+    userId: string,
+    filters?: {
+      status?: string;
+      external_id?: string;
+      limit?: number;
+      offset?: number;
+      since?: string;
+    },
+  ) {
+    const { sendername } = await this.hubContext(userId);
+    const list = await this.signalHub.listSignals(sendername, filters);
+    if (!list) {
+      throw new ServiceUnavailableException('Could not fetch hub signals');
+    }
+    return list;
+  }
+
+  async handleHubCallback(payload: Record<string, unknown>) {
+    this.logger.log(
+      `Signal Hub callback: ${JSON.stringify(payload).slice(0, 500)}`,
+    );
+    return { ok: true };
   }
 }

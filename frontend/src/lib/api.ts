@@ -115,6 +115,35 @@ class ApiClient {
           }
       >("/signals", { method: "POST", body: JSON.stringify(data) }),
     list: () => this.request<SignalRecord[]>("/signals"),
+    executionStatus: (signalId: string) =>
+      this.request<HubSignalStatus>(`/signals/hub/execution/${signalId}`),
+    executionLogs: (params?: { signal_id?: string; limit?: number }) => {
+      const q = new URLSearchParams();
+      if (params?.signal_id) q.set("signal_id", params.signal_id);
+      if (params?.limit) q.set("limit", String(params.limit));
+      const qs = q.toString();
+      return this.request<HubLogsResult>(
+        `/signals/hub/logs${qs ? `?${qs}` : ""}`,
+      );
+    },
+    hubList: (params?: { status?: string; limit?: number }) => {
+      const q = new URLSearchParams();
+      if (params?.status) q.set("status", params.status);
+      if (params?.limit) q.set("limit", String(params.limit ?? 50));
+      const qs = q.toString();
+      return this.request<HubSignalList>(`/signals/hub/list${qs ? `?${qs}` : ""}`);
+    },
+    positions: () => this.request<HubPositions>("/signals/hub/positions"),
+    closePosition: (ticket: number) =>
+      this.request<{ ok: boolean; ticket: number }>(
+        `/signals/hub/positions/${ticket}/close`,
+        { method: "POST" },
+      ),
+    closeAllPositions: () =>
+      this.request<{ ok: boolean; closed: number; count: number }>(
+        "/signals/hub/positions/close-all",
+        { method: "POST" },
+      ),
     listDrafts: () => this.request<SignalDraft[]>("/signals/drafts"),
     createDraft: (data: SignalDraftInput) =>
       this.request<SignalDraft>("/signals/drafts", {
@@ -496,6 +525,54 @@ export interface LeaderboardEntry {
   winRate: number;
   drawdown: number;
   consistency: number;
+}
+
+export interface HubSignalStatus {
+  id: string;
+  external_id: string | null;
+  status: string;
+  duplicate: boolean;
+  progress?: { stage: string; message: string; executed: boolean } | null;
+  created_at?: string;
+  acked_at?: string | null;
+}
+
+export interface HubSignalList {
+  items: HubSignalStatus[];
+  count: number;
+  sendername?: string | null;
+}
+
+export interface HubLogEvent {
+  id: string;
+  signal_id: string | null;
+  sendername: string | null;
+  event: string;
+  message: string;
+  created_at: string;
+}
+
+export interface HubLogsResult {
+  items: HubLogEvent[];
+  count: number;
+  sendername?: string | null;
+}
+
+export interface HubPosition {
+  ticket?: number;
+  symbol?: string;
+  type?: string;
+  volume?: number;
+  price_open?: number;
+  sl?: number;
+  tp?: number;
+  profit?: number;
+}
+
+export interface HubPositions {
+  sendername: string;
+  count: number;
+  items: HubPosition[];
 }
 
 export const api = new ApiClient();

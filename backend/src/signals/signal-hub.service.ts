@@ -4,7 +4,7 @@ import { TradeDirection } from '@prisma/client';
 import { CreateSignalDto } from '../common/dto';
 import { SignalValidationService } from '../ai/signal-validation.service';
 
-type SignalHubAction =
+export type SignalHubAction =
   | 'open'
   | 'add'
   | 'close'
@@ -14,9 +14,9 @@ type SignalHubAction =
   | 'close_all'
   | 'ignore';
 
-type SignalHubOrderType = 'market' | 'limit' | 'stop';
+export type SignalHubOrderType = 'market' | 'limit' | 'stop';
 
-interface SignalHubPayload {
+export interface SignalHubPayload {
   external_id: string;
   action: SignalHubAction;
   order_type: SignalHubOrderType;
@@ -25,9 +25,11 @@ interface SignalHubPayload {
   entry: number;
   sl: number;
   tp: number;
+  lot_scale?: number;
   sendername: string;
   provider_name: string;
   message: string;
+  callback_url?: string;
 }
 
 export interface SignalHubResult {
@@ -35,6 +37,51 @@ export interface SignalHubResult {
   external_id: string | null;
   status: string;
   duplicate: boolean;
+  payload?: Record<string, unknown>;
+  result?: Record<string, unknown> | null;
+  progress?: { stage: string; message: string; executed: boolean } | null;
+  created_at?: string;
+  acked_at?: string | null;
+}
+
+export interface SignalHubListResult {
+  items: SignalHubResult[];
+  count: number;
+  sendername?: string | null;
+}
+
+export interface SignalHubEvent {
+  id: string;
+  signal_id: string | null;
+  sendername: string | null;
+  event: string;
+  message: string;
+  detail?: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface SignalHubLogsResult {
+  items: SignalHubEvent[];
+  count: number;
+  sendername?: string | null;
+}
+
+export interface SignalHubPosition {
+  ticket?: number;
+  symbol?: string;
+  type?: string;
+  volume?: number;
+  price_open?: number;
+  sl?: number;
+  tp?: number;
+  profit?: number;
+  [key: string]: unknown;
+}
+
+export interface SignalHubPositionsResult {
+  sendername: string;
+  count: number;
+  items: SignalHubPosition[];
 }
 
 export interface ForwardSignalResult {
@@ -61,6 +108,8 @@ export class SignalHubService {
   private readonly providerKey: string;
   private readonly providerName: string;
   private readonly orderType: SignalHubOrderType;
+  private readonly lotScale: number | null;
+  private readonly callbackUrl: string | null;
 
   constructor(
     private config: ConfigService,
@@ -77,17 +126,19 @@ export class SignalHubService {
     this.orderType =
       (this.config.get<string>('SIGNAL_HUB_ORDER_TYPE') as SignalHubOrderType) ||
       'limit';
+    const scale = Number(this.config.get<string>('SIGNAL_HUB_LOT_SCALE'));
+    this.lotScale = Number.isFinite(scale) ? scale : 1.0;
+    const apiPublic = this.config.get<string>('API_PUBLIC_URL')?.replace(/\/$/, '');
+    this.callbackUrl = apiPublic
+      ? `${apiPublic}/api/v1/signals/hub/callback`
+      : null;
   }
 
   get isConfigured(): boolean {
     return Boolean(this.providerKey);
   }
 
-  private toDirection(direction: TradeDirection): 'buy' | 'sell' {
-    return direction === 'BUY' ? 'buy' : 'sell';
-  }
-
-  private toSenderName(displayName: string, userId: string): string {
+  toSenderName(displayName: string, userId: string): string {
     const normalized = displayName
       .trim()
       .replace(/\s+/g, '_')
@@ -98,13 +149,51 @@ export class SignalHubService {
     return `trader_${userId.slice(0, 8)}`;
   }
 
+  private toDirection(direction: TradeDirection): 'buy' | 'sell' {
+    return direction === 'BUY' ? 'buy' : 'sell';
+  }
+
+  private async hubRequest<T>(
+    path: string,
+    options: RequestInit = {},
+  ): Promise<T | null> {
+    if (!this.isConfigured) return null;
+
+    try {
+      const res = await fetch(`${this.baseUrl}${path}`, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-provider-key': this.providerKey,
+          ...(options.headers as Record<string, string>),
+        },
+      });
+
+      const body = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        this.logger.error(
+          `Signal Hub ${options.method || 'GET'} ${path}: ${res.status} ${JSON.stringify(body)}`,
+        );
+        return null;
+      }
+
+      return body as T;
+    } catch (err) {
+      this.logger.error(
+        `Signal Hub request failed ${path}: ${(err as Error).message}`,
+      );
+      return null;
+    }
+  }
+
   buildPayload(
     externalId: string,
     dto: CreateSignalDto,
     displayName: string,
     userId: string,
   ): SignalHubPayload {
-    return {
+    const payload: SignalHubPayload = {
       external_id: externalId,
       action: 'open',
       order_type: this.orderType,
@@ -113,10 +202,17 @@ export class SignalHubService {
       entry: (dto.entryMin + dto.entryMax) / 2,
       sl: dto.stopLoss,
       tp: dto.takeProfit,
+      lot_scale: this.lotScale ?? undefined,
       sendername: this.toSenderName(displayName, userId),
       provider_name: this.providerName,
       message: dto.description.trim().slice(0, 4000),
     };
+
+    if (this.callbackUrl?.startsWith('https://')) {
+      payload.callback_url = this.callbackUrl;
+    }
+
+    return payload;
   }
 
   async forwardSignal(
@@ -164,60 +260,91 @@ export class SignalHubService {
       tp: payload.tp,
     };
 
-    try {
-      const res = await fetch(`${this.baseUrl}/v1/signals`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-provider-key': this.providerKey,
-        },
-        body: JSON.stringify(payload),
-      });
+    const body = await this.hubRequest<SignalHubResult>('/v1/signals', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
 
-      const body = (await res.json().catch(() => ({}))) as SignalHubResult & {
-        detail?: unknown;
-      };
-
-      if (!res.ok) {
-        this.logger.error(
-          `Signal Hub rejected ${externalId}: ${res.status} ${JSON.stringify(body)}`,
-        );
-        return {
-          hub: null,
-          validation: {
-            approved: true,
-            adjusted: validation.adjusted,
-            issues: validation.issues,
-            sentPrices,
-          },
-        };
-      }
-
+    if (body) {
       this.logger.log(
         `Signal Hub accepted ${externalId} → hub id ${body.id} (${body.status})`,
       );
-      return {
-        hub: body,
-        validation: {
-          approved: true,
-          adjusted: validation.adjusted,
-          issues: validation.issues,
-          sentPrices,
-        },
-      };
-    } catch (err) {
-      this.logger.error(
-        `Signal Hub request failed for ${externalId}: ${(err as Error).message}`,
-      );
-      return {
-        hub: null,
-        validation: {
-          approved: true,
-          adjusted: validation.adjusted,
-          issues: validation.issues,
-          sentPrices,
-        },
-      };
     }
+
+    return {
+      hub: body,
+      validation: {
+        approved: true,
+        adjusted: validation.adjusted,
+        issues: validation.issues,
+        sentPrices,
+      },
+    };
+  }
+
+  async getByExternalId(externalId: string, sendername: string) {
+    const q = new URLSearchParams({ sendername });
+    return this.hubRequest<SignalHubResult>(
+      `/v1/signals/external/${encodeURIComponent(externalId)}?${q}`,
+    );
+  }
+
+  async listSignals(
+    sendername: string,
+    filters?: {
+      status?: string;
+      external_id?: string;
+      limit?: number;
+      offset?: number;
+      since?: string;
+    },
+  ) {
+    const q = new URLSearchParams({ sendername });
+    if (filters?.status) q.set('status', filters.status);
+    if (filters?.external_id) q.set('external_id', filters.external_id);
+    if (filters?.limit) q.set('limit', String(filters.limit));
+    if (filters?.offset) q.set('offset', String(filters.offset));
+    if (filters?.since) q.set('since', filters.since);
+
+    return this.hubRequest<SignalHubListResult>(`/v1/signals?${q}`);
+  }
+
+  async getLogs(
+    sendername: string,
+    filters?: { signal_id?: string; limit?: number; offset?: number },
+  ) {
+    const q = new URLSearchParams({ sendername });
+    if (filters?.signal_id) q.set('signal_id', filters.signal_id);
+    if (filters?.limit) q.set('limit', String(filters.limit));
+    if (filters?.offset) q.set('offset', String(filters.offset));
+
+    return this.hubRequest<SignalHubLogsResult>(`/v1/logs?${q}`);
+  }
+
+  async getPositions(sendername: string) {
+    const q = new URLSearchParams({ sendername });
+    return this.hubRequest<SignalHubPositionsResult>(`/v1/positions?${q}`);
+  }
+
+  async closePosition(ticket: number, sendername: string) {
+    const q = new URLSearchParams({ sendername });
+    return this.hubRequest<{
+      ok: boolean;
+      ticket: number;
+      symbol?: string;
+      profit?: number;
+      sendername?: string;
+    }>(`/v1/positions/${ticket}/close?${q}`, { method: 'POST' });
+  }
+
+  async closeAllPositions(sendername: string) {
+    const q = new URLSearchParams({ sendername });
+    return this.hubRequest<{
+      ok: boolean;
+      closed: number;
+      count: number;
+      items: Record<string, unknown>[];
+      sendername?: string;
+    }>(`/v1/positions/close-all?${q}`, { method: 'POST' });
   }
 }
