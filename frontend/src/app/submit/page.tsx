@@ -12,6 +12,10 @@ import { useAuthStore } from "@/stores/auth";
 import { api, type SignalDraft } from "@/lib/api";
 import { normalizeSetupFields, setupValidationError } from "@/lib/chart-setup";
 import {
+  SubmitReviewCard,
+  type ReviewPayload,
+} from "@/components/submit/submit-review";
+import {
   Lock,
   AlertCircle,
   Upload,
@@ -104,10 +108,20 @@ function formatHubError(raw?: string): string {
   return raw;
 }
 
+function draftField(value: number | string | null | undefined): string {
+  if (value === null || value === undefined || value === "") return "";
+  return String(value);
+}
+
+function setupPreviewUrl(screenshotUrl: string | null | undefined): string {
+  return screenshotUrl?.trim() || "";
+}
+
 export default function SubmitSignalPage() {
   const router = useRouter();
   const { isAuthenticated } = useAuthStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const formCardRef = useRef<HTMLDivElement>(null);
   const skipAutoSave = useRef(false);
 
   const [loading, setLoading] = useState(false);
@@ -132,6 +146,9 @@ export default function SubmitSignalPage() {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   const [form, setForm] = useState(EMPTY_FORM);
+  const [step, setStep] = useState<"edit" | "review">("edit");
+  const [review, setReview] = useState<ReviewPayload | null>(null);
+  const [resumingDraftId, setResumingDraftId] = useState<string | null>(null);
 
   const progress = calcProgress(form, screenshotUrl);
 
@@ -210,12 +227,12 @@ export default function SubmitSignalPage() {
   }, [buildDraftPayload, draftId, form, screenshotUrl]);
 
   useEffect(() => {
-    if (!isAuthenticated || success) return;
+    if (!isAuthenticated || success || step === "review") return;
     const timer = setTimeout(() => {
       void saveDraftNow();
     }, 1500);
     return () => clearTimeout(timer);
-  }, [form, screenshotUrl, aiFilled, isAuthenticated, success, saveDraftNow]);
+  }, [form, screenshotUrl, aiFilled, isAuthenticated, success, step, saveDraftNow]);
 
   const entryMin = parseFloat(form.entryMin);
   const entryMax = parseFloat(form.entryMax);
@@ -307,33 +324,54 @@ export default function SubmitSignalPage() {
     setError("");
     setAiFilled(false);
     setSaveStatus("idle");
+    setStep("edit");
+    setReview(null);
     setTimeout(() => {
       skipAutoSave.current = false;
     }, 0);
   }
 
-  function resumeDraft(draft: SignalDraft) {
-    skipAutoSave.current = true;
+  function applyDraftToForm(draft: SignalDraft) {
     setDraftId(draft.id);
     setForm({
       symbol: draft.symbol ?? "",
       direction: draft.direction ?? "BUY",
-      entryMin: draft.entryMin != null ? String(draft.entryMin) : "",
-      entryMax: draft.entryMax != null ? String(draft.entryMax) : "",
-      stopLoss: draft.stopLoss != null ? String(draft.stopLoss) : "",
-      takeProfit: draft.takeProfit != null ? String(draft.takeProfit) : "",
+      entryMin: draftField(draft.entryMin),
+      entryMax: draftField(draft.entryMax),
+      stopLoss: draftField(draft.stopLoss),
+      takeProfit: draftField(draft.takeProfit),
       description: draft.description ?? "",
     });
     setAiFilled(draft.aiFilled);
     setSetupFile(null);
+    const url = setupPreviewUrl(draft.screenshotUrl);
     if (setupPreview?.startsWith("blob:")) URL.revokeObjectURL(setupPreview);
-    setSetupPreview(draft.screenshotUrl);
-    setScreenshotUrl(draft.screenshotUrl ?? "");
+    setSetupPreview(url || null);
+    setScreenshotUrl(url);
+    setStep("edit");
+    setReview(null);
     setError("");
     setSaveStatus("saved");
-    setTimeout(() => {
-      skipAutoSave.current = false;
-    }, 0);
+  }
+
+  async function resumeDraft(draft: SignalDraft) {
+    skipAutoSave.current = true;
+    setResumingDraftId(draft.id);
+    setError("");
+    try {
+      const full = await api.signals.getDraft(draft.id);
+      applyDraftToForm(full);
+    } catch {
+      applyDraftToForm(draft);
+    } finally {
+      setResumingDraftId(null);
+      setTimeout(() => {
+        skipAutoSave.current = false;
+      }, 1500);
+    }
+    requestAnimationFrame(() => {
+      formCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
   async function handleDeleteDraft(id: string) {
@@ -346,10 +384,7 @@ export default function SubmitSignalPage() {
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-
+  function buildReviewPayload(): ReviewPayload | null {
     const fixed = normalizeSetupFields({
       direction: form.direction,
       entryMin,
@@ -361,14 +396,36 @@ export default function SubmitSignalPage() {
     const validationErr = setupValidationError(fixed);
     if (validationErr) {
       setError(validationErr);
-      return;
+      return null;
     }
 
-    if (fixed.direction !== form.direction ||
-        fixed.entryMin !== entryMin ||
-        fixed.entryMax !== entryMax ||
-        fixed.stopLoss !== sl ||
-        fixed.takeProfit !== tp) {
+    if (!screenshotUrl && !setupFile) {
+      setError("Upload your chart setup screenshot");
+      return null;
+    }
+
+    if (!form.symbol.trim()) {
+      setError("Enter a trading symbol");
+      return null;
+    }
+
+    if (!form.description.trim()) {
+      setError("Add a trade analysis description");
+      return null;
+    }
+
+    const mid = (fixed.entryMin + fixed.entryMax) / 2;
+    const risk = Math.abs(mid - fixed.stopLoss);
+    const reward = Math.abs(fixed.takeProfit - mid);
+    const rr = risk > 0 ? Math.round((reward / risk) * 100) / 100 : 0;
+
+    if (
+      fixed.direction !== form.direction ||
+      fixed.entryMin !== entryMin ||
+      fixed.entryMax !== entryMax ||
+      fixed.stopLoss !== sl ||
+      fixed.takeProfit !== tp
+    ) {
       setForm({
         ...form,
         direction: fixed.direction,
@@ -379,25 +436,40 @@ export default function SubmitSignalPage() {
       });
     }
 
-    const submitEntryMin = fixed.entryMin;
-    const submitEntryMax = fixed.entryMax;
-    const submitSl = fixed.stopLoss;
-    const submitTp = fixed.takeProfit;
-    const submitMid = (submitEntryMin + submitEntryMax) / 2;
-    const submitRisk = Math.abs(submitMid - submitSl);
-    const submitReward = Math.abs(submitTp - submitMid);
-    const submitRr = submitRisk > 0 ? Math.round((submitReward / submitRisk) * 100) / 100 : 0;
+    return {
+      symbol: form.symbol.trim().toUpperCase(),
+      direction: fixed.direction,
+      entryMin: fixed.entryMin,
+      entryMax: fixed.entryMax,
+      stopLoss: fixed.stopLoss,
+      takeProfit: fixed.takeProfit,
+      riskRewardRatio: rr,
+      description: form.description.trim(),
+      screenshotUrl,
+      previewUrl: setupPreview || screenshotUrl || null,
+    };
+  }
 
-    if (!setupFile && !screenshotUrl) {
-      setError("Upload your chart setup screenshot");
-      return;
-    }
+  function handleGoToReview(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    const payload = buildReviewPayload();
+    if (!payload) return;
+    setReview(payload);
+    setStep("review");
+    requestAnimationFrame(() => {
+      formCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
 
+  async function handleConfirmSubmit() {
+    if (!review) return;
+    setError("");
     setLoading(true);
 
     try {
-      let imageUrl = screenshotUrl;
-      if (setupFile && !screenshotUrl) {
+      let imageUrl = review.screenshotUrl;
+      if (setupFile && !imageUrl) {
         setUploading(true);
         const upload = await api.uploads.setup(setupFile);
         imageUrl = upload.url;
@@ -405,19 +477,21 @@ export default function SubmitSignalPage() {
       }
 
       const result = await api.signals.submit({
-        symbol: form.symbol.toUpperCase(),
-        direction: fixed.direction,
-        entryMin: submitEntryMin,
-        entryMax: submitEntryMax,
-        stopLoss: submitSl,
-        takeProfit: submitTp,
-        riskRewardRatio: submitRr,
-        description: form.description,
+        symbol: review.symbol,
+        direction: review.direction,
+        entryMin: review.entryMin,
+        entryMax: review.entryMax,
+        stopLoss: review.stopLoss,
+        takeProfit: review.takeProfit,
+        riskRewardRatio: review.riskRewardRatio,
+        description: review.description,
         screenshotUrl: imageUrl,
       });
 
       if ("status" in result && result.status === "duplicate_signal") {
         setError("Duplicate signal detected. Your submission was rejected.");
+        setStep("edit");
+        setReview(null);
       } else if ("signalId" in result) {
         if (draftId) {
           try {
@@ -427,12 +501,14 @@ export default function SubmitSignalPage() {
             /* submitted successfully anyway */
           }
         }
+        setStep("edit");
+        setReview(null);
         setSuccess({
           signalId: result.signalId as string,
           entryRange:
             "entryRange" in result
               ? (result.entryRange as { min: number; max: number })
-              : { min: entryMin, max: entryMax },
+              : { min: review.entryMin, max: review.entryMax },
           execution: "execution" in result ? result.execution : undefined,
           executionHub: "executionHub" in result ? result.executionHub : undefined,
           executionValidation:
@@ -679,9 +755,14 @@ export default function SubmitSignalPage() {
                       type="button"
                       size="sm"
                       variant={draftId === draft.id ? "default" : "secondary"}
-                      onClick={() => resumeDraft(draft)}
+                      disabled={resumingDraftId !== null}
+                      onClick={() => void resumeDraft(draft)}
                     >
-                      {draftId === draft.id ? "Editing" : "Resume"}
+                      {resumingDraftId === draft.id
+                        ? "Loading…"
+                        : draftId === draft.id
+                          ? "Editing"
+                          : "Resume"}
                     </Button>
                     <Button
                       type="button"
@@ -699,6 +780,19 @@ export default function SubmitSignalPage() {
           </Card>
         )}
 
+        <div ref={formCardRef}>
+        {step === "review" && review ? (
+          <SubmitReviewCard
+            review={review}
+            loading={loading || uploading}
+            error={error}
+            onEdit={() => {
+              setStep("edit");
+              setError("");
+            }}
+            onConfirm={() => void handleConfirmSubmit()}
+          />
+        ) : (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
@@ -726,7 +820,7 @@ export default function SubmitSignalPage() {
             </div>
             <CardDescription>
               Upload your chart setup — AI vision reads the chart and auto-saves
-              your progress so you can finish later.
+              your progress. When ready, review everything before final submit.
             </CardDescription>
             {progress > 0 && (
               <div className="mt-3">
@@ -744,7 +838,7 @@ export default function SubmitSignalPage() {
             )}
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleGoToReview} className="space-y-5">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="symbol">Trading Pair</Label>
@@ -960,13 +1054,13 @@ export default function SubmitSignalPage() {
                   ? "Analyzing chart..."
                   : uploading
                     ? "Uploading setup..."
-                    : loading
-                      ? "Submitting..."
-                      : "Submit Setup (Immutable)"}
+                    : "Review setup before submit"}
               </Button>
             </form>
           </CardContent>
         </Card>
+        )}
+        </div>
       </motion.div>
     </div>
   );

@@ -216,6 +216,8 @@ class ApiClient {
         { method: "POST" },
       ),
     listDrafts: () => this.request<SignalDraft[]>("/signals/drafts"),
+    getDraft: (draftId: string) =>
+      this.request<SignalDraft>(`/signals/drafts/${draftId}`),
     createDraft: (data: SignalDraftInput) =>
       this.request<SignalDraft>("/signals/drafts", {
         method: "POST",
