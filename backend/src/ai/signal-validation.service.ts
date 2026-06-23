@@ -53,7 +53,7 @@ Rules:
 - XAUUSD/gold prices are typically 1000–5000 (catch missing digits like 265.5 → 2655.0)
 - FX majors (EURUSD etc.) typically 0.5–2.0
 - US indices (NAS100, US30) typically 10000–50000
-- Synthetic volatility indices (VIX75, VIX10, VIX25, VIX50, VIX100, VOL75, etc.) often trade 100–50000 — approve if SL/TP logic is correct
+- Synthetic volatility indices (VIX10, VIX25, VIX50, VIX75, VIX100, 1HZ25V) often trade 50,000–900,000 — approve if SL/TP logic is correct
 - TradingView/Deriv names like "Volatility 75 Index" → normalize to VIX75
 - Crypto (BTCUSD) can be very large — still check SL/TP logic
 - Normalize symbol to uppercase letters/numbers only (e.g. XAUUSD, VIX75)
@@ -96,6 +96,9 @@ export class SignalValidationService {
       VIX10S: 'VIX10',
       VOLATILITY25: 'VIX25',
       VOL25: 'VIX25',
+      VIX25S: 'VIX25',
+      '1HZ25V': 'VIX25',
+      HZ25V: 'VIX25',
       VOLATILITY50: 'VIX50',
       VOL50: 'VIX50',
       VOLATILITY100: 'VIX100',

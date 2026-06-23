@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/stores/auth";
 import { api, type SignalDraft } from "@/lib/api";
+import { normalizeSetupFields, setupValidationError } from "@/lib/chart-setup";
 import {
   Lock,
   AlertCircle,
@@ -261,13 +262,20 @@ export default function SubmitSignalPage() {
     setAnalyzing(true);
     try {
       const { analysis } = await api.uploads.analyzeSetup(file);
+      const fixed = normalizeSetupFields({
+        direction: analysis.direction,
+        entryMin: analysis.entryMin,
+        entryMax: analysis.entryMax,
+        stopLoss: analysis.stopLoss,
+        takeProfit: analysis.takeProfit,
+      });
       setForm({
         symbol: analysis.symbol,
-        direction: analysis.direction,
-        entryMin: String(analysis.entryMin),
-        entryMax: String(analysis.entryMax),
-        stopLoss: String(analysis.stopLoss),
-        takeProfit: String(analysis.takeProfit),
+        direction: fixed.direction,
+        entryMin: String(fixed.entryMin),
+        entryMax: String(fixed.entryMax),
+        stopLoss: String(fixed.stopLoss),
+        takeProfit: String(fixed.takeProfit),
         description: analysis.description,
       });
       setAiFilled(true);
@@ -342,10 +350,43 @@ export default function SubmitSignalPage() {
     e.preventDefault();
     setError("");
 
-    if (!rangeValid) {
-      setError("Enter a valid entry range (min must be less than max)");
+    const fixed = normalizeSetupFields({
+      direction: form.direction,
+      entryMin,
+      entryMax,
+      stopLoss: sl,
+      takeProfit: tp,
+    });
+
+    const validationErr = setupValidationError(fixed);
+    if (validationErr) {
+      setError(validationErr);
       return;
     }
+
+    if (fixed.direction !== form.direction ||
+        fixed.entryMin !== entryMin ||
+        fixed.entryMax !== entryMax ||
+        fixed.stopLoss !== sl ||
+        fixed.takeProfit !== tp) {
+      setForm({
+        ...form,
+        direction: fixed.direction,
+        entryMin: String(fixed.entryMin),
+        entryMax: String(fixed.entryMax),
+        stopLoss: String(fixed.stopLoss),
+        takeProfit: String(fixed.takeProfit),
+      });
+    }
+
+    const submitEntryMin = fixed.entryMin;
+    const submitEntryMax = fixed.entryMax;
+    const submitSl = fixed.stopLoss;
+    const submitTp = fixed.takeProfit;
+    const submitMid = (submitEntryMin + submitEntryMax) / 2;
+    const submitRisk = Math.abs(submitMid - submitSl);
+    const submitReward = Math.abs(submitTp - submitMid);
+    const submitRr = submitRisk > 0 ? Math.round((submitReward / submitRisk) * 100) / 100 : 0;
 
     if (!setupFile && !screenshotUrl) {
       setError("Upload your chart setup screenshot");
@@ -365,12 +406,12 @@ export default function SubmitSignalPage() {
 
       const result = await api.signals.submit({
         symbol: form.symbol.toUpperCase(),
-        direction: form.direction,
-        entryMin,
-        entryMax,
-        stopLoss: sl,
-        takeProfit: tp,
-        riskRewardRatio: parseFloat(rrRatio),
+        direction: fixed.direction,
+        entryMin: submitEntryMin,
+        entryMax: submitEntryMax,
+        stopLoss: submitSl,
+        takeProfit: submitTp,
+        riskRewardRatio: submitRr,
         description: form.description,
         screenshotUrl: imageUrl,
       });

@@ -4,6 +4,12 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  normalizeChartSetup,
+  normalizeChartSymbol,
+  parseChartPrice,
+  validateChartSetup,
+} from './chart-setup.util';
 
 export interface ChartAnalysisResult {
   symbol: string;
@@ -15,28 +21,37 @@ export interface ChartAnalysisResult {
   description: string;
 }
 
-const VISION_PROMPT = `You are an expert trading chart analyst. Analyze this trading setup screenshot and extract the trade parameters marked on the chart (entry zone, stop loss, take profit, symbol/pair, direction).
+const VISION_PROMPT = `You are an expert trading chart analyst. Extract trade parameters from the screenshot — especially TradingView "Long Position" or "Short Position" drawing tools.
 
-Return ONLY valid JSON with this exact shape (no markdown):
+Return ONLY valid JSON (no markdown):
 {
-  "symbol": "EURUSD",
+  "symbol": "VIX25",
   "direction": "BUY",
-  "entryMin": 1.0820,
-  "entryMax": 1.0860,
-  "stopLoss": 1.0780,
-  "takeProfit": 1.0950,
-  "description": "Brief trade thesis based on visible chart structure, key levels, and confluence."
+  "entryMin": 839132.0,
+  "entryMax": 839500.0,
+  "stopLoss": 836968.0,
+  "takeProfit": 869018.0,
+  "description": "Brief thesis matching the visible setup."
 }
 
-Rules:
-- symbol: uppercase broker symbol (e.g. EURUSD, BTCUSD, XAUUSD, NAS100, VIX75, VIX10, VIX25, VIX50)
-- TradingView "Volatility 75 (1s) Index" or similar → use VIX75
-- direction: exactly "BUY" or "SELL"
-- entryMin must be less than entryMax
-- For BUY: stopLoss below entry zone, takeProfit above entry zone
-- For SELL: stopLoss above entry zone, takeProfit below entry zone
-- Read price levels from chart labels, lines, and annotations; estimate if approximate
-- description: 2-4 sentences explaining the setup visible on the chart`;
+CRITICAL — TradingView position tool:
+- "Long Position" / long tool with TP box ABOVE entry and SL box BELOW → direction "BUY"
+- "Short Position" / short tool with TP BELOW and SL ABOVE → direction "SELL"
+- Read the numeric labels on the tool lines (entry, SL, TP) — not just candle prices
+- entryMin = bottom of entry zone, entryMax = top of entry zone (entryMin < entryMax always)
+
+Symbol mapping:
+- Volatility 25 (1s) Index, 1HZ25V → VIX25
+- Volatility 75 (1s) Index, 1HZ75V → VIX75
+- Volatility 10/50/100 → VIX10, VIX50, VIX100
+- XAUUSD, EURUSD, NAS100, BTCUSD as shown
+
+Price rules:
+- Synthetic volatility indices (VIX10/25/50/75/100) often trade 50,000–900,000 — keep full magnitude (839132 not 839.132)
+- Strip thousand separators: "842,351.73" → 842351.73
+- For BUY: stopLoss < entryMin AND takeProfit > entryMax
+- For SELL: stopLoss > entryMax AND takeProfit < entryMin
+- Description must match direction (BUY = bullish/long thesis, SELL = bearish/short thesis)`;
 
 @Injectable()
 export class VisionService {
@@ -103,16 +118,6 @@ export class VisionService {
     return this.parseAnalysis(content);
   }
 
-  private normalizeSymbolFromChart(raw: string): string {
-    let symbol = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (/VOLATILITY75|VIX75|VOL75|^V75$/.test(symbol)) return 'VIX75';
-    if (/VOLATILITY10|VIX10|VOL10/.test(symbol)) return 'VIX10';
-    if (/VOLATILITY25|VIX25|VOL25/.test(symbol)) return 'VIX25';
-    if (/VOLATILITY50|VIX50|VOL50/.test(symbol)) return 'VIX50';
-    if (/VOLATILITY100|VIX100|VOL100/.test(symbol)) return 'VIX100';
-    return symbol;
-  }
-
   private parseAnalysis(raw: string): ChartAnalysisResult {
     let parsed: Record<string, unknown>;
     try {
@@ -126,12 +131,12 @@ export class VisionService {
       throw new InternalServerErrorException('Could not parse AI response');
     }
 
-    const symbol = this.normalizeSymbolFromChart(String(parsed.symbol || ''));
+    const symbol = normalizeChartSymbol(String(parsed.symbol || ''));
     const direction = String(parsed.direction || '').toUpperCase();
-    const entryMin = Number(parsed.entryMin);
-    const entryMax = Number(parsed.entryMax);
-    const stopLoss = Number(parsed.stopLoss);
-    const takeProfit = Number(parsed.takeProfit);
+    const entryMin = parseChartPrice(parsed.entryMin);
+    const entryMax = parseChartPrice(parsed.entryMax);
+    const stopLoss = parseChartPrice(parsed.stopLoss);
+    const takeProfit = parseChartPrice(parsed.takeProfit);
     const description = String(parsed.description || '').trim();
 
     if (!symbol || !['BUY', 'SELL'].includes(direction)) {
@@ -145,7 +150,7 @@ export class VisionService {
       throw new InternalServerErrorException('AI returned invalid price levels');
     }
 
-    return {
+    const rawResult: ChartAnalysisResult = {
       symbol,
       direction: direction as 'BUY' | 'SELL',
       entryMin,
@@ -154,5 +159,15 @@ export class VisionService {
       takeProfit,
       description: description || 'Setup extracted from chart screenshot.',
     };
+
+    const normalized = normalizeChartSetup(rawResult);
+    const validationError = validateChartSetup(normalized);
+    if (validationError) {
+      throw new InternalServerErrorException(
+        `AI could not read levels correctly — ${validationError}. Adjust fields manually.`,
+      );
+    }
+
+    return normalized;
   }
 }
