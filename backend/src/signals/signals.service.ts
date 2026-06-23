@@ -157,11 +157,18 @@ export class SignalsService {
       signalId: signal.signalId,
       submittedAt: signal.submittedAt,
       entryRange: { min: dto.entryMin, max: dto.entryMax },
+      execution: {
+        forwarded: forwardResult.forwarded,
+        hubError: forwardResult.hubError,
+        sendername: this.signalHub.toSenderName(user.displayName, userId),
+        orderType: forwardResult.hub?.payload?.order_type ?? undefined,
+      },
       executionHub: forwardResult.hub
         ? {
             id: forwardResult.hub.id,
             status: forwardResult.hub.status,
             duplicate: forwardResult.hub.duplicate,
+            progress: forwardResult.hub.progress,
           }
         : null,
       executionValidation: {
@@ -279,5 +286,9 @@ export class SignalsService {
       `Signal Hub callback: ${JSON.stringify(payload).slice(0, 500)}`,
     );
     return { ok: true };
+  }
+
+  getHubHealth() {
+    return this.signalHub.getHubHealth();
   }
 }

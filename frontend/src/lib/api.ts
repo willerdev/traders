@@ -124,8 +124,41 @@ class ApiClient {
             signalId: string;
             submittedAt: string;
             entryRange: { min: number; max: number };
+            execution?: {
+              forwarded: boolean;
+              hubError?: string;
+              sendername?: string;
+              orderType?: string;
+            };
+            executionHub?: {
+              id: string;
+              status: string;
+              duplicate: boolean;
+              progress?: { stage: string; message: string; executed: boolean };
+            } | null;
+            executionValidation?: {
+              approved: boolean;
+              adjusted: boolean;
+              issues: string[];
+              rejectReason?: string;
+              sentPrices?: {
+                symbol: string;
+                direction: string;
+                entry: number;
+                sl: number;
+                tp: number;
+              };
+            };
           }
       >("/signals", { method: "POST", body: JSON.stringify(data) }),
+    hubHealth: () =>
+      this.request<{
+        configured: boolean;
+        baseUrl: string;
+        providerName: string;
+        orderType: string;
+        lotScale: number | null;
+      }>("/signals/hub/health"),
     list: () => this.request<SignalRecord[]>("/signals"),
     executionStatus: (signalId: string) =>
       this.request<HubSignalStatus>(`/signals/hub/execution/${signalId}`),

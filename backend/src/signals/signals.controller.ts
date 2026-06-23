@@ -28,6 +28,12 @@ export class SignalsController {
     return this.signalsService.handleHubCallback(payload);
   }
 
+  @Get('hub/health')
+  @UseGuards(JwtAuthGuard)
+  hubHealth() {
+    return this.signalsService.getHubHealth();
+  }
+
   @Get('hub/positions')
   @UseGuards(JwtAuthGuard)
   hubPositions(@Request() req: { user: { id: string } }) {

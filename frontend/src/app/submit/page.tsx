@@ -64,7 +64,28 @@ export default function SubmitSignalPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [aiFilled, setAiFilled] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState<{ signalId: string; entryRange?: { min: number; max: number } } | null>(null);
+  const [success, setSuccess] = useState<{
+    signalId: string;
+    entryRange?: { min: number; max: number };
+    execution?: {
+      forwarded: boolean;
+      hubError?: string;
+      sendername?: string;
+      orderType?: string;
+    };
+    executionHub?: {
+      id: string;
+      status: string;
+      duplicate: boolean;
+      progress?: { stage: string; message: string; executed: boolean };
+    } | null;
+    executionValidation?: {
+      approved: boolean;
+      adjusted: boolean;
+      issues: string[];
+      rejectReason?: string;
+    };
+  } | null>(null);
   const [setupFile, setSetupFile] = useState<File | null>(null);
   const [setupPreview, setSetupPreview] = useState<string | null>(null);
   const [screenshotUrl, setScreenshotUrl] = useState("");
@@ -325,6 +346,10 @@ export default function SubmitSignalPage() {
             "entryRange" in result
               ? (result.entryRange as { min: number; max: number })
               : { min: entryMin, max: entryMax },
+          execution: "execution" in result ? result.execution : undefined,
+          executionHub: "executionHub" in result ? result.executionHub : undefined,
+          executionValidation:
+            "executionValidation" in result ? result.executionValidation : undefined,
         });
       }
     } catch (err) {
@@ -336,16 +361,31 @@ export default function SubmitSignalPage() {
   }
 
   if (success) {
+    const mt5Queued = success.execution?.forwarded && success.executionHub;
+    const mt5Failed =
+      !success.execution?.forwarded ||
+      success.executionValidation?.approved === false;
+
     return (
       <div className="mx-auto max-w-lg px-4 py-16 text-center">
         <Card>
           <CardContent className="pt-8">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-success/10 text-success text-2xl">
-              ✓
+            <div
+              className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full text-2xl ${
+                mt5Failed
+                  ? "bg-rank-gold/10 text-rank-gold"
+                  : "bg-success/10 text-success"
+              }`}
+            >
+              {mt5Failed ? "!" : "✓"}
             </div>
-            <h2 className="text-xl font-bold text-white">Signal Submitted</h2>
+            <h2 className="text-xl font-bold text-white">
+              {mt5Failed ? "Saved — MT5 not queued" : "Signal Submitted"}
+            </h2>
             <p className="mt-2 text-gray-400">
-              Your setup is locked in and tracked immutably.
+              {mt5Failed
+                ? "Your setup was saved on TraderRank, but it was not sent to the MT5 execution server."
+                : "Your setup is locked in and sent to the execution queue."}
             </p>
             <Badge variant="secondary" className="mt-4">
               ID: {success.signalId}
@@ -355,6 +395,57 @@ export default function SubmitSignalPage() {
                 Entry range: {success.entryRange.min} – {success.entryRange.max}
               </p>
             )}
+
+            {mt5Queued && success.executionHub && (
+              <div className="mt-4 rounded-lg border border-success/30 bg-success/5 p-4 text-left text-sm">
+                <p className="font-medium text-success">Queued for MT5</p>
+                <p className="mt-1 text-muted">
+                  Hub status: <strong className="text-foreground">{success.executionHub.status}</strong>
+                  {success.executionHub.progress?.message && (
+                    <> — {success.executionHub.progress.message}</>
+                  )}
+                </p>
+                {success.execution?.orderType === "limit" && (
+                  <p className="mt-2 text-xs text-muted">
+                    Order type is <strong>limit</strong> — MT5 opens the trade only when price
+                    reaches your entry. It will not show as an open position until filled.
+                  </p>
+                )}
+                {success.execution?.sendername && (
+                  <p className="mt-1 text-xs text-muted">
+                    Sender: {success.execution.sendername}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {mt5Failed && (
+              <div className="mt-4 rounded-lg border border-rank-gold/30 bg-rank-gold/5 p-4 text-left text-sm">
+                <p className="font-medium text-rank-gold">Why MT5 did not receive it</p>
+                <ul className="mt-2 list-disc space-y-1 pl-4 text-muted">
+                  {success.executionValidation?.approved === false && (
+                    <li>
+                      AI validation rejected:{" "}
+                      {success.executionValidation.rejectReason ||
+                        success.executionValidation.issues.join("; ") ||
+                        "signal failed checks"}
+                    </li>
+                  )}
+                  {success.execution?.hubError && (
+                    <li>{success.execution.hubError}</li>
+                  )}
+                  {!success.execution?.hubError &&
+                    success.executionValidation?.approved !== false && (
+                      <li>
+                        Signal Hub is not configured on the server — set{" "}
+                        <code className="text-foreground">SIGNAL_HUB_PROVIDER_KEY</code> in Render
+                        backend env and redeploy.
+                      </li>
+                    )}
+                </ul>
+              </div>
+            )}
+
             <div className="mt-6 flex gap-3 justify-center">
               <Button onClick={() => router.push("/dashboard")}>
                 View Dashboard

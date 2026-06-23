@@ -86,6 +86,8 @@ export interface SignalHubPositionsResult {
 
 export interface ForwardSignalResult {
   hub: SignalHubResult | null;
+  forwarded: boolean;
+  hubError?: string;
   validation: {
     approved: boolean;
     adjusted: boolean;
@@ -156,8 +158,10 @@ export class SignalHubService {
   private async hubRequest<T>(
     path: string,
     options: RequestInit = {},
-  ): Promise<T | null> {
-    if (!this.isConfigured) return null;
+  ): Promise<{ data: T | null; error?: string }> {
+    if (!this.isConfigured) {
+      return { data: null, error: 'SIGNAL_HUB_PROVIDER_KEY is not configured' };
+    }
 
     try {
       const res = await fetch(`${this.baseUrl}${path}`, {
@@ -172,18 +176,22 @@ export class SignalHubService {
       const body = await res.json().catch(() => ({}));
 
       if (!res.ok) {
+        const detail =
+          typeof body === 'object' && body && 'detail' in body
+            ? JSON.stringify((body as { detail: unknown }).detail)
+            : JSON.stringify(body);
+        const message = `Signal Hub ${res.status}: ${detail}`;
         this.logger.error(
-          `Signal Hub ${options.method || 'GET'} ${path}: ${res.status} ${JSON.stringify(body)}`,
+          `Signal Hub ${options.method || 'GET'} ${path}: ${message}`,
         );
-        return null;
+        return { data: null, error: message };
       }
 
-      return body as T;
+      return { data: body as T };
     } catch (err) {
-      this.logger.error(
-        `Signal Hub request failed ${path}: ${(err as Error).message}`,
-      );
-      return null;
+      const message = (err as Error).message;
+      this.logger.error(`Signal Hub request failed ${path}: ${message}`);
+      return { data: null, error: message };
     }
   }
 
@@ -229,6 +237,8 @@ export class SignalHubService {
       );
       return {
         hub: null,
+        forwarded: false,
+        hubError: validation.rejectReason || 'Signal rejected by AI validation',
         validation: {
           approved: false,
           adjusted: validation.adjusted,
@@ -242,6 +252,8 @@ export class SignalHubService {
       this.logger.warn('Signal Hub skipped — SIGNAL_HUB_PROVIDER_KEY not set');
       return {
         hub: null,
+        forwarded: false,
+        hubError: 'SIGNAL_HUB_PROVIDER_KEY is not configured on the server',
         validation: {
           approved: true,
           adjusted: validation.adjusted,
@@ -260,10 +272,13 @@ export class SignalHubService {
       tp: payload.tp,
     };
 
-    const body = await this.hubRequest<SignalHubResult>('/v1/signals', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+    const { data: body, error } = await this.hubRequest<SignalHubResult>(
+      '/v1/signals',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    );
 
     if (body) {
       this.logger.log(
@@ -273,6 +288,8 @@ export class SignalHubService {
 
     return {
       hub: body,
+      forwarded: Boolean(body),
+      hubError: body ? undefined : error || 'Signal Hub did not accept the signal',
       validation: {
         approved: true,
         adjusted: validation.adjusted,
@@ -282,11 +299,22 @@ export class SignalHubService {
     };
   }
 
+  async getHubHealth() {
+    return {
+      configured: this.isConfigured,
+      baseUrl: this.baseUrl,
+      providerName: this.providerName,
+      orderType: this.orderType,
+      lotScale: this.lotScale,
+    };
+  }
+
   async getByExternalId(externalId: string, sendername: string) {
     const q = new URLSearchParams({ sendername });
-    return this.hubRequest<SignalHubResult>(
+    const { data } = await this.hubRequest<SignalHubResult>(
       `/v1/signals/external/${encodeURIComponent(externalId)}?${q}`,
     );
+    return data;
   }
 
   async listSignals(
@@ -306,7 +334,10 @@ export class SignalHubService {
     if (filters?.offset) q.set('offset', String(filters.offset));
     if (filters?.since) q.set('since', filters.since);
 
-    return this.hubRequest<SignalHubListResult>(`/v1/signals?${q}`);
+    const { data } = await this.hubRequest<SignalHubListResult>(
+      `/v1/signals?${q}`,
+    );
+    return data;
   }
 
   async getLogs(
@@ -318,33 +349,41 @@ export class SignalHubService {
     if (filters?.limit) q.set('limit', String(filters.limit));
     if (filters?.offset) q.set('offset', String(filters.offset));
 
-    return this.hubRequest<SignalHubLogsResult>(`/v1/logs?${q}`);
+    const { data } = await this.hubRequest<SignalHubLogsResult>(
+      `/v1/logs?${q}`,
+    );
+    return data;
   }
 
   async getPositions(sendername: string) {
     const q = new URLSearchParams({ sendername });
-    return this.hubRequest<SignalHubPositionsResult>(`/v1/positions?${q}`);
+    const { data } = await this.hubRequest<SignalHubPositionsResult>(
+      `/v1/positions?${q}`,
+    );
+    return data;
   }
 
   async closePosition(ticket: number, sendername: string) {
     const q = new URLSearchParams({ sendername });
-    return this.hubRequest<{
+    const { data } = await this.hubRequest<{
       ok: boolean;
       ticket: number;
       symbol?: string;
       profit?: number;
       sendername?: string;
     }>(`/v1/positions/${ticket}/close?${q}`, { method: 'POST' });
+    return data;
   }
 
   async closeAllPositions(sendername: string) {
     const q = new URLSearchParams({ sendername });
-    return this.hubRequest<{
+    const { data } = await this.hubRequest<{
       ok: boolean;
       closed: number;
       count: number;
       items: Record<string, unknown>[];
       sendername?: string;
     }>(`/v1/positions/close-all?${q}`, { method: 'POST' });
+    return data;
   }
 }
