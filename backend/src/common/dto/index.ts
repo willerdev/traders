@@ -100,6 +100,16 @@ export class CreatePaymentDto {
   @IsOptional()
   @IsString()
   currency?: string;
+
+  @IsOptional()
+  @IsString()
+  promoCode?: string;
+}
+
+export class ApplyPromoDto {
+  @IsString()
+  @IsNotEmpty()
+  code: string;
 }
 
 export class SaveSignalDraftDto {

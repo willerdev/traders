@@ -14,6 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/layout/logo";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", shortLabel: "Home", icon: LayoutDashboard },
@@ -27,13 +28,8 @@ function PublicHeader() {
   return (
     <header className="sticky top-0 z-50 border-b border-[var(--color-border)] bg-[var(--color-surface)] backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary font-bold text-white">
-            TR
-          </div>
-          <span className="text-lg font-bold text-foreground">
-            Trader<span className="text-primary">Rank</span> Pro
-          </span>
+        <Link href="/" className="flex items-center">
+          <Logo className="text-lg" />
         </Link>
         <div className="flex gap-2">
           <Link href="/login">
@@ -110,22 +106,10 @@ function Sidebar({ pathname }: { pathname: string }) {
     >
       <Link
         href="/dashboard"
-        className="flex h-16 shrink-0 items-center border-b border-[var(--color-border)] px-3"
+        className="flex h-16 shrink-0 items-center border-b border-[var(--color-border)] px-4"
         title="TraderRank Pro"
       >
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary font-bold text-white">
-          TR
-        </div>
-        <span
-          className={cn(
-            "ml-3 overflow-hidden whitespace-nowrap text-sm font-bold text-foreground transition-all duration-300",
-            "max-w-0 opacity-0",
-            "group-hover/sidebar:max-w-[10rem] group-hover/sidebar:opacity-100",
-            "group-focus-within/sidebar:max-w-[10rem] group-focus-within/sidebar:opacity-100",
-          )}
-        >
-          Trader<span className="text-primary">Rank</span>
-        </span>
+        <Logo className="text-sm whitespace-nowrap" />
       </Link>
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden py-3">
@@ -202,11 +186,8 @@ function MobileHeader() {
 
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 backdrop-blur-xl md:hidden">
-      <Link href="/dashboard" className="flex items-center gap-2">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-xs font-bold text-white">
-          TR
-        </div>
-        <span className="text-sm font-bold text-foreground">TraderRank</span>
+      <Link href="/dashboard" className="flex items-center">
+        <Logo compact className="text-sm" />
       </Link>
       <Link
         href="/settings"

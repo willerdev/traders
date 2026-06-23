@@ -22,7 +22,19 @@ export const STARTING_BALANCE = 1000;
 export const RISK_PERCENT = 2;
 export const MAX_RISK_PER_TRADE = 20;
 export const REGISTRATION_FEE_USDT = 5;
-export const TP_REWARD_USD = 10;
+export const TP_REWARD_USD = 5;
+
+export const DEFAULT_PROMO_CODE = 'win2026';
+
+export const PROMO_CODES: Record<
+  string,
+  { discountPercent: number; description: string }
+> = {
+  win2026: {
+    discountPercent: 100,
+    description: '100% off registration — free virtual account',
+  },
+};
 
 export const STREAK_THRESHOLDS = {
   WARNING: 3,

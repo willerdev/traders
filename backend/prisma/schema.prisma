@@ -451,7 +451,7 @@ model PlatformConfig {
   lossPoints            Int     @default(-5)
   duplicateThreshold    Decimal @default(0.9) @db.Decimal(3, 2)
   entryTolerancePercent Decimal @default(0.2) @db.Decimal(5, 2)
-  tpRewardUsd           Decimal @default(10) @db.Decimal(10, 2)
+  tpRewardUsd           Decimal @default(5) @db.Decimal(10, 2)
   requireKycForPayouts  Boolean @default(true)
 
   @@map("platform_config")

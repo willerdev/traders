@@ -50,8 +50,8 @@ export default function RegisterPage() {
             </div>
             <h2 className="text-xl font-bold text-white">Registration Successful</h2>
             <p className="mt-2 text-gray-400">
-              Check your email to verify your account, then pay the 5 USDT
-              registration fee to activate your virtual funded account.
+              Check your email to verify your account, then pay 5 USDT or use promo{" "}
+              <strong className="text-primary">win2026</strong> for free registration.
             </p>
             <Button className="mt-6" onClick={() => router.push("/login")}>
               Continue to Login
@@ -72,7 +72,7 @@ export default function RegisterPage() {
         <Card>
           <CardHeader className="text-center">
             <Badge variant="gold" className="mx-auto mb-3 w-fit">
-              5 USDT Registration
+              5 USDT · Promo win2026 = free
             </Badge>
             <CardTitle className="text-2xl">Join TraderRank Pro</CardTitle>
             <CardDescription>

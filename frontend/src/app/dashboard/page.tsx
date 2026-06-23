@@ -14,6 +14,7 @@ import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
 import { OpenPositionsCard } from "@/components/dashboard/open-positions";
+import { PromoCodeForm } from "@/components/payments/promo-code-form";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -21,6 +22,10 @@ export default function DashboardPage() {
   const { data, loading, error, fetchDashboard } = useDashboardStore();
 
   const [payLoading, setPayLoading] = useState(false);
+
+  function refreshAfterPromo() {
+    fetchDashboard();
+  }
 
   useEffect(() => {
     const token = useAuthStore.getState().token;
@@ -102,27 +107,32 @@ export default function DashboardPage() {
         <OnboardingChecklist
           onboarding={data.onboarding}
           onPayRegistration={handlePayRegistration}
+          onPromoApplied={refreshAfterPromo}
           payLoading={payLoading}
         />
       )}
 
       {data.user.status === "PENDING_PAYMENT" && !data.onboarding && (
         <Card className="mb-6 border-primary/30 bg-primary/5">
-          <CardContent className="flex flex-col gap-4 pt-6 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-semibold text-white">Complete Registration</p>
-              <p className="text-sm text-gray-400">
-                Pay 5 USDT via NOWPayments to activate your $1,000 virtual account
-              </p>
+          <CardContent className="flex flex-col gap-4 pt-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold text-white">Complete Registration</p>
+                <p className="text-sm text-gray-400">
+                  Pay 5 USDT via NOWPayments, or use promo code{" "}
+                  <strong className="text-primary">win2026</strong> for 100% off
+                </p>
+              </div>
+              <Button
+                className="gap-2 shrink-0"
+                onClick={handlePayRegistration}
+                disabled={payLoading}
+              >
+                <CreditCard className="h-4 w-4" />
+                {payLoading ? "Creating invoice..." : "Pay with Crypto"}
+              </Button>
             </div>
-            <Button
-              className="gap-2 shrink-0"
-              onClick={handlePayRegistration}
-              disabled={payLoading}
-            >
-              <CreditCard className="h-4 w-4" />
-              {payLoading ? "Creating invoice..." : "Pay with Crypto"}
-            </Button>
+            <PromoCodeForm onSuccess={refreshAfterPromo} />
           </CardContent>
         </Card>
       )}
@@ -202,7 +212,7 @@ export default function DashboardPage() {
               {[
                 { label: "Starting Balance", value: "$1,000 virtual" },
                 { label: "Risk Per Trade", value: "2% fixed ($20 max)" },
-                { label: "TP Hit Reward", value: "$10 auto-credited to wallet" },
+                { label: "TP Hit Reward", value: "$5 USDT auto-credited to wallet" },
                 { label: "Win Points", value: "+10 points" },
                 { label: "Loss Points", value: "-5 points" },
                 { label: "Payout Split", value: "40% trader / 60% platform" },

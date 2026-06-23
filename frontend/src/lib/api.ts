@@ -240,19 +240,45 @@ class ApiClient {
   };
 
   payments = {
-    createRegistration: (network: string) =>
+    createRegistration: (network: string, promoCode?: string) =>
       this.request<{
-        paymentId: string;
-        amount: number;
-        currency: string;
-        network: string;
+        paymentId?: string;
+        amount?: number;
+        currency?: string;
+        network?: string;
         invoiceUrl?: string;
         payCurrency?: string;
-        gateway: string;
+        gateway?: string;
+        success?: boolean;
+        message?: string;
+        promoCode?: string;
+        amountCharged?: number;
       }>("/payments/registration", {
         method: "POST",
-        body: JSON.stringify({ network }),
+        body: JSON.stringify({ network, promoCode }),
       }),
+    applyPromo: (code: string) =>
+      this.request<{
+        success?: boolean;
+        alreadyPaid?: boolean;
+        message: string;
+        promoCode?: string;
+        discountPercent?: number;
+        amountCharged?: number;
+      }>("/payments/apply-promo", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      }),
+    validatePromo: (code: string) =>
+      this.request<{
+        valid: boolean;
+        code: string;
+        discountPercent: number;
+        description: string;
+        originalAmount: number;
+        finalAmount: number;
+        freeRegistration: boolean;
+      }>(`/payments/promo/validate?code=${encodeURIComponent(code)}`),
     history: () => this.request("/payments/history"),
     wallet: () => this.request<WalletTransaction[]>("/payments/wallet"),
   };

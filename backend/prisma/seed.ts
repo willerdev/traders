@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 async function main() {
   await prisma.platformConfig.upsert({
     where: { id: 'default' },
-    update: { requireKycForPayouts: true },
+    update: { requireKycForPayouts: true, tpRewardUsd: 5 },
     create: {
       id: 'default',
       registrationFeeUsdt: 5,
@@ -18,7 +18,7 @@ async function main() {
       lossPoints: -5,
       duplicateThreshold: 0.9,
       entryTolerancePercent: 0.2,
-      tpRewardUsd: 10,
+      tpRewardUsd: 5,
       requireKycForPayouts: true,
     },
   });

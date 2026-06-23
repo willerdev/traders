@@ -4,7 +4,9 @@ import Link from "next/link";
 import { CheckCircle2, Circle, ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PromoCodeForm } from "@/components/payments/promo-code-form";
 import type { OnboardingStatus } from "@/lib/api";
+import { useState } from "react";
 
 const STEPS = [
   {
@@ -15,7 +17,7 @@ const STEPS = [
   },
   {
     key: "registrationPaid" as const,
-    label: "Pay registration (5 USDT)",
+    label: "Pay registration (5 USDT) or apply promo",
     href: "/dashboard",
     action: "Pay now",
   },
@@ -66,12 +68,15 @@ function normalizeOnboarding(onboarding: OnboardingStatus) {
 export function OnboardingChecklist({
   onboarding,
   onPayRegistration,
+  onPromoApplied,
   payLoading,
 }: {
   onboarding: OnboardingStatus;
   onPayRegistration?: () => void;
+  onPromoApplied?: () => void;
   payLoading?: boolean;
 }) {
+  const [showPromo, setShowPromo] = useState(false);
   const state = normalizeOnboarding(onboarding);
   const completed = STEPS.filter((s) => {
     if (s.key === "kycApproved") return state.kycApproved;
@@ -127,9 +132,20 @@ export function OnboardingChecklist({
               </div>
               {!done && !isKycPending && (
                 step.key === "registrationPaid" && onPayRegistration ? (
-                  <Button size="sm" onClick={onPayRegistration} disabled={payLoading}>
-                    {payLoading ? "..." : step.action}
-                  </Button>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setShowPromo((v) => !v)}
+                      >
+                        Promo
+                      </Button>
+                      <Button size="sm" onClick={onPayRegistration} disabled={payLoading}>
+                        {payLoading ? "..." : "Pay 5 USDT"}
+                      </Button>
+                    </div>
+                  </div>
                 ) : (
                   <Link href={step.href}>
                     <Button size="sm" variant="secondary" className="gap-1">
@@ -142,6 +158,16 @@ export function OnboardingChecklist({
             </div>
           );
         })}
+        {showPromo && !state.registrationPaid && (
+          <div className="mt-3 rounded-lg border border-[var(--color-border)] p-4">
+            <PromoCodeForm
+              onSuccess={() => {
+                setShowPromo(false);
+                onPromoApplied?.();
+              }}
+            />
+          </div>
+        )}
       </CardContent>
     </Card>
   );

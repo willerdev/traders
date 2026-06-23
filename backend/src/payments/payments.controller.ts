@@ -4,6 +4,7 @@ import {
   Get,
   Body,
   Param,
+  Query,
   UseGuards,
   Request,
   Headers,
@@ -13,7 +14,7 @@ import {
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request as ExpressRequest } from 'express';
 import { PaymentsService } from './payments.service';
-import { CreatePaymentDto } from '../common/dto';
+import { CreatePaymentDto, ApplyPromoDto } from '../common/dto';
 import { JwtAuthGuard } from '../auth/guards';
 import { NowPaymentsService } from './nowpayments.service';
 
@@ -33,7 +34,22 @@ export class PaymentsController {
     return this.paymentsService.createRegistrationPayment(
       req.user.id,
       dto.network,
+      dto.promoCode,
     );
+  }
+
+  @Post('apply-promo')
+  @UseGuards(JwtAuthGuard)
+  applyPromo(
+    @Request() req: { user: { id: string } },
+    @Body() dto: ApplyPromoDto,
+  ) {
+    return this.paymentsService.applyPromoCode(req.user.id, dto.code);
+  }
+
+  @Get('promo/validate')
+  validatePromo(@Query('code') code: string) {
+    return this.paymentsService.validatePromoCode(code);
   }
 
   @Get('history')
