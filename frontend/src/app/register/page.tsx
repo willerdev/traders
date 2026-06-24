@@ -50,8 +50,9 @@ export default function RegisterPage() {
             </div>
             <h2 className="text-xl font-bold text-white">Registration Successful</h2>
             <p className="mt-2 text-gray-400">
-              Check your email to verify your account, then pay 5 USDT or use promo{" "}
-              <strong className="text-primary">win2026</strong> for free registration.
+              Sign in and pay 5 USDT (or use promo{" "}
+              <strong className="text-primary">win2026</strong>) to start submitting setups.
+              Identity verification is only required when you request a payout.
             </p>
             <Button className="mt-6" onClick={() => router.push("/login")}>
               Continue to Login

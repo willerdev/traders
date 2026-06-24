@@ -42,12 +42,14 @@ export class AuthService {
         emailVerifyToken,
         lastLoginIp: ip,
         termsAcceptedAt: new Date(),
+        status: 'PENDING_PAYMENT',
       },
     });
 
     return {
       user: this.sanitizeUser(user),
-      message: 'Registration successful. Please verify your email.',
+      message:
+        'Registration successful. Sign in and pay the registration fee to start trading.',
     };
   }
 

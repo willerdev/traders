@@ -64,9 +64,10 @@ export default function PayoutsPage() {
               <div className="flex gap-3">
                 <ShieldAlert className="h-5 w-5 shrink-0 text-rank-gold mt-0.5" />
                 <div>
-                  <p className="font-semibold text-foreground">KYC required for payouts</p>
+                  <p className="font-semibold text-foreground">KYC required for payouts only</p>
                   <p className="text-sm text-muted">
-                    Complete identity verification in Settings before requesting withdrawals.
+                    You can trade and submit setups without KYC. Complete identity verification
+                    in Settings before requesting a withdrawal.
                     {kycStatus === "PENDING" && " Your submission is under review."}
                   </p>
                 </div>

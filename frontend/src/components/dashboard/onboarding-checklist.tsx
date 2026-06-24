@@ -7,13 +7,7 @@ import { Button } from "@/components/ui/button";
 import { RegistrationCheckout } from "@/components/payments/registration-checkout";
 import type { OnboardingStatus } from "@/lib/api";
 
-const STEPS = [
-  {
-    key: "emailVerified" as const,
-    label: "Verify email",
-    href: "/settings",
-    action: "Check inbox",
-  },
+const TRADING_STEPS = [
   {
     key: "registrationPaid" as const,
     label: "Pay registration (5 USDT) or apply promo",
@@ -21,32 +15,8 @@ const STEPS = [
     action: "Pay now",
   },
   {
-    key: "accountActive" as const,
-    label: "Activate virtual account",
-    href: "/dashboard",
-    action: "View status",
-  },
-  {
-    key: "profileComplete" as const,
-    label: "Complete profile",
-    href: "/settings",
-    action: "Edit profile",
-  },
-  {
-    key: "addressComplete" as const,
-    label: "Add address",
-    href: "/settings",
-    action: "Add address",
-  },
-  {
-    key: "kycApproved" as const,
-    label: "Verify identity (KYC)",
-    href: "/settings",
-    action: "Submit KYC",
-  },
-  {
     key: "hasSubmittedSignal" as const,
-    label: "Submit first signal",
+    label: "Submit your first setup",
     href: "/submit",
     action: "Submit setup",
   },
@@ -54,13 +24,10 @@ const STEPS = [
 
 function normalizeOnboarding(onboarding: OnboardingStatus) {
   return {
-    emailVerified: onboarding.emailVerified,
     registrationPaid: onboarding.registrationPaid,
     accountActive: onboarding.accountActive,
-    profileComplete: onboarding.profileComplete,
-    addressComplete: onboarding.addressComplete,
-    kycApproved: onboarding.kycStatus === "APPROVED",
     hasSubmittedSignal: onboarding.hasSubmittedSignal,
+    emailVerified: onboarding.emailVerified,
   };
 }
 
@@ -72,35 +39,28 @@ export function OnboardingChecklist({
   onComplete?: () => void;
 }) {
   const state = normalizeOnboarding(onboarding);
-  const completed = STEPS.filter((s) => {
-    if (s.key === "kycApproved") return state.kycApproved;
-    return state[s.key];
-  }).length;
+  const completed = TRADING_STEPS.filter((s) => state[s.key]).length;
 
-  if (completed === STEPS.length) return null;
+  if (completed === TRADING_STEPS.length) return null;
 
   return (
     <Card className="mb-6 border-primary/20">
       <CardHeader className="pb-3">
-        <CardTitle className="text-lg">Get started</CardTitle>
+        <CardTitle className="text-lg">Start trading</CardTitle>
         <CardDescription>
-          Complete these steps to unlock full platform access and payouts ({completed}/{STEPS.length})
+          Pay registration to unlock setup submission. Identity verification is only
+          required when you request a payout ({completed}/{TRADING_STEPS.length}).
         </CardDescription>
         <div className="mt-3 h-2 overflow-hidden rounded-full bg-foreground/10">
           <div
             className="h-full rounded-full bg-primary transition-all"
-            style={{ width: `${(completed / STEPS.length) * 100}%` }}
+            style={{ width: `${(completed / TRADING_STEPS.length) * 100}%` }}
           />
         </div>
       </CardHeader>
       <CardContent className="space-y-2">
-        {STEPS.map((step) => {
-          const done =
-            step.key === "kycApproved"
-              ? state.kycApproved
-              : state[step.key];
-          const isKycPending =
-            step.key === "kycApproved" && onboarding.kycStatus === "PENDING";
+        {TRADING_STEPS.map((step) => {
+          const done = state[step.key];
           const isRegistration = step.key === "registrationPaid";
 
           return (
@@ -112,18 +72,13 @@ export function OnboardingChecklist({
                   ) : (
                     <Circle className="h-5 w-5 shrink-0 text-muted" />
                   )}
-                  <div>
-                    <p
-                      className={`text-sm font-medium ${done ? "text-muted line-through" : "text-foreground"}`}
-                    >
-                      {step.label}
-                    </p>
-                    {isKycPending && (
-                      <p className="text-xs text-rank-gold">Under review</p>
-                    )}
-                  </div>
+                  <p
+                    className={`text-sm font-medium ${done ? "text-muted line-through" : "text-foreground"}`}
+                  >
+                    {step.label}
+                  </p>
                 </div>
-                {!done && !isKycPending && !isRegistration && (
+                {!done && !isRegistration && (
                   <Link href={step.href}>
                     <Button size="sm" variant="secondary" className="gap-1">
                       {step.action}
@@ -138,6 +93,16 @@ export function OnboardingChecklist({
             </div>
           );
         })}
+
+        {!state.emailVerified && (
+          <p className="pt-1 text-xs text-muted">
+            Email verification is optional — you can trade now and verify later in{" "}
+            <Link href="/settings" className="text-primary hover:underline">
+              Settings
+            </Link>
+            .
+          </p>
+        )}
       </CardContent>
     </Card>
   );

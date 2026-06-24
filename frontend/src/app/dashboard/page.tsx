@@ -35,6 +35,11 @@ export default function DashboardPage() {
 
   async function handleRegistrationComplete() {
     await fetchDashboard();
+    const data = useDashboardStore.getState().data;
+    const { token, user } = useAuthStore.getState();
+    if (token && user && data?.user.status) {
+      useAuthStore.getState().setAuth(token, { ...user, status: data.user.status });
+    }
   }
 
   if (loading && !data) {

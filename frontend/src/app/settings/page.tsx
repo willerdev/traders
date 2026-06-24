@@ -380,7 +380,7 @@ export default function SettingsPage() {
               <MapPin className="h-5 w-5 text-primary" />
               <CardTitle>Address</CardTitle>
             </div>
-            <CardDescription>Required for KYC and payout compliance.</CardDescription>
+            <CardDescription>Required when you submit KYC for payouts — not needed to trade.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -465,7 +465,8 @@ export default function SettingsPage() {
               </Badge>
             </div>
             <CardDescription>
-              Verify your identity to unlock full platform access and payouts.
+              Required before you can request a payout. You can pay registration and submit
+              setups without completing this step.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

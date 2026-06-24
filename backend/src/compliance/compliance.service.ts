@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export class ComplianceService {
   constructor(private prisma: PrismaService) {}
 
+  /** Paid, non-suspended traders can submit setups — KYC not required. */
   async requireActiveTrader(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');

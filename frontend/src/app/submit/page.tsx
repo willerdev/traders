@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/stores/auth";
 import { api, type SignalDraft } from "@/lib/api";
 import { normalizeSetupFields, setupValidationError } from "@/lib/chart-setup";
+import { RegistrationCheckout } from "@/components/payments/registration-checkout";
 import {
   SubmitReviewCard,
   type ReviewPayload,
@@ -149,8 +150,23 @@ export default function SubmitSignalPage() {
   const [step, setStep] = useState<"edit" | "review">("edit");
   const [review, setReview] = useState<ReviewPayload | null>(null);
   const [resumingDraftId, setResumingDraftId] = useState<string | null>(null);
+  const [accountReady, setAccountReady] = useState<boolean | null>(null);
 
   const progress = calcProgress(form, screenshotUrl);
+
+  const refreshAccountStatus = useCallback(async () => {
+    try {
+      const dash = await api.users.dashboard();
+      const active = dash?.user.status === "ACTIVE";
+      setAccountReady(active);
+      const { token, user } = useAuthStore.getState();
+      if (token && user && dash?.user.status) {
+        useAuthStore.getState().setAuth(token, { ...user, status: dash.user.status });
+      }
+    } catch {
+      setAccountReady(false);
+    }
+  }, []);
 
   const loadDrafts = useCallback(async () => {
     try {
@@ -165,8 +181,11 @@ export default function SubmitSignalPage() {
 
   useEffect(() => {
     if (!isAuthenticated) router.push("/login");
-    else void loadDrafts();
-  }, [isAuthenticated, router, loadDrafts]);
+    else {
+      void loadDrafts();
+      void refreshAccountStatus();
+    }
+  }, [isAuthenticated, router, loadDrafts, refreshAccountStatus]);
 
   useEffect(() => {
     if (!success || success.executionHub?.id) {
@@ -452,6 +471,10 @@ export default function SubmitSignalPage() {
 
   function handleGoToReview(e: React.FormEvent) {
     e.preventDefault();
+    if (!accountReady) {
+      setError("Pay registration to submit setups. KYC is only required for payouts.");
+      return;
+    }
     setError("");
     const payload = buildReviewPayload();
     if (!payload) return;
@@ -691,6 +714,22 @@ export default function SubmitSignalPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+        {accountReady === false && (
+          <Card className="border-primary/30 bg-primary/5">
+            <CardHeader>
+              <CardTitle>Pay registration to submit</CardTitle>
+              <CardDescription>
+                You can fill in setups and save drafts now. Pay 5 USDT (or use promo{" "}
+                <strong className="text-primary">win2026</strong>) to lock in and send
+                setups. Identity verification is only required when you request a payout.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RegistrationCheckout onComplete={() => void refreshAccountStatus()} />
+            </CardContent>
+          </Card>
+        )}
+
         {!draftsLoading && drafts.length > 0 && (
           <Card>
             <CardHeader className="pb-3">
@@ -1048,9 +1087,11 @@ export default function SubmitSignalPage() {
                 type="submit"
                 className="w-full"
                 size="lg"
-                disabled={loading || uploading || analyzing}
+                disabled={loading || uploading || analyzing || accountReady === false}
               >
-                {analyzing
+                {accountReady === false
+                  ? "Pay registration to submit"
+                  : analyzing
                   ? "Analyzing chart..."
                   : uploading
                     ? "Uploading setup..."
