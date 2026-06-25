@@ -9,13 +9,14 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/stores/auth";
-import { api, type SignalDraft } from "@/lib/api";
+import { api, type SignalDraft, type MatchedDuplicateSignal } from "@/lib/api";
 import { normalizeSetupFields, setupValidationError } from "@/lib/chart-setup";
 import { RegistrationCheckout } from "@/components/payments/registration-checkout";
 import {
   SubmitReviewCard,
   type ReviewPayload,
 } from "@/components/submit/submit-review";
+import { DuplicateRejectionCard } from "@/components/submit/duplicate-rejection";
 import {
   Lock,
   AlertCircle,
@@ -130,6 +131,7 @@ export default function SubmitSignalPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [aiFilled, setAiFilled] = useState(false);
   const [error, setError] = useState("");
+  const [duplicateMatch, setDuplicateMatch] = useState<MatchedDuplicateSignal | null>(null);
   const [success, setSuccess] = useState<SubmitResult | null>(null);
   const [resending, setResending] = useState(false);
   const [hubHealth, setHubHealth] = useState<{
@@ -341,6 +343,7 @@ export default function SubmitSignalPage() {
     setForm(EMPTY_FORM);
     clearSetup();
     setError("");
+    setDuplicateMatch(null);
     setAiFilled(false);
     setSaveStatus("idle");
     setStep("edit");
@@ -488,6 +491,7 @@ export default function SubmitSignalPage() {
   async function handleConfirmSubmit() {
     if (!review) return;
     setError("");
+    setDuplicateMatch(null);
     setLoading(true);
 
     try {
@@ -512,7 +516,8 @@ export default function SubmitSignalPage() {
       });
 
       if ("status" in result && result.status === "duplicate_signal") {
-        setError("Duplicate signal detected. Your submission was rejected.");
+        setDuplicateMatch(result.matchedSignal);
+        setError(result.message);
         setStep("edit");
         setReview(null);
       } else if ("signalId" in result) {
@@ -827,6 +832,7 @@ export default function SubmitSignalPage() {
             onEdit={() => {
               setStep("edit");
               setError("");
+              setDuplicateMatch(null);
             }}
             onConfirm={() => void handleConfirmSubmit()}
           />
@@ -1075,7 +1081,11 @@ export default function SubmitSignalPage() {
                 )}
               </div>
 
-              {error && (
+              {duplicateMatch && (
+                <DuplicateRejectionCard match={duplicateMatch} message={error} />
+              )}
+
+              {error && !duplicateMatch && (
                 <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   {error}

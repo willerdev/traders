@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
-  DUPLICATE_THRESHOLD,
-  ENTRY_TOLERANCE_PERCENT,
+  DUPLICATE_ENTRY_PIP_TOLERANCE,
+  DUPLICATE_LOOKBACK_MINUTES,
 } from '../common/constants';
+import { entryMidpointPipDistance } from '../common/pip.util';
 import { TradeDirection } from '@prisma/client';
 
 interface SignalInput {
@@ -15,6 +16,24 @@ interface SignalInput {
   takeProfit: number;
 }
 
+export interface MatchedDuplicateSignal {
+  signalId: string;
+  traderName: string;
+  symbol: string;
+  direction: TradeDirection;
+  entryMin: number;
+  entryMax: number;
+  stopLoss: number;
+  takeProfit: number;
+  submittedAt: string;
+  pipDistance: number;
+}
+
+export interface DuplicateCheckResult {
+  isDuplicate: boolean;
+  matchedSignal?: MatchedDuplicateSignal;
+}
+
 @Injectable()
 export class DuplicateDetectionService {
   constructor(private prisma: PrismaService) {}
@@ -22,83 +41,60 @@ export class DuplicateDetectionService {
   async checkDuplicate(
     userId: string,
     input: SignalInput,
-  ): Promise<{ isDuplicate: boolean; similarity: number }> {
+  ): Promise<DuplicateCheckResult> {
     const recentSignals = await this.prisma.signal.findMany({
       where: {
         symbol: input.symbol,
         direction: input.direction,
         status: { not: 'REJECTED_DUPLICATE' },
-        submittedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        submittedAt: {
+          gte: new Date(Date.now() - DUPLICATE_LOOKBACK_MINUTES * 60_000),
+        },
+        userId: { not: userId },
+      },
+      include: {
+        user: { select: { displayName: true } },
       },
       orderBy: { submittedAt: 'desc' },
       take: 50,
     });
 
-    let maxSimilarity = 0;
+    let closest: MatchedDuplicateSignal | undefined;
 
     for (const signal of recentSignals) {
-      if (signal.userId === userId) continue;
+      const entryMin = Number(signal.entryMin);
+      const entryMax = Number(signal.entryMax);
+      const pipDistance = entryMidpointPipDistance(
+        input.symbol,
+        input.entryMin,
+        input.entryMax,
+        entryMin,
+        entryMax,
+      );
 
-      const similarity = this.calculateSimilarity(input, {
-        entryMin: Number(signal.entryMin),
-        entryMax: Number(signal.entryMax),
-        stopLoss: Number(signal.stopLoss),
-        takeProfit: Number(signal.takeProfit),
-      });
+      if (pipDistance <= DUPLICATE_ENTRY_PIP_TOLERANCE) {
+        const match: MatchedDuplicateSignal = {
+          signalId: signal.signalId,
+          traderName: signal.user.displayName,
+          symbol: signal.symbol,
+          direction: signal.direction,
+          entryMin,
+          entryMax,
+          stopLoss: Number(signal.stopLoss),
+          takeProfit: Number(signal.takeProfit),
+          submittedAt: signal.submittedAt.toISOString(),
+          pipDistance: Math.round(pipDistance * 10) / 10,
+        };
 
-      maxSimilarity = Math.max(maxSimilarity, similarity);
+        if (!closest || pipDistance < closest.pipDistance) {
+          closest = match;
+        }
+      }
     }
 
     return {
-      isDuplicate: maxSimilarity >= DUPLICATE_THRESHOLD,
-      similarity: maxSimilarity,
+      isDuplicate: closest !== undefined,
+      matchedSignal: closest,
     };
-  }
-
-  private calculateSimilarity(
-    a: SignalInput,
-    b: { entryMin: number; entryMax: number; stopLoss: number; takeProfit: number },
-  ): number {
-    const aMid = (a.entryMin + a.entryMax) / 2;
-    const bMid = (b.entryMin + b.entryMax) / 2;
-
-    const overlap = this.rangeOverlap(
-      a.entryMin,
-      a.entryMax,
-      b.entryMin,
-      b.entryMax,
-    );
-    const aWidth = a.entryMax - a.entryMin || aMid * 0.001;
-    const overlapRatio = overlap / aWidth;
-
-    const entryScore =
-      overlapRatio >= 1 - ENTRY_TOLERANCE_PERCENT / 100
-        ? 1
-        : Math.max(0, overlapRatio);
-
-    const midDiff = Math.abs(aMid - bMid) / aMid;
-    const midScore =
-      midDiff <= ENTRY_TOLERANCE_PERCENT / 100
-        ? 1
-        : Math.max(0, 1 - midDiff * 10);
-
-    const slDiff = Math.abs(a.stopLoss - b.stopLoss) / a.stopLoss;
-    const tpDiff = Math.abs(a.takeProfit - b.takeProfit) / a.takeProfit;
-    const slScore = Math.max(0, 1 - slDiff * 5);
-    const tpScore = Math.max(0, 1 - tpDiff * 5);
-
-    const blendedEntry = entryScore * 0.6 + midScore * 0.4;
-    return blendedEntry * 0.4 + slScore * 0.3 + tpScore * 0.3;
-  }
-
-  private rangeOverlap(
-    aMin: number,
-    aMax: number,
-    bMin: number,
-    bMax: number,
-  ): number {
-    const start = Math.max(aMin, bMin);
-    const end = Math.min(aMax, bMax);
-    return Math.max(0, end - start);
   }
 }

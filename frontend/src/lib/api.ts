@@ -118,7 +118,12 @@ class ApiClient {
   signals = {
     submit: (data: SignalInput) =>
       this.request<
-        | { status: "duplicate_signal"; signalId: string }
+        | {
+            status: "duplicate_signal";
+            signalId: string;
+            message: string;
+            matchedSignal: MatchedDuplicateSignal;
+          }
         | {
             status: "accepted";
             signalId: string;
@@ -522,6 +527,19 @@ export interface SignalRecord {
   submittedAt: string;
   pointsAwarded: number;
   screenshotUrl?: string;
+}
+
+export interface MatchedDuplicateSignal {
+  signalId: string;
+  traderName: string;
+  symbol: string;
+  direction: "BUY" | "SELL";
+  entryMin: number;
+  entryMax: number;
+  stopLoss: number;
+  takeProfit: number;
+  submittedAt: string;
+  pipDistance: number;
 }
 
 export interface SignalInput {

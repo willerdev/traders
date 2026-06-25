@@ -83,7 +83,7 @@ export class SignalsService {
       throw new ForbiddenException('Virtual account not found');
     }
 
-    const { isDuplicate, similarity } =
+    const { isDuplicate, matchedSignal } =
       await this.duplicateDetection.checkDuplicate(userId, dto);
 
     const signalData = {
@@ -99,13 +99,15 @@ export class SignalsService {
       screenshotUrl: dto.screenshotUrl,
     };
 
-    if (isDuplicate) {
+    if (isDuplicate && matchedSignal) {
+      const message = `Your entry is within ${matchedSignal.pipDistance} pips of a setup already submitted by ${matchedSignal.traderName}. Change your entry to submit an original setup.`;
+
       await this.prisma.violation.create({
         data: {
           userId,
           type: 'DUPLICATE_SIGNAL',
-          description: `Duplicate signal detected (${(similarity * 100).toFixed(1)}% similarity)`,
-          evidence: { dto: { ...dto }, similarity } as object,
+          description: `Copied setup within ${matchedSignal.pipDistance} pips of @${matchedSignal.traderName}`,
+          evidence: { dto: { ...dto }, matchedSignal } as object,
         },
       });
 
@@ -113,7 +115,12 @@ export class SignalsService {
         data: { ...signalData, status: 'REJECTED_DUPLICATE' },
       });
 
-      return { status: 'duplicate_signal', signalId: rejected.signalId };
+      return {
+        status: 'duplicate_signal',
+        signalId: rejected.signalId,
+        message,
+        matchedSignal,
+      };
     }
 
     const screenshotHash = createHash('sha256')
