@@ -93,6 +93,12 @@ enum KycDocumentType {
   DRIVERS_LICENSE
 }
 
+enum TpClaimStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
 model User {
   id                String     @id @default(cuid())
   email             String?    @unique
@@ -124,6 +130,7 @@ model User {
   signalDrafts       SignalDraft[]
   profile            UserProfile?
   kyc                KycVerification?
+  tpClaims           TpClaim[]
 
   @@index([status])
   @@index([role])
@@ -222,6 +229,7 @@ model Signal {
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   trade      Trade?
   tradeScore TradeScore?
+  tpClaims   TpClaim[]
 
   @@index([userId])
   @@index([symbol, direction])
@@ -274,6 +282,30 @@ model Trade {
 
   @@index([userId])
   @@map("trades")
+}
+
+model TpClaim {
+  id                  String         @id @default(cuid())
+  userId              String
+  signalId            String
+  symbol              String
+  direction           TradeDirection
+  exitPrice           Decimal        @db.Decimal(18, 8)
+  beforeScreenshotUrl String
+  afterScreenshotUrl  String
+  status              TpClaimStatus  @default(PENDING_REVIEW)
+  adminNote           String?
+  reviewedAt          DateTime?
+  reviewedById        String?
+  submittedAt         DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  signal Signal @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([status, submittedAt])
+  @@map("tp_claims")
 }
 
 model WalletTransaction {

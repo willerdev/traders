@@ -6,7 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api, type OpenSetupItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, Loader2, RefreshCw, Target, Archive } from "lucide-react";
+import { CheckCircle2, Loader2, RefreshCw, Target, Archive, Clock } from "lucide-react";
+import Link from "next/link";
+import { ClaimTpModal } from "@/components/dashboard/claim-tp-modal";
 
 type Props = {
   onClaimed?: () => void;
@@ -19,6 +21,7 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
   const [claiming, setClaiming] = useState<string | null>(null);
   const [archiving, setArchiving] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [tpModal, setTpModal] = useState<{ signalId: string; symbol: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -40,26 +43,21 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
     load();
   }, [load]);
 
-  async function handleClaim(signalId: string, outcome: "tp" | "sl") {
-    const label = outcome === "tp" ? "take profit" : "stop loss";
+  async function handleClaimSl(signalId: string) {
     if (
       !confirm(
-        `Claim ${label} for this setup? Your account will be scored and the setup marked resolved.`,
+        "Claim stop loss for this setup? Your account will be scored and the setup marked resolved.",
       )
     ) {
       return;
     }
 
-    setClaiming(`${signalId}:${outcome}`);
+    setClaiming(`${signalId}:sl`);
     setSuccess(null);
     setError(null);
     try {
-      const result = await api.signals.claim(signalId, outcome);
-      setSuccess(
-        outcome === "tp" && result.reward
-          ? `TP claimed — $${result.reward} credited`
-          : `${outcome.toUpperCase()} claimed — setup resolved`,
-      );
+      const result = await api.signals.claim(signalId, "sl");
+      setSuccess(`${result.outcome?.toUpperCase() ?? "SL"} claimed — setup resolved`);
       await load();
       onClaimed?.();
     } catch (err) {
@@ -67,6 +65,11 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
     } finally {
       setClaiming(null);
     }
+  }
+
+  function openTpModal(signalId: string, symbol: string) {
+    setError(null);
+    setTpModal({ signalId, symbol });
   }
 
   async function handleArchive(signalId: string, symbol: string) {
@@ -109,8 +112,12 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
             Unresolved Setups
           </CardTitle>
           <p className="mt-1 text-sm text-gray-500">
-            Open setups that hit TP or SL but were not auto-recorded — claim to
-            update your score and wallet, or archive to dismiss without scoring
+            Open setups that hit TP or SL but were not auto-recorded. TP claims
+            require before/after screenshots and admin approval — track them on{" "}
+            <Link href="/tp-claims" className="text-primary hover:underline">
+              TP Claims
+            </Link>
+            .
           </p>
         </div>
         <Button
@@ -133,9 +140,16 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
         ) : (
           <div className="space-y-4">
             {success && (
-              <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-                {success}
+              <div className="flex flex-col gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  {success}
+                </div>
+                {success.includes("review") && (
+                  <Link href="/tp-claims" className="text-xs underline">
+                    View TP Claims status
+                  </Link>
+                )}
               </div>
             )}
             {error && (
@@ -154,7 +168,6 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
 
             {[...claimable, ...openOnly].map((setup) => {
               const res = setup.resolution;
-              const claimingTp = claiming === `${setup.signalId}:tp`;
               const claimingSl = claiming === `${setup.signalId}:sl`;
               const isArchiving = archiving === setup.signalId;
 
@@ -196,6 +209,12 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
                             Hub {res.hubStatus}
                           </>
                         )}
+                        {res.pendingTpClaim && (
+                          <>
+                            {" · "}
+                            <span className="text-amber-400">TP claim pending review</span>
+                          </>
+                        )}
                       </p>
                     </div>
 
@@ -205,21 +224,23 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
                           variant="success"
                           size="sm"
                           disabled={Boolean(claiming)}
-                          onClick={() => handleClaim(setup.signalId, "tp")}
+                          onClick={() => openTpModal(setup.signalId, setup.symbol)}
                         >
-                          {claimingTp ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            "Claim TP"
-                          )}
+                          Claim TP
                         </Button>
+                      )}
+                      {res.pendingTpClaim && !res.canClaimTp && (
+                        <span className="flex items-center gap-1 self-center text-xs text-amber-400">
+                          <Clock className="h-3.5 w-3.5" />
+                          Review pending
+                        </span>
                       )}
                       {res.canClaimSl && (
                         <Button
                           variant="danger"
                           size="sm"
                           disabled={Boolean(claiming)}
-                          onClick={() => handleClaim(setup.signalId, "sl")}
+                          onClick={() => handleClaimSl(setup.signalId)}
                         >
                           {claimingSl ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -228,7 +249,7 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
                           )}
                         </Button>
                       )}
-                      {!res.canClaimTp && !res.canClaimSl && (
+                      {!res.canClaimTp && !res.canClaimSl && !res.pendingTpClaim && (
                         <span className="self-center text-xs text-gray-500">
                           Awaiting TP/SL
                         </span>
@@ -257,6 +278,20 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
           </div>
         )}
       </CardContent>
+
+      {tpModal && (
+        <ClaimTpModal
+          signalId={tpModal.signalId}
+          symbol={tpModal.symbol}
+          onClose={() => setTpModal(null)}
+          onSubmitted={(msg) => {
+            setSuccess(msg);
+            void load();
+            onClaimed?.();
+          }}
+          onError={(msg) => setError(msg)}
+        />
+      )}
     </Card>
   );
 }

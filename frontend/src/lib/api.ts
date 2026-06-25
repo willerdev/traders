@@ -195,10 +195,17 @@ class ApiClient {
       this.request<OpenSetupsResult>("/signals/open/unresolved"),
     getResolution: (signalId: string) =>
       this.request<SetupResolution>(`/signals/${signalId}/resolution`),
-    claim: (signalId: string, outcome: "tp" | "sl") =>
+    claim: (
+      signalId: string,
+      outcome: "tp" | "sl",
+      evidence?: { beforeScreenshotUrl: string; afterScreenshotUrl: string },
+    ) =>
       this.request<ClaimSetupResult>(`/signals/claim/${signalId}`, {
         method: "POST",
-        body: JSON.stringify({ outcome }),
+        body: JSON.stringify({
+          outcome,
+          ...(evidence ?? {}),
+        }),
       }),
     archive: (signalId: string) =>
       this.request<{ status: string; signalId: string }>(
@@ -387,6 +394,10 @@ class ApiClient {
       }>(`/payments/promo/validate?code=${encodeURIComponent(code)}`),
     history: () => this.request("/payments/history"),
     wallet: () => this.request<WalletTransaction[]>("/payments/wallet"),
+  };
+
+  tpClaims = {
+    list: () => this.request<TpClaimRecord[]>("/tp-claims"),
   };
 
   payouts = {
@@ -735,6 +746,7 @@ export interface SetupResolution {
   priceOutcome?: "tp" | "sl" | null;
   hubStatus?: string | null;
   hubOutcome?: "tp" | "sl" | null;
+  pendingTpClaim?: boolean;
   claimable: boolean;
   canClaimTp: boolean;
   canClaimSl: boolean;
@@ -763,11 +775,35 @@ export interface OpenSetupsResult {
 
 export interface ClaimSetupResult {
   status: string;
-  outcome: "tp" | "sl";
   signalId: string;
-  exitPrice: number;
+  message?: string;
+  claimId?: string;
+  outcome?: "tp" | "sl";
+  exitPrice?: number;
   reward?: number;
   pointsAwarded?: number;
+}
+
+export interface TpClaimRecord {
+  id: string;
+  signalId: string;
+  symbol: string;
+  direction: string;
+  exitPrice: number;
+  beforeScreenshotUrl: string;
+  afterScreenshotUrl: string;
+  status: "PENDING_REVIEW" | "APPROVED" | "REJECTED";
+  adminNote?: string | null;
+  reviewedAt?: string | null;
+  submittedAt: string;
+  updatedAt: string;
+  setup?: {
+    entryMin: number;
+    entryMax: number;
+    stopLoss: number;
+    takeProfit: number;
+    signalStatus: string;
+  };
 }
 
 export const api = new ApiClient();

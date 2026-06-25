@@ -1,0 +1,271 @@
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { WalletService } from '../trades/wallet.service';
+import { PriceMonitorService } from '../trades/price-monitor.service';
+import { Signal, Trade } from '@prisma/client';
+
+@Injectable()
+export class TpClaimsService {
+  constructor(
+    private prisma: PrismaService,
+    private wallet: WalletService,
+    private priceMonitor: PriceMonitorService,
+  ) {}
+
+  async hasPendingClaim(signalId: string): Promise<boolean> {
+    const pending = await this.prisma.tpClaim.findFirst({
+      where: { signalId, status: 'PENDING_REVIEW' },
+    });
+    return Boolean(pending);
+  }
+
+  async createPendingClaim(
+    userId: string,
+    signal: Signal & { trade: Trade | null },
+    exitPrice: number,
+    beforeScreenshotUrl: string,
+    afterScreenshotUrl: string,
+  ) {
+    if (!signal.trade) {
+      throw new BadRequestException('Setup has no associated trade record');
+    }
+
+    const existing = await this.prisma.tpClaim.findFirst({
+      where: { signalId: signal.id, status: 'PENDING_REVIEW' },
+    });
+    if (existing) {
+      throw new BadRequestException(
+        'A TP claim for this setup is already awaiting admin review',
+      );
+    }
+
+    await this.priceMonitor.ensureTradeActivated(
+      signal.trade,
+      signal,
+      exitPrice,
+    );
+
+    const claim = await this.prisma.tpClaim.create({
+      data: {
+        userId,
+        signalId: signal.id,
+        symbol: signal.symbol,
+        direction: signal.direction,
+        exitPrice,
+        beforeScreenshotUrl,
+        afterScreenshotUrl,
+        status: 'PENDING_REVIEW',
+      },
+    });
+
+    return {
+      status: 'pending_review' as const,
+      claimId: claim.id,
+      signalId: signal.signalId,
+      message:
+        'TP claim submitted for review. Upload confirmed — an admin will verify your before/after screenshots before crediting your account.',
+    };
+  }
+
+  async listUserClaims(userId: string) {
+    const claims = await this.prisma.tpClaim.findMany({
+      where: { userId },
+      orderBy: { submittedAt: 'desc' },
+      include: {
+        signal: {
+          select: {
+            signalId: true,
+            entryMin: true,
+            entryMax: true,
+            stopLoss: true,
+            takeProfit: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    return claims.map((c) => this.formatClaim(c));
+  }
+
+  async listPendingForAdmin() {
+    const claims = await this.prisma.tpClaim.findMany({
+      where: { status: 'PENDING_REVIEW' },
+      orderBy: { submittedAt: 'asc' },
+      include: {
+        user: { select: { id: true, displayName: true, email: true } },
+        signal: {
+          select: {
+            signalId: true,
+            entryMin: true,
+            entryMax: true,
+            stopLoss: true,
+            takeProfit: true,
+            screenshotUrl: true,
+          },
+        },
+      },
+    });
+
+    return claims.map((c) => ({
+      ...this.formatClaim(c),
+      user: c.user,
+      originalScreenshotUrl: c.signal.screenshotUrl,
+      entryMin: Number(c.signal.entryMin),
+      entryMax: Number(c.signal.entryMax),
+      stopLoss: Number(c.signal.stopLoss),
+      takeProfit: Number(c.signal.takeProfit),
+    }));
+  }
+
+  async approveClaim(claimId: string, adminId: string) {
+    const claim = await this.prisma.tpClaim.findUnique({
+      where: { id: claimId },
+      include: { signal: { include: { trade: true } } },
+    });
+
+    if (!claim) throw new NotFoundException('TP claim not found');
+    if (claim.status !== 'PENDING_REVIEW') {
+      throw new BadRequestException('This claim is not pending review');
+    }
+    if (!claim.signal.trade) {
+      throw new BadRequestException('Setup has no trade record');
+    }
+
+    const exitPrice = Number(claim.exitPrice);
+    const result = await this.wallet.creditTpReward(
+      claim.userId,
+      claim.signalId,
+      exitPrice,
+    );
+
+    if (!result) {
+      throw new BadRequestException(
+        'Could not credit TP — setup may already be resolved',
+      );
+    }
+
+    await this.prisma.tpClaim.update({
+      where: { id: claimId },
+      data: {
+        status: 'APPROVED',
+        reviewedAt: new Date(),
+        reviewedById: adminId,
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        adminId,
+        action: 'TP_CLAIM_APPROVED',
+        targetId: claimId,
+        metadata: {
+          userId: claim.userId,
+          signalId: claim.signal.signalId,
+          reward: result.reward,
+        },
+      },
+    });
+
+    return {
+      status: 'approved',
+      claimId,
+      reward: result.reward,
+      signalId: claim.signal.signalId,
+    };
+  }
+
+  async rejectClaim(claimId: string, adminId: string, reason: string) {
+    const claim = await this.prisma.tpClaim.findUnique({
+      where: { id: claimId },
+      include: { signal: { select: { signalId: true } } },
+    });
+
+    if (!claim) throw new NotFoundException('TP claim not found');
+    if (claim.status !== 'PENDING_REVIEW') {
+      throw new BadRequestException('This claim is not pending review');
+    }
+
+    const note = reason.trim() || 'Evidence did not confirm take profit';
+
+    await this.prisma.tpClaim.update({
+      where: { id: claimId },
+      data: {
+        status: 'REJECTED',
+        adminNote: note,
+        reviewedAt: new Date(),
+        reviewedById: adminId,
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        adminId,
+        action: 'TP_CLAIM_REJECTED',
+        targetId: claimId,
+        metadata: { userId: claim.userId, reason: note },
+      },
+    });
+
+    return {
+      status: 'rejected',
+      claimId,
+      signalId: claim.signal.signalId,
+      adminNote: note,
+    };
+  }
+
+  private formatClaim(
+    claim: {
+      id: string;
+      userId: string;
+      signalId: string;
+      symbol: string;
+      direction: string;
+      exitPrice: unknown;
+      beforeScreenshotUrl: string;
+      afterScreenshotUrl: string;
+      status: string;
+      adminNote: string | null;
+      reviewedAt: Date | null;
+      submittedAt: Date;
+      updatedAt: Date;
+      signal?: {
+        signalId: string;
+        entryMin: unknown;
+        entryMax: unknown;
+        stopLoss: unknown;
+        takeProfit: unknown;
+        status?: string;
+      };
+    },
+  ) {
+    return {
+      id: claim.id,
+      signalId: claim.signal?.signalId ?? claim.signalId,
+      symbol: claim.symbol,
+      direction: claim.direction,
+      exitPrice: Number(claim.exitPrice),
+      beforeScreenshotUrl: claim.beforeScreenshotUrl,
+      afterScreenshotUrl: claim.afterScreenshotUrl,
+      status: claim.status,
+      adminNote: claim.adminNote,
+      reviewedAt: claim.reviewedAt?.toISOString() ?? null,
+      submittedAt: claim.submittedAt.toISOString(),
+      updatedAt: claim.updatedAt.toISOString(),
+      setup: claim.signal
+        ? {
+            entryMin: Number(claim.signal.entryMin),
+            entryMax: Number(claim.signal.entryMax),
+            stopLoss: Number(claim.signal.stopLoss),
+            takeProfit: Number(claim.signal.takeProfit),
+            signalStatus: claim.signal.status ?? 'OPEN',
+          }
+        : undefined,
+    };
+  }
+}

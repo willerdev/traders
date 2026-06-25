@@ -93,6 +93,32 @@ export class AdminController {
     return this.adminService.approvePayout(payoutId, req.user.id);
   }
 
+  @Get('tp-claims/pending')
+  listPendingTpClaims() {
+    return this.adminService.listPendingTpClaims();
+  }
+
+  @Post('tp-claims/:claimId/approve')
+  approveTpClaim(
+    @Param('claimId') claimId: string,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.adminService.approveTpClaim(claimId, req.user.id);
+  }
+
+  @Post('tp-claims/:claimId/reject')
+  rejectTpClaim(
+    @Param('claimId') claimId: string,
+    @Request() req: { user: { id: string } },
+    @Body('reason') reason: string,
+  ) {
+    return this.adminService.rejectTpClaim(
+      claimId,
+      req.user.id,
+      reason || 'Evidence did not confirm take profit',
+    );
+  }
+
   @Post('users/:userId/suspend')
   suspendUser(
     @Param('userId') userId: string,

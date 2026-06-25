@@ -9,6 +9,7 @@ import {
   Wallet,
   Settings,
   LogOut,
+  ClipboardCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth";
@@ -19,6 +20,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", shortLabel: "Home", icon: LayoutDashboard },
   { href: "/submit", label: "Submit Signal", shortLabel: "Submit", icon: Send },
   { href: "/leaderboard", label: "Leaderboard", shortLabel: "Ranks", icon: Trophy },
+  { href: "/tp-claims", label: "TP Claims", shortLabel: "Claims", icon: ClipboardCheck },
   { href: "/payouts", label: "Payouts", shortLabel: "Payouts", icon: Wallet },
   { href: "/settings", label: "Settings", shortLabel: "Account", icon: Settings },
 ];

@@ -9,6 +9,7 @@ import {
   MinLength,
   Equals,
   IsIn,
+  ValidateIf,
 } from 'class-validator';
 import { TradeDirection, KycDocumentType } from '@prisma/client';
 
@@ -222,6 +223,16 @@ export class SubmitKycDto {
 export class ClaimSetupDto {
   @IsIn(['tp', 'sl'])
   outcome: 'tp' | 'sl';
+
+  @ValidateIf((o: ClaimSetupDto) => o.outcome === 'tp')
+  @IsString()
+  @IsNotEmpty()
+  beforeScreenshotUrl?: string;
+
+  @ValidateIf((o: ClaimSetupDto) => o.outcome === 'tp')
+  @IsString()
+  @IsNotEmpty()
+  afterScreenshotUrl?: string;
 }
 
 export class TradeOutcomeWebhookDto {

@@ -19,6 +19,7 @@ import {
   SetupOutcome,
 } from '../trades/price-monitor.service';
 import { WalletService } from '../trades/wallet.service';
+import { TpClaimsService } from '../tp-claims/tp-claims.service';
 
 @Injectable()
 export class SignalsService {
@@ -31,6 +32,7 @@ export class SignalsService {
     private signalHub: SignalHubService,
     private priceMonitor: PriceMonitorService,
     private wallet: WalletService,
+    private tpClaims: TpClaimsService,
   ) {}
 
   private validateEntryRange(dto: CreateSignalDto) {
@@ -366,10 +368,13 @@ export class SignalsService {
       }
     }
 
-    const canClaimTp =
+    const canClaimTpBase =
       priceOutcome === 'tp' || (priceOutcome === null && hubOutcome === 'tp');
     const canClaimSl =
       priceOutcome === 'sl' || (priceOutcome === null && hubOutcome === 'sl');
+
+    const pendingTpClaim = await this.tpClaims.hasPendingClaim(signal.id);
+    const canClaimTp = canClaimTpBase && !pendingTpClaim;
 
     return {
       signalId: signal.signalId,
@@ -385,6 +390,7 @@ export class SignalsService {
       priceOutcome,
       hubStatus,
       hubOutcome,
+      pendingTpClaim,
       claimable: canClaimTp || canClaimSl,
       canClaimTp,
       canClaimSl,
@@ -427,6 +433,22 @@ export class SignalsService {
       (outcome === 'tp'
         ? Number(signal.takeProfit)
         : Number(signal.stopLoss));
+
+    if (outcome === 'tp') {
+      if (!dto.beforeScreenshotUrl?.trim() || !dto.afterScreenshotUrl?.trim()) {
+        throw new BadRequestException(
+          'Before and after chart screenshots are required to claim take profit',
+        );
+      }
+
+      return this.tpClaims.createPendingClaim(
+        userId,
+        signal,
+        exitPrice,
+        dto.beforeScreenshotUrl.trim(),
+        dto.afterScreenshotUrl.trim(),
+      );
+    }
 
     await this.priceMonitor.ensureTradeActivated(
       signal.trade,

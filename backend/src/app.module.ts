@@ -6,6 +6,7 @@ import { ComplianceModule } from './compliance/compliance.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { SignalsModule } from './signals/signals.module';
+import { TpClaimsModule } from './tp-claims/tp-claims.module';
 import { LeaderboardModule } from './leaderboard/leaderboard.module';
 import { PayoutsModule } from './payouts/payouts.module';
 import { PaymentsModule } from './payments/payments.module';
@@ -24,6 +25,7 @@ import { PlatformModule } from './platform/platform.module';
     AuthModule,
     UsersModule,
     SignalsModule,
+    TpClaimsModule,
     LeaderboardModule,
     PayoutsModule,
     PaymentsModule,

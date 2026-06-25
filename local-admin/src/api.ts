@@ -72,6 +72,15 @@ export const api = {
     }),
   approvePayout: (payoutId: string) =>
     request(`/admin/payouts/${payoutId}/approve`, { method: "POST" }),
+
+  tpClaimsPending: () => request<TpClaimRow[]>("/admin/tp-claims/pending"),
+  approveTpClaim: (claimId: string) =>
+    request(`/admin/tp-claims/${claimId}/approve`, { method: "POST" }),
+  rejectTpClaim: (claimId: string, reason: string) =>
+    request(`/admin/tp-claims/${claimId}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
 };
 
 export type UserRow = {
@@ -120,4 +129,22 @@ export type PayoutRow = {
     email: string;
     kyc?: { status: string } | null;
   };
+};
+
+export type TpClaimRow = {
+  id: string;
+  signalId: string;
+  symbol: string;
+  direction: string;
+  exitPrice: number;
+  beforeScreenshotUrl: string;
+  afterScreenshotUrl: string;
+  status: string;
+  submittedAt: string;
+  entryMin: number;
+  entryMax: number;
+  stopLoss: number;
+  takeProfit: number;
+  originalScreenshotUrl?: string;
+  user: { id: string; displayName: string; email: string | null };
 };

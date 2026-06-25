@@ -9,7 +9,7 @@ import {
   type UserRow,
 } from "./api";
 
-type Tab = "overview" | "users" | "signals" | "kyc" | "payouts";
+type Tab = "overview" | "users" | "signals" | "kyc" | "payouts" | "tpClaims";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview", label: "1. Overview" },
@@ -17,6 +17,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "signals", label: "3. Setups" },
   { id: "kyc", label: "4. KYC" },
   { id: "payouts", label: "5. Payouts" },
+  { id: "tpClaims", label: "6. TP Claims" },
 ];
 
 function badgeClass(status: string) {
@@ -48,7 +49,9 @@ export default function App() {
   const [signalCount, setSignalCount] = useState(0);
   const [kycQueue, setKycQueue] = useState<KycRow[]>([]);
   const [payouts, setPayouts] = useState<PayoutRow[]>([]);
+  const [tpClaims, setTpClaims] = useState<TpClaimRow[]>([]);
   const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
+  const [tpRejectReason, setTpRejectReason] = useState<Record<string, string>>({});
 
   const loadTab = useCallback(async (active: Tab) => {
     setLoading(true);
@@ -69,6 +72,8 @@ export default function App() {
       } else if (active === "payouts") {
         const res = await api.payouts();
         setPayouts(res.items);
+      } else if (active === "tpClaims") {
+        setTpClaims(await api.tpClaimsPending());
       }
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Failed to load data");
@@ -199,6 +204,10 @@ export default function App() {
                     (overview.pendingPayouts as { count?: number })?.count ?? "—",
                   )}
                 </div>
+              </div>
+              <div className="card">
+                <div className="label">TP claims pending</div>
+                <div className="value">{String(overview.pendingTpClaimsCount ?? "—")}</div>
               </div>
               <div className="card">
                 <div className="label">Today signups</div>
@@ -411,6 +420,95 @@ export default function App() {
                 ))}
               </tbody>
             </table>
+          </>
+        )}
+
+        {tab === "tpClaims" && (
+          <>
+            <div className="toolbar">
+              <h2>TP claims review ({tpClaims.length} pending)</h2>
+            </div>
+            <div className="kyc-grid">
+              {tpClaims.length === 0 ? (
+                <p className="muted">No pending TP claims</p>
+              ) : (
+                tpClaims.map((item) => (
+                  <div key={item.id} className="kyc-card">
+                    <p>
+                      <strong>{item.user.displayName}</strong> — {item.user.email}
+                    </p>
+                    <p className="muted">
+                      {item.symbol} {item.direction} · Entry {item.entryMin} –{" "}
+                      {item.entryMax} · TP {item.takeProfit}
+                    </p>
+                    <p className="muted">Submitted {fmtDate(item.submittedAt)}</p>
+                    <div style={{ margin: "0.5rem 0", display: "grid", gap: "0.5rem", gridTemplateColumns: "1fr 1fr" }}>
+                      <div>
+                        <p className="muted" style={{ fontSize: "0.75rem" }}>Before</p>
+                        <img src={item.beforeScreenshotUrl} alt="Before" />
+                      </div>
+                      <div>
+                        <p className="muted" style={{ fontSize: "0.75rem" }}>After (TP)</p>
+                        <img src={item.afterScreenshotUrl} alt="After" />
+                      </div>
+                      {item.originalScreenshotUrl && (
+                        <div style={{ gridColumn: "1 / -1" }}>
+                          <p className="muted" style={{ fontSize: "0.75rem" }}>Original submission</p>
+                          <img src={item.originalScreenshotUrl} alt="Original setup" />
+                        </div>
+                      )}
+                    </div>
+                    <input
+                      placeholder="Rejection reason (if rejecting)"
+                      value={tpRejectReason[item.id] || ""}
+                      onChange={(e) =>
+                        setTpRejectReason({
+                          ...tpRejectReason,
+                          [item.id]: e.target.value,
+                        })
+                      }
+                      style={{
+                        width: "100%",
+                        marginBottom: "0.5rem",
+                        padding: "0.5rem",
+                        borderRadius: 6,
+                        border: "1px solid #334155",
+                        background: "#0b0f14",
+                        color: "#e8eaed",
+                      }}
+                    />
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="primary"
+                        onClick={() =>
+                          void api
+                            .approveTpClaim(item.id)
+                            .then(() => loadTab("tpClaims"))
+                        }
+                      >
+                        Approve & credit TP
+                      </button>
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={() =>
+                          void api
+                            .rejectTpClaim(
+                              item.id,
+                              tpRejectReason[item.id] ||
+                                "Evidence did not confirm take profit",
+                            )
+                            .then(() => loadTab("tpClaims"))
+                        }
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </>
         )}
       </main>

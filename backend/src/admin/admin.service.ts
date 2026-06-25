@@ -7,6 +7,7 @@ import { PayoutStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PayoutService } from '../payouts/payout.service';
 import { AnalyticsService } from '../analytics/analytics.service';
+import { TpClaimsService } from '../tp-claims/tp-claims.service';
 
 @Injectable()
 export class AdminService {
@@ -14,12 +15,13 @@ export class AdminService {
     private prisma: PrismaService,
     private payoutService: PayoutService,
     private analytics: AnalyticsService,
+    private tpClaims: TpClaimsService,
   ) {}
 
   async getOverview() {
     const analytics = await this.analytics.getAdminDashboard();
 
-    const [pendingKyc, pendingPayoutsList] = await Promise.all([
+    const [pendingKyc, pendingPayoutsList, pendingTpClaims] = await Promise.all([
       this.prisma.kycVerification.count({ where: { status: 'PENDING' } }),
       this.prisma.payout.findMany({
         where: { status: 'PENDING' },
@@ -29,13 +31,27 @@ export class AdminService {
           user: { select: { displayName: true, email: true } },
         },
       }),
+      this.tpClaims.listPendingForAdmin(),
     ]);
 
     return {
       ...analytics,
       pendingKycCount: pendingKyc,
       pendingPayoutsList,
+      pendingTpClaimsCount: pendingTpClaims.length,
     };
+  }
+
+  listPendingTpClaims() {
+    return this.tpClaims.listPendingForAdmin();
+  }
+
+  approveTpClaim(claimId: string, adminId: string) {
+    return this.tpClaims.approveClaim(claimId, adminId);
+  }
+
+  rejectTpClaim(claimId: string, adminId: string, reason: string) {
+    return this.tpClaims.rejectClaim(claimId, adminId, reason);
   }
 
   async listPendingKyc() {
