@@ -149,8 +149,8 @@ All routes are prefixed with `/api/v1`. Interactive docs: `GET /api/docs` (Swagg
 |--------|----------|-------------|
 | POST | `/signals` | Submit trading signal (forwards chart to Signal Hub) |
 | GET | `/signals` | List my signals |
-| POST | `/signals/{signalId}/claim` | Claim TP/SL for an unresolved open setup |
-| POST | `/signals/{signalId}/archive` | Archive an open setup (no score/wallet change) |
+| POST | `/signals/claim/{signalId}` | Claim TP/SL for an unresolved open setup |
+| POST | `/signals/archive/{signalId}` | Archive an open setup (no score/wallet change) |
 | GET | `/signals/{signalId}/resolution` | Check whether a setup can be claimed |
 | GET | `/signals/open/unresolved` | Open setups with claim eligibility |
 | POST | `/signals/webhook/outcome` | **Webhook** — notify TP/SL hit (see below) |

@@ -191,13 +191,13 @@ class ApiClient {
     getResolution: (signalId: string) =>
       this.request<SetupResolution>(`/signals/${signalId}/resolution`),
     claim: (signalId: string, outcome: "tp" | "sl") =>
-      this.request<ClaimSetupResult>(`/signals/${signalId}/claim`, {
+      this.request<ClaimSetupResult>(`/signals/claim/${signalId}`, {
         method: "POST",
         body: JSON.stringify({ outcome }),
       }),
     archive: (signalId: string) =>
       this.request<{ status: string; signalId: string }>(
-        `/signals/${signalId}/archive`,
+        `/signals/archive/${signalId}`,
         { method: "POST" },
       ),
     executionStatus: (signalId: string) =>

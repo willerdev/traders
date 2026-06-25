@@ -183,16 +183,16 @@ export class SignalsController {
     return this.signalsService.getOpenSignalsWithResolution(req.user.id);
   }
 
-  @Get(':signalId/resolution')
+  @Post('archive/:signalId')
   @UseGuards(JwtAuthGuard)
-  getSetupResolution(
+  archiveSetup(
     @Request() req: { user: { id: string } },
     @Param('signalId') signalId: string,
   ) {
-    return this.signalsService.getSetupResolution(req.user.id, signalId);
+    return this.signalsService.archiveSetup(req.user.id, signalId);
   }
 
-  @Post(':signalId/claim')
+  @Post('claim/:signalId')
   @UseGuards(JwtAuthGuard)
   claimSetup(
     @Request() req: { user: { id: string } },
@@ -202,13 +202,13 @@ export class SignalsController {
     return this.signalsService.claimSetup(req.user.id, signalId, dto);
   }
 
-  @Post(':signalId/archive')
+  @Get(':signalId/resolution')
   @UseGuards(JwtAuthGuard)
-  archiveSetup(
+  getSetupResolution(
     @Request() req: { user: { id: string } },
     @Param('signalId') signalId: string,
   ) {
-    return this.signalsService.archiveSetup(req.user.id, signalId);
+    return this.signalsService.getSetupResolution(req.user.id, signalId);
   }
 
   @Get(':signalId')
