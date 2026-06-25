@@ -269,13 +269,22 @@ export class SignalsService {
     });
   }
 
-  async getSignal(signalId: string) {
+  async getSignal(signalId: string, userId: string, role: string) {
     const signal = await this.prisma.signal.findUnique({
       where: { signalId },
       include: { trade: true, tradeScore: true },
     });
 
     if (!signal) throw new BadRequestException('Signal not found');
+
+    if (
+      signal.userId !== userId &&
+      role !== 'ADMIN' &&
+      role !== 'MODERATOR'
+    ) {
+      throw new ForbiddenException('You do not have access to this signal');
+    }
+
     return signal;
   }
 
@@ -552,11 +561,16 @@ export class SignalsService {
     const expected =
       process.env.TRADE_OUTCOME_WEBHOOK_SECRET?.trim() ||
       process.env.SIGNAL_WEBHOOK_SECRET?.trim();
+
     if (!expected) {
-      throw new ServiceUnavailableException(
-        'TRADE_OUTCOME_WEBHOOK_SECRET is not configured on the server',
-      );
+      if (process.env.NODE_ENV === 'production') {
+        throw new ServiceUnavailableException(
+          'TRADE_OUTCOME_WEBHOOK_SECRET is not configured on the server',
+        );
+      }
+      return;
     }
+
     if (!provided || provided !== expected) {
       throw new UnauthorizedException('Invalid webhook secret');
     }

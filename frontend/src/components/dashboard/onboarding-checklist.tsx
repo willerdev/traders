@@ -10,7 +10,7 @@ import type { OnboardingStatus } from "@/lib/api";
 const TRADING_STEPS = [
   {
     key: "registrationPaid" as const,
-    label: "Pay registration (5 USDT) or apply promo",
+    label: "Pay registration fee (5 USDT)",
     href: "/dashboard",
     action: "Pay now",
   },
@@ -96,11 +96,7 @@ export function OnboardingChecklist({
 
         {!state.emailVerified && (
           <p className="pt-1 text-xs text-muted">
-            Email verification is optional — you can trade now and verify later in{" "}
-            <Link href="/settings" className="text-primary hover:underline">
-              Settings
-            </Link>
-            .
+            Email verification is optional for trading.
           </p>
         )}
       </CardContent>

@@ -149,9 +149,17 @@ export class SignalHubService {
       process.env.API_PUBLIC_URL?.replace(/\/$/, '') ||
       null;
     this.apiPublicUrl = apiPublic;
-    this.callbackUrl = apiPublic
+    const webhookSecret =
+      this.config.get<string>('TRADE_OUTCOME_WEBHOOK_SECRET')?.trim() ||
+      process.env.TRADE_OUTCOME_WEBHOOK_SECRET?.trim() ||
+      '';
+    const callbackBase = apiPublic
       ? `${apiPublic}/api/v1/signals/hub/callback`
       : null;
+    this.callbackUrl =
+      callbackBase && webhookSecret
+        ? `${callbackBase}?key=${encodeURIComponent(webhookSecret)}`
+        : callbackBase;
   }
 
   /** Signal Hub requires HTTPS chart URLs for Telegram forwarding. */

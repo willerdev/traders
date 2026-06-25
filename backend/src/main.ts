@@ -10,8 +10,8 @@ async function bootstrap() {
     rawBody: true,
   });
 
-  app.useStaticAssets(join(process.cwd(), 'uploads'), {
-    prefix: '/uploads',
+  app.useStaticAssets(join(process.cwd(), 'uploads', 'setups'), {
+    prefix: '/uploads/setups',
   });
 
   app.set('trust proxy', 1);
@@ -49,20 +49,24 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api/v1');
 
-  const config = new DocumentBuilder()
-    .setTitle('TraderRank Pro API')
-    .setDescription('Trader talent-discovery and funding platform')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
+  if (process.env.NODE_ENV !== 'production') {
+    const config = new DocumentBuilder()
+      .setTitle('TraderRank Pro API')
+      .setDescription('Trader talent-discovery and funding platform')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
 
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api/docs', app, document);
+  }
 
   const port = process.env.PORT || 4000;
   await app.listen(port);
   console.log(`TraderRank Pro API running on http://localhost:${port}`);
-  console.log(`Swagger docs: http://localhost:${port}/api/docs`);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`Swagger docs: http://localhost:${port}/api/docs`);
+  }
 }
 
 bootstrap();

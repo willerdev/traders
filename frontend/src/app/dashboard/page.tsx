@@ -13,9 +13,10 @@ import { Send, ArrowRight } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
-import { OpenPositionsCard } from "@/components/dashboard/open-positions";
+import { Mt5PositionsPanel } from "@/components/dashboard/open-positions";
 import { UnresolvedSetupsCard } from "@/components/dashboard/unresolved-setups";
 import { RegistrationCheckout } from "@/components/payments/registration-checkout";
+import { RISK_PERCENT, MAX_RISK_PER_TRADE } from "@/lib/platform-rules";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -107,8 +108,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <p className="mb-4 text-sm text-gray-400">
-              Pay 5 USDT in-app or use promo{" "}
-              <strong className="text-primary">win2026</strong> for 100% off.
+              Pay 5 USDT to unlock setup submission. Invite codes are available on request.
             </p>
             <RegistrationCheckout onComplete={handleRegistrationComplete} />
           </CardContent>
@@ -131,7 +131,7 @@ export default function DashboardPage() {
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
         <UnresolvedSetupsCard onClaimed={() => fetchDashboard()} />
-        <OpenPositionsCard />
+        <Mt5PositionsPanel />
 
         <Card>
           <CardHeader>
@@ -190,7 +190,7 @@ export default function DashboardPage() {
             <div className="space-y-4">
               {[
                 { label: "Starting Balance", value: "$1,000 virtual" },
-                { label: "Risk Per Trade", value: "2% fixed ($20 max)" },
+                { label: "Risk Per Trade", value: `${RISK_PERCENT}% fixed ($${MAX_RISK_PER_TRADE} max)` },
                 { label: "TP Hit Reward", value: "$5 USDT auto-credited to wallet" },
                 { label: "Win Points", value: "+10 points" },
                 { label: "Loss Points", value: "-5 points" },

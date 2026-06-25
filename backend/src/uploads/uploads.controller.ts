@@ -1,19 +1,26 @@
 import {
   Controller,
   Post,
+  Get,
+  Param,
   UseGuards,
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  NotFoundException,
+  ForbiddenException,
   Request,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage, memoryStorage } from 'multer';
-import { extname, join } from 'path';
+import { extname, join, basename } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { JwtAuthGuard } from '../auth/guards';
 import { randomBytes } from 'crypto';
 import { VisionService } from '../ai/vision.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 const UPLOAD_DIR = join(process.cwd(), 'uploads', 'setups');
 const KYC_UPLOAD_DIR = join(process.cwd(), 'uploads', 'kyc');
@@ -33,7 +40,10 @@ function ensureKycUploadDir() {
 @Controller('uploads')
 @UseGuards(JwtAuthGuard)
 export class UploadsController {
-  constructor(private vision: VisionService) {}
+  constructor(
+    private vision: VisionService,
+    private prisma: PrismaService,
+  ) {}
 
   @Post('setup/analyze')
   @UseInterceptors(
@@ -138,10 +148,43 @@ export class UploadsController {
       process.env.API_PUBLIC_URL || `http://localhost:${process.env.PORT || 4000}`;
 
     return {
-      url: `${baseUrl}/uploads/kyc/${file.filename}`,
+      url: `${baseUrl}/api/v1/uploads/kyc/${file.filename}`,
       filename: file.filename,
       size: file.size,
       uploadedBy: req.user.id,
     };
+  }
+
+  @Get('kyc/:filename')
+  async getKycFile(
+    @Param('filename') filename: string,
+    @Request() req: { user: { id: string; role: string } },
+    @Res() res: Response,
+  ) {
+    const safeName = basename(filename);
+    if (!/^[a-f0-9]+\.(jpe?g|png|webp)$/i.test(safeName)) {
+      throw new BadRequestException('Invalid filename');
+    }
+
+    const isStaff =
+      req.user.role === 'ADMIN' || req.user.role === 'MODERATOR';
+    if (!isStaff) {
+      const kyc = await this.prisma.kycVerification.findUnique({
+        where: { userId: req.user.id },
+      });
+      const owned = [kyc?.documentFrontUrl, kyc?.documentBackUrl, kyc?.selfieUrl]
+        .filter(Boolean)
+        .some((url) => url?.includes(safeName));
+      if (!owned) {
+        throw new ForbiddenException('Access denied');
+      }
+    }
+
+    const filePath = join(KYC_UPLOAD_DIR, safeName);
+    if (!existsSync(filePath)) {
+      throw new NotFoundException('File not found');
+    }
+
+    return res.sendFile(filePath);
   }
 }

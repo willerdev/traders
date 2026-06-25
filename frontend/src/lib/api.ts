@@ -417,6 +417,7 @@ export interface PayoutRecord {
   status: string;
   weekNumber: number;
   year: number;
+  walletAddress?: string | null;
   requestedAt: string;
 }
 

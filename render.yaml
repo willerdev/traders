@@ -40,6 +40,8 @@ services:
         value: TraderRank Pro
       - key: SIGNAL_HUB_ORDER_TYPE
         value: limit
+      - key: TRADE_OUTCOME_WEBHOOK_SECRET
+        sync: false
 
   - type: web
     name: traders-web

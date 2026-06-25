@@ -25,6 +25,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useThemeStore } from "@/stores/theme";
 import { api, type UserSettings, type KycRecord } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { AuthenticatedImage } from "@/components/ui/authenticated-image";
 
 const KYC_STATUS: Record<
   KycRecord["status"],
@@ -74,8 +75,11 @@ function KycUploadField({
       />
       {url ? (
         <div className="relative overflow-hidden rounded-lg border border-[var(--color-border)]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={url} alt={label} className="max-h-32 w-full object-contain bg-black/20" />
+          <AuthenticatedImage
+            src={url}
+            alt={label}
+            className="max-h-32 w-full object-contain bg-black/20"
+          />
           {!disabled && (
             <Button
               type="button"

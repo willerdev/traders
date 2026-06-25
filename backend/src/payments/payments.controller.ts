@@ -48,6 +48,7 @@ export class PaymentsController {
   }
 
   @Get('promo/validate')
+  @UseGuards(JwtAuthGuard)
   validatePromo(@Query('code') code: string) {
     return this.paymentsService.validatePromoCode(code);
   }
@@ -80,14 +81,19 @@ export class PaymentsController {
     @Headers('x-nowpayments-sig') signature?: string,
   ) {
     const raw = req.rawBody?.toString() || JSON.stringify(body);
-    const ipnSecret = process.env.NOWPAYMENTS_IPN_SECRET;
-    if (ipnSecret) {
-      if (!signature || !this.nowPayments.verifyIpnSignature(raw, signature)) {
-        throw new UnauthorizedException('Invalid IPN signature');
+    const ipnSecret = process.env.NOWPAYMENTS_IPN_SECRET?.trim();
+
+    if (!ipnSecret) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new UnauthorizedException('Payment IPN is not configured');
       }
-    } else if (signature && !this.nowPayments.verifyIpnSignature(raw, signature)) {
-      return { error: 'Invalid signature' };
+    } else if (
+      !signature ||
+      !this.nowPayments.verifyIpnSignature(raw, signature)
+    ) {
+      throw new UnauthorizedException('Invalid IPN signature');
     }
+
     return this.paymentsService.handleIpn(
       body as Parameters<PaymentsService['handleIpn']>[0],
     );

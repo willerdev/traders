@@ -19,8 +19,8 @@ export const ENTRY_TOLERANCE_PERCENT = 0.2;
 export const TRADER_PAYOUT_PERCENT = 40;
 export const PLATFORM_PAYOUT_PERCENT = 60;
 export const STARTING_BALANCE = 1000;
-export const RISK_PERCENT = 2;
-export const MAX_RISK_PER_TRADE = 20;
+export const RISK_PERCENT = 5;
+export const MAX_RISK_PER_TRADE = 50;
 export const REGISTRATION_FEE_USDT = 5;
 export const TP_REWARD_USD = 5;
 

@@ -19,7 +19,7 @@ const features = [
     icon: TrendingUp,
     title: "Virtual Funded Accounts",
     description:
-      "Start with $1,000 virtual balance. Fixed 2% risk per trade. Scale up to $25,000 as you climb ranks.",
+      "Start with $1,000 virtual balance. Fixed 5% risk per trade. Scale up to $25,000 as you climb ranks.",
   },
   {
     icon: Shield,
@@ -112,7 +112,7 @@ export default function HomePage() {
         >
           {[
             { label: "Starting Balance", value: "$1,000" },
-            { label: "Risk Per Trade", value: "2%" },
+            { label: "Risk Per Trade", value: "5%" },
             { label: "Trader Payout", value: "40%" },
             { label: "Max Account", value: "$25,000" },
           ].map((stat) => (

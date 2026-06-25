@@ -50,8 +50,7 @@ export default function RegisterPage() {
             </div>
             <h2 className="text-xl font-bold text-white">Registration Successful</h2>
             <p className="mt-2 text-gray-400">
-              Sign in and pay 5 USDT (or use promo{" "}
-              <strong className="text-primary">win2026</strong>) to start submitting setups.
+              Sign in and complete registration (5 USDT) to start submitting setups.
               Identity verification is only required when you request a payout.
             </p>
             <Button className="mt-6" onClick={() => router.push("/login")}>
@@ -73,7 +72,7 @@ export default function RegisterPage() {
         <Card>
           <CardHeader className="text-center">
             <Badge variant="gold" className="mx-auto mb-3 w-fit">
-              5 USDT · Promo win2026 = free
+              5 USDT registration
             </Badge>
             <CardTitle className="text-2xl">Join TraderRank Pro</CardTitle>
             <CardDescription>

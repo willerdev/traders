@@ -14,6 +14,7 @@ import {
   STARTING_BALANCE,
 } from '../common/constants';
 import { randomBytes } from 'crypto';
+import { verifyMessage } from 'viem';
 
 @Injectable()
 export class AuthService {
@@ -76,7 +77,25 @@ export class AuthService {
   }
 
   async walletLogin(dto: WalletLoginDto, ip?: string) {
-    const address = dto.walletAddress.toLowerCase();
+    const address = dto.walletAddress.toLowerCase() as `0x${string}`;
+
+    if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+      throw new BadRequestException('Invalid wallet address');
+    }
+
+    const valid = await verifyMessage({
+      address,
+      message: dto.message,
+      signature: dto.signature as `0x${string}`,
+    }).catch(() => false);
+
+    if (!valid) {
+      throw new UnauthorizedException('Invalid wallet signature');
+    }
+
+    if (!dto.message.toLowerCase().includes(address.slice(2).toLowerCase())) {
+      throw new BadRequestException('Signed message must include wallet address');
+    }
 
     let user = await this.prisma.user.findUnique({
       where: { walletAddress: address },

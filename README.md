@@ -94,7 +94,7 @@ npm run docker:up
 
 ### Virtual Funded Accounts
 - Starting balance: **$1,000**
-- Fixed risk: **2%** ($20 max per trade)
+- Fixed risk: **5%** ($50 max per trade)
 - Automatic scaling: Bronze ($1K) → Elite ($25K)
 
 ### Signal Submission

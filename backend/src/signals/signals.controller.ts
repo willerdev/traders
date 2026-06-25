@@ -30,7 +30,12 @@ export class SignalsController {
   ) {}
 
   @Post('hub/callback')
-  hubCallback(@Body() payload: Record<string, unknown>) {
+  hubCallback(
+    @Headers('x-webhook-secret') secret: string | undefined,
+    @Query('key') key: string | undefined,
+    @Body() payload: Record<string, unknown>,
+  ) {
+    this.signalsService.verifyWebhookSecret(secret || key);
     return this.signalsService.handleHubCallback(payload);
   }
 
@@ -213,7 +218,14 @@ export class SignalsController {
 
   @Get(':signalId')
   @UseGuards(JwtAuthGuard)
-  getSignal(@Param('signalId') signalId: string) {
-    return this.signalsService.getSignal(signalId);
+  getSignal(
+    @Request() req: { user: { id: string; role: string } },
+    @Param('signalId') signalId: string,
+  ) {
+    return this.signalsService.getSignal(
+      signalId,
+      req.user.id,
+      req.user.role,
+    );
   }
 }

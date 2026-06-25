@@ -6,13 +6,17 @@ const prisma = new PrismaClient();
 async function main() {
   await prisma.platformConfig.upsert({
     where: { id: 'default' },
-    update: { requireKycForPayouts: true, tpRewardUsd: 5 },
+    update: {
+      requireKycForPayouts: true,
+      tpRewardUsd: 5,
+      riskPercent: 5,
+    },
     create: {
       id: 'default',
       registrationFeeUsdt: 5,
       traderPayoutPercent: 40,
       platformPayoutPercent: 60,
-      riskPercent: 2,
+      riskPercent: 5,
       startingBalance: 1000,
       winPoints: 10,
       lossPoints: -5,
@@ -20,6 +24,13 @@ async function main() {
       entryTolerancePercent: 0.2,
       tpRewardUsd: 5,
       requireKycForPayouts: true,
+    },
+  });
+
+  await prisma.virtualAccount.updateMany({
+    data: {
+      riskPercent: 5,
+      maxRiskPerTrade: 50,
     },
   });
 
@@ -45,8 +56,8 @@ async function main() {
         virtualAccount: {
           create: {
             balance: 1000,
-            maxRiskPerTrade: 20,
-            riskPercent: 2,
+            maxRiskPerTrade: 50,
+            riskPercent: 5,
           },
         },
       },

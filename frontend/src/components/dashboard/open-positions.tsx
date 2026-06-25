@@ -8,12 +8,17 @@ import { api, type HubLogEvent, type HubPosition } from "@/lib/api";
 import { formatCurrency, cn } from "@/lib/utils";
 import {
   Activity,
+  EyeOff,
   Loader2,
   RefreshCw,
   TrendingDown,
   TrendingUp,
   X,
 } from "lucide-react";
+import {
+  readMt5PanelVisible,
+  writeMt5PanelVisible,
+} from "@/lib/platform-rules";
 
 function positionSide(pos: HubPosition): "BUY" | "SELL" | string {
   const t = String(pos.type ?? "").toLowerCase();
@@ -22,7 +27,56 @@ function positionSide(pos: HubPosition): "BUY" | "SELL" | string {
   return t.toUpperCase() || "—";
 }
 
-export function OpenPositionsCard() {
+export function Mt5PositionsPanel() {
+  const [visible, setVisible] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    setVisible(readMt5PanelVisible());
+    setHydrated(true);
+  }, []);
+
+  function showPanel() {
+    writeMt5PanelVisible(true);
+    setVisible(true);
+  }
+
+  function hidePanel() {
+    writeMt5PanelVisible(false);
+    setVisible(false);
+  }
+
+  if (!hydrated) {
+    return null;
+  }
+
+  if (!visible) {
+    return (
+      <Card className="lg:col-span-2 border-white/5">
+        <CardContent className="flex flex-col items-start justify-between gap-3 py-4 sm:flex-row sm:items-center">
+          <div>
+            <p className="text-sm font-medium text-gray-300">Live MT5 positions</p>
+            <p className="text-xs text-gray-500">
+              Hidden — show this panel to view Signal Hub executions and close trades
+            </p>
+          </div>
+          <Button variant="secondary" size="sm" onClick={showPanel} className="gap-1">
+            <Activity className="h-3.5 w-3.5" />
+            Show MT5 panel
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return <OpenPositionsCard onHide={hidePanel} />;
+}
+
+type OpenPositionsCardProps = {
+  onHide?: () => void;
+};
+
+function OpenPositionsCard({ onHide }: OpenPositionsCardProps) {
   const [positions, setPositions] = useState<HubPosition[]>([]);
   const [logs, setLogs] = useState<HubLogEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -98,6 +152,18 @@ export function OpenPositionsCard() {
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
+          {onHide && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onHide}
+              className="gap-1 text-gray-400"
+              title="Hide MT5 panel"
+            >
+              <EyeOff className="h-3.5 w-3.5" />
+              Hide
+            </Button>
+          )}
           <Button
             variant="secondary"
             size="sm"

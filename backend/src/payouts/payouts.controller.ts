@@ -5,16 +5,25 @@ import {
   Body,
   UseGuards,
   Request,
+  Headers,
+  Req,
+  UnauthorizedException,
 } from '@nestjs/common';
+import type { RawBodyRequest } from '@nestjs/common';
+import type { Request as ExpressRequest } from 'express';
 import { PayoutService } from './payout.service';
 import { RequestPayoutDto } from '../common/dto';
 import { JwtAuthGuard, RolesGuard } from '../auth/guards';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { NowPaymentsService } from '../payments/nowpayments.service';
 
 @Controller('payouts')
 @UseGuards(JwtAuthGuard)
 export class PayoutsController {
-  constructor(private payoutService: PayoutService) {}
+  constructor(
+    private payoutService: PayoutService,
+    private nowPayments: NowPaymentsService,
+  ) {}
 
   @Get()
   getHistory(@Request() req: { user: { id: string } }) {
@@ -41,5 +50,28 @@ export class PayoutsController {
     @Body('payoutId') payoutId: string,
   ) {
     return this.payoutService.approvePayout(payoutId, req.user.id);
+  }
+
+  @Post('ipn')
+  async handleIpn(
+    @Req() req: RawBodyRequest<ExpressRequest>,
+    @Body() body: Record<string, unknown>,
+    @Headers('x-nowpayments-sig') signature?: string,
+  ) {
+    const raw = req.rawBody?.toString() || JSON.stringify(body);
+    const ipnSecret = process.env.NOWPAYMENTS_IPN_SECRET?.trim();
+
+    if (!ipnSecret) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new UnauthorizedException('Payout IPN is not configured');
+      }
+    } else if (
+      !signature ||
+      !this.nowPayments.verifyIpnSignature(raw, signature)
+    ) {
+      throw new UnauthorizedException('Invalid IPN signature');
+    }
+
+    return this.payoutService.handlePayoutIpn(body);
   }
 }

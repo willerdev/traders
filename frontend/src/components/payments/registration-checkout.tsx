@@ -2,11 +2,10 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { PromoCodeForm } from "@/components/payments/promo-code-form";
 import { RegistrationPaymentPanel } from "@/components/payments/registration-payment-panel";
+import { PromoCodeForm } from "@/components/payments/promo-code-form";
 import { cn } from "@/lib/utils";
-
-type Panel = "pay" | "promo" | null;
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 export function RegistrationCheckout({
   onComplete,
@@ -15,45 +14,54 @@ export function RegistrationCheckout({
   onComplete?: () => void;
   compact?: boolean;
 }) {
-  const [panel, setPanel] = useState<Panel>(null);
-
-  function select(next: Panel) {
-    setPanel((current) => (current === next ? null : next));
-  }
+  const [showPay, setShowPay] = useState(false);
+  const [showPromo, setShowPromo] = useState(false);
 
   return (
     <div className={cn("space-y-3", !compact && "mt-2")}>
       <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
-          variant={panel === "pay" ? "default" : "secondary"}
-          onClick={() => select("pay")}
+          variant={showPay ? "default" : "secondary"}
+          onClick={() => {
+            setShowPay((v) => !v);
+            setShowPromo(false);
+          }}
         >
           Pay 5 USDT
         </Button>
         <Button
           size="sm"
-          variant={panel === "promo" ? "default" : "secondary"}
-          onClick={() => select("promo")}
+          variant="ghost"
+          className="gap-1 text-muted"
+          onClick={() => {
+            setShowPromo((v) => !v);
+            setShowPay(false);
+          }}
         >
-          Promo code
+          Have an invite code?
+          {showPromo ? (
+            <ChevronUp className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5" />
+          )}
         </Button>
       </div>
 
-      {panel === "pay" && (
+      {showPay && (
         <RegistrationPaymentPanel
           onComplete={() => {
-            setPanel(null);
+            setShowPay(false);
             onComplete?.();
           }}
         />
       )}
 
-      {panel === "promo" && (
+      {showPromo && (
         <div className="rounded-lg border border-[var(--color-border)] p-4">
           <PromoCodeForm
             onSuccess={() => {
-              setPanel(null);
+              setShowPromo(false);
               onComplete?.();
             }}
           />

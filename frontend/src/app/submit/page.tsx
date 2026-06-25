@@ -719,9 +719,8 @@ export default function SubmitSignalPage() {
             <CardHeader>
               <CardTitle>Pay registration to submit</CardTitle>
               <CardDescription>
-                You can fill in setups and save drafts now. Pay 5 USDT (or use promo{" "}
-                <strong className="text-primary">win2026</strong>) to lock in and send
-                setups. Identity verification is only required when you request a payout.
+                You can fill in setups and save drafts now. Complete registration (5 USDT)
+                to lock in and send setups. KYC is only required when you request a payout.
               </CardDescription>
             </CardHeader>
             <CardContent>

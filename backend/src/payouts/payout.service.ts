@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import {
   PLATFORM_PAYOUT_PERCENT,
   TRADER_PAYOUT_PERCENT,
@@ -10,6 +10,8 @@ import { ComplianceService } from '../compliance/compliance.service';
 
 @Injectable()
 export class PayoutService {
+  private readonly logger = new Logger(PayoutService.name);
+
   constructor(
     private prisma: PrismaService,
     private nowPayments: NowPaymentsService,
@@ -31,9 +33,17 @@ export class PayoutService {
     });
 
     const payouts: Awaited<ReturnType<typeof this.prisma.payout.create>>[] = [];
+    const processedUserIds: string[] = [];
 
     for (const account of accounts) {
+      const existing = await this.prisma.payout.findFirst({
+        where: { userId: account.userId, weekNumber, year },
+      });
+      if (existing) continue;
+
       const virtualProfit = Number(account.weeklyProfit);
+      if (virtualProfit <= 0) continue;
+
       const traderShare = (virtualProfit * TRADER_PAYOUT_PERCENT) / 100;
       const platformShare = (virtualProfit * PLATFORM_PAYOUT_PERCENT) / 100;
 
@@ -51,6 +61,14 @@ export class PayoutService {
       });
 
       payouts.push(payout);
+      processedUserIds.push(account.userId);
+    }
+
+    if (processedUserIds.length > 0) {
+      await this.prisma.virtualAccount.updateMany({
+        where: { userId: { in: processedUserIds } },
+        data: { weeklyProfit: 0 },
+      });
     }
 
     return payouts;
@@ -59,14 +77,26 @@ export class PayoutService {
   async requestPayout(userId: string, payoutId: string, walletAddress: string) {
     await this.compliance.requireKycForPayout(userId);
 
+    const trimmed = walletAddress.trim();
+    if (trimmed.length < 10) {
+      throw new BadRequestException('Valid wallet address is required');
+    }
+
     const payout = await this.prisma.payout.findFirst({
       where: { id: payoutId, userId },
     });
     if (!payout) throw new NotFoundException('Payout not found');
+    if (payout.status !== 'PENDING') {
+      throw new BadRequestException('This payout is no longer open for requests');
+    }
 
     return this.prisma.payout.update({
       where: { id: payoutId },
-      data: { walletAddress, status: 'PENDING' },
+      data: {
+        walletAddress: trimmed,
+        requestedAt: new Date(),
+        status: 'PENDING',
+      },
     });
   }
 
@@ -132,5 +162,10 @@ export class PayoutService {
       where: { userId },
       orderBy: { requestedAt: 'desc' },
     });
+  }
+
+  async handlePayoutIpn(body: Record<string, unknown>) {
+    this.logger.log(`Payout IPN received: ${JSON.stringify(body).slice(0, 400)}`);
+    return { ok: true };
   }
 }
