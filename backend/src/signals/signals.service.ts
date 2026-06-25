@@ -4,11 +4,12 @@ import {
   ForbiddenException,
   NotFoundException,
   ServiceUnavailableException,
+  UnauthorizedException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
-import { CreateSignalDto, ClaimSetupDto } from '../common/dto';
+import { CreateSignalDto, ClaimSetupDto, TradeOutcomeWebhookDto } from '../common/dto';
 import { createHash } from 'crypto';
 import { ComplianceService } from '../compliance/compliance.service';
 import { ForwardSignalResult, SignalHubService } from './signal-hub.service';
@@ -417,17 +418,181 @@ export class SignalsService {
       exitPrice,
     );
 
+    return this.applySetupOutcome(signal, outcome, exitPrice, 'claim');
+  }
+
+  async archiveSetup(userId: string, signalId: string) {
+    await this.compliance.requireActiveTrader(userId);
+
+    const signal = await this.prisma.signal.findFirst({
+      where: { signalId, userId, status: 'OPEN' },
+      include: { trade: true },
+    });
+    if (!signal) {
+      throw new NotFoundException('Open setup not found');
+    }
+
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.signal.update({
+        where: { id: signal.id },
+        data: {
+          status: 'ARCHIVED',
+          resolvedAt: now,
+        },
+      }),
+      ...(signal.trade
+        ? [
+            this.prisma.trade.update({
+              where: { id: signal.trade.id },
+              data: { closedAt: now },
+            }),
+          ]
+        : []),
+    ]);
+
+    this.logger.log(`Setup archived: ${signal.signalId} by ${userId}`);
+
+    return {
+      status: 'archived',
+      signalId: signal.signalId,
+    };
+  }
+
+  async handleTradeOutcomeWebhook(
+    dto: TradeOutcomeWebhookDto,
+    hubPayload?: Record<string, unknown>,
+  ) {
+    const externalId =
+      dto.signalId ||
+      dto.external_id ||
+      (typeof hubPayload?.external_id === 'string'
+        ? hubPayload.external_id
+        : undefined);
+
+    if (!externalId) {
+      throw new BadRequestException(
+        'signalId or external_id is required',
+      );
+    }
+
+    const signal = await this.prisma.signal.findUnique({
+      where: { signalId: externalId },
+      include: { trade: true },
+    });
+
+    if (!signal) {
+      throw new NotFoundException(`Setup not found: ${externalId}`);
+    }
+    if (signal.status !== 'OPEN') {
+      return {
+        status: 'ignored',
+        reason: 'already_resolved',
+        signalId: signal.signalId,
+        currentStatus: signal.status,
+      };
+    }
+    if (!signal.trade) {
+      throw new BadRequestException('Setup has no associated trade record');
+    }
+
+    const outcome =
+      dto.outcome ??
+      this.outcomeFromHubPayload(hubPayload ?? (dto as Record<string, unknown>));
+
+    if (!outcome) {
+      throw new BadRequestException(
+        'Could not determine outcome — send outcome ("tp"|"sl") or Hub status (done/failed)',
+      );
+    }
+
+    const exitPrice =
+      dto.exit_price ??
+      this.exitPriceFromPayload(hubPayload, signal, outcome) ??
+      (outcome === 'tp'
+        ? Number(signal.takeProfit)
+        : Number(signal.stopLoss));
+
+    await this.priceMonitor.ensureTradeActivated(
+      signal.trade,
+      signal,
+      exitPrice,
+    );
+
+    return this.applySetupOutcome(signal, outcome, exitPrice, 'webhook');
+  }
+
+  async handleHubCallback(payload: Record<string, unknown>) {
+    this.logger.log(
+      `Signal Hub callback: ${JSON.stringify(payload).slice(0, 500)}`,
+    );
+
+    try {
+      return await this.handleTradeOutcomeWebhook(
+        {
+          external_id:
+            typeof payload.external_id === 'string'
+              ? payload.external_id
+              : undefined,
+          status:
+            typeof payload.status === 'string' ? payload.status : undefined,
+          exit_price: this.readNumeric(payload, 'exit_price'),
+        },
+        payload,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Hub callback failed: ${err instanceof Error ? err.message : err}`,
+      );
+      throw err;
+    }
+  }
+
+  verifyWebhookSecret(provided: string | undefined) {
+    const expected =
+      process.env.TRADE_OUTCOME_WEBHOOK_SECRET?.trim() ||
+      process.env.SIGNAL_WEBHOOK_SECRET?.trim();
+    if (!expected) {
+      throw new ServiceUnavailableException(
+        'TRADE_OUTCOME_WEBHOOK_SECRET is not configured on the server',
+      );
+    }
+    if (!provided || provided !== expected) {
+      throw new UnauthorizedException('Invalid webhook secret');
+    }
+  }
+
+  private async applySetupOutcome(
+    signal: {
+      id: string;
+      signalId: string;
+      userId: string;
+      takeProfit: unknown;
+      stopLoss: unknown;
+      trade: { id: string } | null;
+    },
+    outcome: SetupOutcome,
+    exitPrice: number,
+    source: 'claim' | 'webhook',
+  ) {
+    if (!signal.trade) {
+      throw new BadRequestException('Setup has no associated trade record');
+    }
+
     const result =
       outcome === 'tp'
-        ? await this.wallet.creditTpReward(userId, signal.id, exitPrice)
-        : await this.wallet.resolveAsLoss(userId, signal.id, exitPrice);
+        ? await this.wallet.creditTpReward(signal.userId, signal.id, exitPrice)
+        : await this.wallet.resolveAsLoss(signal.userId, signal.id, exitPrice);
 
     if (!result) {
-      throw new BadRequestException('Setup could not be resolved — it may already be closed.');
+      throw new BadRequestException(
+        'Setup could not be resolved — it may already be closed.',
+      );
     }
 
     return {
-      status: 'claimed',
+      status: source === 'claim' ? 'claimed' : 'resolved',
+      source,
       outcome,
       signalId: signal.signalId,
       exitPrice,
@@ -435,6 +600,89 @@ export class SignalsService {
       pointsAwarded:
         'scoring' in result ? result.scoring?.totalPoints : undefined,
     };
+  }
+
+  private outcomeFromHubPayload(
+    payload: Record<string, unknown> | null | undefined,
+  ): SetupOutcome | null {
+    if (!payload) return null;
+
+    const explicit = payload.outcome;
+    if (explicit === 'tp' || explicit === 'sl') return explicit;
+
+    const result =
+      payload.result && typeof payload.result === 'object'
+        ? (payload.result as Record<string, unknown>)
+        : null;
+    const profit = result?.profit;
+    if (typeof profit === 'number') {
+      return profit >= 0 ? 'tp' : 'sl';
+    }
+
+    const progress =
+      payload.progress && typeof payload.progress === 'object'
+        ? (payload.progress as Record<string, unknown>)
+        : null;
+    const message = String(progress?.message ?? '').toLowerCase();
+    if (/take profit|\btp\b hit|tp reached|closed in profit/.test(message)) {
+      return 'tp';
+    }
+    if (
+      /stop loss|\bsl\b hit|sl reached|stopped out|closed in loss/.test(
+        message,
+      )
+    ) {
+      return 'sl';
+    }
+
+    const status = String(payload.status ?? '').toLowerCase();
+    if (status === 'failed') return 'sl';
+    if (status === 'done') {
+      const stage = String(progress?.stage ?? '').toLowerCase();
+      if (/fail|sl|stop/.test(stage)) return 'sl';
+      return 'tp';
+    }
+
+    return null;
+  }
+
+  private exitPriceFromPayload(
+    payload: Record<string, unknown> | null | undefined,
+    signal: { takeProfit: unknown; stopLoss: unknown },
+    outcome: SetupOutcome,
+  ): number | undefined {
+    if (!payload) return undefined;
+
+    const fromRoot = this.readNumeric(payload, 'exit_price');
+    if (fromRoot !== undefined) return fromRoot;
+
+    const result =
+      payload.result && typeof payload.result === 'object'
+        ? (payload.result as Record<string, unknown>)
+        : null;
+    const closePrice = this.readNumeric(result ?? {}, 'close_price');
+    if (closePrice !== undefined) return closePrice;
+
+    const price = this.readNumeric(result ?? {}, 'price');
+    if (price !== undefined) return price;
+
+    return outcome === 'tp'
+      ? Number(signal.takeProfit)
+      : Number(signal.stopLoss);
+  }
+
+  private readNumeric(
+    obj: Record<string, unknown> | null | undefined,
+    key: string,
+  ): number | undefined {
+    if (!obj) return undefined;
+    const value = obj[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim()) {
+      const n = Number(value);
+      if (Number.isFinite(n)) return n;
+    }
+    return undefined;
   }
 
   private async inferHubOutcome(
@@ -561,13 +809,6 @@ export class SignalsService {
       throw new ServiceUnavailableException('Could not fetch hub signals');
     }
     return list;
-  }
-
-  async handleHubCallback(payload: Record<string, unknown>) {
-    this.logger.log(
-      `Signal Hub callback: ${JSON.stringify(payload).slice(0, 500)}`,
-    );
-    return { ok: true };
   }
 
   getHubHealth() {

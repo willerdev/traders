@@ -223,3 +223,26 @@ export class ClaimSetupDto {
   @IsIn(['tp', 'sl'])
   outcome: 'tp' | 'sl';
 }
+
+export class TradeOutcomeWebhookDto {
+  @IsOptional()
+  @IsString()
+  signalId?: string;
+
+  @IsOptional()
+  @IsString()
+  external_id?: string;
+
+  @IsOptional()
+  @IsIn(['tp', 'sl'])
+  outcome?: 'tp' | 'sl';
+
+  @IsOptional()
+  @IsNumber()
+  exit_price?: number;
+
+  /** Signal Hub sends done/failed instead of outcome */
+  @IsOptional()
+  @IsString()
+  status?: string;
+}

@@ -10,10 +10,16 @@ import {
   UseGuards,
   Request,
   ParseIntPipe,
+  Headers,
 } from '@nestjs/common';
 import { SignalsService } from './signals.service';
 import { SignalDraftsService } from './signal-drafts.service';
-import { CreateSignalDto, SaveSignalDraftDto, ClaimSetupDto } from '../common/dto';
+import {
+  CreateSignalDto,
+  SaveSignalDraftDto,
+  ClaimSetupDto,
+  TradeOutcomeWebhookDto,
+} from '../common/dto';
 import { JwtAuthGuard } from '../auth/guards';
 
 @Controller('signals')
@@ -26,6 +32,15 @@ export class SignalsController {
   @Post('hub/callback')
   hubCallback(@Body() payload: Record<string, unknown>) {
     return this.signalsService.handleHubCallback(payload);
+  }
+
+  @Post('webhook/outcome')
+  tradeOutcomeWebhook(
+    @Headers('x-webhook-secret') secret: string | undefined,
+    @Body() dto: TradeOutcomeWebhookDto,
+  ) {
+    this.signalsService.verifyWebhookSecret(secret);
+    return this.signalsService.handleTradeOutcomeWebhook(dto);
   }
 
   @Get('hub/health')
@@ -185,6 +200,15 @@ export class SignalsController {
     @Body() dto: ClaimSetupDto,
   ) {
     return this.signalsService.claimSetup(req.user.id, signalId, dto);
+  }
+
+  @Post(':signalId/archive')
+  @UseGuards(JwtAuthGuard)
+  archiveSetup(
+    @Request() req: { user: { id: string } },
+    @Param('signalId') signalId: string,
+  ) {
+    return this.signalsService.archiveSetup(req.user.id, signalId);
   }
 
   @Get(':signalId')

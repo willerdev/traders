@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api, type OpenSetupItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, Loader2, RefreshCw, Target } from "lucide-react";
+import { CheckCircle2, Loader2, RefreshCw, Target, Archive } from "lucide-react";
 
 type Props = {
   onClaimed?: () => void;
@@ -17,6 +17,7 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [claiming, setClaiming] = useState<string | null>(null);
+  const [archiving, setArchiving] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -68,6 +69,30 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
     }
   }
 
+  async function handleArchive(signalId: string, symbol: string) {
+    if (
+      !confirm(
+        `Archive ${symbol}? It will be removed from open setups with no score or wallet change.`,
+      )
+    ) {
+      return;
+    }
+
+    setArchiving(signalId);
+    setSuccess(null);
+    setError(null);
+    try {
+      await api.signals.archive(signalId);
+      setSuccess(`${symbol} archived`);
+      await load();
+      onClaimed?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Archive failed");
+    } finally {
+      setArchiving(null);
+    }
+  }
+
   const claimable = items.filter((i) => i.resolution.claimable);
   const openOnly = items.filter((i) => !i.resolution.claimable);
 
@@ -85,7 +110,7 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
           </CardTitle>
           <p className="mt-1 text-sm text-gray-500">
             Open setups that hit TP or SL but were not auto-recorded — claim to
-            update your score and wallet
+            update your score and wallet, or archive to dismiss without scoring
           </p>
         </div>
         <Button
@@ -131,6 +156,7 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
               const res = setup.resolution;
               const claimingTp = claiming === `${setup.signalId}:tp`;
               const claimingSl = claiming === `${setup.signalId}:sl`;
+              const isArchiving = archiving === setup.signalId;
 
               return (
                 <div
@@ -207,6 +233,22 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
                           Awaiting TP/SL
                         </span>
                       )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1 text-gray-400"
+                        disabled={Boolean(claiming) || isArchiving}
+                        onClick={() =>
+                          handleArchive(setup.signalId, setup.symbol)
+                        }
+                      >
+                        {isArchiving ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Archive className="h-3.5 w-3.5" />
+                        )}
+                        Archive
+                      </Button>
                     </div>
                   </div>
                 </div>

@@ -195,6 +195,11 @@ class ApiClient {
         method: "POST",
         body: JSON.stringify({ outcome }),
       }),
+    archive: (signalId: string) =>
+      this.request<{ status: string; signalId: string }>(
+        `/signals/${signalId}/archive`,
+        { method: "POST" },
+      ),
     executionStatus: (signalId: string) =>
       this.request<HubSignalStatus>(`/signals/hub/execution/${signalId}`),
     executionLogs: (params?: { signal_id?: string; limit?: number }) => {

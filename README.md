@@ -150,8 +150,10 @@ All routes are prefixed with `/api/v1`. Interactive docs: `GET /api/docs` (Swagg
 | POST | `/signals` | Submit trading signal (forwards chart to Signal Hub) |
 | GET | `/signals` | List my signals |
 | POST | `/signals/{signalId}/claim` | Claim TP/SL for an unresolved open setup |
+| POST | `/signals/{signalId}/archive` | Archive an open setup (no score/wallet change) |
 | GET | `/signals/{signalId}/resolution` | Check whether a setup can be claimed |
 | GET | `/signals/open/unresolved` | Open setups with claim eligibility |
+| POST | `/signals/webhook/outcome` | **Webhook** — notify TP/SL hit (see below) |
 | GET | `/signals/{signalId}` | Signal detail |
 | GET/POST | `/signals/drafts` | List or create drafts |
 | GET/PUT/DELETE | `/signals/drafts/{draftId}` | Draft CRUD |
@@ -167,7 +169,45 @@ All routes are prefixed with `/api/v1`. Interactive docs: `GET /api/docs` (Swagg
 | GET | `/signals/hub/positions` | Open MT5 positions |
 | POST | `/signals/hub/positions/{ticket}/close` | Close one position |
 | POST | `/signals/hub/positions/close-all` | Close all positions |
-| POST | `/signals/hub/callback` | Hub webhook (done/failed) |
+| POST | `/signals/hub/callback` | Signal Hub auto-callback (done/failed → resolve TP/SL) |
+
+### Trade outcome webhook
+
+Notify the platform when a setup hits **TP** or **SL** so wallet balance and scoring update automatically.
+
+**Endpoint:** `POST /api/v1/signals/webhook/outcome`
+
+**Header:** `x-webhook-secret: <TRADE_OUTCOME_WEBHOOK_SECRET>`
+
+**Body (explicit outcome):**
+```json
+{
+  "signalId": "your-platform-signal-id",
+  "outcome": "tp",
+  "exit_price": 2650.5
+}
+```
+
+**Body (Signal Hub–compatible):** Hub POSTs to your `callback_url` when a signal reaches `done` or `failed`. The same payload is accepted at `/signals/hub/callback` (no secret required — only registered `external_id` values are resolved):
+
+```json
+{
+  "id": "hub-signal-uuid",
+  "external_id": "your-platform-signal-id",
+  "status": "done",
+  "result": { "profit": 12.5 },
+  "progress": { "stage": "closed", "message": "TP hit", "executed": true }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `signalId` / `external_id` | Platform signal ID from submit response |
+| `outcome` | `"tp"` or `"sl"` (optional if `status` / `result` / `progress.message` is sent) |
+| `exit_price` | Optional exit price (defaults to setup TP/SL) |
+| `status` | Hub: `done` → TP, `failed` → SL |
+
+Set `TRADE_OUTCOME_WEBHOOK_SECRET` in backend env. When submitting signals, the backend sends `callback_url` to Signal Hub if `API_PUBLIC_URL` is HTTPS (`…/api/v1/signals/hub/callback`).
 
 ### Uploads
 | Method | Endpoint | Description |

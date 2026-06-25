@@ -39,6 +39,7 @@ enum SignalStatus {
   OPEN
   WON
   LOST
+  ARCHIVED
   CANCELLED
   REJECTED_DUPLICATE
 }
