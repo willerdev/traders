@@ -44,6 +44,7 @@ export interface SignalHubPayload {
   provider_name: string;
   message: string;
   callback_url?: string;
+  image_url?: string;
 }
 
 export interface SignalHubResult {
@@ -123,6 +124,7 @@ export class SignalHubService {
   private readonly baseUrl: string;
   private readonly providerName: string;
   private readonly lotScale: number | null;
+  private readonly apiPublicUrl: string | null;
   private readonly callbackUrl: string | null;
 
   constructor(
@@ -144,10 +146,31 @@ export class SignalHubService {
     this.lotScale = Number.isFinite(scale) ? scale : 1.0;
     const apiPublic =
       this.config.get<string>('API_PUBLIC_URL')?.replace(/\/$/, '') ||
-      process.env.API_PUBLIC_URL?.replace(/\/$/, '');
+      process.env.API_PUBLIC_URL?.replace(/\/$/, '') ||
+      null;
+    this.apiPublicUrl = apiPublic;
     this.callbackUrl = apiPublic
       ? `${apiPublic}/api/v1/signals/hub/callback`
       : null;
+  }
+
+  /** Signal Hub requires HTTPS chart URLs for Telegram forwarding. */
+  private resolveHubImageUrl(screenshotUrl: string): string | undefined {
+    const raw = screenshotUrl.trim();
+    if (!raw) return undefined;
+
+    if (raw.startsWith('https://')) return raw;
+
+    if (raw.startsWith('/')) {
+      if (!this.apiPublicUrl?.startsWith('https://')) return undefined;
+      return `${this.apiPublicUrl}${raw}`;
+    }
+
+    if (this.apiPublicUrl?.startsWith('https://')) {
+      return `${this.apiPublicUrl}/${raw.replace(/^\//, '')}`;
+    }
+
+    return undefined;
   }
 
   private getOrderType(): SignalHubOrderType {
@@ -249,6 +272,11 @@ export class SignalHubService {
 
     if (this.callbackUrl?.startsWith('https://')) {
       payload.callback_url = this.callbackUrl;
+    }
+
+    const imageUrl = this.resolveHubImageUrl(dto.screenshotUrl);
+    if (imageUrl) {
+      payload.image_url = imageUrl;
     }
 
     return payload;

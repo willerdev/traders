@@ -123,17 +123,90 @@ npm run docker:up
 
 ## API Endpoints
 
+All routes are prefixed with `/api/v1`. Interactive docs: `GET /api/docs` (Swagger).
+
+### Auth
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/auth/register` | Register with email |
 | POST | `/auth/login` | Email login |
 | POST | `/auth/wallet` | MetaMask wallet login |
+| GET | `/auth/verify-email` | Verify email token |
+
+### Users & KYC
+| Method | Endpoint | Description |
+|--------|----------|-------------|
 | GET | `/users/dashboard` | Trader dashboard data |
-| POST | `/signals` | Submit trading signal |
+| GET | `/users/profile` | Profile details |
+| PATCH | `/users/profile` | Update profile |
+| GET | `/users/settings` | Settings bundle |
+| PATCH | `/users/address` | Update address |
+| GET | `/users/kyc` | KYC status |
+| POST | `/users/kyc/submit` | Submit KYC documents |
+
+### Signals & drafts
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/signals` | Submit trading signal (forwards chart to Signal Hub) |
+| GET | `/signals` | List my signals |
+| GET | `/signals/{signalId}` | Signal detail |
+| GET/POST | `/signals/drafts` | List or create drafts |
+| GET/PUT/DELETE | `/signals/drafts/{draftId}` | Draft CRUD |
+
+### Signal Hub (MT5 execution proxy)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/signals/hub/health` | Hub configuration status |
+| GET | `/signals/hub/list` | Hub signals for current trader |
+| GET | `/signals/hub/logs` | Execution activity log |
+| GET | `/signals/hub/execution/{signalId}` | Execution status |
+| POST | `/signals/hub/resend/{signalId}` | Resend signal to Hub |
+| GET | `/signals/hub/positions` | Open MT5 positions |
+| POST | `/signals/hub/positions/{ticket}/close` | Close one position |
+| POST | `/signals/hub/positions/close-all` | Close all positions |
+| POST | `/signals/hub/callback` | Hub webhook (done/failed) |
+
+### Uploads
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/uploads/setup` | Upload chart screenshot |
+| POST | `/uploads/setup/analyze` | AI chart analysis |
+| POST | `/uploads/kyc` | Upload KYC document |
+
+### Leaderboard & payouts
+| Method | Endpoint | Description |
+|--------|----------|-------------|
 | GET | `/leaderboard` | Rankings |
-| POST | `/payments/registration` | Pay 5 USDT fee |
+| GET | `/leaderboard/my-rank` | Current user rank |
 | GET | `/payouts` | Payout history |
-| GET | `/analytics/dashboard` | Admin analytics |
+| POST | `/payouts/request` | Request payout |
+| POST | `/payouts/approve` | Approve payout (admin) |
+
+### Payments
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/payments/registration` | Pay registration fee (USDT) |
+| POST | `/payments/apply-promo` | Apply promo code |
+| GET | `/payments/promo/validate` | Validate promo code |
+| GET | `/payments/history` | Payment history |
+| GET | `/payments/wallet` | Wallet transactions |
+| GET | `/payments/{paymentId}/status` | Payment status |
+| POST | `/payments/ipn` | NOWPayments IPN webhook |
+
+### Admin & analytics
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/analytics/dashboard` | Platform analytics |
+| GET | `/admin/overview` | Admin dashboard |
+| GET | `/admin/kyc/pending` | Pending KYC queue |
+| POST | `/admin/kyc/{userId}/approve` | Approve KYC |
+| POST | `/admin/kyc/{userId}/reject` | Reject KYC |
+| GET | `/admin/users` | List users |
+| POST | `/admin/users/{userId}/suspend` | Suspend user |
+| GET | `/admin/signals` | List all signals |
+| GET | `/admin/payouts` | List payouts |
+| GET | `/admin/payouts/pending` | Pending payouts |
+| POST | `/admin/payouts/{payoutId}/approve` | Approve payout |
 
 ## User Roles
 
