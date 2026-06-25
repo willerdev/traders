@@ -19,6 +19,7 @@ import {
   SaveSignalDraftDto,
   ClaimSetupDto,
   TradeOutcomeWebhookDto,
+  TradeLifecycleWebhookDto,
 } from '../common/dto';
 import { JwtAuthGuard } from '../auth/guards';
 
@@ -42,10 +43,21 @@ export class SignalsController {
   @Post('webhook/outcome')
   tradeOutcomeWebhook(
     @Headers('x-webhook-secret') secret: string | undefined,
+    @Query('key') key: string | undefined,
     @Body() dto: TradeOutcomeWebhookDto,
   ) {
-    this.signalsService.verifyWebhookSecret(secret);
+    this.signalsService.verifyWebhookSecret(secret || key);
     return this.signalsService.handleTradeOutcomeWebhook(dto);
+  }
+
+  @Post('webhook/trades')
+  tradeLifecycleWebhook(
+    @Headers('x-webhook-secret') secret: string | undefined,
+    @Query('key') key: string | undefined,
+    @Body() dto: TradeLifecycleWebhookDto,
+  ) {
+    this.signalsService.verifyWebhookSecret(secret || key);
+    return this.signalsService.handleTradeLifecycleWebhook(dto);
   }
 
   @Get('hub/health')

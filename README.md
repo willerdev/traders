@@ -153,7 +153,8 @@ All routes are prefixed with `/api/v1`. Interactive docs: `GET /api/docs` (Swagg
 | POST | `/signals/archive/{signalId}` | Archive an open setup (no score/wallet change) |
 | GET | `/signals/{signalId}/resolution` | Check whether a setup can be claimed |
 | GET | `/signals/open/unresolved` | Open setups with claim eligibility |
-| POST | `/signals/webhook/outcome` | **Webhook** — notify TP/SL hit (see below) |
+| POST | `/signals/webhook/outcome` | **Webhook** — notify TP/SL hit only (see below) |
+| POST | `/signals/webhook/trades` | **Webhook** — sync opened / closed trades (entry, SL, TP, sender) — [full docs](../docs/TRADE_WEBHOOK.md) |
 | GET | `/signals/{signalId}` | Signal detail |
 | GET/POST | `/signals/drafts` | List or create drafts |
 | GET/PUT/DELETE | `/signals/drafts/{draftId}` | Draft CRUD |
@@ -208,6 +209,42 @@ Notify the platform when a setup hits **TP** or **SL** so wallet balance and sco
 | `status` | Hub: `done` → TP, `failed` → SL |
 
 Set `TRADE_OUTCOME_WEBHOOK_SECRET` in backend env. When submitting signals, the backend sends `callback_url` to Signal Hub if `API_PUBLIC_URL` is HTTPS (`…/api/v1/signals/hub/callback`).
+
+### Trade lifecycle webhook (opened / closed)
+
+Sync **opened** and **closed** trades with entry, SL, TP, and sender so the platform knows who is in a trade vs who hit TP/SL.
+
+**Endpoint:** `POST /api/v1/signals/webhook/trades`  
+**Docs:** [docs/TRADE_WEBHOOK.md](docs/TRADE_WEBHOOK.md)
+
+**Auth:** `x-webhook-secret: <TRADE_OUTCOME_WEBHOOK_SECRET>` or `?key=<secret>`
+
+**Open trade:**
+```json
+{
+  "event": "opened",
+  "sender": "Trader_Name",
+  "signalId": "platform-signal-id",
+  "entry": 1.0855,
+  "sl": 1.082,
+  "tp": 1.092,
+  "symbol": "EURUSD",
+  "direction": "buy"
+}
+```
+
+**Close at TP:**
+```json
+{
+  "event": "closed",
+  "sender": "Trader_Name",
+  "signalId": "platform-signal-id",
+  "outcome": "tp",
+  "exit_price": 1.092
+}
+```
+
+Batch: send `{ "trades": [ ... ] }` with multiple events in one request.
 
 ### Uploads
 | Method | Endpoint | Description |

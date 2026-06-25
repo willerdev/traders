@@ -10,7 +10,10 @@ import {
   Equals,
   IsIn,
   ValidateIf,
+  IsArray,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { TradeDirection, KycDocumentType } from '@prisma/client';
 
 export class RegisterDto {
@@ -256,4 +259,134 @@ export class TradeOutcomeWebhookDto {
   @IsOptional()
   @IsString()
   status?: string;
+}
+
+/** Trade lifecycle sync — opened / in-trade / closed (TP or SL). */
+export class TradeLifecycleItemDto {
+  @IsIn(['opened', 'open', 'closed'])
+  event: 'opened' | 'open' | 'closed';
+
+  @IsString()
+  @IsNotEmpty()
+  sender: string;
+
+  @IsOptional()
+  @IsString()
+  sendername?: string;
+
+  @IsOptional()
+  @IsString()
+  signalId?: string;
+
+  @IsOptional()
+  @IsString()
+  external_id?: string;
+
+  @IsOptional()
+  @IsString()
+  symbol?: string;
+
+  @IsOptional()
+  @IsIn(['buy', 'sell', 'BUY', 'SELL'])
+  direction?: string;
+
+  @IsOptional()
+  @IsNumber()
+  entry?: number;
+
+  @IsOptional()
+  @IsNumber()
+  sl?: number;
+
+  @IsOptional()
+  @IsNumber()
+  tp?: number;
+
+  @IsOptional()
+  @IsNumber()
+  exit_price?: number;
+
+  @IsOptional()
+  @IsIn(['tp', 'sl'])
+  outcome?: 'tp' | 'sl';
+
+  @IsOptional()
+  @IsNumber()
+  ticket?: number;
+
+  @IsOptional()
+  @IsString()
+  opened_at?: string;
+
+  @IsOptional()
+  @IsString()
+  closed_at?: string;
+}
+
+export class TradeLifecycleWebhookDto {
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TradeLifecycleItemDto)
+  trades?: TradeLifecycleItemDto[];
+
+  @IsOptional()
+  @IsIn(['opened', 'open', 'closed'])
+  event?: 'opened' | 'open' | 'closed';
+
+  @IsOptional()
+  @IsString()
+  sender?: string;
+
+  @IsOptional()
+  @IsString()
+  sendername?: string;
+
+  @IsOptional()
+  @IsString()
+  signalId?: string;
+
+  @IsOptional()
+  @IsString()
+  external_id?: string;
+
+  @IsOptional()
+  @IsString()
+  symbol?: string;
+
+  @IsOptional()
+  @IsIn(['buy', 'sell', 'BUY', 'SELL'])
+  direction?: string;
+
+  @IsOptional()
+  @IsNumber()
+  entry?: number;
+
+  @IsOptional()
+  @IsNumber()
+  sl?: number;
+
+  @IsOptional()
+  @IsNumber()
+  tp?: number;
+
+  @IsOptional()
+  @IsNumber()
+  exit_price?: number;
+
+  @IsOptional()
+  @IsIn(['tp', 'sl'])
+  outcome?: 'tp' | 'sl';
+
+  @IsOptional()
+  @IsNumber()
+  ticket?: number;
+
+  @IsOptional()
+  @IsString()
+  opened_at?: string;
+
+  @IsOptional()
+  @IsString()
+  closed_at?: string;
 }

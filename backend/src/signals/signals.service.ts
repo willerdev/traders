@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
-import { CreateSignalDto, ClaimSetupDto, TradeOutcomeWebhookDto } from '../common/dto';
+import { CreateSignalDto, ClaimSetupDto, TradeOutcomeWebhookDto, TradeLifecycleItemDto, TradeLifecycleWebhookDto } from '../common/dto';
 import { createHash } from 'crypto';
 import { ComplianceService } from '../compliance/compliance.service';
 import { ForwardSignalResult, SignalHubService } from './signal-hub.service';
@@ -20,6 +20,7 @@ import {
 } from '../trades/price-monitor.service';
 import { WalletService } from '../trades/wallet.service';
 import { TpClaimsService } from '../tp-claims/tp-claims.service';
+import { Signal, Trade, User } from '@prisma/client';
 
 @Injectable()
 export class SignalsService {
@@ -495,6 +496,329 @@ export class SignalsService {
       status: 'archived',
       signalId: signal.signalId,
     };
+  }
+
+  async handleTradeLifecycleWebhook(dto: TradeLifecycleWebhookDto) {
+    const items = this.extractLifecycleItems(dto);
+    const results: Record<string, unknown>[] = [];
+
+    for (const item of items) {
+      results.push(await this.processTradeLifecycleItem(item));
+    }
+
+    if (results.length === 1) {
+      return results[0];
+    }
+
+    return {
+      processed: results.length,
+      results,
+    };
+  }
+
+  private extractLifecycleItems(
+    dto: TradeLifecycleWebhookDto,
+  ): TradeLifecycleItemDto[] {
+    if (dto.trades?.length) {
+      return dto.trades;
+    }
+
+    if (dto.event) {
+      const sender = dto.sender?.trim() || dto.sendername?.trim();
+      if (!sender) {
+        throw new BadRequestException(
+          'sender (or sendername) is required for each trade event',
+        );
+      }
+
+      return [
+        {
+          event: dto.event,
+          sender,
+          sendername: dto.sendername,
+          signalId: dto.signalId,
+          external_id: dto.external_id,
+          symbol: dto.symbol,
+          direction: dto.direction,
+          entry: dto.entry,
+          sl: dto.sl,
+          tp: dto.tp,
+          exit_price: dto.exit_price,
+          outcome: dto.outcome,
+          ticket: dto.ticket,
+          opened_at: dto.opened_at,
+          closed_at: dto.closed_at,
+        },
+      ];
+    }
+
+    throw new BadRequestException(
+      'Send a single trade event (event, sender, signalId) or { "trades": [ ... ] }',
+    );
+  }
+
+  private async processTradeLifecycleItem(item: TradeLifecycleItemDto) {
+    const sender = item.sender?.trim() || item.sendername?.trim();
+    if (!sender) {
+      throw new BadRequestException('sender is required on each trade event');
+    }
+
+    const signal = await this.resolveSignalForLifecycle(item, sender);
+    if (!signal) {
+      throw new NotFoundException(
+        `No matching open setup for sender "${sender}"${
+          item.signalId || item.external_id
+            ? ` / signal ${item.signalId || item.external_id}`
+            : ''
+        }`,
+      );
+    }
+
+    this.assertLifecycleSender(signal.user.displayName, signal.userId, sender);
+
+    if (!signal.trade) {
+      throw new BadRequestException('Setup has no associated trade record');
+    }
+
+    const event = item.event === 'open' ? 'opened' : item.event;
+
+    if (event === 'opened') {
+      return this.handleTradeOpenedEvent(signal, item, sender);
+    }
+
+    return this.handleTradeClosedEvent(signal, item, sender);
+  }
+
+  private async resolveSignalForLifecycle(
+    item: TradeLifecycleItemDto,
+    sender: string,
+  ) {
+    const externalId = item.signalId?.trim() || item.external_id?.trim();
+
+    if (externalId) {
+      const signal = await this.prisma.signal.findUnique({
+        where: { signalId: externalId },
+        include: { trade: true, user: true },
+      });
+      return signal;
+    }
+
+    const symbol = item.symbol
+      ? normalizeChartSymbol(item.symbol)
+      : undefined;
+
+    const openSignals = await this.prisma.signal.findMany({
+      where: {
+        status: 'OPEN',
+        ...(symbol ? { symbol } : {}),
+      },
+      include: { trade: true, user: true },
+      orderBy: { submittedAt: 'desc' },
+      take: 100,
+    });
+
+    const senderLower = sender.toLowerCase();
+    return (
+      openSignals.find(
+        (s) =>
+          this.signalHub
+            .toSenderName(s.user.displayName, s.user.id)
+            .toLowerCase() === senderLower,
+      ) ?? null
+    );
+  }
+
+  private assertLifecycleSender(
+    displayName: string,
+    userId: string,
+    sender: string,
+  ) {
+    const expected = this.signalHub.toSenderName(displayName, userId);
+    if (expected.toLowerCase() !== sender.trim().toLowerCase()) {
+      throw new BadRequestException(
+        `sender "${sender}" does not match expected "${expected}" for this setup`,
+      );
+    }
+  }
+
+  private async handleTradeOpenedEvent(
+    signal: Signal & { trade: Trade | null; user: User },
+    item: TradeLifecycleItemDto,
+    sender: string,
+  ) {
+    if (signal.status !== 'OPEN') {
+      return {
+        status: 'ignored',
+        event: 'opened',
+        reason: 'already_resolved',
+        signalId: signal.signalId,
+        sender,
+        tradeState: signal.status.toLowerCase(),
+      };
+    }
+
+    const entryPrice = item.entry;
+
+    const tradeUpdate: {
+      entryPrice?: number;
+      stopLoss?: number;
+      takeProfit?: number;
+      activatedAt?: Date;
+    } = {};
+
+    if (item.entry != null) tradeUpdate.entryPrice = item.entry;
+    if (item.sl != null) tradeUpdate.stopLoss = item.sl;
+    if (item.tp != null) tradeUpdate.takeProfit = item.tp;
+
+    if (!signal.trade!.activatedAt) {
+      tradeUpdate.activatedAt = item.opened_at
+        ? new Date(item.opened_at)
+        : new Date();
+    }
+
+    if (Object.keys(tradeUpdate).length > 0) {
+      await this.prisma.trade.update({
+        where: { id: signal.trade!.id },
+        data: tradeUpdate,
+      });
+    }
+
+    const trade = await this.prisma.trade.findUniqueOrThrow({
+      where: { id: signal.trade!.id },
+    });
+
+    await this.priceMonitor.ensureTradeActivated(
+      trade,
+      {
+        entryMin: signal.entryMin,
+        entryMax: signal.entryMax,
+      },
+      entryPrice,
+    );
+
+    this.logger.log(
+      `Trade opened via webhook: ${signal.signalId} sender=${sender} entry=${item.entry ?? 'default'}`,
+    );
+
+    return {
+      status: 'opened',
+      event: 'opened',
+      signalId: signal.signalId,
+      sender,
+      symbol: signal.symbol,
+      direction: signal.direction,
+      entry: item.entry ?? null,
+      sl: item.sl ?? Number(signal.stopLoss),
+      tp: item.tp ?? Number(signal.takeProfit),
+      ticket: item.ticket ?? null,
+      tradeState: 'in_trade',
+    };
+  }
+
+  private async handleTradeClosedEvent(
+    signal: Signal & { trade: Trade | null },
+    item: TradeLifecycleItemDto,
+    sender: string,
+  ) {
+    if (signal.status !== 'OPEN') {
+      return {
+        status: 'ignored',
+        event: 'closed',
+        reason: 'already_resolved',
+        signalId: signal.signalId,
+        sender,
+        tradeState: signal.status.toLowerCase(),
+        currentStatus: signal.status,
+      };
+    }
+
+    const tp = Number(signal.takeProfit);
+    const sl = Number(signal.stopLoss);
+    const exitPrice =
+      item.exit_price ??
+      (item.outcome === 'tp' ? tp : item.outcome === 'sl' ? sl : undefined);
+
+    if (exitPrice == null) {
+      throw new BadRequestException(
+        'closed events require exit_price and/or outcome (tp|sl)',
+      );
+    }
+
+    const outcome =
+      item.outcome ??
+      this.inferCloseOutcome(
+        signal.direction as 'BUY' | 'SELL',
+        exitPrice,
+        tp,
+        sl,
+      );
+
+    await this.prisma.tpClaim.updateMany({
+      where: { signalId: signal.id, status: 'PENDING_REVIEW' },
+      data: {
+        status: 'REJECTED',
+        adminNote: 'Setup resolved automatically via trade lifecycle webhook',
+        reviewedAt: new Date(),
+      },
+    });
+
+    const trade = await this.prisma.trade.findUniqueOrThrow({
+      where: { id: signal.trade!.id },
+    });
+
+    await this.priceMonitor.ensureTradeActivated(
+      trade,
+      {
+        entryMin: signal.entryMin,
+        entryMax: signal.entryMax,
+      },
+      item.entry ?? exitPrice,
+    );
+
+    const result = await this.applySetupOutcome(
+      signal,
+      outcome,
+      exitPrice,
+      'webhook',
+    );
+
+    this.logger.log(
+      `Trade closed via webhook: ${signal.signalId} sender=${sender} outcome=${outcome}`,
+    );
+
+    return {
+      ...result,
+      event: 'closed',
+      sender,
+      symbol: item.symbol,
+      entry: item.entry ?? null,
+      sl: item.sl ?? sl,
+      tp: item.tp ?? tp,
+      exit_price: exitPrice,
+      ticket: item.ticket ?? null,
+      tradeState: outcome === 'tp' ? 'won' : 'lost',
+      closed_at: item.closed_at ?? new Date().toISOString(),
+    };
+  }
+
+  private inferCloseOutcome(
+    direction: 'BUY' | 'SELL',
+    exitPrice: number,
+    tp: number,
+    sl: number,
+  ): SetupOutcome {
+    const tpDist = Math.abs(exitPrice - tp);
+    const slDist = Math.abs(exitPrice - sl);
+    if (tpDist === slDist) {
+      return direction === 'BUY'
+        ? exitPrice >= tp
+          ? 'tp'
+          : 'sl'
+        : exitPrice <= tp
+          ? 'tp'
+          : 'sl';
+    }
+    return tpDist < slDist ? 'tp' : 'sl';
   }
 
   async handleTradeOutcomeWebhook(
