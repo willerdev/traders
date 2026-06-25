@@ -186,6 +186,15 @@ class ApiClient {
         };
       }>(`/signals/hub/resend/${signalId}`, { method: "POST" }),
     list: () => this.request<SignalRecord[]>("/signals"),
+    openUnresolved: () =>
+      this.request<OpenSetupsResult>("/signals/open/unresolved"),
+    getResolution: (signalId: string) =>
+      this.request<SetupResolution>(`/signals/${signalId}/resolution`),
+    claim: (signalId: string, outcome: "tp" | "sl") =>
+      this.request<ClaimSetupResult>(`/signals/${signalId}/claim`, {
+        method: "POST",
+        body: JSON.stringify({ outcome }),
+      }),
     executionStatus: (signalId: string) =>
       this.request<HubSignalStatus>(`/signals/hub/execution/${signalId}`),
     executionLogs: (params?: { signal_id?: string; limit?: number }) => {
@@ -686,6 +695,55 @@ export interface HubPositions {
   sendername: string;
   count: number;
   items: HubPosition[];
+}
+
+export interface SetupResolution {
+  signalId: string;
+  symbol?: string;
+  direction?: string;
+  status: string;
+  takeProfit?: number;
+  stopLoss?: number;
+  entryMin?: number;
+  entryMax?: number;
+  activated?: boolean;
+  currentPrice?: number | null;
+  priceOutcome?: "tp" | "sl" | null;
+  hubStatus?: string | null;
+  hubOutcome?: "tp" | "sl" | null;
+  claimable: boolean;
+  canClaimTp: boolean;
+  canClaimSl: boolean;
+  reason?: string;
+}
+
+export interface OpenSetupItem {
+  id: string;
+  signalId: string;
+  symbol: string;
+  direction: string;
+  entryMin: number;
+  entryMax: number;
+  stopLoss: number;
+  takeProfit: number;
+  submittedAt: string;
+  activated: boolean;
+  resolution: SetupResolution;
+}
+
+export interface OpenSetupsResult {
+  items: OpenSetupItem[];
+  count: number;
+  claimableCount: number;
+}
+
+export interface ClaimSetupResult {
+  status: string;
+  outcome: "tp" | "sl";
+  signalId: string;
+  exitPrice: number;
+  reward?: number;
+  pointsAwarded?: number;
 }
 
 export const api = new ApiClient();

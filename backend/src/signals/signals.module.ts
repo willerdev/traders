@@ -5,9 +5,10 @@ import { DuplicateDetectionService } from './duplicate-detection.service';
 import { SignalDraftsService } from './signal-drafts.service';
 import { SignalHubService } from './signal-hub.service';
 import { AiModule } from '../ai/ai.module';
+import { TradesModule } from '../trades/trades.module';
 
 @Module({
-  imports: [AiModule],
+  imports: [AiModule, TradesModule],
   controllers: [SignalsController],
   providers: [
     SignalsService,

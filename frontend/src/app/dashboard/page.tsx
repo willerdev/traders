@@ -14,6 +14,7 @@ import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
 import { OpenPositionsCard } from "@/components/dashboard/open-positions";
+import { UnresolvedSetupsCard } from "@/components/dashboard/unresolved-setups";
 import { RegistrationCheckout } from "@/components/payments/registration-checkout";
 
 export default function DashboardPage() {
@@ -129,6 +130,7 @@ export default function DashboardPage() {
       )}
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        <UnresolvedSetupsCard onClaimed={() => fetchDashboard()} />
         <OpenPositionsCard />
 
         <Card>

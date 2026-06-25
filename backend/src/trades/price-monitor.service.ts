@@ -2,6 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletService } from './wallet.service';
+import { Signal, Trade, TradeDirection } from '@prisma/client';
+
+export type SetupOutcome = 'tp' | 'sl';
 
 @Injectable()
 export class PriceMonitorService {
@@ -49,12 +52,16 @@ export class PriceMonitorService {
 
         if (!signal.trade.activatedAt) continue;
 
-        const hitTp = isBuy ? price >= tp : price <= tp;
-        const hitSl = isBuy ? price <= sl : price >= sl;
+        const outcome = this.outcomeAtPrice(
+          signal.direction,
+          tp,
+          sl,
+          price,
+        );
 
-        if (hitTp) {
+        if (outcome === 'tp') {
           await this.wallet.creditTpReward(signal.userId, signal.id, price);
-        } else if (hitSl) {
+        } else if (outcome === 'sl') {
           await this.wallet.resolveAsLoss(signal.userId, signal.id, price);
         }
       } catch (err) {
@@ -63,6 +70,39 @@ export class PriceMonitorService {
         );
       }
     }
+  }
+
+  outcomeAtPrice(
+    direction: TradeDirection,
+    takeProfit: number,
+    stopLoss: number,
+    price: number,
+  ): SetupOutcome | null {
+    const isBuy = direction === 'BUY';
+    const hitTp = isBuy ? price >= takeProfit : price <= takeProfit;
+    const hitSl = isBuy ? price <= stopLoss : price >= stopLoss;
+    if (hitTp) return 'tp';
+    if (hitSl) return 'sl';
+    return null;
+  }
+
+  async ensureTradeActivated(
+    trade: Trade,
+    signal: Pick<Signal, 'entryMin' | 'entryMax'>,
+    price?: number,
+  ) {
+    if (trade.activatedAt) return trade;
+
+    const entryPrice =
+      price ?? (Number(signal.entryMin) + Number(signal.entryMax)) / 2;
+
+    return this.prisma.trade.update({
+      where: { id: trade.id },
+      data: {
+        activatedAt: new Date(),
+        entryPrice,
+      },
+    });
   }
 
   async fetchPrice(symbol: string): Promise<number | null> {
@@ -77,7 +117,12 @@ export class PriceMonitorService {
       SOLUSD: 'SOLUSDT',
     };
 
-    const binanceSymbol = cryptoPairs[sym];
+    const metalProxies: Record<string, string> = {
+      XAUUSD: 'PAXGUSDT',
+      GOLD: 'PAXGUSDT',
+    };
+
+    const binanceSymbol = cryptoPairs[sym] ?? metalProxies[sym];
     if (binanceSymbol) {
       const res = await fetch(
         `https://api.binance.com/api/v3/ticker/price?symbol=${binanceSymbol}`,

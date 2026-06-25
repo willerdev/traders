@@ -8,6 +8,7 @@ import {
   IsBoolean,
   MinLength,
   Equals,
+  IsIn,
 } from 'class-validator';
 import { TradeDirection, KycDocumentType } from '@prisma/client';
 
@@ -216,4 +217,9 @@ export class SubmitKycDto {
   @IsString()
   @IsNotEmpty()
   selfieUrl: string;
+}
+
+export class ClaimSetupDto {
+  @IsIn(['tp', 'sl'])
+  outcome: 'tp' | 'sl';
 }

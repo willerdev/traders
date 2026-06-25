@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { SignalsService } from './signals.service';
 import { SignalDraftsService } from './signal-drafts.service';
-import { CreateSignalDto, SaveSignalDraftDto } from '../common/dto';
+import { CreateSignalDto, SaveSignalDraftDto, ClaimSetupDto } from '../common/dto';
 import { JwtAuthGuard } from '../auth/guards';
 
 @Controller('signals')
@@ -160,6 +160,31 @@ export class SignalsController {
   @UseGuards(JwtAuthGuard)
   getMySignals(@Request() req: { user: { id: string } }) {
     return this.signalsService.getUserSignals(req.user.id);
+  }
+
+  @Get('open/unresolved')
+  @UseGuards(JwtAuthGuard)
+  listOpenSetups(@Request() req: { user: { id: string } }) {
+    return this.signalsService.getOpenSignalsWithResolution(req.user.id);
+  }
+
+  @Get(':signalId/resolution')
+  @UseGuards(JwtAuthGuard)
+  getSetupResolution(
+    @Request() req: { user: { id: string } },
+    @Param('signalId') signalId: string,
+  ) {
+    return this.signalsService.getSetupResolution(req.user.id, signalId);
+  }
+
+  @Post(':signalId/claim')
+  @UseGuards(JwtAuthGuard)
+  claimSetup(
+    @Request() req: { user: { id: string } },
+    @Param('signalId') signalId: string,
+    @Body() dto: ClaimSetupDto,
+  ) {
+    return this.signalsService.claimSetup(req.user.id, signalId, dto);
   }
 
   @Get(':signalId')

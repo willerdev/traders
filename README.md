@@ -149,6 +149,9 @@ All routes are prefixed with `/api/v1`. Interactive docs: `GET /api/docs` (Swagg
 |--------|----------|-------------|
 | POST | `/signals` | Submit trading signal (forwards chart to Signal Hub) |
 | GET | `/signals` | List my signals |
+| POST | `/signals/{signalId}/claim` | Claim TP/SL for an unresolved open setup |
+| GET | `/signals/{signalId}/resolution` | Check whether a setup can be claimed |
+| GET | `/signals/open/unresolved` | Open setups with claim eligibility |
 | GET | `/signals/{signalId}` | Signal detail |
 | GET/POST | `/signals/drafts` | List or create drafts |
 | GET/PUT/DELETE | `/signals/drafts/{draftId}` | Draft CRUD |
