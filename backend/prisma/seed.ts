@@ -28,6 +28,9 @@ async function main() {
   });
 
   await prisma.virtualAccount.updateMany({
+    where: {
+      OR: [{ riskPercent: 2 }, { maxRiskPerTrade: 20 }],
+    },
     data: {
       riskPercent: 5,
       maxRiskPerTrade: 50,
