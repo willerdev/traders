@@ -7,9 +7,11 @@ import {
   type PayoutRow,
   type SignalRow,
   type UserRow,
+  type PromoCodeRow,
+  type TpClaimRow,
 } from "./api";
 
-type Tab = "overview" | "users" | "signals" | "kyc" | "payouts" | "tpClaims";
+type Tab = "overview" | "users" | "signals" | "kyc" | "payouts" | "tpClaims" | "promos";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview", label: "1. Overview" },
@@ -18,6 +20,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "kyc", label: "4. KYC" },
   { id: "payouts", label: "5. Payouts" },
   { id: "tpClaims", label: "6. TP Claims" },
+  { id: "promos", label: "7. Promo codes" },
 ];
 
 function badgeClass(status: string) {
@@ -50,6 +53,9 @@ export default function App() {
   const [kycQueue, setKycQueue] = useState<KycRow[]>([]);
   const [payouts, setPayouts] = useState<PayoutRow[]>([]);
   const [tpClaims, setTpClaims] = useState<TpClaimRow[]>([]);
+  const [promoCodes, setPromoCodes] = useState<PromoCodeRow[]>([]);
+  const [newPromoCode, setNewPromoCode] = useState("");
+  const [newPromoDays, setNewPromoDays] = useState("7");
   const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
   const [tpRejectReason, setTpRejectReason] = useState<Record<string, string>>({});
 
@@ -74,6 +80,8 @@ export default function App() {
         setPayouts(res.items);
       } else if (active === "tpClaims") {
         setTpClaims(await api.tpClaimsPending());
+      } else if (active === "promos") {
+        setPromoCodes(await api.promoCodes());
       }
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Failed to load data");
@@ -509,6 +517,140 @@ export default function App() {
                 ))
               )}
             </div>
+          </>
+        )}
+
+        {tab === "promos" && (
+          <>
+            <div className="toolbar">
+              <h2>Promo / invite codes</h2>
+            </div>
+            <p className="muted" style={{ marginBottom: "1rem" }}>
+              New codes expire after 7 days by default. Create a fresh code each week
+              for invites you share manually.
+            </p>
+            <div
+              className="kyc-card"
+              style={{ marginBottom: "1.5rem", maxWidth: 480 }}
+            >
+              <h3 style={{ marginTop: 0 }}>Create code</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                <input
+                  placeholder="Code (e.g. launch-march)"
+                  value={newPromoCode}
+                  onChange={(e) => setNewPromoCode(e.target.value)}
+                  style={{
+                    padding: "0.5rem",
+                    borderRadius: 6,
+                    border: "1px solid #334155",
+                    background: "#0b0f14",
+                    color: "#e8eaed",
+                  }}
+                />
+                <input
+                  type="number"
+                  min={1}
+                  max={90}
+                  placeholder="Valid for days (default 7)"
+                  value={newPromoDays}
+                  onChange={(e) => setNewPromoDays(e.target.value)}
+                  style={{
+                    padding: "0.5rem",
+                    borderRadius: 6,
+                    border: "1px solid #334155",
+                    background: "#0b0f14",
+                    color: "#e8eaed",
+                  }}
+                />
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={!newPromoCode.trim()}
+                  onClick={() =>
+                    void api
+                      .createPromoCode({
+                        code: newPromoCode.trim(),
+                        discountPercent: 100,
+                        expiresInDays: Number(newPromoDays) || 7,
+                      })
+                      .then(() => {
+                        setNewPromoCode("");
+                        setMessage("Promo code created");
+                        return loadTab("promos");
+                      })
+                      .catch((err) =>
+                        setMessage(
+                          err instanceof Error ? err.message : "Create failed",
+                        ),
+                      )
+                  }
+                >
+                  Create (100% off, {newPromoDays || 7} days)
+                </button>
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Discount</th>
+                  <th>Expires</th>
+                  <th>Status</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {promoCodes.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="muted">
+                      No promo codes yet
+                    </td>
+                  </tr>
+                ) : (
+                  promoCodes.map((p) => (
+                    <tr key={p.id}>
+                      <td>
+                        <code>{p.code}</code>
+                      </td>
+                      <td>{p.discountPercent}%</td>
+                      <td>{fmtDate(p.expiresAt)}</td>
+                      <td>
+                        <span
+                          className={badgeClass(
+                            !p.active
+                              ? "rejected"
+                              : p.expired
+                                ? "expired"
+                                : "approved",
+                          )}
+                        >
+                          {!p.active
+                            ? "INACTIVE"
+                            : p.expired
+                              ? "EXPIRED"
+                              : "ACTIVE"}
+                        </span>
+                      </td>
+                      <td>
+                        {p.active && !p.expired && (
+                          <button
+                            type="button"
+                            className="danger"
+                            onClick={() =>
+                              void api
+                                .deactivatePromoCode(p.code)
+                                .then(() => loadTab("promos"))
+                            }
+                          >
+                            Deactivate
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </>
         )}
       </main>

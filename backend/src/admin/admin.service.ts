@@ -8,6 +8,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PayoutService } from '../payouts/payout.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { TpClaimsService } from '../tp-claims/tp-claims.service';
+import { PromoService } from '../payments/promo.service';
+import { CreatePromoCodeDto } from '../common/dto';
 
 @Injectable()
 export class AdminService {
@@ -16,6 +18,7 @@ export class AdminService {
     private payoutService: PayoutService,
     private analytics: AnalyticsService,
     private tpClaims: TpClaimsService,
+    private promo: PromoService,
   ) {}
 
   async getOverview() {
@@ -52,6 +55,18 @@ export class AdminService {
 
   rejectTpClaim(claimId: string, adminId: string, reason: string) {
     return this.tpClaims.rejectClaim(claimId, adminId, reason);
+  }
+
+  listPromoCodes() {
+    return this.promo.listAll();
+  }
+
+  createPromoCode(adminId: string, dto: CreatePromoCodeDto) {
+    return this.promo.create(adminId, dto);
+  }
+
+  deactivatePromoCode(adminId: string, code: string) {
+    return this.promo.deactivate(code, adminId);
   }
 
   async listPendingKyc() {

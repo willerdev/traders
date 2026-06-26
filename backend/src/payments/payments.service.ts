@@ -83,7 +83,7 @@ export class PaymentsService {
     }
 
     const fee = await this.registrationFee();
-    const validation = this.promo.validate(code, fee);
+    const validation = await this.promo.validate(code, fee);
 
     if (validation.finalAmount > 0) {
       throw new BadRequestException(
@@ -108,7 +108,7 @@ export class PaymentsService {
     const fee = await this.registrationFee();
 
     if (promoCode?.trim()) {
-      const validation = this.promo.validate(promoCode, fee);
+      const validation = await this.promo.validate(promoCode, fee);
       if (validation.finalAmount <= 0) {
         return this.completeFreeRegistration(userId, validation.code, fee);
       }
@@ -169,7 +169,7 @@ export class PaymentsService {
 
   async validatePromoCode(code: string) {
     const fee = await this.registrationFee();
-    const validation = this.promo.validate(code, fee);
+    const validation = await this.promo.validate(code, fee);
     return {
       valid: true,
       code: validation.code,
@@ -178,6 +178,7 @@ export class PaymentsService {
       originalAmount: validation.originalAmount,
       finalAmount: validation.finalAmount,
       freeRegistration: validation.finalAmount <= 0,
+      expiresAt: validation.expiresAt,
     };
   }
 

@@ -490,6 +490,22 @@ model PlatformConfig {
   @@map("platform_config")
 }
 
+model PromoCode {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  discountPercent Int
+  description     String
+  expiresAt       DateTime
+  active          Boolean  @default(true)
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([expiresAt])
+  @@index([active])
+  @@map("promo_codes")
+}
+
 model AuditLog {
   id        String   @id @default(cuid())
   adminId   String

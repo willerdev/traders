@@ -25,18 +25,7 @@ export const RISK_PERCENT = 5;
 export const MAX_RISK_PER_TRADE = 50;
 export const REGISTRATION_FEE_USDT = 5;
 export const TP_REWARD_USD = 5;
-
-export const DEFAULT_PROMO_CODE = 'win2026';
-
-export const PROMO_CODES: Record<
-  string,
-  { discountPercent: number; description: string }
-> = {
-  win2026: {
-    discountPercent: 100,
-    description: '100% off registration — free virtual account',
-  },
-};
+export const PROMO_DEFAULT_VALIDITY_DAYS = 7;
 
 export const STREAK_THRESHOLDS = {
   WARNING: 3,

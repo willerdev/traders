@@ -81,6 +81,22 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
+
+  promoCodes: () => request<PromoCodeRow[]>("/admin/promo-codes"),
+  createPromoCode: (data: {
+    code: string;
+    discountPercent?: number;
+    description?: string;
+    expiresInDays?: number;
+  }) =>
+    request<PromoCodeRow>("/admin/promo-codes", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  deactivatePromoCode: (code: string) =>
+    request(`/admin/promo-codes/${encodeURIComponent(code)}/deactivate`, {
+      method: "POST",
+    }),
 };
 
 export type UserRow = {
@@ -147,4 +163,16 @@ export type TpClaimRow = {
   takeProfit: number;
   originalScreenshotUrl?: string;
   user: { id: string; displayName: string; email: string | null };
+};
+
+export type PromoCodeRow = {
+  id: string;
+  code: string;
+  discountPercent: number;
+  description: string;
+  expiresAt: string;
+  active: boolean;
+  expired: boolean;
+  valid: boolean;
+  createdAt: string;
 };

@@ -287,6 +287,9 @@ Batch: send `{ "trades": [ ... ] }` with multiple events in one request.
 | GET | `/admin/payouts` | List payouts |
 | GET | `/admin/payouts/pending` | Pending payouts |
 | POST | `/admin/payouts/{payoutId}/approve` | Approve payout |
+| GET | `/admin/promo-codes` | List invite/promo codes (with expiry) |
+| POST | `/admin/promo-codes` | Create code (`expiresInDays` default **7**) |
+| POST | `/admin/promo-codes/{code}/deactivate` | Disable a code early |
 
 ## User Roles
 

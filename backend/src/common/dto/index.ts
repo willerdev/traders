@@ -117,6 +117,29 @@ export class ApplyPromoDto {
   code: string;
 }
 
+export class CreatePromoCodeDto {
+  @IsString()
+  @IsNotEmpty()
+  code: string;
+
+  @IsOptional()
+  @IsNumber()
+  discountPercent?: number;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  /** Days until expiry; defaults to 7 if expiresAt not set */
+  @IsOptional()
+  @IsNumber()
+  expiresInDays?: number;
+
+  @IsOptional()
+  @IsString()
+  expiresAt?: string;
+}
+
 export class SaveSignalDraftDto {
   @IsOptional()
   @IsString()

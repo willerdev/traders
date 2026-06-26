@@ -9,6 +9,7 @@ import {
   Request,
 } from '@nestjs/common';
 import { AdminService } from './admin.service';
+import { CreatePromoCodeDto } from '../common/dto';
 import { JwtAuthGuard, RolesGuard } from '../auth/guards';
 import { Roles } from '../auth/decorators/roles.decorator';
 
@@ -117,6 +118,27 @@ export class AdminController {
       req.user.id,
       reason || 'Evidence did not confirm take profit',
     );
+  }
+
+  @Get('promo-codes')
+  listPromoCodes() {
+    return this.adminService.listPromoCodes();
+  }
+
+  @Post('promo-codes')
+  createPromoCode(
+    @Request() req: { user: { id: string } },
+    @Body() dto: CreatePromoCodeDto,
+  ) {
+    return this.adminService.createPromoCode(req.user.id, dto);
+  }
+
+  @Post('promo-codes/:code/deactivate')
+  deactivatePromoCode(
+    @Param('code') code: string,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.adminService.deactivatePromoCode(req.user.id, code);
   }
 
   @Post('users/:userId/suspend')

@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
+const PROMO_VALIDITY_MS = 7 * 24 * 60 * 60 * 1000;
 
 async function main() {
   await prisma.platformConfig.upsert({
@@ -73,6 +74,18 @@ async function main() {
     });
     console.log(`Promoted ${adminEmail} to ADMIN`);
   }
+
+  await prisma.promoCode.upsert({
+    where: { code: 'win2026' },
+    create: {
+      code: 'win2026',
+      discountPercent: 100,
+      description: '100% off registration — free virtual account',
+      expiresAt: new Date(Date.now() + PROMO_VALIDITY_MS),
+      active: true,
+    },
+    update: {},
+  });
 
   console.log('Platform config seeded');
 }

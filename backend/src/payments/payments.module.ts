@@ -9,6 +9,6 @@ import { AuthModule } from '../auth/auth.module';
   imports: [AuthModule],
   controllers: [PaymentsController],
   providers: [PaymentsService, NowPaymentsService, PromoService],
-  exports: [PaymentsService, NowPaymentsService],
+  exports: [PaymentsService, NowPaymentsService, PromoService],
 })
 export class PaymentsModule {}
