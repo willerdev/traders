@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { ensureDemoLeaderboardTraders } from '../src/leaderboard/demo-leaderboard.seed';
 
 const prisma = new PrismaClient();
 const PROMO_VALIDITY_MS = 7 * 24 * 60 * 60 * 1000;
@@ -88,6 +89,9 @@ async function main() {
   });
 
   console.log('Platform config seeded');
+
+  const traderCount = await ensureDemoLeaderboardTraders(prisma);
+  console.log(`Leaderboard demo traders ready (${traderCount} total accounts ranked)`);
 }
 
 main()

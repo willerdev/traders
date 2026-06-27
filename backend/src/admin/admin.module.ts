@@ -5,9 +5,16 @@ import { PayoutsModule } from '../payouts/payouts.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
 import { TpClaimsModule } from '../tp-claims/tp-claims.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { SignalHubModule } from '../signals/signal-hub.module';
 
 @Module({
-  imports: [PayoutsModule, AnalyticsModule, TpClaimsModule, PaymentsModule],
+  imports: [
+    PayoutsModule,
+    AnalyticsModule,
+    TpClaimsModule,
+    PaymentsModule,
+    SignalHubModule,
+  ],
   controllers: [AdminController],
   providers: [AdminService],
 })

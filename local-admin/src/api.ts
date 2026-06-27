@@ -97,6 +97,25 @@ export const api = {
     request(`/admin/promo-codes/${encodeURIComponent(code)}/deactivate`, {
       method: "POST",
     }),
+
+  hubSenderReport: (params?: {
+    days?: number;
+    sort?: string;
+    min_closed_trades?: number;
+    limit?: number;
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.days) q.set("days", String(params.days));
+    if (params?.sort) q.set("sort", params.sort);
+    if (params?.min_closed_trades !== undefined) {
+      q.set("min_closed_trades", String(params.min_closed_trades));
+    }
+    if (params?.limit) q.set("limit", String(params.limit));
+    const qs = q.toString();
+    return request<HubSenderReport>(
+      `/admin/hub/senders/report${qs ? `?${qs}` : ""}`,
+    );
+  },
 };
 
 export type UserRow = {
@@ -175,4 +194,20 @@ export type PromoCodeRow = {
   expired: boolean;
   valid: boolean;
   createdAt: string;
+};
+
+export type HubSenderStat = {
+  rank?: number;
+  sendername: string;
+  closed_trades?: number;
+  win_rate?: number;
+  net_profit?: number;
+  profit_factor?: number;
+};
+
+export type HubSenderReport = {
+  days: number;
+  total_senders: number;
+  returned: number;
+  senders: HubSenderStat[];
 };

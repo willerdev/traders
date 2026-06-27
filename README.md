@@ -159,18 +159,31 @@ All routes are prefixed with `/api/v1`. Interactive docs: `GET /api/docs` (Swagg
 | GET/POST | `/signals/drafts` | List or create drafts |
 | GET/PUT/DELETE | `/signals/drafts/{draftId}` | Draft CRUD |
 
+### TP claims (admin review)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/tp-claims` | List my TP claim submissions |
+| GET | `/admin/tp-claims/pending` | Pending TP claims (admin) |
+| POST | `/admin/tp-claims/{claimId}/approve` | Approve TP claim → wallet credit |
+| POST | `/admin/tp-claims/{claimId}/reject` | Reject TP claim |
+
+TP claims require **before** and **after** screenshots; wallet is credited only after admin approval.
+
 ### Signal Hub (MT5 execution proxy)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/signals/hub/health` | Hub configuration status |
+| GET | `/signals/hub/quote?symbol=` | Live MT5 bid/ask/mid (via Hub) |
 | GET | `/signals/hub/list` | Hub signals for current trader |
 | GET | `/signals/hub/logs` | Execution activity log |
-| GET | `/signals/hub/execution/{signalId}` | Execution status |
+| GET | `/signals/hub/execution/{signalId}` | Execution status by platform signal ID |
+| GET | `/signals/hub/signals/{hubId}` | Lookup Hub signal by UUID |
 | POST | `/signals/hub/resend/{signalId}` | Resend signal to Hub |
+| POST | `/signals/hub/action` | Hub trade action (`breakeven`, `modify`, `close`, etc.) |
 | GET | `/signals/hub/positions` | Open MT5 positions |
 | POST | `/signals/hub/positions/{ticket}/close` | Close one position |
 | POST | `/signals/hub/positions/close-all` | Close all positions |
-| POST | `/signals/hub/callback` | Signal Hub auto-callback (done/failed → resolve TP/SL) |
+| POST | `/signals/hub/callback` | Signal Hub auto-callback (requires webhook secret) |
 
 ### Trade outcome webhook
 
@@ -189,7 +202,7 @@ Notify the platform when a setup hits **TP** or **SL** so wallet balance and sco
 }
 ```
 
-**Body (Signal Hub–compatible):** Hub POSTs to your `callback_url` when a signal reaches `done` or `failed`. The same payload is accepted at `/signals/hub/callback` (no secret required — only registered `external_id` values are resolved):
+**Body (Signal Hub–compatible):** Hub POSTs to your `callback_url` when a signal reaches `done` or `failed`. The same payload is accepted at `/signals/hub/callback` — **requires** `x-webhook-secret` or `?key=` (same as other webhooks). Only registered `external_id` values are resolved:
 
 ```json
 {
@@ -258,6 +271,7 @@ Batch: send `{ "trades": [ ... ] }` with multiple events in one request.
 |--------|----------|-------------|
 | GET | `/leaderboard` | Rankings |
 | GET | `/leaderboard/my-rank` | Current user rank |
+| GET | `/leaderboard/hub-execution` | MT5 execution profitability (Signal Hub senders) |
 | GET | `/payouts` | Payout history |
 | POST | `/payouts/request` | Request payout |
 | POST | `/payouts/approve` | Approve payout (admin) |
@@ -290,6 +304,10 @@ Batch: send `{ "trades": [ ... ] }` with multiple events in one request.
 | GET | `/admin/promo-codes` | List invite/promo codes (with expiry) |
 | POST | `/admin/promo-codes` | Create code (`expiresInDays` default **7**) |
 | POST | `/admin/promo-codes/{code}/deactivate` | Disable a code early |
+| GET | `/admin/hub/senders/report` | Signal Hub sender leaderboard (profit, win rate, etc.) |
+| GET | `/admin/tp-claims/pending` | Pending TP claim reviews |
+| POST | `/admin/tp-claims/{claimId}/approve` | Approve TP claim |
+| POST | `/admin/tp-claims/{claimId}/reject` | Reject TP claim |
 
 ## User Roles
 

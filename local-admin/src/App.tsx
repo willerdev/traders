@@ -8,10 +8,19 @@ import {
   type SignalRow,
   type UserRow,
   type PromoCodeRow,
+  type HubSenderReport,
   type TpClaimRow,
 } from "./api";
 
-type Tab = "overview" | "users" | "signals" | "kyc" | "payouts" | "tpClaims" | "promos";
+type Tab =
+  | "overview"
+  | "users"
+  | "signals"
+  | "kyc"
+  | "payouts"
+  | "tpClaims"
+  | "promos"
+  | "hub";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview", label: "1. Overview" },
@@ -21,6 +30,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "payouts", label: "5. Payouts" },
   { id: "tpClaims", label: "6. TP Claims" },
   { id: "promos", label: "7. Promo codes" },
+  { id: "hub", label: "8. Hub MT5 report" },
 ];
 
 function badgeClass(status: string) {
@@ -54,6 +64,7 @@ export default function App() {
   const [payouts, setPayouts] = useState<PayoutRow[]>([]);
   const [tpClaims, setTpClaims] = useState<TpClaimRow[]>([]);
   const [promoCodes, setPromoCodes] = useState<PromoCodeRow[]>([]);
+  const [hubReport, setHubReport] = useState<HubSenderReport | null>(null);
   const [newPromoCode, setNewPromoCode] = useState("");
   const [newPromoDays, setNewPromoDays] = useState("7");
   const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
@@ -82,6 +93,10 @@ export default function App() {
         setTpClaims(await api.tpClaimsPending());
       } else if (active === "promos") {
         setPromoCodes(await api.promoCodes());
+      } else if (active === "hub") {
+        setHubReport(
+          await api.hubSenderReport({ limit: 50, min_closed_trades: 0 }),
+        );
       }
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Failed to load data");
@@ -645,6 +660,54 @@ export default function App() {
                             Deactivate
                           </button>
                         )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </>
+        )}
+
+        {tab === "hub" && (
+          <>
+            <h2>Signal Hub sender report (MT5)</h2>
+            <p className="hint">
+              Quantum execution stats — net P/L, win rate, closed trades (last{" "}
+              {hubReport?.days ?? 90} days)
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Sender</th>
+                  <th>Closed</th>
+                  <th>Win rate</th>
+                  <th>Net P/L</th>
+                  <th>PF</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!hubReport || hubReport.senders.length === 0 ? (
+                  <tr>
+                    <td colSpan={6}>No Hub sender data (Hub may be unconfigured)</td>
+                  </tr>
+                ) : (
+                  hubReport.senders.map((s, i) => (
+                    <tr key={s.sendername}>
+                      <td>{s.rank ?? i + 1}</td>
+                      <td>{s.sendername}</td>
+                      <td>{s.closed_trades ?? 0}</td>
+                      <td>
+                        {s.win_rate != null
+                          ? `${(Number(s.win_rate) * 100).toFixed(1)}%`
+                          : "—"}
+                      </td>
+                      <td>{fmtMoney(s.net_profit ?? 0)}</td>
+                      <td>
+                        {s.profit_factor != null
+                          ? Number(s.profit_factor).toFixed(2)
+                          : "—"}
                       </td>
                     </tr>
                   ))

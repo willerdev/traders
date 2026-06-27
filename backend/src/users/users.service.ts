@@ -9,6 +9,7 @@ import {
   UpdateAddressDto,
   SubmitKycDto,
 } from '../common/dto';
+import { currentWeekYear } from '../common/week.util';
 
 @Injectable()
 export class UsersService {
@@ -27,9 +28,7 @@ export class UsersService {
 
     if (!user) return null;
 
-    const now = new Date();
-    const weekNumber = this.getWeekNumber(now);
-    const year = now.getFullYear();
+    const { weekNumber, year } = currentWeekYear();
 
     const rank = await this.prisma.leaderboard.findUnique({
       where: { userId_year_weekNumber: { userId, year, weekNumber } },
@@ -237,11 +236,5 @@ export class UsersService {
     });
 
     return kyc ?? { status: 'NOT_STARTED' };
-  }
-
-  private getWeekNumber(date: Date): number {
-    const start = new Date(date.getFullYear(), 0, 1);
-    const diff = date.getTime() - start.getTime();
-    return Math.ceil((diff / 86400000 + start.getDay() + 1) / 7);
   }
 }

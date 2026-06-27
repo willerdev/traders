@@ -20,6 +20,7 @@ import {
   ClaimSetupDto,
   TradeOutcomeWebhookDto,
   TradeLifecycleWebhookDto,
+  HubActionDto,
 } from '../common/dto';
 import { JwtAuthGuard } from '../auth/guards';
 
@@ -137,6 +138,33 @@ export class SignalsController {
     @Param('ticket', ParseIntPipe) ticket: number,
   ) {
     return this.signalsService.closePosition(req.user.id, ticket);
+  }
+
+  @Get('hub/quote')
+  @UseGuards(JwtAuthGuard)
+  hubQuote(
+    @Request() req: { user: { id: string } },
+    @Query('symbol') symbol: string,
+  ) {
+    return this.signalsService.getHubQuote(req.user.id, symbol);
+  }
+
+  @Get('hub/signals/:hubId')
+  @UseGuards(JwtAuthGuard)
+  hubSignalById(
+    @Request() req: { user: { id: string } },
+    @Param('hubId') hubId: string,
+  ) {
+    return this.signalsService.getHubSignalById(req.user.id, hubId);
+  }
+
+  @Post('hub/action')
+  @UseGuards(JwtAuthGuard)
+  hubAction(
+    @Request() req: { user: { id: string } },
+    @Body() dto: HubActionDto,
+  ) {
+    return this.signalsService.sendHubAction(req.user.id, dto);
   }
 
   @Get('drafts')

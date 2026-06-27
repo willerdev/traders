@@ -1,6 +1,7 @@
 import { Controller, Get, Query, UseGuards, Request } from '@nestjs/common';
 import { LeaderboardService } from './leaderboard.service';
 import { JwtAuthGuard } from '../auth/guards';
+import { currentWeekYear } from '../common/week.util';
 
 @Controller('leaderboard')
 export class LeaderboardController {
@@ -12,9 +13,9 @@ export class LeaderboardController {
     @Query('year') year?: string,
     @Query('limit') limit?: string,
   ) {
-    const now = new Date();
-    const weekNumber = week ? parseInt(week, 10) : this.getWeekNumber(now);
-    const yearNum = year ? parseInt(year, 10) : now.getFullYear();
+    const { weekNumber: defaultWeek, year: defaultYear } = currentWeekYear();
+    const weekNumber = week ? parseInt(week, 10) : defaultWeek;
+    const yearNum = year ? parseInt(year, 10) : defaultYear;
 
     return this.leaderboardService.getLeaderboard(
       weekNumber,
@@ -30,9 +31,9 @@ export class LeaderboardController {
     @Query('week') week?: string,
     @Query('year') year?: string,
   ) {
-    const now = new Date();
-    const weekNumber = week ? parseInt(week, 10) : this.getWeekNumber(now);
-    const yearNum = year ? parseInt(year, 10) : now.getFullYear();
+    const { weekNumber: defaultWeek, year: defaultYear } = currentWeekYear();
+    const weekNumber = week ? parseInt(week, 10) : defaultWeek;
+    const yearNum = year ? parseInt(year, 10) : defaultYear;
 
     return this.leaderboardService.getUserRank(
       req.user.id,
@@ -41,9 +42,18 @@ export class LeaderboardController {
     );
   }
 
-  private getWeekNumber(date: Date): number {
-    const start = new Date(date.getFullYear(), 0, 1);
-    const diff = date.getTime() - start.getTime();
-    return Math.ceil((diff / 86400000 + start.getDay() + 1) / 7);
+  @Get('hub-execution')
+  getHubExecution(
+    @Query('days') days?: string,
+    @Query('min_closed_trades') minClosedTrades?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.leaderboardService.getHubExecutionStats({
+      days: days ? parseInt(days, 10) : undefined,
+      min_closed_trades: minClosedTrades
+        ? parseInt(minClosedTrades, 10)
+        : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
   }
 }

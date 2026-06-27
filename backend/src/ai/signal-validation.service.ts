@@ -10,6 +10,7 @@ export interface SignalValidationResult {
   dto: CreateSignalDto;
   issues: string[];
   rejectReason?: string;
+  confidence?: number;
 }
 
 const VALIDATION_PROMPT = (signal: CreateSignalDto) => `You are a strict trading signal QA reviewer. Validate this signal before it is sent to a live MT5 broker. Fix obvious errors (typos, wrong decimal place, inverted SL/TP, invalid symbol).
@@ -36,6 +37,7 @@ Return ONLY valid JSON (no markdown):
   "adjusted": false,
   "issues": ["list of problems found, empty if none"],
   "rejectReason": null,
+  "confidence": 85,
   "symbol": "XAUUSD",
   "direction": "BUY",
   "entryMin": 2648.0,
@@ -58,6 +60,7 @@ Rules:
 - TradingView/Deriv "Volatility 75 (1s) Index" or VIX75 1s → use MT5 symbol 1HZ75V (not VIX75)
 - Normalize symbols to the broker ticker MT5 expects (e.g. 1HZ75V, XAUUSD)
 - direction must be exactly "BUY" or "SELL"
+- confidence: integer 0–100 reflecting how safe/consistent the signal is after review (90+ clean, 75–89 minor fixes, below 75 only if still structurally valid)
 - If SL/TP logic is valid, approve even for uncommon symbols; only reject when structure is broken`;
 
 @Injectable()
@@ -209,6 +212,11 @@ export class SignalValidationService {
     const rejectReason = parsed.rejectReason
       ? String(parsed.rejectReason)
       : undefined;
+    const rawConfidence = parsed.confidence;
+    const confidence =
+      typeof rawConfidence === 'number' && Number.isFinite(rawConfidence)
+        ? Math.max(0, Math.min(100, Math.round(rawConfidence)))
+        : undefined;
 
     if (!approved) {
       return {
@@ -217,6 +225,7 @@ export class SignalValidationService {
         dto: original,
         issues,
         rejectReason: rejectReason || 'Signal rejected by AI validation',
+        confidence,
       };
     }
 
@@ -229,10 +238,15 @@ export class SignalValidationService {
         dto,
         issues: [...issues, ...postIssues],
         rejectReason: 'Corrected signal still fails validation rules',
+        confidence,
       };
     }
 
-    return { approved: true, adjusted, dto, issues };
+    const resolvedConfidence =
+      confidence ??
+      (adjusted ? 78 : issues.length === 0 ? 92 : 85);
+
+    return { approved: true, adjusted, dto, issues, confidence: resolvedConfidence };
   }
 
   async validateAndCorrect(dto: CreateSignalDto): Promise<SignalValidationResult> {
@@ -256,6 +270,7 @@ export class SignalValidationService {
         dto,
         issues: ruleIssues,
         rejectReason: ruleIssues.length ? ruleIssues.join('; ') : undefined,
+        confidence: ruleIssues.length === 0 ? 75 : undefined,
       };
     }
 

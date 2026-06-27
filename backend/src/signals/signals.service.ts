@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
-import { CreateSignalDto, ClaimSetupDto, TradeOutcomeWebhookDto, TradeLifecycleItemDto, TradeLifecycleWebhookDto } from '../common/dto';
+import { CreateSignalDto, ClaimSetupDto, TradeOutcomeWebhookDto, TradeLifecycleItemDto, TradeLifecycleWebhookDto, HubActionDto } from '../common/dto';
 import { createHash } from 'crypto';
 import { ComplianceService } from '../compliance/compliance.service';
 import { ForwardSignalResult, SignalHubService } from './signal-hub.service';
@@ -1180,5 +1180,70 @@ export class SignalsService {
 
   getHubHealth() {
     return this.signalHub.getHubHealth();
+  }
+
+  async getHubQuote(userId: string, symbol: string) {
+    await this.compliance.requireActiveTrader(userId);
+    if (!this.signalHub.isConfigured) {
+      throw new ServiceUnavailableException('Signal Hub is not configured');
+    }
+    const quote = await this.signalHub.getQuote(symbol);
+    if (!quote) {
+      throw new ServiceUnavailableException('Could not fetch live quote from Signal Hub');
+    }
+    return quote;
+  }
+
+  async getHubSignalById(userId: string, hubId: string) {
+    const { sendername } = await this.hubContext(userId);
+    const hub = await this.signalHub.getSignalByHubId(hubId, sendername);
+    if (!hub) {
+      throw new NotFoundException('Hub signal not found');
+    }
+    return hub;
+  }
+
+  async sendHubAction(userId: string, dto: HubActionDto) {
+    const { sendername } = await this.hubContext(userId);
+    const { hub, error } = await this.signalHub.sendHubAction(sendername, dto);
+    if (!hub) {
+      throw new ServiceUnavailableException(
+        error || 'Signal Hub did not accept the action',
+      );
+    }
+    return hub;
+  }
+
+  async getHubSenderReport(filters?: {
+    days?: number;
+    sort?: string;
+    min_closed_trades?: number;
+    limit?: number;
+  }) {
+    if (!this.signalHub.isConfigured) {
+      throw new ServiceUnavailableException('Signal Hub is not configured');
+    }
+    const report = await this.signalHub.getSenderReport(filters);
+    if (!report) {
+      throw new ServiceUnavailableException('Could not fetch sender report from Signal Hub');
+    }
+    return report;
+  }
+
+  async getHubSenderProfitability(filters?: {
+    days?: number;
+    min_closed_trades?: number;
+    limit?: number;
+  }) {
+    if (!this.signalHub.isConfigured) {
+      throw new ServiceUnavailableException('Signal Hub is not configured');
+    }
+    const report = await this.signalHub.getSenderProfitability(filters);
+    if (!report) {
+      throw new ServiceUnavailableException(
+        'Could not fetch sender profitability from Signal Hub',
+      );
+    }
+    return report;
   }
 }

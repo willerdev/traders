@@ -413,3 +413,61 @@ export class TradeLifecycleWebhookDto {
   @IsString()
   closed_at?: string;
 }
+
+export class HubActionDto {
+  @IsIn([
+    'open',
+    'add',
+    'close',
+    'breakeven',
+    'modify',
+    'partial_close',
+    'close_all',
+    'ignore',
+  ])
+  action:
+    | 'open'
+    | 'add'
+    | 'close'
+    | 'breakeven'
+    | 'modify'
+    | 'partial_close'
+    | 'close_all'
+    | 'ignore';
+
+  @IsOptional()
+  @IsString()
+  symbol?: string;
+
+  @IsOptional()
+  @IsIn(['buy', 'sell'])
+  direction?: 'buy' | 'sell';
+
+  @IsOptional()
+  @IsNumber()
+  entry?: number;
+
+  @IsOptional()
+  @IsNumber()
+  sl?: number;
+
+  @IsOptional()
+  @IsNumber()
+  tp?: number;
+
+  @IsOptional()
+  @IsNumber()
+  lot?: number;
+
+  @IsOptional()
+  @IsNumber()
+  ticket?: number;
+
+  @IsOptional()
+  @IsString()
+  external_id?: string;
+
+  @IsOptional()
+  @IsString()
+  message?: string;
+}

@@ -2,15 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { LeaderboardService } from '../leaderboard/leaderboard.service';
 import { PayoutService } from '../payouts/payout.service';
-
-function getWeekNumber(date: Date): number {
-  const d = new Date(
-    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
-  );
-  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-}
+import { currentWeekYear, getWeekNumber } from '../common/week.util';
 
 @Injectable()
 export class PlatformJobsService {
@@ -23,9 +15,7 @@ export class PlatformJobsService {
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async refreshLeaderboardJob() {
-    const now = new Date();
-    const weekNumber = getWeekNumber(now);
-    const year = now.getFullYear();
+    const { weekNumber, year } = currentWeekYear();
     try {
       const entries = await this.leaderboard.refreshLeaderboard(
         weekNumber,

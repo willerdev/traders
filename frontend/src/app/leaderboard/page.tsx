@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { api, LeaderboardEntry } from "@/lib/api";
+import { api, HubSenderStat, LeaderboardEntry } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { cn, formatCurrency, formatPercent, TIER_BG } from "@/lib/utils";
-import { Trophy, Medal } from "lucide-react";
+import { Activity, Trophy, Medal } from "lucide-react";
 
 function RankIcon({ rank }: { rank: number }) {
   if (rank === 1) return <Trophy className="h-5 w-5 text-rank-gold" />;
@@ -20,7 +20,9 @@ function RankIcon({ rank }: { rank: number }) {
 
 export default function LeaderboardPage() {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
+  const [hubSenders, setHubSenders] = useState<HubSenderStat[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hubLoading, setHubLoading] = useState(true);
 
   useEffect(() => {
     api.leaderboard
@@ -28,6 +30,12 @@ export default function LeaderboardPage() {
       .then(setEntries)
       .catch(() => setEntries([]))
       .finally(() => setLoading(false));
+
+    api.leaderboard
+      .hubExecution({ limit: 10, min_closed_trades: 0 })
+      .then((report) => setHubSenders(report.senders ?? []))
+      .catch(() => setHubSenders([]))
+      .finally(() => setHubLoading(false));
   }, []);
 
   return (
@@ -97,6 +105,57 @@ export default function LeaderboardPage() {
             ))}
           </div>
         )}
+
+        <div className="mt-12">
+          <div className="mb-4 flex items-center gap-2">
+            <Activity className="h-5 w-5 text-primary" />
+            <h2 className="text-xl font-bold text-white">MT5 execution leaders</h2>
+          </div>
+          <p className="mb-4 text-sm text-gray-500">
+            Live Signal Hub profitability — closed trades on MT5 (last 90 days)
+          </p>
+          {hubLoading ? (
+            <div className="flex justify-center py-10">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          ) : hubSenders.length === 0 ? (
+            <div className="glass-card rounded-xl border border-white/5 p-8 text-center text-sm text-gray-500">
+              No closed MT5 trades yet — stats appear after setups execute on Hub
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {hubSenders.map((sender, i) => (
+                <div
+                  key={sender.sendername}
+                  className="glass-card flex items-center gap-4 rounded-xl border border-white/5 p-4"
+                >
+                  <span className="flex h-5 w-5 items-center justify-center text-sm font-bold text-gray-500">
+                    {sender.rank ?? i + 1}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-white truncate">
+                      {sender.sendername}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {sender.closed_trades ?? 0} closed · WR{" "}
+                      {formatPercent(Number(sender.win_rate ?? 0))}
+                    </p>
+                  </div>
+                  <p
+                    className={cn(
+                      "font-bold",
+                      Number(sender.net_profit ?? 0) >= 0
+                        ? "text-success"
+                        : "text-danger",
+                    )}
+                  >
+                    {formatCurrency(Number(sender.net_profit ?? 0))}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="mt-8 grid grid-cols-5 gap-3">
           {["Bronze", "Silver", "Gold", "Diamond", "Elite"].map((tier) => (

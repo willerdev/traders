@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletService } from './wallet.service';
+import { SignalHubService } from '../signals/signal-hub.service';
 import { Signal, Trade, TradeDirection } from '@prisma/client';
 
 export type SetupOutcome = 'tp' | 'sl';
@@ -13,6 +14,7 @@ export class PriceMonitorService {
   constructor(
     private prisma: PrismaService,
     private wallet: WalletService,
+    private signalHub: SignalHubService,
   ) {}
 
   @Cron(CronExpression.EVERY_MINUTE)
@@ -106,6 +108,23 @@ export class PriceMonitorService {
   }
 
   async fetchPrice(symbol: string): Promise<number | null> {
+    if (this.signalHub.isConfigured) {
+      try {
+        const hubMid = await this.signalHub.getQuoteMid(symbol);
+        if (hubMid !== null && Number.isFinite(hubMid)) {
+          return hubMid;
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Hub quote failed for ${symbol}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+
+    return this.fetchFallbackPrice(symbol);
+  }
+
+  private async fetchFallbackPrice(symbol: string): Promise<number | null> {
     const sym = symbol.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
     const cryptoPairs: Record<string, string> = {

@@ -141,6 +141,23 @@ export class AdminController {
     return this.adminService.deactivatePromoCode(req.user.id, code);
   }
 
+  @Get('hub/senders/report')
+  hubSenderReport(
+    @Query('days') days?: string,
+    @Query('sort') sort?: string,
+    @Query('min_closed_trades') minClosedTrades?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.adminService.getHubSenderReport({
+      days: days ? parseInt(days, 10) : undefined,
+      sort,
+      min_closed_trades: minClosedTrades
+        ? parseInt(minClosedTrades, 10)
+        : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+  }
+
   @Post('users/:userId/suspend')
   suspendUser(
     @Param('userId') userId: string,

@@ -8,6 +8,7 @@ import {
   TIER_BALANCES,
   WIN_POINTS,
 } from '../common/constants';
+import { currentWeekYear } from '../common/week.util';
 
 @Injectable()
 export class ScoringService {
@@ -27,9 +28,7 @@ export class ScoringService {
     const basePoints = isWin ? WIN_POINTS : LOSS_POINTS;
     const rrBonus = isWin ? this.calculateRrBonus(riskRewardRatio) : 0;
 
-    const now = new Date();
-    const weekNumber = this.getWeekNumber(now);
-    const year = now.getFullYear();
+    const { weekNumber, year } = currentWeekYear();
 
     const consistencyBonus = isWin
       ? await this.calculateConsistencyBonus(userId, weekNumber, year)
@@ -176,11 +175,5 @@ export class ScoringService {
         currentDrawdown: 0,
       },
     });
-  }
-
-  private getWeekNumber(date: Date): number {
-    const start = new Date(date.getFullYear(), 0, 1);
-    const diff = date.getTime() - start.getTime();
-    return Math.ceil((diff / 86400000 + start.getDay() + 1) / 7);
   }
 }

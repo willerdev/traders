@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { PayoutStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -9,6 +10,7 @@ import { PayoutService } from '../payouts/payout.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { TpClaimsService } from '../tp-claims/tp-claims.service';
 import { PromoService } from '../payments/promo.service';
+import { SignalHubService } from '../signals/signal-hub.service';
 import { CreatePromoCodeDto } from '../common/dto';
 
 @Injectable()
@@ -19,6 +21,7 @@ export class AdminService {
     private analytics: AnalyticsService,
     private tpClaims: TpClaimsService,
     private promo: PromoService,
+    private signalHub: SignalHubService,
   ) {}
 
   async getOverview() {
@@ -67,6 +70,24 @@ export class AdminService {
 
   deactivatePromoCode(adminId: string, code: string) {
     return this.promo.deactivate(code, adminId);
+  }
+
+  async getHubSenderReport(filters?: {
+    days?: number;
+    sort?: string;
+    min_closed_trades?: number;
+    limit?: number;
+  }) {
+    if (!this.signalHub.isConfigured) {
+      throw new ServiceUnavailableException('Signal Hub is not configured');
+    }
+    const report = await this.signalHub.getSenderReport(filters);
+    if (!report) {
+      throw new ServiceUnavailableException(
+        'Could not fetch sender report from Signal Hub',
+      );
+    }
+    return report;
   }
 
   async listPendingKyc() {

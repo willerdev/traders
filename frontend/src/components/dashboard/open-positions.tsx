@@ -82,6 +82,7 @@ function OpenPositionsCard({ onHide }: OpenPositionsCardProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [closingTicket, setClosingTicket] = useState<number | null>(null);
+  const [breakingEven, setBreakingEven] = useState<number | null>(null);
   const [closingAll, setClosingAll] = useState(false);
 
   const load = useCallback(async () => {
@@ -118,6 +119,26 @@ function OpenPositionsCard({ onHide }: OpenPositionsCardProps) {
       setError(err instanceof Error ? err.message : "Failed to close position");
     } finally {
       setClosingTicket(null);
+    }
+  }
+
+  async function handleBreakeven(pos: HubPosition) {
+    const ticket = Number(pos.ticket);
+    if (!ticket) return;
+    setBreakingEven(ticket);
+    try {
+      await api.signals.hubAction({
+        action: "breakeven",
+        ticket,
+        symbol: pos.symbol,
+      });
+      await load();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to move stop to breakeven",
+      );
+    } finally {
+      setBreakingEven(null);
     }
   }
 
@@ -287,20 +308,34 @@ function OpenPositionsCard({ onHide }: OpenPositionsCardProps) {
                       </p>
                     </div>
                     {ticket > 0 && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="gap-1"
-                        disabled={closingTicket === ticket}
-                        onClick={() => handleClose(ticket)}
-                      >
-                        {closingTicket === ticket ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <X className="h-3.5 w-3.5" />
-                        )}
-                        Close
-                      </Button>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={breakingEven === ticket}
+                          onClick={() => handleBreakeven(pos)}
+                        >
+                          {breakingEven === ticket ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            "Breakeven"
+                          )}
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="gap-1"
+                          disabled={closingTicket === ticket}
+                          onClick={() => handleClose(ticket)}
+                        >
+                          {closingTicket === ticket ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <X className="h-3.5 w-3.5" />
+                          )}
+                          Close
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </div>

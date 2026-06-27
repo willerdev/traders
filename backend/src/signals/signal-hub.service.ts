@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TradeDirection } from '@prisma/client';
+import { existsSync, readFileSync } from 'fs';
+import { join, extname } from 'path';
 import { CreateSignalDto } from '../common/dto';
 import { SignalValidationService } from '../ai/signal-validation.service';
 import { normalizeChartSymbol } from '../ai/chart-setup.util';
@@ -44,7 +46,66 @@ export interface SignalHubPayload {
   provider_name: string;
   message: string;
   callback_url?: string;
+  confidence?: number;
   image_url?: string;
+  image_base64?: string;
+  image_mime?: string;
+  lot?: number;
+  ticket?: number;
+}
+
+export interface SignalHubQuote {
+  symbol: string;
+  resolved_symbol: string;
+  bid: number;
+  ask: number;
+  price: number;
+  mid: number;
+  spread: number;
+  digits?: number;
+  point?: number;
+  time: string;
+  source?: string;
+}
+
+export interface SignalHubSenderStat {
+  rank?: number;
+  sendername: string;
+  signals?: number;
+  closed_trades?: number;
+  wins?: number;
+  losses?: number;
+  win_rate?: number;
+  net_profit?: number;
+  gross_profit?: number;
+  gross_loss?: number;
+  profit_factor?: number;
+  expectancy?: number;
+  [key: string]: unknown;
+}
+
+export interface SignalHubSenderReport {
+  days: number;
+  sort?: string;
+  min_closed_trades?: number;
+  total_senders: number;
+  returned: number;
+  generated_at?: string | null;
+  summary?: Record<string, unknown> | null;
+  senders: SignalHubSenderStat[];
+}
+
+export interface HubActionInput {
+  action: SignalHubAction;
+  symbol?: string;
+  direction?: 'buy' | 'sell';
+  entry?: number;
+  sl?: number;
+  tp?: number;
+  lot?: number;
+  ticket?: number;
+  external_id?: string;
+  message?: string;
 }
 
 export interface SignalHubResult {
@@ -181,6 +242,55 @@ export class SignalHubService {
     return undefined;
   }
 
+  private mimeFromPath(filePath: string): string {
+    const ext = extname(filePath).toLowerCase();
+    if (ext === '.png') return 'image/png';
+    if (ext === '.webp') return 'image/webp';
+    if (ext === '.gif') return 'image/gif';
+    return 'image/jpeg';
+  }
+
+  private resolveLocalScreenshotPath(screenshotUrl: string): string | null {
+    const raw = screenshotUrl.trim();
+    if (!raw) return null;
+
+    const match = raw.match(/\/uploads\/setups\/([^/?#]+)/i);
+    if (!match) return null;
+
+    const filePath = join(process.cwd(), 'uploads', 'setups', match[1]);
+    return existsSync(filePath) ? filePath : null;
+  }
+
+  private attachScreenshotToPayload(
+    payload: SignalHubPayload,
+    screenshotUrl: string,
+  ): void {
+    const imageUrl = this.resolveHubImageUrl(screenshotUrl);
+    if (imageUrl) {
+      payload.image_url = imageUrl;
+      return;
+    }
+
+    const localPath = this.resolveLocalScreenshotPath(screenshotUrl);
+    if (!localPath) return;
+
+    try {
+      const buf = readFileSync(localPath);
+      if (buf.length > 5_000_000) {
+        this.logger.warn(
+          `Screenshot too large for Hub base64 (${buf.length} bytes) — skipping`,
+        );
+        return;
+      }
+      payload.image_base64 = buf.toString('base64');
+      payload.image_mime = this.mimeFromPath(localPath);
+    } catch (err) {
+      this.logger.warn(
+        `Could not read screenshot for Hub: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
   private getOrderType(): SignalHubOrderType {
     const raw =
       this.config.get<string>('SIGNAL_HUB_ORDER_TYPE') ||
@@ -262,6 +372,7 @@ export class SignalHubService {
     dto: CreateSignalDto,
     displayName: string,
     userId: string,
+    confidence?: number,
   ): SignalHubPayload {
     const payload: SignalHubPayload = {
       external_id: externalId,
@@ -282,10 +393,11 @@ export class SignalHubService {
       payload.callback_url = this.callbackUrl;
     }
 
-    const imageUrl = this.resolveHubImageUrl(dto.screenshotUrl);
-    if (imageUrl) {
-      payload.image_url = imageUrl;
+    if (confidence !== undefined && Number.isFinite(confidence)) {
+      payload.confidence = Math.max(0, Math.min(100, Math.round(confidence)));
     }
+
+    this.attachScreenshotToPayload(payload, dto.screenshotUrl);
 
     return payload;
   }
@@ -330,7 +442,13 @@ export class SignalHubService {
     }
 
     const safeDto = validation.dto;
-    const payload = this.buildPayload(externalId, safeDto, displayName, userId);
+    const payload = this.buildPayload(
+      externalId,
+      safeDto,
+      displayName,
+      userId,
+      validation.confidence,
+    );
     const sentPrices = {
       symbol: payload.symbol,
       direction: payload.direction,
@@ -465,5 +583,107 @@ export class SignalHubService {
       sendername?: string;
     }>(`/v1/positions/close-all?${q}`, { method: 'POST' });
     return data;
+  }
+
+  async getQuote(symbol: string): Promise<SignalHubQuote | null> {
+    const normalized = normalizeChartSymbol(symbol);
+    const q = new URLSearchParams({ symbol: normalized });
+    let { data } = await this.hubRequest<SignalHubQuote>(`/v1/quote?${q}`);
+    if (!data) {
+      ({ data } = await this.hubRequest<SignalHubQuote>('/v1/quote', {
+        method: 'POST',
+        body: JSON.stringify({ symbol: normalized }),
+      }));
+    }
+    return data;
+  }
+
+  async getQuoteMid(symbol: string): Promise<number | null> {
+    const quote = await this.getQuote(symbol);
+    if (!quote) return null;
+    const mid = quote.mid ?? quote.price;
+    return Number.isFinite(mid) ? mid : null;
+  }
+
+  async getSignalByHubId(hubId: string, sendername?: string) {
+    const q = sendername
+      ? new URLSearchParams({ sendername })
+      : null;
+    const path = q
+      ? `/v1/signals/${encodeURIComponent(hubId)}?${q}`
+      : `/v1/signals/${encodeURIComponent(hubId)}`;
+    const { data } = await this.hubRequest<SignalHubResult>(path);
+    return data;
+  }
+
+  async getSenderReport(filters?: {
+    days?: number;
+    sort?: string;
+    min_closed_trades?: number;
+    limit?: number;
+  }) {
+    const q = new URLSearchParams();
+    if (filters?.days) q.set('days', String(filters.days));
+    if (filters?.sort) q.set('sort', filters.sort);
+    if (filters?.min_closed_trades !== undefined) {
+      q.set('min_closed_trades', String(filters.min_closed_trades));
+    }
+    if (filters?.limit) q.set('limit', String(filters.limit));
+
+    const qs = q.toString();
+    const { data } = await this.hubRequest<SignalHubSenderReport>(
+      `/v1/senders/report${qs ? `?${qs}` : ''}`,
+    );
+    return data;
+  }
+
+  async getSenderProfitability(filters?: {
+    days?: number;
+    min_closed_trades?: number;
+    limit?: number;
+  }) {
+    const q = new URLSearchParams();
+    if (filters?.days) q.set('days', String(filters.days));
+    if (filters?.min_closed_trades !== undefined) {
+      q.set('min_closed_trades', String(filters.min_closed_trades));
+    }
+    if (filters?.limit) q.set('limit', String(filters.limit));
+
+    const qs = q.toString();
+    const { data } = await this.hubRequest<SignalHubSenderReport>(
+      `/v1/senders/profitability${qs ? `?${qs}` : ''}`,
+    );
+    return data;
+  }
+
+  async sendHubAction(
+    sendername: string,
+    input: HubActionInput,
+  ): Promise<{ hub: SignalHubResult | null; error?: string }> {
+    const payload: Record<string, unknown> = {
+      action: input.action,
+      sendername,
+      provider_name: this.providerName,
+    };
+
+    if (input.external_id) payload.external_id = input.external_id;
+    if (input.symbol) payload.symbol = normalizeChartSymbol(input.symbol);
+    if (input.direction) payload.direction = input.direction;
+    if (input.entry !== undefined) payload.entry = input.entry;
+    if (input.sl !== undefined) payload.sl = input.sl;
+    if (input.tp !== undefined) payload.tp = input.tp;
+    if (input.lot !== undefined) payload.lot = input.lot;
+    if (input.ticket !== undefined) payload.ticket = input.ticket;
+    if (input.message) payload.message = input.message.slice(0, 4000);
+
+    const { data, error } = await this.hubRequest<SignalHubResult>(
+      '/v1/signals',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    );
+
+    return { hub: data, error };
   }
 }

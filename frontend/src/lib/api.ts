@@ -241,6 +241,17 @@ class ApiClient {
         "/signals/hub/positions/close-all",
         { method: "POST" },
       ),
+    quote: (symbol: string) => {
+      const q = new URLSearchParams({ symbol });
+      return this.request<HubQuote>(`/signals/hub/quote?${q}`);
+    },
+    hubSignalById: (hubId: string) =>
+      this.request<HubSignalStatus>(`/signals/hub/signals/${hubId}`),
+    hubAction: (payload: HubActionInput) =>
+      this.request<HubSignalStatus>("/signals/hub/action", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
     listDrafts: () => this.request<SignalDraft[]>("/signals/drafts"),
     getDraft: (draftId: string) =>
       this.request<SignalDraft>(`/signals/drafts/${draftId}`),
@@ -335,6 +346,22 @@ class ApiClient {
       if (week) params.set("week", String(week));
       if (year) params.set("year", String(year));
       return this.request<LeaderboardEntry[]>(`/leaderboard?${params}`);
+    },
+    hubExecution: (params?: {
+      days?: number;
+      min_closed_trades?: number;
+      limit?: number;
+    }) => {
+      const q = new URLSearchParams();
+      if (params?.days) q.set("days", String(params.days));
+      if (params?.min_closed_trades !== undefined) {
+        q.set("min_closed_trades", String(params.min_closed_trades));
+      }
+      if (params?.limit) q.set("limit", String(params.limit));
+      const qs = q.toString();
+      return this.request<HubSenderReport>(
+        `/leaderboard/hub-execution${qs ? `?${qs}` : ""}`,
+      );
     },
   };
 
@@ -730,6 +757,66 @@ export interface HubPositions {
   sendername: string;
   count: number;
   items: HubPosition[];
+}
+
+export interface HubQuote {
+  symbol: string;
+  resolved_symbol: string;
+  bid: number;
+  ask: number;
+  price: number;
+  mid: number;
+  spread: number;
+  time: string;
+  source?: string;
+}
+
+export type HubActionType =
+  | "open"
+  | "add"
+  | "close"
+  | "breakeven"
+  | "modify"
+  | "partial_close"
+  | "close_all"
+  | "ignore";
+
+export interface HubActionInput {
+  action: HubActionType;
+  symbol?: string;
+  direction?: "buy" | "sell";
+  entry?: number;
+  sl?: number;
+  tp?: number;
+  lot?: number;
+  ticket?: number;
+  external_id?: string;
+  message?: string;
+}
+
+export interface HubSenderStat {
+  rank?: number;
+  sendername: string;
+  signals?: number;
+  closed_trades?: number;
+  wins?: number;
+  losses?: number;
+  win_rate?: number;
+  net_profit?: number;
+  gross_profit?: number;
+  gross_loss?: number;
+  profit_factor?: number;
+  expectancy?: number;
+}
+
+export interface HubSenderReport {
+  days: number;
+  sort?: string;
+  min_closed_trades?: number;
+  total_senders: number;
+  returned: number;
+  generated_at?: string | null;
+  senders: HubSenderStat[];
 }
 
 export interface SetupResolution {
