@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletService } from './wallet.service';
 import { SignalHubService } from '../signals/signal-hub.service';
+import { normalizeChartSymbol } from '../ai/chart-setup.util';
 import { Signal, Trade, TradeDirection } from '@prisma/client';
 
 export type SetupOutcome = 'tp' | 'sl';
@@ -108,9 +109,11 @@ export class PriceMonitorService {
   }
 
   async fetchPrice(symbol: string): Promise<number | null> {
+    const normalized = normalizeChartSymbol(symbol);
+
     if (this.signalHub.isConfigured) {
       try {
-        const hubMid = await this.signalHub.getQuoteMid(symbol);
+        const hubMid = await this.signalHub.getQuoteMid(normalized);
         if (hubMid !== null && Number.isFinite(hubMid)) {
           return hubMid;
         }
@@ -121,11 +124,11 @@ export class PriceMonitorService {
       }
     }
 
-    return this.fetchFallbackPrice(symbol);
+    return this.fetchFallbackPrice(normalized);
   }
 
   private async fetchFallbackPrice(symbol: string): Promise<number | null> {
-    const sym = symbol.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const sym = normalizeChartSymbol(symbol).replace(/[^A-Z0-9]/g, '');
 
     const cryptoPairs: Record<string, string> = {
       BTCUSD: 'BTCUSDT',

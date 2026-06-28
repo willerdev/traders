@@ -6,6 +6,7 @@ import { join, extname } from 'path';
 import { CreateSignalDto } from '../common/dto';
 import { SignalValidationService } from '../ai/signal-validation.service';
 import { normalizeChartSymbol } from '../ai/chart-setup.util';
+import { getSymbolLookupVariants } from '../ai/deriv-symbols';
 
 export type SignalHubAction =
   | 'open'
@@ -684,16 +685,27 @@ export class SignalHubService {
   }
 
   async getQuote(symbol: string): Promise<SignalHubQuote | null> {
-    const normalized = normalizeChartSymbol(symbol);
-    const q = new URLSearchParams({ symbol: normalized });
-    let { data } = await this.hubRequest<SignalHubQuote>(`/v1/quote?${q}`);
-    if (!data) {
-      ({ data } = await this.hubRequest<SignalHubQuote>('/v1/quote', {
-        method: 'POST',
-        body: JSON.stringify({ symbol: normalized }),
-      }));
+    const variants = getSymbolLookupVariants(symbol);
+
+    for (const candidate of variants) {
+      const q = new URLSearchParams({ symbol: candidate });
+      let { data } = await this.hubRequest<SignalHubQuote>(`/v1/quote?${q}`);
+      if (!data) {
+        ({ data } = await this.hubRequest<SignalHubQuote>('/v1/quote', {
+          method: 'POST',
+          body: JSON.stringify({ symbol: candidate }),
+        }));
+      }
+      if (data) {
+        return {
+          ...data,
+          symbol: data.symbol || candidate,
+          resolved_symbol: data.resolved_symbol || candidate,
+        };
+      }
     }
-    return data;
+
+    return null;
   }
 
   async getQuoteMid(symbol: string): Promise<number | null> {

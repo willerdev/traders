@@ -531,6 +531,40 @@ export class AdminService {
     return this.metaApi.getAccount(accountId);
   }
 
+  getMetaApiTerminal(accountId?: string) {
+    const resolved =
+      accountId?.trim() ||
+      this.metaApi.getConfiguredDefaultAccountId() ||
+      null;
+
+    if (!this.metaApi.isConfigured) {
+      return {
+        configured: false,
+        defaultAccountId: null,
+        accountId: null,
+        account: null,
+        information: null,
+        positions: [],
+        error: 'METAAPI_TOKEN is not configured',
+      };
+    }
+
+    if (!resolved) {
+      return {
+        configured: true,
+        defaultAccountId: this.metaApi.getConfiguredDefaultAccountId(),
+        accountId: null,
+        account: null,
+        information: null,
+        positions: [],
+        error:
+          'No MetaAPI account selected — set METAAPI_DEFAULT_ACCOUNT_ID or pick an account',
+      };
+    }
+
+    return this.metaApi.getTerminalState(resolved);
+  }
+
   verifyNowPaymentsPayout(payoutId: string, code: string, adminId: string) {
     return this.payoutService.verifyGatewayPayout(payoutId, code, adminId);
   }

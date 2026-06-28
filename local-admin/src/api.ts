@@ -274,6 +274,15 @@ export const api = {
       `/admin/hub/metaapi/accounts${qs ? `?${qs}` : ""}`,
     );
   },
+
+  metaApiTerminal: (accountId?: string) => {
+    const q = accountId
+      ? `?accountId=${encodeURIComponent(accountId)}`
+      : "";
+    return request<MetaApiTerminalState>(
+      `/admin/hub/metaapi/terminal${q}`,
+    );
+  },
 };
 
 export type EmailAssessment = {
@@ -593,6 +602,46 @@ export type MetaApiAccountsResult = {
   configured: boolean;
   count: number;
   items: MetaApiAccountRow[];
+};
+
+export type MetaApiTerminalState = {
+  configured: boolean;
+  defaultAccountId: string | null;
+  accountId: string | null;
+  account: MetaApiAccountRow | null;
+  information: {
+    balance: number;
+    equity: number;
+    currency: string;
+    margin: number;
+    freeMargin: number;
+    leverage: number;
+    tradeAllowed: boolean;
+    broker?: string;
+    server?: string;
+    login?: number;
+    accountType?: string;
+  } | null;
+  positions: MetaApiPositionRow[];
+  error?: string;
+};
+
+export type MetaApiPositionRow = {
+  id: string;
+  type: string;
+  symbol: string;
+  volume: number;
+  openPrice: number;
+  currentPrice: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  profit: number;
+  unrealizedProfit: number;
+  swap: number;
+  commission: number;
+  time: string;
+  comment?: string;
+  clientId?: string;
 };
 
 export type DirectMessage = {

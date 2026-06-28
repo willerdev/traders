@@ -296,6 +296,14 @@ a {
   font-weight: 600;
 }
 
+tr:hover {
+  background: rgba(37, 99, 235, 0.08);
+}
+
+tr.row-selected {
+  background: rgba(37, 99, 235, 0.15);
+}
+
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));

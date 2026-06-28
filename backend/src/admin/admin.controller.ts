@@ -243,6 +243,11 @@ export class AdminController {
     return this.adminService.deactivatePromoCode(req.user.id, code);
   }
 
+  @Get('hub/metaapi/terminal')
+  getMetaApiTerminal(@Query('accountId') accountId?: string) {
+    return this.adminService.getMetaApiTerminal(accountId);
+  }
+
   @Get('hub/metaapi/accounts')
   listMetaApiAccounts(
     @Query('limit') limit?: string,

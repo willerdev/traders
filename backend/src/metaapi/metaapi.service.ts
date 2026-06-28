@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { TradeDirection } from '@prisma/client';
 import { normalizeChartSymbol } from '../ai/chart-setup.util';
+import { getSymbolLookupVariants } from '../ai/deriv-symbols';
 
 export type MetaApiAccount = {
   id: string;
@@ -46,9 +47,42 @@ export type MetaApiAccountInformation = {
   balance: number;
   equity: number;
   currency: string;
+  margin: number;
   freeMargin: number;
   leverage: number;
   tradeAllowed: boolean;
+  broker?: string;
+  server?: string;
+  login?: number;
+  accountType?: string;
+};
+
+export type MetaApiPosition = {
+  id: string;
+  type: string;
+  symbol: string;
+  volume: number;
+  openPrice: number;
+  currentPrice: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  profit: number;
+  unrealizedProfit: number;
+  swap: number;
+  commission: number;
+  time: string;
+  comment?: string;
+  clientId?: string;
+};
+
+export type MetaApiTerminalState = {
+  configured: boolean;
+  defaultAccountId: string | null;
+  accountId: string | null;
+  account: MetaApiAccount | null;
+  information: MetaApiAccountInformation | null;
+  positions: MetaApiPosition[];
+  error?: string;
 };
 
 export type MetaApiSymbolSpec = {
@@ -74,7 +108,7 @@ export class MetaApiService {
   private readonly logger = new Logger(MetaApiService.name);
   private readonly provisioningUrl: string;
   private readonly token: string;
-  private readonly defaultAccountId: string;
+  private readonly configuredDefaultAccountId: string;
   private readonly defaultVolume: number;
 
   constructor(private config: ConfigService) {
@@ -82,7 +116,7 @@ export class MetaApiService {
       this.config.get<string>('METAAPI_PROVISIONING_URL') ||
       'https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai';
     this.token = this.config.get<string>('METAAPI_TOKEN')?.trim() || '';
-    this.defaultAccountId =
+    this.configuredDefaultAccountId =
       this.config.get<string>('METAAPI_DEFAULT_ACCOUNT_ID')?.trim() || '';
     const vol = Number(this.config.get<string>('METAAPI_TRADE_VOLUME') || '0.01');
     this.defaultVolume = Number.isFinite(vol) && vol > 0 ? vol : 0.01;
@@ -90,6 +124,10 @@ export class MetaApiService {
 
   get isConfigured(): boolean {
     return Boolean(this.token);
+  }
+
+  getConfiguredDefaultAccountId(): string | null {
+    return this.configuredDefaultAccountId || null;
   }
 
   private headers(contentType = false) {
@@ -138,7 +176,7 @@ export class MetaApiService {
   }
 
   resolveAccountId(userAccountId?: string | null): string | null {
-    const picked = userAccountId?.trim() || this.defaultAccountId;
+    const picked = userAccountId?.trim() || this.configuredDefaultAccountId;
     return picked || null;
   }
 
@@ -257,7 +295,32 @@ export class MetaApiService {
     account: MetaApiAccount,
     symbol: string,
   ): Promise<MetaApiSymbolPrice> {
-    const brokerSymbol = normalizeChartSymbol(symbol);
+    const variants = getSymbolLookupVariants(symbol);
+    let lastError: BadRequestException | null = null;
+
+    for (const brokerSymbol of variants) {
+      try {
+        return await this.fetchSymbolPrice(account, brokerSymbol);
+      } catch (err) {
+        if (err instanceof BadRequestException) {
+          lastError = err;
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    const canonical = normalizeChartSymbol(symbol);
+    throw (
+      lastError ??
+      new BadRequestException(`Could not get price for ${canonical}`)
+    );
+  }
+
+  private async fetchSymbolPrice(
+    account: MetaApiAccount,
+    brokerSymbol: string,
+  ): Promise<MetaApiSymbolPrice> {
     const base = this.clientUrl(account.region);
     const res = await fetch(
       `${base}/users/current/accounts/${encodeURIComponent(account.id)}/symbols/${encodeURIComponent(brokerSymbol)}/current-price`,
@@ -305,17 +368,133 @@ export class MetaApiService {
       balance: Number(body.balance ?? 0),
       equity: Number(body.equity ?? body.balance ?? 0),
       currency: String(body.currency ?? 'USD'),
+      margin: Number(body.margin ?? 0),
       freeMargin: Number(body.freeMargin ?? 0),
       leverage: Number(body.leverage ?? 0),
       tradeAllowed: body.tradeAllowed !== false,
+      broker: typeof body.broker === 'string' ? body.broker : undefined,
+      server: typeof body.server === 'string' ? body.server : undefined,
+      login: body.login != null ? Number(body.login) : undefined,
+      accountType: typeof body.type === 'string' ? body.type : undefined,
     };
+  }
+
+  private mapPosition(raw: Record<string, unknown>): MetaApiPosition {
+    return {
+      id: String(raw.id ?? ''),
+      type: String(raw.type ?? ''),
+      symbol: String(raw.symbol ?? ''),
+      volume: Number(raw.volume ?? 0),
+      openPrice: Number(raw.openPrice ?? 0),
+      currentPrice: Number(raw.currentPrice ?? 0),
+      stopLoss: raw.stopLoss != null ? Number(raw.stopLoss) : undefined,
+      takeProfit: raw.takeProfit != null ? Number(raw.takeProfit) : undefined,
+      profit: Number(raw.profit ?? 0),
+      unrealizedProfit: Number(raw.unrealizedProfit ?? 0),
+      swap: Number(raw.swap ?? 0),
+      commission: Number(raw.commission ?? 0),
+      time: String(raw.time ?? raw.brokerTime ?? ''),
+      comment: typeof raw.comment === 'string' ? raw.comment : undefined,
+      clientId: typeof raw.clientId === 'string' ? raw.clientId : undefined,
+    };
+  }
+
+  async getPositions(account: MetaApiAccount): Promise<MetaApiPosition[]> {
+    const base = this.clientUrl(account.region);
+    const res = await fetch(
+      `${base}/users/current/accounts/${encodeURIComponent(account.id)}/positions?refreshTerminalState=true`,
+      { headers: this.headers() },
+    );
+    const body = (await res.json().catch(() => ({}))) as unknown;
+
+    if (!res.ok) {
+      const err = body as Record<string, unknown>;
+      throw new BadRequestException(
+        (err.message as string) ||
+          `Could not read open positions (${res.status})`,
+      );
+    }
+
+    if (!Array.isArray(body)) return [];
+    return body.map((row) => this.mapPosition(row as Record<string, unknown>));
+  }
+
+  async getTerminalState(accountId: string): Promise<MetaApiTerminalState> {
+    if (!this.isConfigured) {
+      return {
+        configured: false,
+        defaultAccountId: null,
+        accountId: null,
+        account: null,
+        information: null,
+        positions: [],
+        error: 'METAAPI_TOKEN is not configured',
+      };
+    }
+
+    try {
+      const account = await this.ensureAccountReady(accountId);
+      const [information, positions] = await Promise.all([
+        this.getAccountInformation(account),
+        this.getPositions(account),
+      ]);
+
+      return {
+        configured: true,
+        defaultAccountId: this.getConfiguredDefaultAccountId(),
+        accountId: account.id,
+        account,
+        information,
+        positions,
+      };
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Failed to load MetaAPI terminal';
+      this.logger.warn(`MetaAPI terminal state failed: ${message}`);
+      return {
+        configured: true,
+        defaultAccountId: this.getConfiguredDefaultAccountId(),
+        accountId,
+        account: null,
+        information: null,
+        positions: [],
+        error: message,
+      };
+    }
   }
 
   async getSymbolSpecification(
     account: MetaApiAccount,
     symbol: string,
   ): Promise<MetaApiSymbolSpec> {
-    const brokerSymbol = normalizeChartSymbol(symbol);
+    const variants = getSymbolLookupVariants(symbol);
+    let lastError: BadRequestException | null = null;
+
+    for (const brokerSymbol of variants) {
+      const spec = await this.fetchSymbolSpecification(account, brokerSymbol).catch(
+        (err) => {
+          if (err instanceof BadRequestException) {
+            lastError = err;
+            return null;
+          }
+          throw err;
+        },
+      );
+      if (spec) return spec;
+    }
+
+    throw (
+      lastError ??
+      new BadRequestException(
+        `Could not read symbol spec for ${normalizeChartSymbol(symbol)}`,
+      )
+    );
+  }
+
+  private async fetchSymbolSpecification(
+    account: MetaApiAccount,
+    brokerSymbol: string,
+  ): Promise<MetaApiSymbolSpec> {
     const base = this.clientUrl(account.region);
     const res = await fetch(
       `${base}/users/current/accounts/${encodeURIComponent(account.id)}/symbols/${encodeURIComponent(brokerSymbol)}/specification`,
@@ -353,9 +532,9 @@ export class MetaApiService {
     price?: MetaApiSymbolPrice;
   }): Promise<{ trade: MetaApiTradeResult; price: MetaApiSymbolPrice }> {
     const account = await this.ensureAccountReady(input.account.id);
-    const brokerSymbol = normalizeChartSymbol(input.symbol);
     const price =
-      input.price ?? (await this.getSymbolPrice(account, brokerSymbol));
+      input.price ?? (await this.getSymbolPrice(account, input.symbol));
+    const brokerSymbol = price.symbol;
 
     const actionType =
       input.direction === 'BUY' ? 'ORDER_TYPE_BUY' : 'ORDER_TYPE_SELL';

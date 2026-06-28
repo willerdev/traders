@@ -1,4 +1,5 @@
 import { ChartAnalysisResult } from './vision.service';
+import { normalizeDerivSymbol } from './deriv-symbols';
 
 export function parseChartPrice(value: unknown): number {
   if (typeof value === 'number') return value;
@@ -8,72 +9,11 @@ export function parseChartPrice(value: unknown): number {
 }
 
 /**
- * Map chart / TradingView / shorthand names to MT5 broker symbols.
- * Volatility 75 (1s) and aliases resolve to Deriv MT5 ticker 1HZ75V (not VIX75).
+ * Map chart / TradingView / Deriv display names to MT5 broker symbols.
+ * Delegates to deriv-symbols.ts for the full Deriv synthetic catalog.
  */
 export function normalizeChartSymbol(raw: string): string {
-  const symbol = raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-
-  const map: Record<string, string> = {
-    '1HZ10V': '1HZ10V',
-    '1HZ25V': '1HZ25V',
-    '1HZ50V': '1HZ50V',
-    '1HZ75V': '1HZ75V',
-    '1HZ100V': '1HZ100V',
-    HZ10V: '1HZ10V',
-    HZ25V: '1HZ25V',
-    HZ50V: '1HZ50V',
-    HZ75V: '1HZ75V',
-    HZ100V: '1HZ100V',
-    VIX10: '1HZ10V',
-    VIX10S: '1HZ10V',
-    VIX101S: '1HZ10V',
-    VOLATILITY10: '1HZ10V',
-    VOLATILITY101S: '1HZ10V',
-    VOL10: '1HZ10V',
-    VIX25: '1HZ25V',
-    VIX25S: '1HZ25V',
-    VIX251S: '1HZ25V',
-    VOLATILITY25: '1HZ25V',
-    VOLATILITY251S: '1HZ25V',
-    VOL25: '1HZ25V',
-    VIX50: '1HZ50V',
-    VIX50S: '1HZ50V',
-    VIX501S: '1HZ50V',
-    VOLATILITY50: '1HZ50V',
-    VOL50: '1HZ50V',
-    VIX75: '1HZ75V',
-    VIX75S: '1HZ75V',
-    VIX751S: '1HZ75V',
-    VIX75INDEX: '1HZ75V',
-    VOLATILITY75: '1HZ75V',
-    VOLATILITY751S: '1HZ75V',
-    VOLATILITY75INDEX: '1HZ75V',
-    VOLATILITY751SINDEX: '1HZ75V',
-    VOL75: '1HZ75V',
-    V75: '1HZ75V',
-    VIX100: '1HZ100V',
-    VIX100S: '1HZ100V',
-    VIX1001S: '1HZ100V',
-    VOLATILITY100: '1HZ100V',
-    VOL100: '1HZ100V',
-    GOLD: 'XAUUSD',
-    NASDAQ: 'NAS100',
-  };
-
-  if (map[symbol]) return map[symbol];
-  if (/VOLATILITY10.*1S|VIX10.*1S|HZ10V/.test(symbol)) return '1HZ10V';
-  if (/VOLATILITY25.*1S|VIX25.*1S|HZ25V/.test(symbol)) return '1HZ25V';
-  if (/VOLATILITY50.*1S|VIX50.*1S|HZ50V/.test(symbol)) return '1HZ50V';
-  if (/VOLATILITY75.*1S|VIX75.*1S|VIX751S|HZ75V/.test(symbol)) return '1HZ75V';
-  if (/VOLATILITY100.*1S|VIX100.*1S|HZ100V/.test(symbol)) return '1HZ100V';
-  if (/VOLATILITY75|VIX75|VOL75|^V75$/.test(symbol)) return '1HZ75V';
-  if (/VOLATILITY25|VIX25|VOL25/.test(symbol)) return '1HZ25V';
-  if (/VOLATILITY10|VIX10|VOL10/.test(symbol)) return '1HZ10V';
-  if (/VOLATILITY50|VIX50|VOL50/.test(symbol)) return '1HZ50V';
-  if (/VOLATILITY100|VIX100|VOL100/.test(symbol)) return '1HZ100V';
-
-  return symbol || raw.trim().toUpperCase();
+  return normalizeDerivSymbol(raw);
 }
 
 function isBuyValid(

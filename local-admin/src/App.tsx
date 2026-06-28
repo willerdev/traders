@@ -12,6 +12,7 @@ import {
   type PromoCodeRow,
   type HubSenderReport,
   type MetaApiAccountsResult,
+  type MetaApiTerminalState,
   type TpClaimRow,
   type MessageThreadSummary,
   type DirectMessage,
@@ -106,6 +107,12 @@ export default function App() {
   const [metaApiAccounts, setMetaApiAccounts] =
     useState<MetaApiAccountsResult | null>(null);
   const [metaApiLoadError, setMetaApiLoadError] = useState<string | null>(null);
+  const [metaApiTerminal, setMetaApiTerminal] =
+    useState<MetaApiTerminalState | null>(null);
+  const [metaApiTerminalLoading, setMetaApiTerminalLoading] = useState(false);
+  const [selectedMetaApiAccountId, setSelectedMetaApiAccountId] = useState<
+    string | null
+  >(null);
   const [newPromoCode, setNewPromoCode] = useState("");
   const [newPromoDays, setNewPromoDays] = useState("7");
   const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
@@ -132,6 +139,30 @@ export default function App() {
     setDepositPendingCount(res.pendingCount);
     setDepositConfirmedTotal(res.confirmedTotalUsdt);
     return res;
+  }, []);
+
+  const loadMetaApiTerminal = useCallback(async (accountId?: string | null) => {
+    setMetaApiTerminalLoading(true);
+    try {
+      const terminal = await api.metaApiTerminal(accountId ?? undefined);
+      setMetaApiTerminal(terminal);
+      if (terminal.accountId) {
+        setSelectedMetaApiAccountId(terminal.accountId);
+      }
+    } catch (err) {
+      setMetaApiTerminal({
+        configured: true,
+        defaultAccountId: null,
+        accountId: accountId ?? null,
+        account: null,
+        information: null,
+        positions: [],
+        error:
+          err instanceof Error ? err.message : "Failed to load MetaAPI terminal",
+      });
+    } finally {
+      setMetaApiTerminalLoading(false);
+    }
   }, []);
 
   const loadTab = useCallback(async (active: Tab) => {
@@ -220,8 +251,10 @@ export default function App() {
         }
         if (accountsResult.status === "fulfilled") {
           setMetaApiAccounts(accountsResult.value);
+          await loadMetaApiTerminal(selectedMetaApiAccountId);
         } else {
           setMetaApiAccounts(null);
+          setMetaApiTerminal(null);
           const errMsg =
             accountsResult.reason instanceof Error
               ? accountsResult.reason.message
@@ -241,7 +274,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [suspiciousOnly]);
+  }, [suspiciousOnly, selectedMetaApiAccountId, loadMetaApiTerminal]);
 
   useEffect(() => {
     if (tab !== "payouts" || !authed) return;
@@ -1736,7 +1769,17 @@ export default function App() {
                     </tr>
                   ) : (
                     metaApiAccounts.items.map((a) => (
-                      <tr key={a.id}>
+                      <tr
+                        key={a.id}
+                        className={
+                          selectedMetaApiAccountId === a.id
+                            ? "row-selected"
+                            : undefined
+                        }
+                        style={{ cursor: "pointer" }}
+                        onClick={() => void loadMetaApiTerminal(a.id)}
+                        title="Click to view balance and open trades"
+                      >
                         <td>{a.name || "—"}</td>
                         <td>{a.login}</td>
                         <td>{a.server}</td>
@@ -1762,6 +1805,138 @@ export default function App() {
               </table>
             ) : (
               <p className="hint">Loading MetaAPI accounts…</p>
+            )}
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginTop: "1.5rem",
+                gap: "1rem",
+                flexWrap: "wrap",
+              }}
+            >
+              <h2 style={{ margin: 0 }}>Account balance &amp; open trades</h2>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={metaApiTerminalLoading || !metaApiAccounts?.configured}
+                onClick={() =>
+                  void loadMetaApiTerminal(selectedMetaApiAccountId)
+                }
+              >
+                {metaApiTerminalLoading ? "Refreshing…" : "Refresh"}
+              </button>
+            </div>
+            <p className="hint">
+              {selectedMetaApiAccountId
+                ? `Showing terminal state for account ${selectedMetaApiAccountId}`
+                : metaApiTerminal?.defaultAccountId
+                  ? `Using default account ${metaApiTerminal.defaultAccountId}`
+                  : "Click an account row above or set METAAPI_DEFAULT_ACCOUNT_ID"}
+            </p>
+
+            {metaApiTerminalLoading && !metaApiTerminal ? (
+              <p className="hint">Loading balance and positions…</p>
+            ) : metaApiTerminal?.error ? (
+              <p className="hint">{metaApiTerminal.error}</p>
+            ) : metaApiTerminal?.information ? (
+              <>
+                <div className="cards">
+                  <div className="card">
+                    <div className="label">Balance</div>
+                    <div className="value">
+                      {fmtMoney(metaApiTerminal.information.balance)}{" "}
+                      {metaApiTerminal.information.currency}
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="label">Equity</div>
+                    <div className="value">
+                      {fmtMoney(metaApiTerminal.information.equity)}{" "}
+                      {metaApiTerminal.information.currency}
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="label">Margin used</div>
+                    <div className="value">
+                      {fmtMoney(metaApiTerminal.information.margin)}{" "}
+                      {metaApiTerminal.information.currency}
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="label">Free margin</div>
+                    <div className="value">
+                      {fmtMoney(metaApiTerminal.information.freeMargin)}{" "}
+                      {metaApiTerminal.information.currency}
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="label">Leverage</div>
+                    <div className="value">
+                      1:{metaApiTerminal.information.leverage || "—"}
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="label">Open positions</div>
+                    <div className="value">{metaApiTerminal.positions.length}</div>
+                  </div>
+                </div>
+
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Ticket</th>
+                      <th>Symbol</th>
+                      <th>Side</th>
+                      <th>Volume</th>
+                      <th>Open</th>
+                      <th>Current</th>
+                      <th>SL</th>
+                      <th>TP</th>
+                      <th>P/L</th>
+                      <th>Opened</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {metaApiTerminal.positions.length === 0 ? (
+                      <tr>
+                        <td colSpan={10}>No open positions on this account</td>
+                      </tr>
+                    ) : (
+                      metaApiTerminal.positions.map((p) => (
+                        <tr key={p.id}>
+                          <td>{p.id}</td>
+                          <td>{p.symbol}</td>
+                          <td>
+                            {p.type.includes("BUY") ? "BUY" : "SELL"}
+                          </td>
+                          <td>{p.volume}</td>
+                          <td>{p.openPrice}</td>
+                          <td>{p.currentPrice}</td>
+                          <td>{p.stopLoss ?? "—"}</td>
+                          <td>{p.takeProfit ?? "—"}</td>
+                          <td
+                            style={{
+                              color: p.profit >= 0 ? "#22c55e" : "#ef4444",
+                            }}
+                          >
+                            {fmtMoney(p.profit)}
+                          </td>
+                          <td>
+                            {p.time
+                              ? new Date(p.time).toLocaleString()
+                              : "—"}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </>
+            ) : (
+              <p className="hint">No terminal data available yet.</p>
             )}
 
             <h2 style={{ marginTop: "2rem" }}>Signal Hub sender report (MT5)</h2>
