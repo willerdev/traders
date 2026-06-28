@@ -10,10 +10,14 @@ export type MetaApiPendingAction =
 
 export type MetaApiOrderAction = MetaApiMarketAction | MetaApiPendingAction;
 
-/** MT5 order comment — max 31 chars, ASCII-safe sender name. */
+/** MetaAPI: combined comment + clientId length must be <= 26. */
+export const METAAPI_COMMENT_CLIENTID_BUDGET = 26;
+
+/** MT5 order comment — ASCII-safe sender name (max 31 when no clientId). */
 export function buildTradeOrderComment(
   displayName: string,
   userId: string,
+  maxLen = 31,
 ): string {
   const normalized = displayName
     .trim()
@@ -21,7 +25,41 @@ export function buildTradeOrderComment(
     .replace(/[^a-zA-Z0-9_-]/g, '');
   const name =
     normalized.length >= 1 ? normalized : `trader_${userId.slice(0, 8)}`;
-  return name.slice(0, 31);
+  const limit = Math.max(1, Math.min(maxLen, 31));
+  return name.slice(0, limit);
+}
+
+/**
+ * MetaAPI clientId must follow `${strategyId}_${positionId}_${orderId}` and fit
+ * in the comment+clientId budget with the order comment.
+ */
+export function buildMetaApiTradeIdentifiers(input: {
+  displayName: string;
+  userId: string;
+  signalId: string;
+  symbol: string;
+}): { comment: string; clientId: string } {
+  const symToken =
+    input.symbol
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toUpperCase()
+      .slice(0, 10) || 'X';
+  const sigToken =
+    input.signalId.replace(/[^a-zA-Z0-9]/g, '').slice(-8) || 'sig';
+  const clientId = `TRP_${symToken}_${sigToken}`.slice(
+    0,
+    METAAPI_COMMENT_CLIENTID_BUDGET,
+  );
+
+  const commentBudget =
+    METAAPI_COMMENT_CLIENTID_BUDGET - clientId.length;
+  const comment = buildTradeOrderComment(
+    input.displayName,
+    input.userId,
+    commentBudget,
+  );
+
+  return { comment, clientId };
 }
 
 export function roundToSymbolDigits(value: number, digits: number): number {

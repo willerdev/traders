@@ -619,7 +619,13 @@ export class MetaApiService {
 
   private tradeExtras(account: MetaApiAccount): Record<string, unknown> {
     const extras: Record<string, unknown> = {};
-    if (account.manualTrades === true || account.magic === 0) {
+    const server = account.server?.toLowerCase() ?? '';
+    const isDeriv = server.includes('deriv');
+    if (
+      isDeriv ||
+      account.manualTrades === true ||
+      account.magic === 0
+    ) {
       extras.magic = 0;
     } else if (account.magic != null) {
       extras.magic = account.magic;
@@ -627,29 +633,76 @@ export class MetaApiService {
     return extras;
   }
 
+  private formatMetaApiError(
+    body: Record<string, unknown>,
+    status: number,
+  ): string {
+    const details = body.details;
+    if (Array.isArray(details) && details.length > 0) {
+      return details
+        .map((row) => {
+          const d = row as Record<string, unknown>;
+          const param = d.parameter ?? d.field ?? 'field';
+          const msg = d.message ?? d.msg ?? 'invalid';
+          return `${String(param)}: ${String(msg)}`;
+        })
+        .join('; ');
+    }
+    return String(
+      body.message ?? `MetaAPI trade rejected (${status})`,
+    );
+  }
+
+  private normalizeTradePayload(
+    payload: Record<string, unknown>,
+    digits?: number,
+  ): Record<string, unknown> {
+    const out: Record<string, unknown> = { ...payload };
+    const d =
+      digits != null && Number.isFinite(digits) && digits >= 0 ? digits : 5;
+
+    for (const key of ['openPrice', 'stopLoss', 'takeProfit'] as const) {
+      if (typeof out[key] === 'number' && Number.isFinite(out[key])) {
+        out[key] = roundToSymbolDigits(out[key] as number, d);
+      }
+    }
+
+    if (typeof out.volume === 'number' && Number.isFinite(out.volume)) {
+      out.volume = Number((out.volume as number).toFixed(8));
+    }
+
+    out.stopLossUnits = 'ABSOLUTE_PRICE';
+    out.takeProfitUnits = 'ABSOLUTE_PRICE';
+    if (out.openPrice != null) {
+      out.openPriceUnits = 'ABSOLUTE_PRICE';
+    }
+
+    return out;
+  }
+
   private async submitTrade(
     account: MetaApiAccount,
     payload: Record<string, unknown>,
+    options?: { digits?: number },
   ): Promise<MetaApiTradeResult> {
     const base = this.clientUrl(account.region);
+    const bodyPayload = this.normalizeTradePayload(payload, options?.digits);
     const res = await fetch(
       `${base}/users/current/accounts/${encodeURIComponent(account.id)}/trade`,
       {
         method: 'POST',
         headers: this.headers(true),
-        body: JSON.stringify({ ...this.tradeExtras(account), ...payload }),
+        body: JSON.stringify({ ...this.tradeExtras(account), ...bodyPayload }),
       },
     );
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
 
     if (!res.ok) {
+      const message = this.formatMetaApiError(body, res.status);
       this.logger.error(
-        `MetaAPI trade failed (${res.status}): ${JSON.stringify(body).slice(0, 400)}`,
+        `MetaAPI trade failed (${res.status}): ${JSON.stringify(body).slice(0, 600)}`,
       );
-      throw new BadRequestException(
-        (body.message as string) ||
-          `MetaAPI trade rejected (${res.status})`,
-      );
+      throw new BadRequestException(message);
     }
 
     const stringCode = String(body.stringCode ?? '');
@@ -679,6 +732,7 @@ export class MetaApiService {
     comment?: string;
     clientId?: string;
     price?: MetaApiSymbolPrice;
+    specDigits?: number;
   }): Promise<{ trade: MetaApiTradeResult; price: MetaApiSymbolPrice }> {
     const account = await this.ensureAccountReady(input.account.id);
     const price =
@@ -694,10 +748,12 @@ export class MetaApiService {
       stopLoss: input.stopLoss,
       takeProfit: input.takeProfit,
     };
-    if (input.comment) payload.comment = input.comment.slice(0, 31);
-    if (input.clientId) payload.clientId = input.clientId.slice(0, 26);
+    if (input.comment) payload.comment = input.comment;
+    if (input.clientId) payload.clientId = input.clientId;
 
-    const trade = await this.submitTrade(account, payload);
+    const trade = await this.submitTrade(account, payload, {
+      digits: input.specDigits,
+    });
     return { trade, price };
   }
 
@@ -713,6 +769,7 @@ export class MetaApiService {
     clientId?: string;
     price?: MetaApiSymbolPrice;
     brokerSymbol?: string;
+    specDigits?: number;
   }): Promise<{ trade: MetaApiTradeResult; price: MetaApiSymbolPrice }> {
     const account = await this.ensureAccountReady(input.account.id);
     const price =
@@ -731,10 +788,12 @@ export class MetaApiService {
       stopLoss: input.stopLoss,
       takeProfit: input.takeProfit,
     };
-    if (input.comment) payload.comment = input.comment.slice(0, 31);
-    if (input.clientId) payload.clientId = input.clientId.slice(0, 26);
+    if (input.comment) payload.comment = input.comment;
+    if (input.clientId) payload.clientId = input.clientId;
 
-    const trade = await this.submitTrade(account, payload);
+    const trade = await this.submitTrade(account, payload, {
+      digits: input.specDigits,
+    });
     return { trade, price };
   }
 
@@ -772,6 +831,7 @@ export class MetaApiService {
         direction: input.direction,
         price,
         volume: input.volume,
+        specDigits: input.specDigits,
         ...basePayload,
       });
       return {
@@ -823,6 +883,7 @@ export class MetaApiService {
           openPrice,
           volume: pendingVolume,
           price,
+          specDigits: digits,
           ...basePayload,
         });
         return {

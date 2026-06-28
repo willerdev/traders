@@ -28,7 +28,7 @@ import {
 import { NotificationService } from '../email/notification.service';
 import { Signal, Trade, User } from '@prisma/client';
 import { MetaApiService } from '../metaapi/metaapi.service';
-import { buildTradeOrderComment } from '../metaapi/metaapi-order.util';
+import { buildMetaApiTradeIdentifiers } from '../metaapi/metaapi-order.util';
 import { TradeRiskService } from '../ai/trade-risk.service';
 import { RISK_PERCENT, MAX_RISK_PER_TRADE } from '../common/constants';
 
@@ -317,8 +317,12 @@ export class SignalsService {
       signal.symbol,
     );
 
-    const orderComment = buildTradeOrderComment(user.displayName, userId);
-    const clientId = signal.signalId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 26);
+    const { comment: orderComment, clientId } = buildMetaApiTradeIdentifiers({
+      displayName: user.displayName,
+      userId,
+      signalId: signal.signalId,
+      symbol: signal.symbol,
+    });
 
     const riskInput = {
       account,

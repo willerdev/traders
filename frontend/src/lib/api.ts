@@ -1,6 +1,16 @@
 // Browser uses same-origin proxy (app/api/v1/[...path]/route.ts) to avoid CORS.
 const API_BASE = "/api/v1";
 
+function networkErrorMessage(): string {
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      return "Cannot reach the API. Start the backend with: cd backend && npm run start:dev";
+    }
+  }
+  return "Cannot reach the API. The server may be waking up — wait a moment and try again.";
+}
+
 function apiErrorMessage(body: unknown, statusText: string): string {
   if (body && typeof body === "object") {
     const msg = (body as { message?: unknown }).message;
@@ -53,9 +63,7 @@ class ApiClient {
         headers,
       });
     } catch {
-      throw new Error(
-        "Cannot reach the API. If you're running locally, start the backend with: cd backend && npm run start:dev",
-      );
+      throw new Error(networkErrorMessage());
     }
 
     if (!res.ok) {
@@ -350,6 +358,8 @@ class ApiClient {
         method: "POST",
         headers,
         body: formData,
+      }).catch(() => {
+        throw new Error(networkErrorMessage());
       });
 
       if (!res.ok) {
