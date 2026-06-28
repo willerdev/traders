@@ -40,6 +40,12 @@ services:
         value: TraderRank Pro
       - key: SIGNAL_HUB_ORDER_TYPE
         value: limit
+      - key: METAAPI_TOKEN
+        sync: false
+      - key: METAAPI_DEFAULT_ACCOUNT_ID
+        sync: false
+      - key: METAAPI_TRADE_VOLUME
+        value: "0.01"
       - key: TRADE_OUTCOME_WEBHOOK_SECRET
         sync: false
       - key: RESEND_API_KEY

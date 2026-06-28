@@ -13,6 +13,7 @@ import {
   UpdateAddressDto,
   SubmitKycDto,
   UpdatePaymentDetailsDto,
+  UpdateTradingAccountDto,
 } from '../common/dto';
 import { JwtAuthGuard } from '../auth/guards';
 
@@ -58,6 +59,14 @@ export class UsersController {
     @Body() dto: UpdatePaymentDetailsDto,
   ) {
     return this.usersService.updatePaymentDetails(req.user.id, dto);
+  }
+
+  @Patch('trading-account')
+  updateTradingAccount(
+    @Request() req: { user: { id: string } },
+    @Body() dto: UpdateTradingAccountDto,
+  ) {
+    return this.usersService.updateTradingAccount(req.user.id, dto);
   }
 
   @Get('kyc')

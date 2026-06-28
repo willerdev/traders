@@ -279,6 +279,12 @@ export class UpdateProfileDto {
   dateOfBirth?: string;
 }
 
+export class UpdateTradingAccountDto {
+  @IsOptional()
+  @IsString()
+  metaApiAccountId?: string | null;
+}
+
 export class UpdateAddressDto {
   @IsOptional()
   @IsString()

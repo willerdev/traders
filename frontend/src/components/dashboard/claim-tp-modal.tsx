@@ -94,8 +94,11 @@ export function ClaimTpModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
-      <Card className="max-h-[90vh] w-full max-w-lg overflow-y-auto">
+    <div className="modal-overlay fixed inset-0 z-[110] flex items-center justify-center p-4">
+      <Card
+        className="modal-panel max-h-[90vh] w-full max-w-lg overflow-y-auto border border-white/10 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <CardHeader className="flex flex-row items-start justify-between gap-3">
           <div>
             <CardTitle>

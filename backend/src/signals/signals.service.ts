@@ -27,6 +27,9 @@ import {
 } from '../common/rr.util';
 import { NotificationService } from '../email/notification.service';
 import { Signal, Trade, User } from '@prisma/client';
+import { MetaApiService } from '../metaapi/metaapi.service';
+import { TradeRiskService } from '../ai/trade-risk.service';
+import { RISK_PERCENT, MAX_RISK_PER_TRADE } from '../common/constants';
 
 @Injectable()
 export class SignalsService {
@@ -41,6 +44,8 @@ export class SignalsService {
     private wallet: WalletService,
     private tpClaims: TpClaimsService,
     private notifications: NotificationService,
+    private metaApi: MetaApiService,
+    private tradeRisk: TradeRiskService,
   ) {}
 
   private validateEntryRange(dto: CreateSignalDto) {
@@ -249,6 +254,134 @@ export class SignalsService {
     );
   }
 
+  async listMetaApiAccountsForUser() {
+    return this.metaApi.listAccounts({ limit: 100, deploymentStatus: 'deployed' });
+  }
+
+  async placeTrade(userId: string, signalId: string) {
+    await this.compliance.requireActiveTrader(userId);
+
+    if (!this.metaApi.isConfigured) {
+      throw new ServiceUnavailableException(
+        'Live trading is not configured on the server (METAAPI_TOKEN missing)',
+      );
+    }
+
+    const signal = await this.prisma.signal.findFirst({
+      where: { signalId, userId },
+      include: { trade: true },
+    });
+    if (!signal) throw new NotFoundException('Signal not found');
+    if (signal.status !== 'OPEN') {
+      throw new BadRequestException(
+        `Only open setups can be traded (current status: ${signal.status})`,
+      );
+    }
+    if (signal.metaApiExecutedAt) {
+      throw new BadRequestException('This setup was already placed on MetaAPI');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { virtualAccount: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const accountId = this.metaApi.resolveAccountId(user.metaApiAccountId);
+    if (!accountId) {
+      throw new BadRequestException(
+        'No MetaAPI trading account linked — choose one in Settings → Trading account',
+      );
+    }
+
+    const account = await this.metaApi.getAccount(accountId);
+    const sl = Number(signal.stopLoss);
+    const tp = Number(signal.takeProfit);
+
+    const price = await this.metaApi.getSymbolPrice(account, signal.symbol);
+    const entryPrice =
+      signal.direction === 'BUY' ? price.ask : price.bid;
+
+    const riskPercent = Number(
+      user.virtualAccount?.riskPercent ?? RISK_PERCENT,
+    );
+    const maxRiskAmount = Number(
+      user.virtualAccount?.maxRiskPerTrade ?? MAX_RISK_PER_TRADE,
+    );
+
+    const sizing = await this.tradeRisk.calculatePositionSize({
+      account,
+      symbol: signal.symbol,
+      direction: signal.direction,
+      entryPrice,
+      stopLoss: sl,
+      takeProfit: tp,
+      riskPercent: Math.max(riskPercent, RISK_PERCENT),
+      maxRiskAmount,
+    });
+
+    const { trade: result } = await this.metaApi.placeMarketOrder({
+      account,
+      symbol: signal.symbol,
+      direction: signal.direction,
+      volume: sizing.volume,
+      stopLoss: sl,
+      takeProfit: tp,
+      price,
+      comment: `TR ${signal.signalId.slice(0, 24)}`,
+      clientId: signal.signalId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 26),
+    });
+
+    const now = new Date();
+
+    await this.prisma.$transaction([
+      this.prisma.signal.update({
+        where: { id: signal.id },
+        data: {
+          metaApiAccountId: account.id,
+          metaApiOrderId: result.orderId ?? null,
+          metaApiPositionId: result.positionId ?? result.orderId ?? null,
+          metaApiExecutedAt: now,
+        },
+      }),
+      this.prisma.trade.update({
+        where: { signalId: signal.id },
+        data: {
+          entryPrice,
+          activatedAt: now,
+        },
+      }),
+    ]);
+
+    return {
+      status: 'placed',
+      signalId: signal.signalId,
+      symbol: signal.symbol,
+      direction: signal.direction,
+      entryPrice,
+      stopLoss: sl,
+      takeProfit: tp,
+      quote: price,
+      risk: {
+        volume: sizing.volume,
+        riskPercent: sizing.riskPercent,
+        riskAmount: sizing.riskAmount,
+        estimatedLossAtSl: sizing.estimatedLossAtSl,
+        accountEquity: sizing.accountEquity,
+        currency: sizing.currency,
+        aiManaged: sizing.aiManaged,
+        notes: sizing.aiNotes,
+      },
+      metaApi: {
+        accountId: account.id,
+        accountName: account.name,
+        orderId: result.orderId,
+        positionId: result.positionId,
+        message: result.message,
+      },
+    };
+  }
+
   private async persistHubForward(
     signalDbId: string,
     displayName: string,
@@ -439,6 +572,14 @@ export class SignalsService {
       Number(signal.riskRewardRatio) >= 1 &&
       !pendingTpClaim;
 
+    const trader = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { metaApiAccountId: true },
+    });
+    const linkedAccountId = this.metaApi.resolveAccountId(
+      trader?.metaApiAccountId,
+    );
+
     return {
       signalId: signal.signalId,
       symbol: signal.symbol,
@@ -460,6 +601,14 @@ export class SignalsService {
       canClaimTp,
       canClaimTp1R1,
       canClaimSl,
+      metaApiExecuted: Boolean(signal.metaApiExecutedAt),
+      metaApiOrderId: signal.metaApiOrderId,
+      metaApiPositionId: signal.metaApiPositionId,
+      canPlaceTrade:
+        signal.status === 'OPEN' &&
+        !signal.metaApiExecutedAt &&
+        this.metaApi.isConfigured &&
+        Boolean(linkedAccountId),
     };
   }
 

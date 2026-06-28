@@ -132,6 +132,11 @@ class ApiClient {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
+    updateTradingAccount: (metaApiAccountId: string | null) =>
+      this.request<UserSettings>("/users/trading-account", {
+        method: "PATCH",
+        body: JSON.stringify({ metaApiAccountId }),
+      }),
     getKyc: () => this.request<KycRecord>("/users/kyc"),
     submitKyc: (data: SubmitKycInput) =>
       this.request<KycRecord>("/users/kyc/submit", {
@@ -222,6 +227,12 @@ class ApiClient {
       this.request<OpenSetupsResult>("/signals/open/unresolved"),
     getResolution: (signalId: string) =>
       this.request<SetupResolution>(`/signals/${signalId}/resolution`),
+    placeTrade: (signalId: string) =>
+      this.request<PlaceTradeResult>(`/signals/${signalId}/place-trade`, {
+        method: "POST",
+      }),
+    metaApiAccounts: () =>
+      this.request<MetaApiAccountsResult>("/signals/metaapi/accounts"),
     claim: (
       signalId: string,
       outcome: "tp" | "sl",
@@ -807,11 +818,16 @@ export interface UserSettings {
     role: string;
     status: string;
     walletAddress: string | null;
+    metaApiAccountId?: string | null;
     createdAt: string;
     tier: string;
   };
   profile: UserProfileRecord | null;
   kyc: KycRecord;
+  metaApi?: {
+    configured: boolean;
+    defaultAccountId: string | null;
+  };
 }
 
 export interface UserProfileRecord {
@@ -1050,6 +1066,57 @@ export interface SetupResolution {
   canClaimTp1R1?: boolean;
   canClaimSl: boolean;
   reason?: string;
+  metaApiExecuted?: boolean;
+  metaApiOrderId?: string | null;
+  metaApiPositionId?: string | null;
+  canPlaceTrade?: boolean;
+}
+
+export interface MetaApiAccountRow {
+  id: string;
+  login: string;
+  name: string;
+  server: string;
+  state: string;
+  connectionStatus: string;
+  type: string;
+  region: string;
+  version: number;
+  baseCurrency: string;
+}
+
+export interface MetaApiAccountsResult {
+  configured: boolean;
+  count: number;
+  items: MetaApiAccountRow[];
+}
+
+export interface PlaceTradeResult {
+  status: string;
+  signalId: string;
+  symbol: string;
+  direction: string;
+  entryPrice: number;
+  stopLoss: number;
+  takeProfit: number;
+  quote: { symbol: string; bid: number; ask: number; time: string };
+  risk: {
+    volume: number;
+    riskPercent: number;
+    riskAmount: number;
+    estimatedLossAtSl: number;
+    accountEquity: number;
+    currency: string;
+    aiManaged: boolean;
+    notes: string[];
+  };
+  metaApi: {
+    accountId: string;
+    accountName: string;
+    orderId?: string;
+    positionId?: string;
+    message: string;
+  };
 }
 
 export interface OpenSetupItem {

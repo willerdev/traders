@@ -255,6 +255,25 @@ export const api = {
       `/admin/hub/senders/report${qs ? `?${qs}` : ""}`,
     );
   },
+
+  metaApiAccounts: (params?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    deploymentStatus?: string;
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.limit) q.set("limit", String(params.limit));
+    if (params?.offset) q.set("offset", String(params.offset));
+    if (params?.search) q.set("search", params.search);
+    if (params?.deploymentStatus) {
+      q.set("deploymentStatus", params.deploymentStatus);
+    }
+    const qs = q.toString();
+    return request<MetaApiAccountsResult>(
+      `/admin/hub/metaapi/accounts${qs ? `?${qs}` : ""}`,
+    );
+  },
 };
 
 export type EmailAssessment = {
@@ -549,6 +568,31 @@ export type HubSenderReport = {
   total_senders: number;
   returned: number;
   senders: HubSenderStat[];
+};
+
+export type MetaApiAccountRow = {
+  id: string;
+  login: string;
+  name: string;
+  server: string;
+  state: string;
+  connectionStatus: string;
+  type: string;
+  region: string;
+  version: number;
+  baseCurrency: string;
+  magic?: number;
+  manualTrades?: boolean;
+  copyFactoryRoles?: string[];
+  tags?: string[];
+  createdAt?: string;
+  primaryReplica?: boolean;
+};
+
+export type MetaApiAccountsResult = {
+  configured: boolean;
+  count: number;
+  items: MetaApiAccountRow[];
 };
 
 export type DirectMessage = {

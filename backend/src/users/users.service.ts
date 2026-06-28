@@ -9,15 +9,20 @@ import {
   UpdateAddressDto,
   SubmitKycDto,
   UpdatePaymentDetailsDto,
+  UpdateTradingAccountDto,
 } from '../common/dto';
 import { currentWeekYear } from '../common/week.util';
 import { assertAllowedDisplayName } from '../common/display-name.util';
 import { isValidTrc20Address } from '../common/payout.util';
+import { MetaApiService } from '../metaapi/metaapi.service';
 import { getPayoutRewardStatus } from '../payouts/payout-reward-tier.util';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private metaApi: MetaApiService,
+  ) {}
 
   async getDashboard(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -126,12 +131,38 @@ export class UsersService {
         role: user.role,
         status: user.status,
         walletAddress: user.walletAddress,
+        metaApiAccountId: user.metaApiAccountId,
         createdAt: user.createdAt,
         tier: user.virtualAccount?.tier ?? 'BRONZE',
       },
       profile: user.profile,
       kyc: user.kyc ?? { status: 'NOT_STARTED' },
+      metaApi: {
+        configured: this.metaApi.isConfigured,
+        defaultAccountId: this.metaApi.resolveAccountId(null),
+      },
     };
+  }
+
+  async updateTradingAccount(userId: string, dto: UpdateTradingAccountDto) {
+    const nextId =
+      dto.metaApiAccountId === null || dto.metaApiAccountId === ''
+        ? null
+        : dto.metaApiAccountId?.trim();
+
+    if (nextId) {
+      if (!this.metaApi.isConfigured) {
+        throw new BadRequestException('Live trading is not available yet');
+      }
+      await this.metaApi.getAccount(nextId);
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { metaApiAccountId: nextId },
+    });
+
+    return this.getSettings(userId);
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {

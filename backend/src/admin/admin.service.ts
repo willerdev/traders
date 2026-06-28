@@ -11,6 +11,7 @@ import { AnalyticsService } from '../analytics/analytics.service';
 import { TpClaimsService } from '../tp-claims/tp-claims.service';
 import { PromoService } from '../payments/promo.service';
 import { CustodyDepositService } from '../payments/custody-deposit.service';
+import { MetaApiService } from '../metaapi/metaapi.service';
 import { SignalHubService } from '../signals/signal-hub.service';
 import { AuthService } from '../auth/auth.service';
 import { MessagesService } from '../messages/messages.service';
@@ -27,6 +28,7 @@ export class AdminService {
     private tpClaims: TpClaimsService,
     private promo: PromoService,
     private custodyDeposits: CustodyDepositService,
+    private metaApi: MetaApiService,
     private signalHub: SignalHubService,
     private auth: AuthService,
     private messages: MessagesService,
@@ -509,6 +511,24 @@ export class AdminService {
 
   syncAllCustodyDeposits() {
     return this.custodyDeposits.syncAllPendingDeposits();
+  }
+
+  listMetaApiAccounts(query?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    deploymentStatus?: string;
+  }) {
+    return this.metaApi.listAccounts({
+      limit: query?.limit,
+      offset: query?.offset,
+      query: query?.search,
+      deploymentStatus: query?.deploymentStatus,
+    });
+  }
+
+  getMetaApiAccount(accountId: string) {
+    return this.metaApi.getAccount(accountId);
   }
 
   verifyNowPaymentsPayout(payoutId: string, code: string, adminId: string) {

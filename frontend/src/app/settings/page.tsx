@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   Clock,
   XCircle,
+  TrendingUp,
   Wallet,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -24,7 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/stores/auth";
 import { useThemeStore } from "@/stores/theme";
-import { api, type UserSettings, type KycRecord } from "@/lib/api";
+import { api, type UserSettings, type KycRecord, type MetaApiAccountRow } from "@/lib/api";
 import { validateDisplayName } from "@/lib/display-name";
 import { cn } from "@/lib/utils";
 import { AuthenticatedImage } from "@/components/ui/authenticated-image";
@@ -138,6 +139,9 @@ export default function SettingsPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [metaApiAccounts, setMetaApiAccounts] = useState<MetaApiAccountRow[]>([]);
+  const [tradingAccountId, setTradingAccountId] = useState<string>("");
+  const [tradingSaving, setTradingSaving] = useState(false);
 
   const [profileForm, setProfileForm] = useState({
     displayName: "",
@@ -219,6 +223,17 @@ export default function SettingsPage() {
         mobileMoneyNumber: data.profile?.mobileMoneyNumber ?? "",
         mobileMoneyAccountName: data.profile?.mobileMoneyAccountName ?? "",
       });
+      setTradingAccountId(data.user.metaApiAccountId ?? "");
+      if (data.metaApi?.configured) {
+        try {
+          const accounts = await api.signals.metaApiAccounts();
+          setMetaApiAccounts(accounts.items ?? []);
+        } catch {
+          setMetaApiAccounts([]);
+        }
+      } else {
+        setMetaApiAccounts([]);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load settings");
     } finally {
@@ -296,6 +311,26 @@ export default function SettingsPage() {
       setError(err instanceof Error ? err.message : "Failed to save payout details");
     } finally {
       setPaymentSaving(false);
+    }
+  }
+
+  async function saveTradingAccount() {
+    setTradingSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const updated = await api.users.updateTradingAccount(
+        tradingAccountId.trim() || null,
+      );
+      setSettings(updated);
+      setTradingAccountId(updated.user.metaApiAccountId ?? "");
+      setMessage("Trading account saved");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to save trading account",
+      );
+    } finally {
+      setTradingSaving(false);
     }
   }
 
@@ -797,6 +832,70 @@ export default function SettingsPage() {
         </Card>
 
         {/* Appearance */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-primary" />
+              <CardTitle>Live trading account</CardTitle>
+            </div>
+            <CardDescription>
+              Link your MetaAPI MT4/MT5 account to place trades from submitted
+              setups at market price with your SL and TP.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!settings?.metaApi?.configured ? (
+              <p className="text-sm text-muted">
+                Live trading is not enabled on this platform yet.
+              </p>
+            ) : metaApiAccounts.length === 0 ? (
+              <p className="text-sm text-muted">
+                No deployed MetaAPI accounts found. Add and deploy an account at{" "}
+                <a
+                  href="https://app.metaapi.cloud/accounts"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary underline"
+                >
+                  MetaAPI
+                </a>
+                , or ask an admin to set{" "}
+                <code className="text-xs">METAAPI_DEFAULT_ACCOUNT_ID</code>.
+              </p>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="metaApiAccount">Connected account</Label>
+                  <select
+                    id="metaApiAccount"
+                    value={tradingAccountId}
+                    onChange={(e) => setTradingAccountId(e.target.value)}
+                    className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-foreground"
+                  >
+                    <option value="">
+                      {settings.metaApi?.defaultAccountId
+                        ? "Use platform default account"
+                        : "Select an account…"}
+                    </option>
+                    {metaApiAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name || a.login} · {a.server} · {a.connectionStatus}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <Button
+                  type="button"
+                  onClick={() => void saveTradingAccount()}
+                  disabled={tradingSaving}
+                >
+                  {tradingSaving ? "Saving…" : "Save trading account"}
+                </Button>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">

@@ -129,6 +129,7 @@ model User {
   registrationPaid  Boolean    @default(false)
   termsAcceptedAt   DateTime?
   lastLoginIp       String?
+  metaApiAccountId  String?
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 
@@ -296,6 +297,10 @@ model Signal {
   pointsAwarded   Int            @default(0)
   hubSenderName   String?
   hubRecordId     String?
+  metaApiAccountId String?
+  metaApiOrderId   String?
+  metaApiPositionId String?
+  metaApiExecutedAt DateTime?
 
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   trade      Trade?

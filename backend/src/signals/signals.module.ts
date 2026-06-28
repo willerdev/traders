@@ -7,9 +7,16 @@ import { SignalHubModule } from './signal-hub.module';
 import { AiModule } from '../ai/ai.module';
 import { TradesModule } from '../trades/trades.module';
 import { TpClaimsModule } from '../tp-claims/tp-claims.module';
+import { MetaApiModule } from '../metaapi/metaapi.module';
 
 @Module({
-  imports: [AiModule, TradesModule, TpClaimsModule, SignalHubModule],
+  imports: [
+    AiModule,
+    TradesModule,
+    TpClaimsModule,
+    SignalHubModule,
+    MetaApiModule,
+  ],
   controllers: [SignalsController],
   providers: [
     SignalsService,

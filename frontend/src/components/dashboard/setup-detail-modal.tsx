@@ -18,6 +18,7 @@ import {
   Circle,
   Loader2,
   Target,
+  TrendingUp,
   X,
 } from "lucide-react";
 import { ClaimTpModal } from "@/components/dashboard/claim-tp-modal";
@@ -230,6 +231,30 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
     void load();
   }, [load]);
 
+  async function handlePlaceTrade() {
+    if (
+      !confirm(
+        `Place ${setup.direction} ${setup.symbol} at market now?\n\nSL: ${setup.stopLoss}\nTP: ${setup.takeProfit}`,
+      )
+    ) {
+      return;
+    }
+    setActionLoading("place");
+    setActionError(null);
+    try {
+      const result = await api.signals.placeTrade(setup.signalId);
+      setSuccess(
+        `Trade placed at ${result.entryPrice} · ${result.risk.volume} lots (~${result.risk.riskPercent}% risk, est. loss ${result.risk.estimatedLossAtSl.toFixed(2)} ${result.risk.currency})`,
+      );
+      onUpdated();
+      await load();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not place trade");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   async function handleInvalidate() {
     if (
       !confirm(
@@ -293,8 +318,11 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
 
   return (
     <>
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
-        <Card className="max-h-[92vh] w-full max-w-2xl overflow-y-auto">
+      <div className="modal-overlay fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <Card
+          className="modal-panel max-h-[92vh] w-full max-w-2xl overflow-y-auto border border-white/10 shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
           <CardHeader className="flex flex-row items-start justify-between gap-3 pb-3">
             <div>
               <div className="flex flex-wrap items-center gap-2">
@@ -439,6 +467,27 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
 
                 {isOpen && (
                   <div className="flex flex-wrap gap-2 border-t border-white/5 pt-4">
+                    {res?.canPlaceTrade && !res.metaApiExecuted && (
+                      <Button
+                        size="sm"
+                        disabled={actionLoading === "place"}
+                        onClick={() => void handlePlaceTrade()}
+                        className="gap-1"
+                      >
+                        {actionLoading === "place" ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <TrendingUp className="h-3.5 w-3.5" />
+                        )}
+                        Place trade
+                      </Button>
+                    )}
+                    {res?.metaApiExecuted && (
+                      <span className="self-center text-xs text-success">
+                        Live trade placed
+                        {res.metaApiOrderId ? ` · order ${res.metaApiOrderId}` : ""}
+                      </span>
+                    )}
                     {res?.canClaimTp && !res.pendingTpClaim && (
                       <Button
                         variant="success"

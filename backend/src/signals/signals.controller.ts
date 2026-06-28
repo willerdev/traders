@@ -280,6 +280,21 @@ export class SignalsController {
     return this.signalsService.claimSetup(req.user.id, signalId, dto);
   }
 
+  @Get('metaapi/accounts')
+  @UseGuards(JwtAuthGuard)
+  listMetaApiAccounts() {
+    return this.signalsService.listMetaApiAccountsForUser();
+  }
+
+  @Post(':signalId/place-trade')
+  @UseGuards(JwtAuthGuard)
+  placeTrade(
+    @Request() req: { user: { id: string } },
+    @Param('signalId') signalId: string,
+  ) {
+    return this.signalsService.placeTrade(req.user.id, signalId);
+  }
+
   @Get(':signalId/resolution')
   @UseGuards(JwtAuthGuard)
   getSetupResolution(

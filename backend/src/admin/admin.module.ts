@@ -9,6 +9,7 @@ import { SignalHubModule } from '../signals/signal-hub.module';
 import { AuthModule } from '../auth/auth.module';
 import { MessagesModule } from '../messages/messages.module';
 import { UploadsModule } from '../uploads/uploads.module';
+import { MetaApiModule } from '../metaapi/metaapi.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { UploadsModule } from '../uploads/uploads.module';
     TpClaimsModule,
     PaymentsModule,
     SignalHubModule,
+    MetaApiModule,
     AuthModule,
     MessagesModule,
     UploadsModule,

@@ -243,6 +243,26 @@ export class AdminController {
     return this.adminService.deactivatePromoCode(req.user.id, code);
   }
 
+  @Get('hub/metaapi/accounts')
+  listMetaApiAccounts(
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('search') search?: string,
+    @Query('deploymentStatus') deploymentStatus?: string,
+  ) {
+    return this.adminService.listMetaApiAccounts({
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+      search,
+      deploymentStatus,
+    });
+  }
+
+  @Get('hub/metaapi/accounts/:accountId')
+  getMetaApiAccount(@Param('accountId') accountId: string) {
+    return this.adminService.getMetaApiAccount(accountId);
+  }
+
   @Get('hub/senders/report')
   hubSenderReport(
     @Query('days') days?: string,

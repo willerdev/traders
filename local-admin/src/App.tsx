@@ -11,6 +11,7 @@ import {
   type UserRow,
   type PromoCodeRow,
   type HubSenderReport,
+  type MetaApiAccountsResult,
   type TpClaimRow,
   type MessageThreadSummary,
   type DirectMessage,
@@ -102,6 +103,9 @@ export default function App() {
   const [tpClaims, setTpClaims] = useState<TpClaimRow[]>([]);
   const [promoCodes, setPromoCodes] = useState<PromoCodeRow[]>([]);
   const [hubReport, setHubReport] = useState<HubSenderReport | null>(null);
+  const [metaApiAccounts, setMetaApiAccounts] =
+    useState<MetaApiAccountsResult | null>(null);
+  const [metaApiLoadError, setMetaApiLoadError] = useState<string | null>(null);
   const [newPromoCode, setNewPromoCode] = useState("");
   const [newPromoDays, setNewPromoDays] = useState("7");
   const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
@@ -200,9 +204,30 @@ export default function App() {
       } else if (active === "promos") {
         setPromoCodes(await api.promoCodes());
       } else if (active === "hub") {
-        setHubReport(
-          await api.hubSenderReport({ limit: 50, min_closed_trades: 0 }),
-        );
+        setMetaApiLoadError(null);
+        const [reportResult, accountsResult] = await Promise.allSettled([
+          api.hubSenderReport({ limit: 50, min_closed_trades: 0 }),
+          api.metaApiAccounts({ limit: 100 }),
+        ]);
+        if (reportResult.status === "fulfilled") {
+          setHubReport(reportResult.value);
+        } else {
+          const errMsg =
+            reportResult.reason instanceof Error
+              ? reportResult.reason.message
+              : "Failed to load Hub sender report";
+          setMessage(errMsg);
+        }
+        if (accountsResult.status === "fulfilled") {
+          setMetaApiAccounts(accountsResult.value);
+        } else {
+          setMetaApiAccounts(null);
+          const errMsg =
+            accountsResult.reason instanceof Error
+              ? accountsResult.reason.message
+              : "Failed to load MetaAPI accounts";
+          setMetaApiLoadError(errMsg);
+        }
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : "Failed to load data";
@@ -1668,7 +1693,78 @@ export default function App() {
 
         {tab === "hub" && (
           <>
-            <h2>Signal Hub sender report (MT5)</h2>
+            <h2>MetaAPI connected accounts</h2>
+            <p className="hint">
+              Broker MT4/MT5 accounts linked to your MetaAPI token (
+              {metaApiAccounts?.count ?? 0} total)
+            </p>
+            {!metaApiLoadError && metaApiAccounts?.configured === false ? (
+              <p className="hint">
+                METAAPI_TOKEN is not set on the API server. Add it to backend
+                env and restart the API.
+              </p>
+            ) : metaApiLoadError ? (
+              <p className="hint">
+                Could not load MetaAPI accounts: {metaApiLoadError}
+                {metaApiLoadError.includes("Cannot GET") ? (
+                  <>
+                    {" "}
+                    — deploy the latest API or point local-admin at a backend
+                    that includes the MetaAPI routes (
+                    <code>VITE_PROXY_TARGET=http://localhost:4000</code>).
+                  </>
+                ) : null}
+              </p>
+            ) : metaApiAccounts ? (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Login</th>
+                    <th>Server</th>
+                    <th>State</th>
+                    <th>Connection</th>
+                    <th>Type</th>
+                    <th>Region</th>
+                    <th>Currency</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {metaApiAccounts.items.length === 0 ? (
+                    <tr>
+                      <td colSpan={8}>No MetaAPI accounts found</td>
+                    </tr>
+                  ) : (
+                    metaApiAccounts.items.map((a) => (
+                      <tr key={a.id}>
+                        <td>{a.name || "—"}</td>
+                        <td>{a.login}</td>
+                        <td>{a.server}</td>
+                        <td>
+                          <span className={`badge ${badgeClass(a.state)}`}>
+                            {a.state}
+                          </span>
+                        </td>
+                        <td>
+                          <span
+                            className={`badge ${badgeClass(a.connectionStatus)}`}
+                          >
+                            {a.connectionStatus}
+                          </span>
+                        </td>
+                        <td>{a.type}</td>
+                        <td>{a.region}</td>
+                        <td>{a.baseCurrency || "—"}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            ) : (
+              <p className="hint">Loading MetaAPI accounts…</p>
+            )}
+
+            <h2 style={{ marginTop: "2rem" }}>Signal Hub sender report (MT5)</h2>
             <p className="hint">
               Quantum execution stats — net P/L, win rate, closed trades (last{" "}
               {hubReport?.days ?? 90} days)
