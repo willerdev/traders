@@ -6,6 +6,7 @@ import { AnalyticsModule } from '../analytics/analytics.module';
 import { TpClaimsModule } from '../tp-claims/tp-claims.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { SignalHubModule } from '../signals/signal-hub.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { SignalHubModule } from '../signals/signal-hub.module';
     TpClaimsModule,
     PaymentsModule,
     SignalHubModule,
+    AuthModule,
   ],
   controllers: [AdminController],
   providers: [AdminService],

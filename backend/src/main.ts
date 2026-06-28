@@ -24,7 +24,12 @@ async function bootstrap() {
         .filter(Boolean);
 
       if (process.env.NODE_ENV !== 'production') {
-        allowed.push('http://localhost:3000', 'http://127.0.0.1:3000');
+        allowed.push(
+          'http://localhost:3000',
+          'http://127.0.0.1:3000',
+          'http://localhost:3099',
+          'http://127.0.0.1:3099',
+        );
       }
 
       // Custom domains (e.g. thetradeguard.com)

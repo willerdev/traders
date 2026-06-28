@@ -11,6 +11,7 @@ import { AnalyticsService } from '../analytics/analytics.service';
 import { TpClaimsService } from '../tp-claims/tp-claims.service';
 import { PromoService } from '../payments/promo.service';
 import { SignalHubService } from '../signals/signal-hub.service';
+import { AuthService } from '../auth/auth.service';
 import { CreatePromoCodeDto } from '../common/dto';
 
 @Injectable()
@@ -22,6 +23,7 @@ export class AdminService {
     private tpClaims: TpClaimsService,
     private promo: PromoService,
     private signalHub: SignalHubService,
+    private auth: AuthService,
   ) {}
 
   async getOverview() {
@@ -289,6 +291,83 @@ export class AdminService {
 
     await this.logAction(adminId, 'USER_SUSPENDED', userId, { reason });
     return user;
+  }
+
+  async approveRegistrationPayment(userId: string, adminId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.registrationPaid) {
+      throw new BadRequestException('Registration is already marked as paid');
+    }
+
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    const fee = Number(config?.registrationFeeUsdt ?? 5);
+
+    await this.prisma.payment.create({
+      data: {
+        userId,
+        amount: fee,
+        currency: 'USDT',
+        network: 'ADMIN',
+        purpose: 'registration',
+        status: 'CONFIRMED',
+        gatewayId: `admin_${adminId}_${Date.now()}`,
+        gatewayResponse: { approvedBy: adminId, manual: true } as object,
+        confirmedAt: new Date(),
+      },
+    });
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { registrationPaid: true },
+    });
+
+    await this.auth.activateAccount(userId);
+
+    await this.logAction(adminId, 'REGISTRATION_APPROVED', userId, {
+      amount: fee,
+    });
+
+    return {
+      userId,
+      status: 'ACTIVE',
+      registrationPaid: true,
+      message: 'Registration approved — account activated',
+    };
+  }
+
+  async denyRegistrationPayment(
+    userId: string,
+    adminId: string,
+    reason: string,
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.registrationPaid) {
+      throw new BadRequestException('Registration is already paid — cannot deny');
+    }
+
+    await this.prisma.payment.updateMany({
+      where: { userId, purpose: 'registration', status: 'PENDING' },
+      data: { status: 'FAILED' },
+    });
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { status: 'SUSPENDED' },
+    });
+
+    await this.logAction(adminId, 'REGISTRATION_DENIED', userId, { reason });
+
+    return {
+      userId,
+      status: 'SUSPENDED',
+      registrationPaid: false,
+      message: 'Registration payment denied',
+      reason,
+    };
   }
 
   private async logAction(

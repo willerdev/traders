@@ -1,5 +1,4 @@
-const API_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:4000/api/v1";
+const API_URL = import.meta.env.VITE_API_URL || "/api/v1";
 
 let token: string | null = localStorage.getItem("admin_token");
 
@@ -96,6 +95,17 @@ export const api = {
   deactivatePromoCode: (code: string) =>
     request(`/admin/promo-codes/${encodeURIComponent(code)}/deactivate`, {
       method: "POST",
+    }),
+
+  approveRegistration: (userId: string) =>
+    request<{ message: string }>(`/admin/users/${userId}/registration/approve`, {
+      method: "POST",
+    }),
+
+  denyRegistration: (userId: string, reason: string) =>
+    request<{ message: string }>(`/admin/users/${userId}/registration/deny`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
     }),
 
   hubSenderReport: (params?: {

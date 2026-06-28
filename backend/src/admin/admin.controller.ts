@@ -170,4 +170,25 @@ export class AdminController {
       reason || 'Policy violation',
     );
   }
+
+  @Post('users/:userId/registration/approve')
+  approveRegistration(
+    @Param('userId') userId: string,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.adminService.approveRegistrationPayment(userId, req.user.id);
+  }
+
+  @Post('users/:userId/registration/deny')
+  denyRegistration(
+    @Param('userId') userId: string,
+    @Request() req: { user: { id: string } },
+    @Body('reason') reason: string,
+  ) {
+    return this.adminService.denyRegistrationPayment(
+      userId,
+      req.user.id,
+      reason || 'Registration payment not accepted',
+    );
+  }
 }

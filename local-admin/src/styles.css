@@ -164,6 +164,11 @@ th {
 }
 
 .badge.pending { background: #422006; color: #fbbf24; }
+.badge.pending_payment,
+.badge-clickable.pending_payment {
+  background: #422006;
+  color: #fbbf24;
+}
 .badge.approved, .badge.active, .badge.open { background: #052e16; color: #4ade80; }
 .badge.rejected, .badge.suspended { background: #450a0a; color: #f87171; }
 .badge.paid { background: #1e3a5f; color: #93c5fd; }
@@ -244,6 +249,120 @@ th {
   object-fit: cover;
   border-radius: 6px;
   margin-right: 0.5rem;
+}
+
+.badge-clickable {
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  transition: filter 0.15s ease, transform 0.15s ease;
+}
+
+.badge-clickable:hover {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(2, 6, 12, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.modal {
+  width: min(100%, 440px);
+  border: 1px solid #1e2936;
+  border-radius: 12px;
+  background: #0f1419;
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
+}
+
+.modal h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+}
+
+.modal label {
+  display: block;
+  margin: 1rem 0 0.35rem;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.modal textarea {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #0b0f14;
+  color: #e8eaed;
+  resize: vertical;
+}
+
+.modal-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin: 1rem 0 0;
+  font-size: 0.85rem;
+}
+
+.modal-meta dt {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.modal-meta dd {
+  margin: 0.15rem 0 0;
+  color: #e2e8f0;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.modal-actions button {
+  padding: 0.55rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  font-size: 0.85rem;
+}
+
+.modal-actions button.primary {
+  background: #166534;
+  border-color: #166534;
+  color: #ecfdf5;
+}
+
+.modal-actions button.danger {
+  background: #7f1d1d;
+  border-color: #7f1d1d;
+  color: #fef2f2;
+}
+
+.modal-actions button.secondary {
+  background: #1e293b;
+  color: #e2e8f0;
+}
+
+.modal-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 @media (max-width: 768px) {

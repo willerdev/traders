@@ -46,6 +46,10 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleString();
 }
 
+function needsPaymentReview(u: UserRow) {
+  return u.status === "PENDING_PAYMENT" && !u.registrationPaid;
+}
+
 export default function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
   const [email, setEmail] = useState("");
@@ -69,6 +73,9 @@ export default function App() {
   const [newPromoDays, setNewPromoDays] = useState("7");
   const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
   const [tpRejectReason, setTpRejectReason] = useState<Record<string, string>>({});
+  const [paymentModalUser, setPaymentModalUser] = useState<UserRow | null>(null);
+  const [paymentDenyReason, setPaymentDenyReason] = useState("");
+  const [paymentActionLoading, setPaymentActionLoading] = useState(false);
 
   const loadTab = useCallback(async (active: Tab) => {
     setLoading(true);
@@ -133,6 +140,54 @@ export default function App() {
   async function refresh() {
     await loadTab(tab);
     setMessage("Refreshed");
+  }
+
+  function openPaymentModal(user: UserRow) {
+    setPaymentDenyReason("");
+    setPaymentModalUser(user);
+  }
+
+  function closePaymentModal() {
+    if (paymentActionLoading) return;
+    setPaymentModalUser(null);
+    setPaymentDenyReason("");
+  }
+
+  async function approveRegistrationPayment() {
+    if (!paymentModalUser) return;
+    setPaymentActionLoading(true);
+    setMessage("");
+    try {
+      const res = await api.approveRegistration(paymentModalUser.id);
+      setMessage(res.message || "Registration approved");
+      closePaymentModal();
+      await loadTab("users");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Approval failed");
+    } finally {
+      setPaymentActionLoading(false);
+    }
+  }
+
+  async function denyRegistrationPayment() {
+    if (!paymentModalUser) return;
+    const reason = paymentDenyReason.trim();
+    if (!reason) {
+      setMessage("Enter a reason before denying registration");
+      return;
+    }
+    setPaymentActionLoading(true);
+    setMessage("");
+    try {
+      const res = await api.denyRegistration(paymentModalUser.id, reason);
+      setMessage(res.message || "Registration denied");
+      closePaymentModal();
+      await loadTab("users");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Denial failed");
+    } finally {
+      setPaymentActionLoading(false);
+    }
   }
 
   if (!authed) {
@@ -266,7 +321,18 @@ export default function App() {
                     <td>{u.displayName}</td>
                     <td>{u.email}</td>
                     <td>
-                      <span className={badgeClass(u.status)}>{u.status}</span>
+                      {needsPaymentReview(u) ? (
+                        <button
+                          type="button"
+                          className="badge-clickable pending_payment"
+                          onClick={() => openPaymentModal(u)}
+                          title="Review registration payment"
+                        >
+                          {u.status}
+                        </button>
+                      ) : (
+                        <span className={badgeClass(u.status)}>{u.status}</span>
+                      )}
                     </td>
                     <td>{u.kyc?.status ?? "—"}</td>
                     <td>{u.registrationPaid ? "Yes" : "No"}</td>
@@ -717,6 +783,80 @@ export default function App() {
           </>
         )}
       </main>
+
+      {paymentModalUser && (
+        <div
+          className="modal-overlay"
+          role="presentation"
+          onClick={closePaymentModal}
+        >
+          <div
+            className="modal"
+            role="dialog"
+            aria-labelledby="payment-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="payment-modal-title">Registration payment review</h3>
+            <p>
+              <strong>{paymentModalUser.displayName}</strong>
+              <br />
+              <span className="muted">{paymentModalUser.email}</span>
+            </p>
+            <dl className="modal-meta">
+              <div>
+                <dt>Status</dt>
+                <dd>{paymentModalUser.status}</dd>
+              </div>
+              <div>
+                <dt>Registration paid</dt>
+                <dd>{paymentModalUser.registrationPaid ? "Yes" : "No"}</dd>
+              </div>
+              <div>
+                <dt>Joined</dt>
+                <dd>{fmtDate(paymentModalUser.createdAt)}</dd>
+              </div>
+            </dl>
+            <p className="muted">
+              Approve to activate their virtual account. Deny to suspend the user
+              and cancel any pending gateway payment.
+            </p>
+            <label htmlFor="payment-deny-reason">Denial reason (required to deny)</label>
+            <textarea
+              id="payment-deny-reason"
+              rows={3}
+              placeholder="e.g. Payment not received, duplicate account, invalid proof…"
+              value={paymentDenyReason}
+              onChange={(e) => setPaymentDenyReason(e.target.value)}
+            />
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="secondary"
+                disabled={paymentActionLoading}
+                onClick={closePaymentModal}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="danger"
+                disabled={paymentActionLoading}
+                onClick={() => void denyRegistrationPayment()}
+              >
+                {paymentActionLoading ? "Working…" : "Deny payment"}
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={paymentActionLoading}
+                onClick={() => void approveRegistrationPayment()}
+              >
+                {paymentActionLoading ? "Working…" : "Approve payment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
