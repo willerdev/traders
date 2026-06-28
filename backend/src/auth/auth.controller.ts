@@ -6,6 +6,8 @@ import {
   WalletLoginDto,
   VerifyLoginOtpDto,
   ResendLoginOtpDto,
+  ForgotPasswordDto,
+  ResetPasswordDto,
 } from '../common/dto';
 import { AuthRateLimitGuard } from './auth-rate-limit.guard';
 import type { Request } from 'express';
@@ -36,6 +38,18 @@ export class AuthController {
   @UseGuards(AuthRateLimitGuard)
   resendLoginOtp(@Body() dto: ResendLoginOtpDto) {
     return this.authService.resendLoginOtp(dto);
+  }
+
+  @Post('forgot-password')
+  @UseGuards(AuthRateLimitGuard)
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto);
+  }
+
+  @Post('reset-password')
+  @UseGuards(AuthRateLimitGuard)
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto);
   }
 
   @Post('wallet')

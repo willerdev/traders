@@ -32,6 +32,10 @@ export class NotificationService {
     return this.sendLoginOtp(email, code);
   }
 
+  passwordReset(email: string, token: string) {
+    return this.sendPasswordReset(email, token);
+  }
+
   private async sendLoginOtp(email: string, code: string) {
     const to = email.trim().toLowerCase();
     const html = this.email.layout(
@@ -46,6 +50,25 @@ export class NotificationService {
       subject: `${code} is your TraderRank Pro sign-in code`,
       html,
       text: `Your sign-in code is ${code}. It expires in 10 minutes.`,
+    });
+  }
+
+  private async sendPasswordReset(email: string, token: string) {
+    const to = email.trim().toLowerCase();
+    const resetUrl = `${this.email.frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
+    const html = this.email.layout(
+      'Reset your password',
+      `<p>We received a request to reset your TraderRank Pro password.</p>
+      <p>This link expires in 1 hour and can only be used once.</p>
+      ${this.email.button(resetUrl, 'Reset password')}
+      <p style="color:#94a3b8;font-size:14px;margin-top:24px;">If you did not request this, you can ignore this email. Your password will stay the same.</p>`,
+    );
+
+    return this.email.send({
+      to,
+      subject: 'Reset your TraderRank Pro password',
+      html,
+      text: `Reset your password: ${resetUrl}\n\nThis link expires in 1 hour.`,
     });
   }
 

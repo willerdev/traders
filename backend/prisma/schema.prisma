@@ -140,6 +140,7 @@ model User {
   sentDirectMessages DirectMessage[] @relation("MessageSender")
   messageThreadState MessageThreadState?
   loginOtps          LoginOtp[]
+  passwordResets     PasswordReset[]
 
   @@index([status])
   @@index([role])
@@ -186,6 +187,20 @@ model LoginOtp {
 
   @@index([userId, expiresAt])
   @@map("login_otps")
+}
+
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("password_resets")
 }
 
 model KycVerification {

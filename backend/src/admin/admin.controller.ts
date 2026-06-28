@@ -56,10 +56,12 @@ export class AdminController {
   listUsers(
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @Query('suspicious') suspicious?: string,
   ) {
     return this.adminService.listUsers(
       limit ? Number(limit) : 50,
       offset ? Number(offset) : 0,
+      suspicious === 'true' || suspicious === '1',
     );
   }
 
@@ -174,6 +176,31 @@ export class AdminController {
       userId,
       req.user.id,
       reason || 'Policy violation',
+    );
+  }
+
+  @Post('users/:userId/ban')
+  banUser(
+    @Param('userId') userId: string,
+    @Request() req: { user: { id: string } },
+    @Body('reason') reason: string,
+  ) {
+    return this.adminService.banUser(
+      userId,
+      req.user.id,
+      reason || 'Unrealistic or invalid email address',
+    );
+  }
+
+  @Post('users/ban-suspicious')
+  banSuspiciousUsers(
+    @Request() req: { user: { id: string } },
+    @Body() body: { userIds: string[]; reason?: string },
+  ) {
+    return this.adminService.banSuspiciousUsers(
+      req.user.id,
+      body.userIds ?? [],
+      body.reason || 'Unrealistic or invalid email address',
     );
   }
 

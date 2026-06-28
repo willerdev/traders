@@ -16,20 +16,30 @@ import {
   WalletLoginDto,
   VerifyLoginOtpDto,
   ResendLoginOtpDto,
+  ForgotPasswordDto,
+  ResetPasswordDto,
 } from '../common/dto';
 import { assertAllowedDisplayName } from '../common/display-name.util';
+import {
+  isRegistrationEmailAllowed,
+  REGISTRATION_EMAIL_REJECTED_MESSAGE,
+} from '../common/email-quality.util';
 import {
   MAX_RISK_PER_TRADE,
   RISK_PERCENT,
   STARTING_BALANCE,
 } from '../common/constants';
-import { randomBytes, randomInt } from 'crypto';
+import { randomBytes, randomInt, createHash } from 'crypto';
 import { verifyMessage } from 'viem';
 import { NotificationService } from '../email/notification.service';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
 const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+
+const PASSWORD_RESET_GENERIC_MESSAGE =
+  'If an account exists for that email, we sent password reset instructions.';
 
 @Injectable()
 export class AuthService {
@@ -41,6 +51,11 @@ export class AuthService {
 
   async register(dto: RegisterDto, ip?: string) {
     const email = dto.email.trim().toLowerCase();
+
+    if (!isRegistrationEmailAllowed(email)) {
+      throw new BadRequestException(REGISTRATION_EMAIL_REJECTED_MESSAGE);
+    }
+
     const existing = await this.prisma.user.findFirst({
       where: { email: { equals: email, mode: 'insensitive' } },
     });
@@ -308,6 +323,98 @@ export class AuthService {
     });
 
     return { message: 'Email verified successfully' };
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const email = dto.email.trim().toLowerCase();
+    const user = await this.prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+    });
+
+    if (!user?.email || !user.passwordHash) {
+      return { message: PASSWORD_RESET_GENERIC_MESSAGE };
+    }
+
+    await this.prisma.passwordReset.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    const token = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+
+    await this.prisma.passwordReset.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
+      },
+    });
+
+    const emailSent = await this.notifications.passwordReset(user.email, token);
+    if (!emailSent) {
+      await this.prisma.passwordReset.updateMany({
+        where: { userId: user.id, tokenHash, usedAt: null },
+        data: { usedAt: new Date() },
+      });
+      throw new ServiceUnavailableException(
+        'Could not send password reset email. Try again shortly.',
+      );
+    }
+
+    return { message: PASSWORD_RESET_GENERIC_MESSAGE };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    const token = dto.token.trim();
+    if (!token) {
+      throw new BadRequestException('Reset token is required');
+    }
+
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const reset = await this.prisma.passwordReset.findUnique({
+      where: { tokenHash },
+      include: { user: true },
+    });
+
+    if (!reset || reset.usedAt) {
+      throw new BadRequestException('Invalid or expired reset link');
+    }
+
+    if (reset.expiresAt.getTime() < Date.now()) {
+      throw new BadRequestException(
+        'Reset link expired — request a new password reset',
+      );
+    }
+
+    if (!reset.user.passwordHash) {
+      throw new BadRequestException('This account cannot reset a password');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: reset.userId },
+        data: { passwordHash },
+      }),
+      this.prisma.passwordReset.update({
+        where: { id: reset.id },
+        data: { usedAt: new Date() },
+      }),
+      this.prisma.passwordReset.updateMany({
+        where: { userId: reset.userId, usedAt: null },
+        data: { usedAt: new Date() },
+      }),
+      this.prisma.loginOtp.updateMany({
+        where: { userId: reset.userId, usedAt: null },
+        data: { usedAt: new Date() },
+      }),
+    ]);
+
+    return {
+      message: 'Password updated. You can sign in with your new password.',
+    };
   }
 
   async activateAccount(userId: string) {

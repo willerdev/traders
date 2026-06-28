@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,8 +36,9 @@ function resolveSessionId(stateSessionId: string) {
   return readSavedLoginSession().sessionId.trim();
 }
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { startLogin, verifyLoginOtp, resendLoginOtp, isAuthenticated } = useAuthStore();
   const [step, setStep] = useState<"credentials" | "otp">("credentials");
   const [email, setEmail] = useState("");
@@ -45,8 +46,15 @@ export default function LoginPage() {
   const [otp, setOtp] = useState("");
   const [loginSessionId, setLoginSessionId] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    if (searchParams.get("reset") === "1") {
+      setNotice("Password updated. Sign in with your new password.");
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -201,7 +209,15 @@ export default function LoginPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="password">Password</Label>
+                    <Link
+                      href="/forgot-password"
+                      className="text-xs text-primary hover:underline"
+                    >
+                      Forgot password?
+                    </Link>
+                  </div>
                   <Input
                     id="password"
                     type="password"
@@ -211,6 +227,9 @@ export default function LoginPage() {
                     required
                   />
                 </div>
+                {notice && !error && (
+                  <p className="text-sm text-success">{notice}</p>
+                )}
                 {error && <p className="text-sm text-danger">{error}</p>}
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? "Sending code..." : "Continue"}
@@ -265,5 +284,19 @@ export default function LoginPage() {
         </Card>
       </motion.div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[80vh] items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }

@@ -96,9 +96,9 @@ export const api = {
     ),
 
   overview: () => request<Record<string, unknown>>("/admin/overview"),
-  users: (offset = 0) =>
-    request<{ items: UserRow[]; count: number }>(
-      `/admin/users?limit=50&offset=${offset}`,
+  users: (offset = 0, suspiciousOnly = false) =>
+    request<{ items: UserRow[]; count: number; suspiciousOnly?: boolean }>(
+      `/admin/users?limit=50&offset=${offset}${suspiciousOnly ? "&suspicious=true" : ""}`,
     ),
   signals: (offset = 0) =>
     request<{ items: SignalRow[]; count: number }>(
@@ -157,6 +157,23 @@ export const api = {
       body: JSON.stringify({ reason }),
     }),
 
+  banUser: (userId: string, reason: string) =>
+    request(`/admin/users/${userId}/ban`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+
+  banSuspiciousUsers: (userIds: string[], reason: string) =>
+    request<{
+      bannedCount: number;
+      bannedUserIds: string[];
+      skipped: { userId: string; reason: string }[];
+      message: string;
+    }>("/admin/users/ban-suspicious", {
+      method: "POST",
+      body: JSON.stringify({ userIds, reason }),
+    }),
+
   messageThreads: () =>
     request<{ items: MessageThreadSummary[] }>("/admin/messages/threads"),
 
@@ -194,6 +211,11 @@ export const api = {
   },
 };
 
+export type EmailAssessment = {
+  suspicious: boolean;
+  reasons: string[];
+};
+
 export type UserRow = {
   id: string;
   email: string;
@@ -202,6 +224,7 @@ export type UserRow = {
   status: string;
   registrationPaid: boolean;
   createdAt: string;
+  emailAssessment?: EmailAssessment;
   kyc?: { status: string } | null;
   virtualAccount?: { tier: string; score: number; totalProfit: string } | null;
   _count: { signals: number; payouts: number };

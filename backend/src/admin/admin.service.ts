@@ -15,6 +15,7 @@ import { AuthService } from '../auth/auth.service';
 import { MessagesService } from '../messages/messages.service';
 import { NotificationService } from '../email/notification.service';
 import { CreatePromoCodeDto, SendMessageDto } from '../common/dto';
+import { assessEmail } from '../common/email-quality.util';
 
 @Injectable()
 export class AdminService {
@@ -195,11 +196,51 @@ export class AdminService {
     });
   }
 
-  async listUsers(limit = 50, offset = 0) {
+  async listUsers(limit = 50, offset = 0, suspiciousOnly = false) {
     const take = Math.min(Math.max(limit, 1), 100);
     const skip = Math.max(offset, 0);
 
-    const [items, count] = await Promise.all([
+    if (suspiciousOnly) {
+      const users = await this.prisma.user.findMany({
+        where: {
+          role: { not: 'ADMIN' },
+          status: { notIn: ['BANNED'] },
+          email: { not: null },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          email: true,
+          displayName: true,
+          role: true,
+          status: true,
+          registrationPaid: true,
+          createdAt: true,
+          kyc: { select: { status: true } },
+          virtualAccount: { select: { tier: true, score: true, totalProfit: true } },
+          _count: { select: { signals: true, payouts: true } },
+        },
+      });
+
+      const flagged = users
+        .map((user) => ({
+          ...user,
+          emailAssessment: assessEmail(user.email),
+        }))
+        .filter((user) => user.emailAssessment.suspicious);
+
+      const items = flagged.slice(skip, skip + take);
+
+      return {
+        items,
+        count: flagged.length,
+        limit: take,
+        offset: skip,
+        suspiciousOnly: true,
+      };
+    }
+
+    const [rows, count] = await Promise.all([
       this.prisma.user.findMany({
         take,
         skip,
@@ -220,7 +261,12 @@ export class AdminService {
       this.prisma.user.count(),
     ]);
 
-    return { items, count, limit: take, offset: skip };
+    const items = rows.map((user) => ({
+      ...user,
+      emailAssessment: assessEmail(user.email),
+    }));
+
+    return { items, count, limit: take, offset: skip, suspiciousOnly: false };
   }
 
   async listSignals(limit = 50, offset = 0) {
@@ -313,6 +359,88 @@ export class AdminService {
 
     await this.logAction(adminId, 'USER_SUSPENDED', userId, { reason });
     return user;
+  }
+
+  async banUser(userId: string, adminId: string, reason: string) {
+    const existing = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!existing) throw new NotFoundException('User not found');
+    if (existing.role === 'ADMIN') {
+      throw new BadRequestException('Admin accounts cannot be banned');
+    }
+    if (existing.status === 'BANNED') {
+      throw new BadRequestException('User is already banned');
+    }
+
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { status: 'BANNED' },
+    });
+
+    await this.logAction(adminId, 'USER_BANNED', userId, {
+      reason,
+      email: existing.email,
+      emailAssessment: assessEmail(existing.email),
+    });
+
+    return user;
+  }
+
+  async banSuspiciousUsers(adminId: string, userIds: string[], reason: string) {
+    if (!userIds.length) {
+      throw new BadRequestException('Select at least one user to ban');
+    }
+
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, email: true, role: true, status: true },
+    });
+
+    const banned: string[] = [];
+    const skipped: { userId: string; reason: string }[] = [];
+
+    for (const userId of userIds) {
+      const user = users.find((row) => row.id === userId);
+      if (!user) {
+        skipped.push({ userId, reason: 'not_found' });
+        continue;
+      }
+      if (user.role === 'ADMIN') {
+        skipped.push({ userId, reason: 'admin_account' });
+        continue;
+      }
+      if (user.status === 'BANNED') {
+        skipped.push({ userId, reason: 'already_banned' });
+        continue;
+      }
+
+      const assessment = assessEmail(user.email);
+      if (!assessment.suspicious) {
+        skipped.push({ userId, reason: 'email_not_flagged' });
+        continue;
+      }
+
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { status: 'BANNED' },
+      });
+      await this.logAction(adminId, 'USER_BANNED', userId, {
+        reason,
+        email: user.email,
+        emailAssessment: assessment,
+        bulk: true,
+      });
+      banned.push(userId);
+    }
+
+    return {
+      bannedCount: banned.length,
+      bannedUserIds: banned,
+      skipped,
+      message:
+        banned.length > 0
+          ? `Banned ${banned.length} account(s) with suspicious emails`
+          : 'No accounts were banned',
+    };
   }
 
   async approveRegistrationPayment(userId: string, adminId: string) {

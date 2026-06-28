@@ -39,6 +39,18 @@ function isAuthFailure(message: string) {
   return /unauthorized|forbidden|jwt|token expired|invalid token/i.test(message);
 }
 
+function formatEmailFlags(reasons: string[]) {
+  return reasons.map((reason) => reason.replace(/_/g, " ")).join(", ");
+}
+
+function isBanCandidate(user: UserRow) {
+  return (
+    Boolean(user.emailAssessment?.suspicious) &&
+    user.status !== "BANNED" &&
+    user.role !== "ADMIN"
+  );
+}
+
 export default function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
   const [email, setEmail] = useState(getAdminEmail() ?? "");
@@ -76,6 +88,10 @@ export default function App() {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatSending, setChatSending] = useState(false);
   const [chatModalUser, setChatModalUser] = useState<UserRow | null>(null);
+  const [suspiciousOnly, setSuspiciousOnly] = useState(false);
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [banLoadingId, setBanLoadingId] = useState<string | null>(null);
+  const [bulkBanLoading, setBulkBanLoading] = useState(false);
 
   const loadTab = useCallback(async (active: Tab) => {
     setLoading(true);
@@ -84,9 +100,10 @@ export default function App() {
       if (active === "overview") {
         setOverview(await api.overview());
       } else if (active === "users") {
-        const res = await api.users();
+        const res = await api.users(0, suspiciousOnly);
         setUsers(res.items);
         setUserCount(res.count);
+        setSelectedUserIds([]);
       } else if (active === "messages") {
         const res = await api.messageThreads();
         setMessageThreads(res.items);
@@ -123,7 +140,73 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [suspiciousOnly]);
+
+  async function banUserAccount(user: UserRow) {
+    const reason =
+      window.prompt(
+        "Ban reason:",
+        "Unrealistic or invalid email address",
+      )?.trim() ?? "";
+    if (!reason) return;
+
+    setBanLoadingId(user.id);
+    setMessage("");
+    try {
+      await api.banUser(user.id, reason);
+      setMessage(`Banned ${user.displayName || user.email}`);
+      await loadTab("users");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Ban failed");
+    } finally {
+      setBanLoadingId(null);
+    }
+  }
+
+  async function banSelectedUsers() {
+    if (selectedUserIds.length === 0) return;
+    const reason =
+      window.prompt(
+        "Ban reason for selected accounts:",
+        "Unrealistic or invalid email address",
+      )?.trim() ?? "";
+    if (!reason) return;
+
+    if (
+      !window.confirm(
+        `Ban ${selectedUserIds.length} selected account(s) with flagged emails?`,
+      )
+    ) {
+      return;
+    }
+
+    setBulkBanLoading(true);
+    setMessage("");
+    try {
+      const result = await api.banSuspiciousUsers(selectedUserIds, reason);
+      setMessage(result.message);
+      await loadTab("users");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Bulk ban failed");
+    } finally {
+      setBulkBanLoading(false);
+    }
+  }
+
+  function toggleUserSelection(userId: string) {
+    setSelectedUserIds((prev) =>
+      prev.includes(userId)
+        ? prev.filter((id) => id !== userId)
+        : [...prev, userId],
+    );
+  }
+
+  function toggleSelectAllBanCandidates() {
+    const candidates = users.filter(isBanCandidate).map((user) => user.id);
+    setSelectedUserIds((prev) =>
+      prev.length === candidates.length ? [] : candidates,
+    );
+  }
 
   const chatLastSyncRef = useRef<Record<string, string>>({});
 
@@ -465,12 +548,49 @@ export default function App() {
 
         {tab === "users" && (
           <>
-            <div className="toolbar">
-              <h2>Users ({userCount})</h2>
+            <div className="toolbar toolbar-wrap">
+              <h2>
+                Users ({userCount})
+                {suspiciousOnly ? " — suspicious emails" : ""}
+              </h2>
+              <div className="toolbar-actions">
+                <label className="filter-toggle">
+                  <input
+                    type="checkbox"
+                    checked={suspiciousOnly}
+                    onChange={(e) => setSuspiciousOnly(e.target.checked)}
+                  />
+                  Suspicious emails only
+                </label>
+                {users.some(isBanCandidate) && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={toggleSelectAllBanCandidates}
+                  >
+                    {selectedUserIds.length === users.filter(isBanCandidate).length
+                      ? "Clear selection"
+                      : "Select flagged"}
+                  </button>
+                )}
+                {selectedUserIds.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn-danger"
+                    disabled={bulkBanLoading}
+                    onClick={() => void banSelectedUsers()}
+                  >
+                    {bulkBanLoading
+                      ? "Banning..."
+                      : `Ban selected (${selectedUserIds.length})`}
+                  </button>
+                )}
+              </div>
             </div>
             <table>
               <thead>
                 <tr>
+                  <th />
                   <th>Name</th>
                   <th>Email</th>
                   <th>Status</th>
@@ -483,9 +603,38 @@ export default function App() {
               </thead>
               <tbody>
                 {users.map((u) => (
-                  <tr key={u.id}>
+                  <tr
+                    key={u.id}
+                    className={u.emailAssessment?.suspicious ? "row-suspicious" : ""}
+                  >
+                    <td>
+                      {isBanCandidate(u) ? (
+                        <input
+                          type="checkbox"
+                          checked={selectedUserIds.includes(u.id)}
+                          onChange={() => toggleUserSelection(u.id)}
+                          aria-label={`Select ${u.displayName}`}
+                        />
+                      ) : null}
+                    </td>
                     <td>{u.displayName}</td>
-                    <td>{u.email}</td>
+                    <td
+                      className={
+                        u.emailAssessment?.suspicious ? "email-suspicious" : ""
+                      }
+                      title={
+                        u.emailAssessment?.suspicious
+                          ? formatEmailFlags(u.emailAssessment.reasons)
+                          : undefined
+                      }
+                    >
+                      <div className="email-cell">
+                        <span>{u.email}</span>
+                        {u.emailAssessment?.suspicious && (
+                          <span className="email-flag">flagged</span>
+                        )}
+                      </div>
+                    </td>
                     <td>
                       {needsPaymentReview(u) ? (
                         <button
@@ -504,7 +653,17 @@ export default function App() {
                     <td>{u.registrationPaid ? "Yes" : "No"}</td>
                     <td>{u._count.signals}</td>
                     <td>{fmtDate(u.createdAt)}</td>
-                    <td>
+                    <td className="actions-cell">
+                      {isBanCandidate(u) && (
+                        <button
+                          type="button"
+                          className="ban-link"
+                          disabled={banLoadingId === u.id}
+                          onClick={() => void banUserAccount(u)}
+                        >
+                          {banLoadingId === u.id ? "Banning..." : "Ban"}
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="chat-link"

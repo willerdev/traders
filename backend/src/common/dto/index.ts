@@ -67,6 +67,24 @@ export class ResendLoginOtpDto {
   loginSessionId: string;
 }
 
+export class ForgotPasswordDto {
+  @IsEmail()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
+  email: string;
+}
+
+export class ResetPasswordDto {
+  @IsString()
+  @IsNotEmpty()
+  token: string;
+
+  @IsString()
+  @MinLength(8)
+  password: string;
+}
+
 export class UpdatePaymentDetailsDto {
   @IsEnum(PayoutMethod)
   payoutMethod: PayoutMethod;
