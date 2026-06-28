@@ -10,6 +10,32 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useAuthStore } from "@/stores/auth";
 
+const LOGIN_SESSION_KEY = "trp-login-session";
+const LOGIN_EMAIL_KEY = "trp-login-email";
+
+function readSavedLoginSession() {
+  if (typeof window === "undefined") return { sessionId: "", email: "" };
+  return {
+    sessionId: sessionStorage.getItem(LOGIN_SESSION_KEY) ?? "",
+    email: sessionStorage.getItem(LOGIN_EMAIL_KEY) ?? "",
+  };
+}
+
+function saveLoginSession(sessionId: string, emailAddress: string) {
+  sessionStorage.setItem(LOGIN_SESSION_KEY, sessionId);
+  sessionStorage.setItem(LOGIN_EMAIL_KEY, emailAddress);
+}
+
+function clearLoginSession() {
+  sessionStorage.removeItem(LOGIN_SESSION_KEY);
+  sessionStorage.removeItem(LOGIN_EMAIL_KEY);
+}
+
+function resolveSessionId(stateSessionId: string) {
+  if (stateSessionId.trim()) return stateSessionId.trim();
+  return readSavedLoginSession().sessionId.trim();
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const { startLogin, verifyLoginOtp, resendLoginOtp, isAuthenticated } = useAuthStore();
@@ -27,6 +53,15 @@ export default function LoginPage() {
       router.replace("/dashboard");
     }
   }, [isAuthenticated, router]);
+
+  useEffect(() => {
+    const saved = readSavedLoginSession();
+    if (saved.sessionId && saved.email) {
+      setLoginSessionId(saved.sessionId);
+      setEmail(saved.email);
+      setStep("otp");
+    }
+  }, []);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -48,11 +83,27 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await startLogin(email, password);
-      setLoginSessionId(res.loginSessionId);
+
+      if ("accessToken" in res && typeof res.accessToken === "string") {
+        clearLoginSession();
+        router.replace("/dashboard");
+        return;
+      }
+
+      if (!("requiresOtp" in res) || !res.loginSessionId?.trim()) {
+        throw new Error("Sign-in could not start. Please try again.");
+      }
+
+      const sessionId = res.loginSessionId.trim();
+
+      saveLoginSession(sessionId, res.email || email.trim().toLowerCase());
+      setLoginSessionId(sessionId);
+      setEmail(res.email || email.trim().toLowerCase());
       setStep("otp");
       setOtp("");
       setResendCooldown(60);
     } catch (err) {
+      clearLoginSession();
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setLoading(false);
@@ -62,9 +113,19 @@ export default function LoginPage() {
   async function handleOtp(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+
+    const sessionId = resolveSessionId(loginSessionId);
+    if (!sessionId) {
+      setError("Session expired. Enter your email and password again.");
+      setStep("credentials");
+      clearLoginSession();
+      return;
+    }
+
     setLoading(true);
     try {
-      await verifyLoginOtp(loginSessionId, otp.trim());
+      await verifyLoginOtp(sessionId, otp.trim());
+      clearLoginSession();
       router.replace("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invalid code");
@@ -75,17 +136,36 @@ export default function LoginPage() {
 
   async function handleResend() {
     if (resendCooldown > 0) return;
+
+    const sessionId = resolveSessionId(loginSessionId);
+    if (!sessionId) {
+      setError("Session expired. Enter your email and password again.");
+      setStep("credentials");
+      clearLoginSession();
+      return;
+    }
+
     setError("");
     setLoading(true);
     try {
-      const res = await resendLoginOtp(loginSessionId);
-      setLoginSessionId(res.loginSessionId);
+      const res = await resendLoginOtp(sessionId);
+      const nextSessionId = res.loginSessionId?.trim() || sessionId;
+      saveLoginSession(nextSessionId, email);
+      setLoginSessionId(nextSessionId);
       setResendCooldown(60);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not resend code");
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleBack() {
+    setStep("credentials");
+    setError("");
+    setOtp("");
+    clearLoginSession();
+    setLoginSessionId("");
   }
 
   return (
@@ -160,11 +240,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     className="text-muted hover:text-foreground"
-                    onClick={() => {
-                      setStep("credentials");
-                      setError("");
-                      setOtp("");
-                    }}
+                    onClick={handleBack}
                   >
                     ← Back
                   </button>

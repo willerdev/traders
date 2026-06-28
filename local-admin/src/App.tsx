@@ -212,17 +212,31 @@ export default function App() {
     try {
       if (loginStep === "credentials") {
         const res = await api.login(email, password);
-        setLoginSessionId(res.loginSessionId);
+        const sessionId = res.loginSessionId?.trim();
+        if (!sessionId) {
+          throw new Error("Sign-in could not start. Check your email/password and try again.");
+        }
+        sessionStorage.setItem("admin-login-session", sessionId);
+        setLoginSessionId(sessionId);
         setLoginStep("otp");
         setOtpCode("");
         return;
       }
 
-      const res = await api.verifyLoginOtp(loginSessionId, otpCode.trim());
+      const sessionId =
+        loginSessionId.trim() ||
+        sessionStorage.getItem("admin-login-session")?.trim() ||
+        "";
+      if (!sessionId) {
+        throw new Error("Session expired. Enter your email and password again.");
+      }
+
+      const res = await api.verifyLoginOtp(sessionId, otpCode.trim());
       if (res.user.role !== "ADMIN") {
         setLoginError("This account is not an admin.");
         return;
       }
+      sessionStorage.removeItem("admin-login-session");
       setToken(res.accessToken);
       setAdminEmail(res.user.email);
       setEmail(res.user.email);
@@ -237,6 +251,7 @@ export default function App() {
   function logout() {
     setToken(null);
     setAdminEmail(null);
+    sessionStorage.removeItem("admin-login-session");
     setAuthed(false);
   }
 

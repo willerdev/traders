@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { api, type LoginStartResponse } from "@/lib/api";
+import { api, type LoginResponse } from "@/lib/api";
 
 interface User {
   id: string;
@@ -15,7 +15,7 @@ interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
   hasHydrated: boolean;
-  startLogin: (email: string, password: string) => Promise<LoginStartResponse>;
+  startLogin: (email: string, password: string) => Promise<LoginResponse>;
   verifyLoginOtp: (loginSessionId: string, code: string) => Promise<void>;
   resendLoginOtp: (loginSessionId: string) => Promise<{ loginSessionId: string }>;
   register: (email: string, password: string, displayName: string, acceptTerms?: boolean) => Promise<void>;
@@ -47,6 +47,9 @@ export const useAuthStore = create<AuthState>()(
 
       startLogin: async (email, password) => {
         const res = await api.auth.login({ email, password });
+        if ("accessToken" in res && typeof res.accessToken === "string") {
+          applyAuth(set, res.accessToken, res.user);
+        }
         return res;
       },
 

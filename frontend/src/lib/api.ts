@@ -82,7 +82,7 @@ class ApiClient {
     register: (data: { email: string; password: string; displayName: string; acceptTerms: boolean }) =>
       this.request("/auth/register", { method: "POST", body: JSON.stringify(data) }),
     login: (data: { email: string; password: string }) =>
-      this.request<LoginStartResponse>(
+      this.request<LoginResponse>(
         "/auth/login",
         { method: "POST", body: JSON.stringify(data) },
       ),
@@ -509,6 +509,13 @@ export interface LoginStartResponse {
   message: string;
   expiresIn: number;
 }
+
+export interface LoginCompleteResponse {
+  accessToken: string;
+  user: Record<string, unknown>;
+}
+
+export type LoginResponse = LoginStartResponse | LoginCompleteResponse;
 
 export interface PayoutRecord {
   id: string;

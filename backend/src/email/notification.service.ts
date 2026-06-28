@@ -29,7 +29,7 @@ export class NotificationService {
   }
 
   loginOtp(email: string, code: string) {
-    this.dispatch(this.sendLoginOtp(email, code), 'Login OTP');
+    return this.sendLoginOtp(email, code);
   }
 
   private async sendLoginOtp(email: string, code: string) {

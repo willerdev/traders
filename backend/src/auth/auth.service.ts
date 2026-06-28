@@ -5,6 +5,7 @@ import {
   BadRequestException,
   HttpException,
   HttpStatus,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -108,7 +109,16 @@ export class AuthService {
       },
     });
 
-    this.notifications.loginOtp(email, code);
+    const emailSent = await this.notifications.loginOtp(email, code);
+    if (!emailSent) {
+      await this.prisma.loginOtp.update({
+        where: { id: session.id },
+        data: { usedAt: new Date() },
+      });
+      throw new ServiceUnavailableException(
+        'Could not send sign-in code email. Try again shortly or contact support.',
+      );
+    }
 
     if (ip) {
       await this.prisma.user.update({
@@ -190,7 +200,8 @@ export class AuthService {
       throw new BadRequestException('Sign-in session expired — sign in again');
     }
 
-    const elapsed = Date.now() - session.createdAt.getTime();
+    const lastSentAt = session.expiresAt.getTime() - OTP_TTL_MS;
+    const elapsed = Date.now() - lastSentAt;
     if (elapsed < OTP_RESEND_COOLDOWN_MS) {
       const waitSec = Math.ceil((OTP_RESEND_COOLDOWN_MS - elapsed) / 1000);
       throw new HttpException(
@@ -208,11 +219,15 @@ export class AuthService {
         codeHash,
         attempts: 0,
         expiresAt: new Date(Date.now() + OTP_TTL_MS),
-        createdAt: new Date(),
       },
     });
 
-    this.notifications.loginOtp(session.email, code);
+    const emailSent = await this.notifications.loginOtp(session.email, code);
+    if (!emailSent) {
+      throw new ServiceUnavailableException(
+        'Could not resend sign-in code email. Try again shortly.',
+      );
+    }
 
     return {
       loginSessionId: refreshed.id,
