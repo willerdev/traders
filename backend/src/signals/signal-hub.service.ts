@@ -519,32 +519,60 @@ export class SignalHubService {
     externalId: string,
     sendername: string,
     reason?: string,
-  ) {
-    const q = new URLSearchParams({ sendername });
-    const body =
-      reason?.trim() ?
-        JSON.stringify({ reason: reason.trim().slice(0, 500) })
-      : undefined;
-
-    const { data, error } = await this.hubRequest<{
+    alternateSendernames: string[] = [],
+  ): Promise<{
+    data: {
       id: string;
       status: string;
       ok?: boolean;
       duplicate?: boolean;
       progress?: { stage: string; message: string; executed: boolean };
-    }>(
-      `/v1/signals/external/${encodeURIComponent(externalId)}/invalidate?${q}`,
-      {
-        method: 'POST',
-        ...(body ? { body } : {}),
-      },
-    );
+    } | null;
+    error?: string;
+    notOnHub?: boolean;
+  }> {
+    const senders = [
+      ...new Set(
+        [sendername, ...alternateSendernames].map((s) => s.trim()).filter(Boolean),
+      ),
+    ];
 
-    if (!data) {
+    for (const sn of senders) {
+      const existing = await this.getByExternalId(externalId, sn);
+      if (!existing) continue;
+
+      const q = new URLSearchParams({ sendername: sn });
+      const body =
+        reason?.trim() ?
+          JSON.stringify({ reason: reason.trim().slice(0, 500) })
+        : undefined;
+
+      const { data, error } = await this.hubRequest<{
+        id: string;
+        status: string;
+        ok?: boolean;
+        duplicate?: boolean;
+        progress?: { stage: string; message: string; executed: boolean };
+      }>(
+        `/v1/signals/external/${encodeURIComponent(externalId)}/invalidate?${q}`,
+        {
+          method: 'POST',
+          ...(body ? { body } : {}),
+        },
+      );
+
+      if (data) {
+        return { data, error: undefined };
+      }
+
+      if (error?.includes('404')) {
+        continue;
+      }
+
       return { data: null, error: error || 'Signal Hub invalidate failed' };
     }
 
-    return { data, error: undefined };
+    return { data: null, error: undefined, notOnHub: true };
   }
 
   async listSignals(

@@ -87,11 +87,17 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
     setError(null);
     try {
       const result = await api.signals.invalidate(signalId);
-      setSuccess(
-        result.hubWarning
-          ? `${symbol} invalidated on platform (Hub: ${result.hubWarning})`
-          : `${symbol} invalidated — Hub will not execute this setup`,
-      );
+      if (result.hubWarning) {
+        setSuccess(
+          `${symbol} cancelled on platform. Hub note: ${result.hubWarning}`,
+        );
+      } else if (result.hubNotFound) {
+        setSuccess(
+          `${symbol} cancelled — it was not queued on Signal Hub (nothing to cancel there).`,
+        );
+      } else {
+        setSuccess(`${symbol} invalidated — Hub will not execute this setup`);
+      }
       await load();
       onClaimed?.();
     } catch (err) {

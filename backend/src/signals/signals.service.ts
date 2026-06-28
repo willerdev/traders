@@ -173,6 +173,13 @@ export class SignalsService {
       userId,
     );
 
+    await this.persistHubForward(
+      signal.id,
+      user.displayName,
+      userId,
+      forwardResult,
+    );
+
     return this.buildForwardResponse(
       signal.signalId,
       signal.submittedAt,
@@ -217,6 +224,13 @@ export class SignalsService {
       userId,
     );
 
+    await this.persistHubForward(
+      signal.id,
+      user.displayName,
+      userId,
+      forwardResult,
+    );
+
     return this.buildForwardResponse(
       signal.signalId,
       signal.submittedAt,
@@ -226,6 +240,23 @@ export class SignalsService {
       forwardResult,
       forwardResult.forwarded ? 'resent' : 'resend_failed',
     );
+  }
+
+  private async persistHubForward(
+    signalDbId: string,
+    displayName: string,
+    userId: string,
+    forwardResult: ForwardSignalResult,
+  ) {
+    if (!forwardResult.forwarded || !forwardResult.hub?.id) return;
+
+    await this.prisma.signal.update({
+      where: { id: signalDbId },
+      data: {
+        hubSenderName: this.signalHub.toSenderName(displayName, userId),
+        hubRecordId: forwardResult.hub.id,
+      },
+    });
   }
 
   private buildForwardResponse(
@@ -518,20 +549,30 @@ export class SignalsService {
 
     let hub: Record<string, unknown> | null = null;
     let hubWarning: string | undefined;
+    let hubNotFound = false;
 
     if (this.signalHub.isConfigured) {
-      const sendername = this.signalHub.toSenderName(
+      const currentSender = this.signalHub.toSenderName(
         user.displayName,
         userId,
       );
+      const sendername = signal.hubSenderName || currentSender;
+      const alternates = [
+        currentSender,
+        `trader_${userId.slice(0, 8)}`,
+      ].filter((name) => name !== sendername);
+
       const result = await this.signalHub.invalidateByExternalId(
         signal.signalId,
         sendername,
         reason,
+        alternates,
       );
       if (result.data) {
         hub = result.data as Record<string, unknown>;
-      } else {
+      } else if (result.notOnHub) {
+        hubNotFound = true;
+      } else if (result.error) {
         hubWarning = result.error;
       }
     }
@@ -575,6 +616,7 @@ export class SignalsService {
       status: 'cancelled',
       signalId: signal.signalId,
       hub,
+      hubNotFound,
       hubWarning,
     };
   }

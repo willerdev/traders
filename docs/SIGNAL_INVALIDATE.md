@@ -48,7 +48,8 @@ POST /api/v1/signals/invalidate/{signalId}
 | Field | Description |
 |-------|-------------|
 | `hub` | Signal Hub response when `SIGNAL_HUB_PROVIDER_KEY` is configured |
-| `hubWarning` | Present if Hub call failed but platform still marked setup `CANCELLED` |
+| `hubNotFound` | Setup was not on Hub (never forwarded or already gone) — platform still cancelled |
+| `hubWarning` | Present if Hub call failed (non-404) but platform still marked setup `CANCELLED` |
 
 **Errors:**
 

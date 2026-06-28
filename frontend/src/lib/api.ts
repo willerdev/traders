@@ -994,6 +994,7 @@ export interface InvalidateSetupResult {
     duplicate?: boolean;
     progress?: { stage: string; message: string; executed: boolean };
   } | null;
+  hubNotFound?: boolean;
   hubWarning?: string;
 }
 

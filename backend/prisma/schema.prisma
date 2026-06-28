@@ -267,6 +267,8 @@ model Signal {
   resolvedAt      DateTime?
   pnl             Decimal?       @db.Decimal(12, 2)
   pointsAwarded   Int            @default(0)
+  hubSenderName   String?
+  hubRecordId     String?
 
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   trade      Trade?
