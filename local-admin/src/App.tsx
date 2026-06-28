@@ -13,6 +13,7 @@ import {
   type MessageThreadSummary,
   type DirectMessage,
 } from "./api";
+import { AdminImage } from "./AdminImage";
 
 type Tab =
   | "overview"
@@ -574,9 +575,9 @@ export default function App() {
                     <p className="muted">{item.documentType}</p>
                     <div style={{ margin: "0.5rem 0" }}>
                       {item.documentFrontUrl && (
-                        <img src={item.documentFrontUrl} alt="ID" />
+                        <AdminImage src={item.documentFrontUrl} alt="ID" />
                       )}
-                      {item.selfieUrl && <img src={item.selfieUrl} alt="Selfie" />}
+                      {item.selfieUrl && <AdminImage src={item.selfieUrl} alt="Selfie" />}
                     </div>
                     <input
                       placeholder="Rejection reason (if rejecting)"
@@ -706,16 +707,16 @@ export default function App() {
                     <div style={{ margin: "0.5rem 0", display: "grid", gap: "0.5rem", gridTemplateColumns: "1fr 1fr" }}>
                       <div>
                         <p className="muted" style={{ fontSize: "0.75rem" }}>Before</p>
-                        <img src={item.beforeScreenshotUrl} alt="Before" />
+                        <AdminImage src={item.beforeScreenshotUrl} alt="Before" />
                       </div>
                       <div>
                         <p className="muted" style={{ fontSize: "0.75rem" }}>After (TP)</p>
-                        <img src={item.afterScreenshotUrl} alt="After" />
+                        <AdminImage src={item.afterScreenshotUrl} alt="After" />
                       </div>
                       {item.originalScreenshotUrl && (
                         <div style={{ gridColumn: "1 / -1" }}>
                           <p className="muted" style={{ fontSize: "0.75rem" }}>Original submission</p>
-                          <img src={item.originalScreenshotUrl} alt="Original setup" />
+                          <AdminImage src={item.originalScreenshotUrl} alt="Original setup" />
                         </div>
                       )}
                     </div>

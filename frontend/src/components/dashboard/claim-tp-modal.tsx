@@ -10,6 +10,7 @@ import { Loader2, Upload, X } from "lucide-react";
 type Props = {
   signalId: string;
   symbol: string;
+  claimId?: string;
   onClose: () => void;
   onSubmitted: (message: string) => void;
   onError: (message: string) => void;
@@ -18,6 +19,7 @@ type Props = {
 export function ClaimTpModal({
   signalId,
   symbol,
+  claimId,
   onClose,
   onSubmitted,
   onError,
@@ -59,10 +61,15 @@ export function ClaimTpModal({
         api.uploads.setup(afterFile),
       ]);
 
-      const result = await api.signals.claim(signalId, "tp", {
-        beforeScreenshotUrl: beforeUpload.url,
-        afterScreenshotUrl: afterUpload.url,
-      });
+      const result = claimId
+        ? await api.tpClaims.resubmit(claimId, {
+            beforeScreenshotUrl: beforeUpload.url,
+            afterScreenshotUrl: afterUpload.url,
+          })
+        : await api.signals.claim(signalId, "tp", {
+            beforeScreenshotUrl: beforeUpload.url,
+            afterScreenshotUrl: afterUpload.url,
+          });
 
       if (result.status === "pending_review") {
         onSubmitted(
@@ -86,10 +93,13 @@ export function ClaimTpModal({
       <Card className="max-h-[90vh] w-full max-w-lg overflow-y-auto">
         <CardHeader className="flex flex-row items-start justify-between gap-3">
           <div>
-            <CardTitle>Claim take profit — {symbol}</CardTitle>
+            <CardTitle>
+              {claimId ? "Reapply take profit" : "Claim take profit"} — {symbol}
+            </CardTitle>
             <CardDescription className="mt-1">
-              Upload before and after screenshots of your chart. An admin will
-              review your evidence before crediting the TP reward.
+              {claimId
+                ? "Upload new before and after screenshots. Your claim will return to the admin review queue."
+                : "Upload before and after screenshots of your chart. An admin will review your evidence before crediting the TP reward."}
             </CardDescription>
           </div>
           <button
@@ -127,6 +137,8 @@ export function ClaimTpModal({
             >
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
+              ) : claimId ? (
+                "Resubmit for review"
               ) : (
                 "Submit for review"
               )}

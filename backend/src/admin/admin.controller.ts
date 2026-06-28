@@ -7,7 +7,13 @@ import {
   Query,
   UseGuards,
   Request,
+  Res,
+  BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
+import type { Response } from 'express';
+import { join, basename } from 'path';
+import { existsSync } from 'fs';
 import { AdminService } from './admin.service';
 import { CreatePromoCodeDto, SendMessageDto } from '../common/dto';
 import { JwtAuthGuard, RolesGuard } from '../auth/guards';
@@ -214,5 +220,23 @@ export class AdminController {
     @Body() dto: SendMessageDto,
   ) {
     return this.adminService.sendMessageToUser(req.user.id, userId, dto);
+  }
+
+  @Get('uploads/setups/:filename')
+  getSetupUpload(
+    @Param('filename') filename: string,
+    @Res() res: Response,
+  ) {
+    const safeName = basename(filename);
+    if (!/^[a-f0-9]+\.(jpe?g|png|webp)$/i.test(safeName)) {
+      throw new BadRequestException('Invalid filename');
+    }
+
+    const filePath = join(process.cwd(), 'uploads', 'setups', safeName);
+    if (!existsSync(filePath)) {
+      throw new NotFoundException('File not found');
+    }
+
+    return res.sendFile(filePath);
   }
 }

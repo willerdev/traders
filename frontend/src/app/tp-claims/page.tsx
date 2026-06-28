@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth";
 import { api, type TpClaimRecord } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, Clock, Loader2, RefreshCw, XCircle, Target } from "lucide-react";
+import { CheckCircle2, Clock, Loader2, RefreshCw, RotateCcw, XCircle, Target } from "lucide-react";
+import { ClaimTpModal } from "@/components/dashboard/claim-tp-modal";
 
 function statusBadge(status: TpClaimRecord["status"]) {
   switch (status) {
@@ -33,6 +34,11 @@ export default function TpClaimsPage() {
   const [claims, setClaims] = useState<TpClaimRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [resubmitModal, setResubmitModal] = useState<{
+    claimId: string;
+    signalId: string;
+    symbol: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -157,13 +163,34 @@ export default function TpClaimsPage() {
                       </p>
                     )}
                     {claim.status === "REJECTED" && (
-                      <p className="text-sm text-danger">
-                        Rejected
-                        {claim.reviewedAt ? ` ${fmtDate(claim.reviewedAt)}` : ""}
-                        {claim.adminNote ? `: ${claim.adminNote}` : ""}. You can
-                        submit a new claim from the dashboard if your setup is still
-                        open.
-                      </p>
+                      <div className="space-y-3">
+                        <p className="text-sm text-danger">
+                          Rejected
+                          {claim.reviewedAt ? ` ${fmtDate(claim.reviewedAt)}` : ""}
+                          {claim.adminNote ? `: ${claim.adminNote}` : ""}.
+                        </p>
+                        {claim.canResubmit ? (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="gap-1.5"
+                            onClick={() =>
+                              setResubmitModal({
+                                claimId: claim.id,
+                                signalId: claim.signalId,
+                                symbol: claim.symbol,
+                              })
+                            }
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Reapply with new screenshots
+                          </Button>
+                        ) : (
+                          <p className="text-sm text-muted">
+                            This setup is no longer open, so it cannot be resubmitted.
+                          </p>
+                        )}
+                      </div>
                     )}
                   </CardContent>
                 </Card>
@@ -172,6 +199,20 @@ export default function TpClaimsPage() {
           </div>
         )}
       </motion.div>
+
+      {resubmitModal && (
+        <ClaimTpModal
+          claimId={resubmitModal.claimId}
+          signalId={resubmitModal.signalId}
+          symbol={resubmitModal.symbol}
+          onClose={() => setResubmitModal(null)}
+          onSubmitted={() => {
+            setResubmitModal(null);
+            void load();
+          }}
+          onError={(msg) => setError(msg)}
+        />
+      )}
     </div>
   );
 }

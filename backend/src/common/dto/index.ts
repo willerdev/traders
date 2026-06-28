@@ -265,6 +265,16 @@ export class ClaimSetupDto {
   afterScreenshotUrl?: string;
 }
 
+export class ResubmitTpClaimDto {
+  @IsString()
+  @IsNotEmpty()
+  beforeScreenshotUrl: string;
+
+  @IsString()
+  @IsNotEmpty()
+  afterScreenshotUrl: string;
+}
+
 export class TradeOutcomeWebhookDto {
   @IsOptional()
   @IsString()

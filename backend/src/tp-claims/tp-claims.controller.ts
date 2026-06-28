@@ -1,5 +1,6 @@
-import { Controller, Get, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, UseGuards, Request } from '@nestjs/common';
 import { TpClaimsService } from './tp-claims.service';
+import { ResubmitTpClaimDto } from '../common/dto';
 import { JwtAuthGuard } from '../auth/guards';
 
 @Controller('tp-claims')
@@ -10,5 +11,19 @@ export class TpClaimsController {
   @Get()
   listMine(@Request() req: { user: { id: string } }) {
     return this.tpClaimsService.listUserClaims(req.user.id);
+  }
+
+  @Post(':claimId/resubmit')
+  resubmit(
+    @Request() req: { user: { id: string } },
+    @Param('claimId') claimId: string,
+    @Body() dto: ResubmitTpClaimDto,
+  ) {
+    return this.tpClaimsService.resubmitClaim(
+      claimId,
+      req.user.id,
+      dto.beforeScreenshotUrl,
+      dto.afterScreenshotUrl,
+    );
   }
 }

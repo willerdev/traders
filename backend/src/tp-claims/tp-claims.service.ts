@@ -2,6 +2,7 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletService } from '../trades/wallet.service';
@@ -43,6 +44,19 @@ export class TpClaimsService {
       );
     }
 
+    const rejected = await this.prisma.tpClaim.findFirst({
+      where: { signalId: signal.id, status: 'REJECTED' },
+      orderBy: { submittedAt: 'desc' },
+    });
+    if (rejected) {
+      return this.resubmitClaim(
+        rejected.id,
+        userId,
+        beforeScreenshotUrl,
+        afterScreenshotUrl,
+      );
+    }
+
     await this.priceMonitor.ensureTradeActivated(
       signal.trade,
       signal,
@@ -71,6 +85,76 @@ export class TpClaimsService {
     };
   }
 
+  async resubmitClaim(
+    claimId: string,
+    userId: string,
+    beforeScreenshotUrl: string,
+    afterScreenshotUrl: string,
+  ) {
+    const claim = await this.prisma.tpClaim.findUnique({
+      where: { id: claimId },
+      include: { signal: { include: { trade: true } } },
+    });
+
+    if (!claim) throw new NotFoundException('TP claim not found');
+    if (claim.userId !== userId) {
+      throw new ForbiddenException('You can only resubmit your own TP claims');
+    }
+    if (claim.status !== 'REJECTED') {
+      throw new BadRequestException('Only rejected claims can be resubmitted');
+    }
+    if (claim.signal.status !== 'OPEN') {
+      throw new BadRequestException(
+        'This setup is no longer open — you cannot resubmit this claim',
+      );
+    }
+    if (!claim.signal.trade) {
+      throw new BadRequestException('Setup has no associated trade record');
+    }
+
+    const pending = await this.prisma.tpClaim.findFirst({
+      where: {
+        signalId: claim.signalId,
+        status: 'PENDING_REVIEW',
+        id: { not: claimId },
+      },
+    });
+    if (pending) {
+      throw new BadRequestException(
+        'A TP claim for this setup is already awaiting admin review',
+      );
+    }
+
+    const before = beforeScreenshotUrl.trim();
+    const after = afterScreenshotUrl.trim();
+    if (!before || !after) {
+      throw new BadRequestException(
+        'Before and after chart screenshots are required',
+      );
+    }
+
+    const updated = await this.prisma.tpClaim.update({
+      where: { id: claimId },
+      data: {
+        beforeScreenshotUrl: before,
+        afterScreenshotUrl: after,
+        status: 'PENDING_REVIEW',
+        adminNote: null,
+        reviewedAt: null,
+        reviewedById: null,
+        submittedAt: new Date(),
+      },
+    });
+
+    return {
+      status: 'pending_review' as const,
+      claimId: updated.id,
+      signalId: claim.signal.signalId,
+      message:
+        'TP claim resubmitted for review. An admin will verify your updated screenshots.',
+    };
+  }
+
   async listUserClaims(userId: string) {
     const claims = await this.prisma.tpClaim.findMany({
       where: { userId },
@@ -89,7 +173,11 @@ export class TpClaimsService {
       },
     });
 
-    return claims.map((c) => this.formatClaim(c));
+    return claims.map((c) => ({
+      ...this.formatClaim(c),
+      canResubmit:
+        c.status === 'REJECTED' && c.signal.status === 'OPEN',
+    }));
   }
 
   async listPendingForAdmin() {

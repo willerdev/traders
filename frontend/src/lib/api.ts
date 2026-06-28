@@ -436,6 +436,14 @@ class ApiClient {
 
   tpClaims = {
     list: () => this.request<TpClaimRecord[]>("/tp-claims"),
+    resubmit: (
+      claimId: string,
+      evidence: { beforeScreenshotUrl: string; afterScreenshotUrl: string },
+    ) =>
+      this.request<ClaimSetupResult>(`/tp-claims/${claimId}/resubmit`, {
+        method: "POST",
+        body: JSON.stringify(evidence),
+      }),
   };
 
   payouts = {
@@ -920,6 +928,7 @@ export interface TpClaimRecord {
     takeProfit: number;
     signalStatus: string;
   };
+  canResubmit?: boolean;
 }
 
 export const api = new ApiClient();
