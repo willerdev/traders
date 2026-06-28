@@ -285,6 +285,7 @@ export class UsersService {
       rejectionReason: null,
       submittedAt: new Date(),
       reviewedAt: null,
+      pendingUploadFilenames: [],
     };
 
     const kyc = await this.prisma.kycVerification.upsert({
@@ -294,6 +295,33 @@ export class UsersService {
     });
 
     return kyc;
+  }
+
+  async retryKyc(userId: string) {
+    const existing = await this.prisma.kycVerification.findUnique({
+      where: { userId },
+    });
+
+    if (!existing || existing.status !== 'REJECTED') {
+      throw new BadRequestException(
+        'Only rejected KYC submissions can be retried',
+      );
+    }
+
+    return this.prisma.kycVerification.update({
+      where: { userId },
+      data: {
+        status: 'NOT_STARTED',
+        documentType: null,
+        documentNumber: null,
+        documentFrontUrl: null,
+        documentBackUrl: null,
+        selfieUrl: null,
+        pendingUploadFilenames: [],
+        reviewedAt: null,
+        submittedAt: null,
+      },
+    });
   }
 
   async getKyc(userId: string) {

@@ -43,11 +43,13 @@ function KycUploadField({
   label,
   url,
   onUpload,
+  onClear,
   disabled,
 }: {
   label: string;
   url: string;
   onUpload: (url: string) => void;
+  onClear?: () => void;
   disabled?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -83,15 +85,26 @@ function KycUploadField({
             className="max-h-32 w-full object-contain bg-black/20"
           />
           {!disabled && (
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              className="absolute bottom-2 right-2"
-              onClick={() => inputRef.current?.click()}
-            >
-              Replace
-            </Button>
+            <div className="absolute bottom-2 right-2 flex gap-2">
+              {onClear && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={onClear}
+                >
+                  Remove
+                </Button>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => inputRef.current?.click()}
+              >
+                Replace
+              </Button>
+            </div>
           )}
         </div>
       ) : (
@@ -121,6 +134,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [kycSubmitting, setKycSubmitting] = useState(false);
+  const [kycRetrying, setKycRetrying] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [settings, setSettings] = useState<UserSettings | null>(null);
@@ -285,6 +299,39 @@ export default function SettingsPage() {
     }
   }
 
+  async function retryKyc() {
+    setKycRetrying(true);
+    setError("");
+    setMessage("");
+    try {
+      const previousReason = settings?.kyc?.rejectionReason ?? "";
+      const kyc = await api.users.retryKyc();
+      setSettings((prev) =>
+        prev
+          ? {
+              ...prev,
+              kyc: {
+                ...kyc,
+                rejectionReason: previousReason || kyc.rejectionReason,
+              },
+            }
+          : prev,
+      );
+      setKycForm({
+        documentType: "PASSPORT",
+        documentNumber: "",
+        documentFrontUrl: "",
+        documentBackUrl: "",
+        selfieUrl: "",
+      });
+      setMessage("Upload new document photos below, then resubmit for review.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not restart KYC");
+    } finally {
+      setKycRetrying(false);
+    }
+  }
+
   async function submitKyc() {
     setKycSubmitting(true);
     setError("");
@@ -318,6 +365,12 @@ export default function SettingsPage() {
   const kycMeta = KYC_STATUS[kycStatus];
   const KycIcon = kycMeta.icon;
   const kycLocked = kycStatus === "PENDING" || kycStatus === "APPROVED";
+  const kycRejectionReason = settings?.kyc?.rejectionReason;
+  const canRetryKyc = kycStatus === "REJECTED";
+  const showKycResubmit =
+    !kycLocked &&
+    (kycStatus === "NOT_STARTED" || kycStatus === "REJECTED") &&
+    Boolean(kycRejectionReason);
 
   if (loading) {
     return (
@@ -613,7 +666,7 @@ export default function SettingsPage() {
         </Card>
 
         {/* KYC */}
-        <Card>
+        <Card id="kyc">
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -631,9 +684,22 @@ export default function SettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {kycStatus === "REJECTED" && settings?.kyc?.rejectionReason && (
+            {kycRejectionReason && (
               <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
-                Rejected: {settings.kyc.rejectionReason}. Please resubmit.
+                <p className="font-medium">Previous submission rejected</p>
+                <p className="mt-1">{kycRejectionReason}</p>
+                {canRetryKyc && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="mt-3"
+                    disabled={kycRetrying}
+                    onClick={() => void retryKyc()}
+                  >
+                    {kycRetrying ? "Preparing..." : "Upload new documents"}
+                  </Button>
+                )}
               </div>
             )}
 
@@ -683,6 +749,9 @@ export default function SettingsPage() {
                 onUpload={(url) =>
                   setKycForm({ ...kycForm, documentFrontUrl: url })
                 }
+                onClear={() =>
+                  setKycForm({ ...kycForm, documentFrontUrl: "" })
+                }
               />
               <KycUploadField
                 label="Document back (optional)"
@@ -690,6 +759,9 @@ export default function SettingsPage() {
                 disabled={kycLocked}
                 onUpload={(url) =>
                   setKycForm({ ...kycForm, documentBackUrl: url })
+                }
+                onClear={() =>
+                  setKycForm({ ...kycForm, documentBackUrl: "" })
                 }
               />
             </div>
@@ -699,6 +771,7 @@ export default function SettingsPage() {
               url={kycForm.selfieUrl}
               disabled={kycLocked}
               onUpload={(url) => setKycForm({ ...kycForm, selfieUrl: url })}
+              onClear={() => setKycForm({ ...kycForm, selfieUrl: "" })}
             />
 
             {!kycLocked && (
@@ -707,7 +780,11 @@ export default function SettingsPage() {
                 disabled={kycSubmitting}
                 className="w-full"
               >
-                {kycSubmitting ? "Submitting..." : "Submit for verification"}
+                {kycSubmitting
+                  ? "Submitting..."
+                  : showKycResubmit
+                    ? "Resubmit for verification"
+                    : "Submit for verification"}
               </Button>
             )}
 

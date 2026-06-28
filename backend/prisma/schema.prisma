@@ -200,6 +200,7 @@ model KycVerification {
   rejectionReason  String?
   submittedAt      DateTime?
   reviewedAt       DateTime?
+  pendingUploadFilenames String[] @default([])
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 

@@ -92,6 +92,14 @@ export class AuthService {
       throw new UnauthorizedException('Account is not allowed to sign in');
     }
 
+    if (user.role === 'ADMIN') {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginIp: ip, emailVerified: true },
+      });
+      return this.generateToken(user);
+    }
+
     await this.prisma.loginOtp.updateMany({
       where: { userId: user.id, usedAt: null },
       data: { usedAt: new Date() },

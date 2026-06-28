@@ -72,4 +72,9 @@ export class UsersController {
   ) {
     return this.usersService.submitKyc(req.user.id, dto);
   }
+
+  @Post('kyc/retry')
+  retryKyc(@Request() req: { user: { id: string } }) {
+    return this.usersService.retryKyc(req.user.id);
+  }
 }

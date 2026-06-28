@@ -128,6 +128,8 @@ class ApiClient {
         method: "POST",
         body: JSON.stringify(data),
       }),
+    retryKyc: () =>
+      this.request<KycRecord>("/users/kyc/retry", { method: "POST" }),
   };
 
   signals = {

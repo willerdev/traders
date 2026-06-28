@@ -196,12 +196,14 @@ export default function PayoutsPage() {
                   <p className="text-sm text-muted">
                     Complete identity verification in Settings before submitting a withdrawal.
                     {kycStatus === "PENDING" && " Your submission is under review."}
+                    {kycStatus === "REJECTED" &&
+                      " Your last submission was rejected — upload new documents and resubmit."}
                   </p>
                 </div>
               </div>
-              <Link href="/settings">
+              <Link href={kycStatus === "REJECTED" ? "/settings#kyc" : "/settings"}>
                 <Button variant="secondary" size="sm">
-                  Complete KYC
+                  {kycStatus === "REJECTED" ? "Retry KYC" : "Complete KYC"}
                 </Button>
               </Link>
             </CardContent>

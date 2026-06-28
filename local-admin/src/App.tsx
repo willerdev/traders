@@ -35,6 +35,10 @@ function needsPaymentReview(u: UserRow) {
   return u.status === "PENDING_PAYMENT" && !u.registrationPaid;
 }
 
+function isAuthFailure(message: string) {
+  return /unauthorized|forbidden|jwt|token expired|invalid token/i.test(message);
+}
+
 export default function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
   const [email, setEmail] = useState(getAdminEmail() ?? "");
@@ -108,7 +112,14 @@ export default function App() {
         );
       }
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Failed to load data");
+      const errMsg = err instanceof Error ? err.message : "Failed to load data";
+      setMessage(errMsg);
+      if (isAuthFailure(errMsg) || !getToken()) {
+        setAuthed(false);
+        setLoginStep("credentials");
+        setLoginSessionId("");
+        sessionStorage.removeItem("admin-login-session");
+      }
     } finally {
       setLoading(false);
     }
@@ -212,6 +223,19 @@ export default function App() {
     try {
       if (loginStep === "credentials") {
         const res = await api.login(email, password);
+        if ("accessToken" in res) {
+          if (res.user.role !== "ADMIN") {
+            setLoginError("This account is not an admin.");
+            return;
+          }
+          sessionStorage.removeItem("admin-login-session");
+          setToken(res.accessToken);
+          setAdminEmail(res.user.email);
+          setEmail(res.user.email);
+          setLoginStep("credentials");
+          setAuthed(true);
+          return;
+        }
         const sessionId = res.loginSessionId?.trim();
         if (!sessionId) {
           throw new Error("Sign-in could not start. Check your email/password and try again.");
@@ -388,7 +412,7 @@ export default function App() {
 
       <main className="main">
         {message && (
-          <div className={`message ${message.includes("fail") ? "error" : ""}`}>
+          <div className={`message ${message && (message.includes("fail") || isAuthFailure(message)) ? "error" : ""}`}>
             {message}
           </div>
         )}

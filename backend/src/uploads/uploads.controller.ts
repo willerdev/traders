@@ -149,6 +149,7 @@ export class UploadsController {
     }
 
     await this.storage.persistLocalFile('kyc', file.filename, file.mimetype);
+    await this.registerPendingKycUpload(req.user.id, file.filename);
 
     const baseUrl =
       process.env.API_PUBLIC_URL || `http://localhost:${process.env.PORT || 4000}`;
@@ -179,11 +180,27 @@ export class UploadsController {
       const owned = [kyc?.documentFrontUrl, kyc?.documentBackUrl, kyc?.selfieUrl]
         .filter(Boolean)
         .some((url) => url?.includes(safeName));
-      if (!owned) {
+      const pending =
+        kyc?.pendingUploadFilenames?.includes(safeName) ?? false;
+      if (!owned && !pending) {
         throw new ForbiddenException('Access denied');
       }
     }
 
     return this.storage.sendFile('kyc', safeName, res);
+  }
+
+  private async registerPendingKycUpload(userId: string, filename: string) {
+    const existing = await this.prisma.kycVerification.findUnique({
+      where: { userId },
+    });
+    const pending = existing?.pendingUploadFilenames ?? [];
+    const next = [...new Set([...pending, filename])].slice(-20);
+
+    await this.prisma.kycVerification.upsert({
+      where: { userId },
+      create: { userId, pendingUploadFilenames: next },
+      update: { pendingUploadFilenames: next },
+    });
   }
 }

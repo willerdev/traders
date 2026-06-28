@@ -18,15 +18,23 @@ export function setAdminEmail(email: string | null) {
 }
 
 export function getToken() {
+  if (!token) {
+    token = localStorage.getItem("admin_token");
+  }
   return token;
 }
 
+function isAuthError(status: number) {
+  return status === 401 || status === 403;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const authToken = getToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
 
   const res = await fetch(`${API_URL}${path}`, { ...options, headers });
   const text = await res.text();
@@ -38,6 +46,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
 
   if (!res.ok) {
+    if (isAuthError(res.status)) {
+      setToken(null);
+      setAdminEmail(null);
+    }
     const msg =
       typeof data === "object" && data && "message" in data
         ? String((data as { message: string }).message)
@@ -48,15 +60,19 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
-export const api = {
-  login: (email: string, password: string) =>
-    request<{
+export type LoginResponse =
+  | {
       requiresOtp: true;
       loginSessionId: string;
       email: string;
       message: string;
       expiresIn: number;
-    }>("/auth/login", {
+    }
+  | { accessToken: string; user: { role: string; email: string } };
+
+export const api = {
+  login: (email: string, password: string) =>
+    request<LoginResponse>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
