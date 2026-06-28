@@ -6,24 +6,46 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api, type OpenSetupItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, Loader2, RefreshCw, Target, Archive, Clock, Ban } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronRight,
+  Loader2,
+  RefreshCw,
+  Target,
+  Archive,
+  Clock,
+} from "lucide-react";
 import Link from "next/link";
-import { ClaimTpModal } from "@/components/dashboard/claim-tp-modal";
+import {
+  SetupDetailModal,
+  type SetupSummary,
+} from "@/components/dashboard/setup-detail-modal";
 
 type Props = {
   onClaimed?: () => void;
 };
 
+function toSummary(setup: OpenSetupItem): SetupSummary {
+  return {
+    signalId: setup.signalId,
+    symbol: setup.symbol,
+    direction: setup.direction,
+    entryMin: setup.entryMin,
+    entryMax: setup.entryMax,
+    stopLoss: setup.stopLoss,
+    takeProfit: setup.takeProfit,
+    status: "OPEN",
+    submittedAt: setup.submittedAt,
+  };
+}
+
 export function UnresolvedSetupsCard({ onClaimed }: Props) {
   const [items, setItems] = useState<OpenSetupItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [claiming, setClaiming] = useState<string | null>(null);
-  const [archiving, setArchiving] = useState<string | null>(null);
   const [archivingAll, setArchivingAll] = useState(false);
-  const [invalidating, setInvalidating] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [tpModal, setTpModal] = useState<{ signalId: string; symbol: string } | null>(null);
+  const [selected, setSelected] = useState<SetupSummary | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -45,39 +67,10 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
     load();
   }, [load]);
 
-  async function handleClaimSl(signalId: string) {
-    if (
-      !confirm(
-        "Claim stop loss for this setup? Your account will be scored and the setup marked resolved.",
-      )
-    ) {
-      return;
-    }
-
-    setClaiming(`${signalId}:sl`);
-    setSuccess(null);
-    setError(null);
-    try {
-      const result = await api.signals.claim(signalId, "sl");
-      setSuccess(`${result.outcome?.toUpperCase() ?? "SL"} claimed — setup resolved`);
-      await load();
-      onClaimed?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Claim failed");
-    } finally {
-      setClaiming(null);
-    }
-  }
-
-  function openTpModal(signalId: string, symbol: string) {
-    setError(null);
-    setTpModal({ signalId, symbol });
-  }
-
   async function handleArchiveAll() {
     if (
       !confirm(
-        `Archive all ${items.length} open setup(s)? This hides them locally without cancelling Hub orders. Use Invalidate on individual setups if you need Hub to stop execution.`,
+        `Archive all ${items.length} open setup(s)? This hides them locally without cancelling Hub orders.`,
       )
     ) {
       return;
@@ -100,62 +93,9 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
     }
   }
 
-  async function handleInvalidate(signalId: string, symbol: string) {
-    if (
-      !confirm(
-        `Invalidate ${symbol}? This cancels the pending Signal Hub order so it will not execute. Use Archive instead if you only want to hide a stale setup locally.`,
-      )
-    ) {
-      return;
-    }
-
-    setInvalidating(signalId);
-    setSuccess(null);
-    setError(null);
-    try {
-      const result = await api.signals.invalidate(signalId);
-      if (result.hubWarning) {
-        setSuccess(
-          `${symbol} archived on platform. Hub note: ${result.hubWarning}`,
-        );
-      } else if (result.hubNotFound) {
-        setSuccess(
-          `${symbol} archived — it was not queued on Signal Hub (nothing to cancel there).`,
-        );
-      } else {
-        setSuccess(`${symbol} invalidated — Hub will not execute this setup`);
-      }
-      await load();
-      onClaimed?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Invalidate failed");
-    } finally {
-      setInvalidating(null);
-    }
-  }
-
-  async function handleArchive(signalId: string, symbol: string) {
-    if (
-      !confirm(
-        `Archive ${symbol}? It will be removed from open setups with no score or wallet change.`,
-      )
-    ) {
-      return;
-    }
-
-    setArchiving(signalId);
-    setSuccess(null);
-    setError(null);
-    try {
-      await api.signals.archive(signalId);
-      setSuccess(`${symbol} archived`);
-      await load();
-      onClaimed?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Archive failed");
-    } finally {
-      setArchiving(null);
-    }
+  function handleUpdated() {
+    void load();
+    onClaimed?.();
   }
 
   const claimable = items.filter((i) => i.resolution.claimable);
@@ -166,99 +106,93 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
   }
 
   return (
-    <Card className="lg:col-span-2 border-amber-500/20 bg-amber-500/[0.03]">
-      <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
-        <div>
-          <CardTitle className="flex items-center gap-2">
-            <Target className="h-5 w-5 text-amber-400" />
-            Unresolved Setups
-          </CardTitle>
-          <p className="mt-1 text-sm text-gray-500">
-            Open setups that hit TP or SL but were not auto-recorded. TP claims
-            require before/after screenshots and admin approval — track them on{" "}
-            <Link href="/tp-claims" className="text-primary hover:underline">
-              TP Claims
-            </Link>
-            .
-          </p>
-        </div>
-        <div className="flex shrink-0 gap-2">
-          {items.length > 1 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1 text-gray-400"
-              disabled={loading || archivingAll}
-              onClick={() => void handleArchiveAll()}
-            >
-              {archivingAll ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Archive className="h-3.5 w-3.5" />
-              )}
-              Archive all
-            </Button>
-          )}
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={load}
-            disabled={loading}
-            className="gap-1"
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-            Refresh
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {loading && items.length === 0 ? (
-          <div className="flex items-center justify-center py-10 text-gray-500">
-            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-            Checking open setups…
+    <>
+      <Card className="lg:col-span-2 border-amber-500/20 bg-amber-500/[0.03]">
+        <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="h-5 w-5 text-amber-400" />
+              Unresolved Setups
+            </CardTitle>
+            <p className="mt-1 text-sm text-gray-500">
+              Click a setup for progress, claim TP/SL, or invalidate. TP claims
+              on{" "}
+              <Link href="/tp-claims" className="text-primary hover:underline">
+                TP Claims
+              </Link>
+              .
+            </p>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {success && (
-              <div className="flex flex-col gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
-                <div className="flex items-center gap-2">
+          <div className="flex shrink-0 gap-2">
+            {items.length > 1 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1 text-gray-400"
+                disabled={loading || archivingAll}
+                onClick={() => void handleArchiveAll()}
+              >
+                {archivingAll ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Archive className="h-3.5 w-3.5" />
+                )}
+                Archive all
+              </Button>
+            )}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={load}
+              disabled={loading}
+              className="gap-1"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+              Refresh
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading && items.length === 0 ? (
+            <div className="flex items-center justify-center py-10 text-gray-500">
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              Checking open setups…
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {success && (
+                <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
                   <CheckCircle2 className="h-4 w-4 shrink-0" />
                   {success}
                 </div>
-                {success.includes("review") && (
-                  <Link href="/tp-claims" className="text-xs underline">
-                    View TP Claims status
-                  </Link>
-                )}
-              </div>
-            )}
-            {error && (
-              <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-                {error}
-              </p>
-            )}
+              )}
+              {error && (
+                <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+                  {error}
+                </p>
+              )}
 
-            {claimable.length === 0 && openOnly.length > 0 && (
-              <p className="text-sm text-gray-500">
-                {openOnly.length} setup{openOnly.length !== 1 ? "s" : ""} still
-                open — none are ready to claim yet (price has not reached TP/SL
-                and Hub has not confirmed execution).
-              </p>
-            )}
+              {claimable.length === 0 && openOnly.length > 0 && (
+                <p className="text-sm text-gray-500">
+                  {openOnly.length} setup{openOnly.length !== 1 ? "s" : ""} still
+                  open — click to view trade progress.
+                </p>
+              )}
 
-            {[...claimable, ...openOnly].map((setup) => {
-              const res = setup.resolution;
-              const claimingSl = claiming === `${setup.signalId}:sl`;
-              const isArchiving = archiving === setup.signalId;
-              const isInvalidating = invalidating === setup.signalId;
-
-              return (
-                <div
-                  key={setup.id}
-                  className="rounded-lg border border-white/5 bg-white/[0.02] p-4"
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
+              {[...claimable, ...openOnly].map((setup) => {
+                const res = setup.resolution;
+                return (
+                  <button
+                    key={setup.id}
+                    type="button"
+                    onClick={() => setSelected(toSummary(setup))}
+                    className={cn(
+                      "flex w-full flex-col gap-2 rounded-lg border border-white/5",
+                      "bg-white/[0.02] p-4 text-left transition-colors sm:flex-row sm:items-center sm:justify-between",
+                      "hover:border-amber-500/30 hover:bg-amber-500/5",
+                    )}
+                  >
+                    <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-lg font-bold text-white">
                           {setup.symbol}
@@ -270,7 +204,23 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
                         >
                           {setup.direction}
                         </Badge>
-                        <Badge variant="secondary">OPEN</Badge>
+                        {res.canClaimTp && (
+                          <Badge variant="success">Claim TP</Badge>
+                        )}
+                        {res.canClaimTp1R1 && (
+                          <Badge variant="secondary" className="text-success">
+                            Claim 1:1
+                          </Badge>
+                        )}
+                        {res.canClaimSl && (
+                          <Badge variant="danger">Claim SL</Badge>
+                        )}
+                        {res.pendingTpClaim && (
+                          <Badge variant="secondary" className="gap-1">
+                            <Clock className="h-3 w-3" />
+                            TP review
+                          </Badge>
+                        )}
                       </div>
                       <p className="mt-2 text-xs text-gray-500">
                         Entry {setup.entryMin} – {setup.entryMax} · TP{" "}
@@ -279,116 +229,27 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
                       <p className="mt-1 text-xs text-gray-600">
                         Submitted {new Date(setup.submittedAt).toLocaleString()}
                         {res.currentPrice != null && (
-                          <>
-                            {" · "}
-                            Market {res.currentPrice}
-                          </>
+                          <> · Market {res.currentPrice}</>
                         )}
-                        {res.hubStatus && (
-                          <>
-                            {" · "}
-                            Hub {res.hubStatus}
-                          </>
-                        )}
-                        {res.pendingTpClaim && (
-                          <>
-                            {" · "}
-                            <span className="text-amber-400">TP claim pending review</span>
-                          </>
-                        )}
+                        {res.hubStatus && <> · Hub {res.hubStatus}</>}
                       </p>
                     </div>
+                    <ChevronRight className="hidden h-5 w-5 shrink-0 text-gray-600 sm:block" />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-                    <div className="flex shrink-0 flex-wrap gap-2">
-                      {res.canClaimTp && (
-                        <Button
-                          variant="success"
-                          size="sm"
-                          disabled={Boolean(claiming)}
-                          onClick={() => openTpModal(setup.signalId, setup.symbol)}
-                        >
-                          Claim TP
-                        </Button>
-                      )}
-                      {res.pendingTpClaim && !res.canClaimTp && (
-                        <span className="flex items-center gap-1 self-center text-xs text-amber-400">
-                          <Clock className="h-3.5 w-3.5" />
-                          Review pending
-                        </span>
-                      )}
-                      {res.canClaimSl && (
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          disabled={Boolean(claiming)}
-                          onClick={() => handleClaimSl(setup.signalId)}
-                        >
-                          {claimingSl ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            "Claim SL"
-                          )}
-                        </Button>
-                      )}
-                      {!res.canClaimTp && !res.canClaimSl && !res.pendingTpClaim && (
-                        <span className="self-center text-xs text-gray-500">
-                          Awaiting TP/SL
-                        </span>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="gap-1 text-amber-400/90"
-                        disabled={Boolean(claiming) || isInvalidating || isArchiving}
-                        onClick={() =>
-                          handleInvalidate(setup.signalId, setup.symbol)
-                        }
-                      >
-                        {isInvalidating ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Ban className="h-3.5 w-3.5" />
-                        )}
-                        Invalidate
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="gap-1 text-gray-400"
-                        disabled={Boolean(claiming) || isArchiving || isInvalidating}
-                        onClick={() =>
-                          handleArchive(setup.signalId, setup.symbol)
-                        }
-                      >
-                        {isArchiving ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Archive className="h-3.5 w-3.5" />
-                        )}
-                        Archive
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </CardContent>
-
-      {tpModal && (
-        <ClaimTpModal
-          signalId={tpModal.signalId}
-          symbol={tpModal.symbol}
-          onClose={() => setTpModal(null)}
-          onSubmitted={(msg) => {
-            setSuccess(msg);
-            void load();
-            onClaimed?.();
-          }}
-          onError={(msg) => setError(msg)}
+      {selected && (
+        <SetupDetailModal
+          setup={selected}
+          onClose={() => setSelected(null)}
+          onUpdated={handleUpdated}
         />
       )}
-    </Card>
+    </>
   );
 }

@@ -971,8 +971,9 @@ export default function App() {
                       <strong>{item.user.displayName}</strong> — {item.user.email}
                     </p>
                     <p className="muted">
-                      {item.symbol} {item.direction} · Entry {item.entryMin} –{" "}
-                      {item.entryMax} · TP {item.takeProfit}
+                      {item.symbol} {item.direction}
+                      {item.claimType === "RR_1_TO_1" ? " · 1:1 RR claim" : " · Full TP claim"}
+                      {" · "}Entry {item.entryMin} – {item.entryMax} · TP {item.takeProfit}
                     </p>
                     <p className="muted">Submitted {fmtDate(item.submittedAt)}</p>
                     <div style={{ margin: "0.5rem 0", display: "grid", gap: "0.5rem", gridTemplateColumns: "1fr 1fr" }}>
@@ -1020,7 +1021,7 @@ export default function App() {
                             .then(() => loadTab("tpClaims"))
                         }
                       >
-                        Approve & credit TP
+                        Approve & credit {item.claimType === "RR_1_TO_1" ? "1:1 RR" : "TP"}
                       </button>
                       <button
                         type="button"

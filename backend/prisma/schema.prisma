@@ -109,6 +109,11 @@ enum TpClaimStatus {
   REJECTED
 }
 
+enum TpClaimType {
+  FULL_TP
+  RR_1_TO_1
+}
+
 model User {
   id                String     @id @default(cuid())
   email             String?    @unique
@@ -358,6 +363,7 @@ model TpClaim {
   exitPrice           Decimal        @db.Decimal(18, 8)
   beforeScreenshotUrl String
   afterScreenshotUrl  String
+  claimType           TpClaimType    @default(FULL_TP)
   status              TpClaimStatus  @default(PENDING_REVIEW)
   adminNote           String?
   reviewedAt          DateTime?

@@ -20,6 +20,11 @@ import {
 } from '../trades/price-monitor.service';
 import { WalletService } from '../trades/wallet.service';
 import { TpClaimsService } from '../tp-claims/tp-claims.service';
+import {
+  computeOneToOnePrice,
+  isOneToOneClaimValidForSetup,
+  priceReachedOneToOne,
+} from '../common/rr.util';
 import { NotificationService } from '../email/notification.service';
 import { Signal, Trade, User } from '@prisma/client';
 
@@ -380,6 +385,19 @@ export class SignalsService {
 
     const tp = Number(signal.takeProfit);
     const sl = Number(signal.stopLoss);
+    const entryMin = Number(signal.entryMin);
+    const entryMax = Number(signal.entryMax);
+    const oneToOnePrice = computeOneToOnePrice(
+      signal.direction,
+      entryMin,
+      entryMax,
+      sl,
+    );
+    const rr1Valid = isOneToOneClaimValidForSetup(
+      signal.direction,
+      oneToOnePrice,
+      tp,
+    );
     const price = await this.priceMonitor.fetchPrice(signal.symbol);
     const priceOutcome =
       price !== null
@@ -408,7 +426,18 @@ export class SignalsService {
       priceOutcome === 'sl' || (priceOutcome === null && hubOutcome === 'sl');
 
     const pendingTpClaim = await this.tpClaims.hasPendingClaim(signal.id);
+    const activated = Boolean(signal.trade?.activatedAt);
+    const hitRr1 =
+      price !== null &&
+      priceReachedOneToOne(signal.direction, oneToOnePrice, price);
     const canClaimTp = canClaimTpBase && !pendingTpClaim;
+    const canClaimTp1R1 =
+      !canClaimTpBase &&
+      hitRr1 &&
+      rr1Valid &&
+      activated &&
+      Number(signal.riskRewardRatio) >= 1 &&
+      !pendingTpClaim;
 
     return {
       signalId: signal.signalId,
@@ -417,16 +446,19 @@ export class SignalsService {
       status: signal.status,
       takeProfit: tp,
       stopLoss: sl,
-      entryMin: Number(signal.entryMin),
-      entryMax: Number(signal.entryMax),
-      activated: Boolean(signal.trade?.activatedAt),
+      entryMin,
+      entryMax,
+      oneToOnePrice,
+      riskRewardRatio: Number(signal.riskRewardRatio),
+      activated,
       currentPrice: price,
       priceOutcome,
       hubStatus,
       hubOutcome,
       pendingTpClaim,
-      claimable: canClaimTp || canClaimSl,
+      claimable: canClaimTp || canClaimSl || canClaimTp1R1,
       canClaimTp,
+      canClaimTp1R1,
       canClaimSl,
     };
   }
@@ -443,7 +475,15 @@ export class SignalsService {
     }
 
     const outcome = dto.outcome;
-    if (outcome === 'tp' && !resolution.canClaimTp) {
+    const isRr1Claim = outcome === 'tp' && dto.tpClaimType === 'rr_1_1';
+
+    if (isRr1Claim) {
+      if (!('canClaimTp1R1' in resolution) || !resolution.canClaimTp1R1) {
+        throw new BadRequestException(
+          '1:1 RR level has not been reached yet, or this setup is not eligible for a 1:1 claim.',
+        );
+      }
+    } else if (outcome === 'tp' && !resolution.canClaimTp) {
       throw new BadRequestException(
         'Take profit has not been reached according to current market data or execution status.',
       );
@@ -463,10 +503,12 @@ export class SignalsService {
     }
 
     const exitPrice =
-      resolution.currentPrice ??
-      (outcome === 'tp'
-        ? Number(signal.takeProfit)
-        : Number(signal.stopLoss));
+      isRr1Claim && 'oneToOnePrice' in resolution && resolution.oneToOnePrice != null
+        ? Number(resolution.oneToOnePrice)
+        : resolution.currentPrice ??
+          (outcome === 'tp'
+            ? Number(signal.takeProfit)
+            : Number(signal.stopLoss));
 
     if (outcome === 'tp') {
       if (!dto.beforeScreenshotUrl?.trim() || !dto.afterScreenshotUrl?.trim()) {
@@ -481,6 +523,7 @@ export class SignalsService {
         exitPrice,
         dto.beforeScreenshotUrl.trim(),
         dto.afterScreenshotUrl.trim(),
+        isRr1Claim ? 'RR_1_TO_1' : 'FULL_TP',
       );
     }
 

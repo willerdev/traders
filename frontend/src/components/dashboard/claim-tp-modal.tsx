@@ -11,6 +11,8 @@ type Props = {
   signalId: string;
   symbol: string;
   claimId?: string;
+  claimType?: "full" | "rr_1_1";
+  oneToOnePrice?: number;
   onClose: () => void;
   onSubmitted: (message: string) => void;
   onError: (message: string) => void;
@@ -20,6 +22,8 @@ export function ClaimTpModal({
   signalId,
   symbol,
   claimId,
+  claimType = "full",
+  oneToOnePrice,
   onClose,
   onSubmitted,
   onError,
@@ -69,6 +73,7 @@ export function ClaimTpModal({
         : await api.signals.claim(signalId, "tp", {
             beforeScreenshotUrl: beforeUpload.url,
             afterScreenshotUrl: afterUpload.url,
+            ...(claimType === "rr_1_1" ? { tpClaimType: "rr_1_1" as const } : {}),
           });
 
       if (result.status === "pending_review") {
@@ -94,12 +99,19 @@ export function ClaimTpModal({
         <CardHeader className="flex flex-row items-start justify-between gap-3">
           <div>
             <CardTitle>
-              {claimId ? "Reapply take profit" : "Claim take profit"} — {symbol}
+              {claimId
+                ? "Reapply take profit"
+                : claimType === "rr_1_1"
+                  ? "Claim 1:1 RR"
+                  : "Claim take profit"}{" "}
+              — {symbol}
             </CardTitle>
             <CardDescription className="mt-1">
               {claimId
                 ? "Upload new before and after screenshots. Your claim will return to the admin review queue."
-                : "Upload before and after screenshots of your chart. An admin will review your evidence before crediting the TP reward."}
+                : claimType === "rr_1_1"
+                  ? `Upload proof that price reached your 1:1 level${oneToOnePrice != null ? ` (${oneToOnePrice})` : ""}. Admin approval credits half the standard TP reward.`
+                  : "Upload before and after screenshots of your chart. An admin will review your evidence before crediting the TP reward."}
             </CardDescription>
           </div>
           <button
@@ -121,7 +133,7 @@ export function ClaimTpModal({
             />
             <UploadSlot
               id="after-chart"
-              label="After (TP hit)"
+              label={claimType === "rr_1_1" ? "After (1:1 hit)" : "After (TP hit)"}
               preview={afterPreview}
               onPick={(f) => pickFile(f, setAfterFile, setAfterPreview)}
             />

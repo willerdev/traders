@@ -8,7 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { WalletService } from '../trades/wallet.service';
 import { PriceMonitorService } from '../trades/price-monitor.service';
 import { NotificationService } from '../email/notification.service';
-import { Signal, Trade } from '@prisma/client';
+import { Signal, Trade, TpClaimType } from '@prisma/client';
 import { TP_REWARD_USD } from '../common/constants';
 
 @Injectable()
@@ -33,6 +33,7 @@ export class TpClaimsService {
     exitPrice: number,
     beforeScreenshotUrl: string,
     afterScreenshotUrl: string,
+    claimType: TpClaimType = 'FULL_TP',
   ) {
     if (!signal.trade) {
       throw new BadRequestException('Setup has no associated trade record');
@@ -75,16 +76,20 @@ export class TpClaimsService {
         exitPrice,
         beforeScreenshotUrl,
         afterScreenshotUrl,
+        claimType,
         status: 'PENDING_REVIEW',
       },
     });
 
+    const isRr1 = claimType === 'RR_1_TO_1';
     return {
       status: 'pending_review' as const,
       claimId: claim.id,
+      claimType,
       signalId: signal.signalId,
-      message:
-        'TP claim submitted for review. Upload confirmed — an admin will verify your before/after screenshots before crediting your account.',
+      message: isRr1
+        ? '1:1 RR claim submitted for review. An admin will verify your before/after screenshots before crediting your reward.'
+        : 'TP claim submitted for review. Upload confirmed — an admin will verify your before/after screenshots before crediting your account.',
     };
   }
 
@@ -252,10 +257,22 @@ export class TpClaimsService {
     }
 
     const exitPrice = Number(claim.exitPrice);
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    const fullReward = Number(config?.tpRewardUsd ?? TP_REWARD_USD);
+    const isRr1 = claim.claimType === 'RR_1_TO_1';
+    const reward = isRr1 ? Math.round(fullReward * 50) / 100 : fullReward;
+
     const result = await this.wallet.creditTpReward(
       claim.userId,
       claim.signalId,
       exitPrice,
+      {
+        reward,
+        rewardLabel: isRr1 ? '1:1 RR TP reward' : 'TP reward',
+        scoringRr: isRr1 ? 1 : Number(claim.signal.riskRewardRatio),
+      },
     );
 
     if (!result) {
@@ -282,6 +299,7 @@ export class TpClaimsService {
           userId: claim.userId,
           signalId: claim.signal.signalId,
           reward: result.reward,
+          claimType: claim.claimType,
         },
       },
     });
@@ -355,6 +373,7 @@ export class TpClaimsService {
       exitPrice: unknown;
       beforeScreenshotUrl: string;
       afterScreenshotUrl: string;
+      claimType?: string;
       status: string;
       adminNote: string | null;
       reviewedAt: Date | null;
@@ -378,6 +397,7 @@ export class TpClaimsService {
       exitPrice: Number(claim.exitPrice),
       beforeScreenshotUrl: claim.beforeScreenshotUrl,
       afterScreenshotUrl: claim.afterScreenshotUrl,
+      claimType: claim.claimType,
       status: claim.status,
       adminNote: claim.adminNote,
       reviewedAt: claim.reviewedAt?.toISOString() ?? null,

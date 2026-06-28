@@ -274,6 +274,7 @@ export type TpClaimRow = {
   symbol: string;
   direction: string;
   exitPrice: number;
+  claimType?: string;
   beforeScreenshotUrl: string;
   afterScreenshotUrl: string;
   status: string;

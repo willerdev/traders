@@ -330,6 +330,10 @@ export class ClaimSetupDto {
   @IsIn(['tp', 'sl'])
   outcome: 'tp' | 'sl';
 
+  @IsOptional()
+  @IsIn(['full', 'rr_1_1'])
+  tpClaimType?: 'full' | 'rr_1_1';
+
   @ValidateIf((o: ClaimSetupDto) => o.outcome === 'tp')
   @IsString()
   @IsNotEmpty()

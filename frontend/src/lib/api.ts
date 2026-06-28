@@ -225,7 +225,11 @@ class ApiClient {
     claim: (
       signalId: string,
       outcome: "tp" | "sl",
-      evidence?: { beforeScreenshotUrl: string; afterScreenshotUrl: string },
+      evidence?: {
+        beforeScreenshotUrl: string;
+        afterScreenshotUrl: string;
+        tpClaimType?: "full" | "rr_1_1";
+      },
     ) =>
       this.request<ClaimSetupResult>(`/signals/claim/${signalId}`, {
         method: "POST",
@@ -1033,6 +1037,8 @@ export interface SetupResolution {
   stopLoss?: number;
   entryMin?: number;
   entryMax?: number;
+  oneToOnePrice?: number;
+  riskRewardRatio?: number;
   activated?: boolean;
   currentPrice?: number | null;
   priceOutcome?: "tp" | "sl" | null;
@@ -1041,6 +1047,7 @@ export interface SetupResolution {
   pendingTpClaim?: boolean;
   claimable: boolean;
   canClaimTp: boolean;
+  canClaimTp1R1?: boolean;
   canClaimSl: boolean;
   reason?: string;
 }
@@ -1098,6 +1105,7 @@ export interface TpClaimRecord {
   exitPrice: number;
   beforeScreenshotUrl: string;
   afterScreenshotUrl: string;
+  claimType?: "FULL_TP" | "RR_1_TO_1";
   status: "PENDING_REVIEW" | "APPROVED" | "REJECTED";
   adminNote?: string | null;
   reviewedAt?: string | null;

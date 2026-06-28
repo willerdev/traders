@@ -195,6 +195,9 @@ export default function TpClaimsPage() {
                           <Icon className="h-3 w-3" />
                           {badge.label}
                         </Badge>
+                        {claim.claimType === "RR_1_TO_1" && (
+                          <Badge variant="secondary">1:1 RR</Badge>
+                        )}
                       </div>
                       <span className="text-xs text-gray-500">
                         Submitted {fmtDate(claim.submittedAt)}

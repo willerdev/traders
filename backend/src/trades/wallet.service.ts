@@ -16,11 +16,14 @@ export class WalletService {
     userId: string,
     signalId: string,
     exitPrice: number,
+    options?: { reward?: number; rewardLabel?: string; scoringRr?: number },
   ) {
     const config = await this.prisma.platformConfig.findUnique({
       where: { id: 'default' },
     });
-    const reward = Number(config?.tpRewardUsd ?? TP_REWARD_USD);
+    const defaultReward = Number(config?.tpRewardUsd ?? TP_REWARD_USD);
+    const reward = options?.reward ?? defaultReward;
+    const rewardLabel = options?.rewardLabel ?? 'TP reward';
 
     const signal = await this.prisma.signal.findUnique({
       where: { id: signalId },
@@ -76,7 +79,7 @@ export class WalletService {
           amount: reward,
           type: 'TP_REWARD',
           referenceId: signal.signalId,
-          description: `$${reward} TP reward — ${signal.symbol}`,
+          description: `$${reward} ${rewardLabel} — ${signal.symbol}`,
           balanceAfter: newBalance,
         },
       }),
@@ -86,7 +89,7 @@ export class WalletService {
       userId,
       signalId,
       true,
-      Number(signal.riskRewardRatio),
+      options?.scoringRr ?? Number(signal.riskRewardRatio),
     );
 
     await this.prisma.signal.update({
