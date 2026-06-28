@@ -36,3 +36,24 @@ export function priceReachedOneToOne(
     ? price >= oneToOnePrice
     : price <= oneToOnePrice;
 }
+
+/** TP1 = 1:1 RR level. Used when a trader manually closes a live MetaAPI position. */
+export type ManualCloseOutcome = 'tp' | 'even' | 'sl';
+
+export function classifyManualCloseOutcome(
+  direction: TradeDirection | 'BUY' | 'SELL',
+  entryMin: number,
+  entryMax: number,
+  tp1Price: number,
+  exitPrice: number,
+): ManualCloseOutcome {
+  const eps = 1e-9;
+  if (direction === 'BUY') {
+    if (exitPrice >= tp1Price - eps) return 'tp';
+    if (exitPrice < entryMin - eps) return 'sl';
+    return 'even';
+  }
+  if (exitPrice <= tp1Price + eps) return 'tp';
+  if (exitPrice > entryMax + eps) return 'sl';
+  return 'even';
+}

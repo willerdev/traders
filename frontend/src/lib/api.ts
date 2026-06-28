@@ -239,6 +239,10 @@ class ApiClient {
       this.request<PlaceTradeResult>(`/signals/${signalId}/place-trade`, {
         method: "POST",
       }),
+    closeTrade: (signalId: string) =>
+      this.request<CloseSetupTradeResult>(`/signals/${signalId}/close-trade`, {
+        method: "POST",
+      }),
     metaApiAccounts: () =>
       this.request<MetaApiAccountsResult>("/signals/metaapi/accounts"),
     claim: (
@@ -1080,6 +1084,38 @@ export interface SetupResolution {
   metaApiOrderId?: string | null;
   metaApiPositionId?: string | null;
   canPlaceTrade?: boolean;
+  liveTrade?: SetupLiveTrade | null;
+}
+
+export interface SetupLiveTrade {
+  status: "open" | "pending" | "none";
+  positionId?: string;
+  orderId?: string;
+  openPrice?: number;
+  currentPrice?: number;
+  volume?: number;
+  profit?: number;
+  unrealizedProfit?: number;
+  swap?: number;
+  commission?: number;
+  currency?: string;
+  symbol?: string;
+  comment?: string;
+  tp1Price?: number;
+  tp1Reached?: boolean;
+  entryPrice?: number;
+  canClose?: boolean;
+}
+
+export interface CloseSetupTradeResult {
+  status: string;
+  signalId: string;
+  exitPrice?: number;
+  outcome?: "tp" | "even" | "sl";
+  fullTp?: boolean;
+  tp1Price?: number;
+  pointsAwarded?: number;
+  message?: string;
 }
 
 export interface MetaApiAccountRow {

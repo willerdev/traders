@@ -62,6 +62,42 @@ export function buildMetaApiTradeIdentifiers(input: {
   return { comment, clientId };
 }
 
+/** Normalized MT5 comment prefix for a trader (used to match open positions). */
+export function normalizeTraderCommentName(
+  displayName: string,
+  userId: string,
+): string {
+  return buildTradeOrderComment(displayName, userId, 31);
+}
+
+/** True when the MT5 order/position comment belongs to this trader. */
+export function tradeCommentBelongsToUser(
+  comment: string | undefined,
+  displayName: string,
+  userId: string,
+): boolean {
+  if (!comment?.trim()) return false;
+
+  const expected = normalizeTraderCommentName(displayName, userId).toLowerCase();
+  const actual = comment.trim().toLowerCase();
+
+  if (!expected) return false;
+  if (actual === expected) return true;
+  if (actual.startsWith(expected) || expected.startsWith(actual)) return true;
+
+  const alt = displayName
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-zA-Z0-9_-]/g, '')
+    .toLowerCase();
+  if (alt.length >= 2 && (actual.includes(alt) || alt.includes(actual))) {
+    return true;
+  }
+
+  const fallback = `trader_${userId.slice(0, 8)}`.toLowerCase();
+  return actual.startsWith(fallback);
+}
+
 export function roundToSymbolDigits(value: number, digits: number): number {
   if (!Number.isFinite(digits) || digits < 0) return value;
   const factor = 10 ** digits;

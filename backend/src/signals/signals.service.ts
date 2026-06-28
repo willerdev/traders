@@ -22,6 +22,7 @@ import { WalletService } from '../trades/wallet.service';
 import { TpClaimsService } from '../tp-claims/tp-claims.service';
 import {
   computeOneToOnePrice,
+  classifyManualCloseOutcome,
   isOneToOneClaimValidForSetup,
   priceReachedOneToOne,
 } from '../common/rr.util';
@@ -611,11 +612,59 @@ export class SignalsService {
 
     const trader = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { metaApiAccountId: true },
+      select: { metaApiAccountId: true, displayName: true },
     });
     const linkedAccountId = this.metaApi.resolveAccountId(
       trader?.metaApiAccountId,
     );
+
+    let liveTrade: Record<string, unknown> | null = null;
+    if (
+      signal.status === 'OPEN' &&
+      this.metaApi.isConfigured &&
+      trader &&
+      (signal.metaApiAccountId || linkedAccountId)
+    ) {
+      try {
+        const accountId = signal.metaApiAccountId ?? linkedAccountId!;
+        const account = await this.metaApi.getAccount(accountId);
+        const { clientId } = this.metaApi.buildIdentifiersForUser(
+          trader.displayName,
+          userId,
+          signal.signalId,
+          signal.symbol,
+        );
+        const live = await this.metaApi.findLiveTradeForSignal(account, {
+          positionId: signal.metaApiPositionId,
+          orderId: signal.metaApiOrderId,
+          clientId,
+          displayName: trader.displayName,
+          userId,
+          symbol: signal.symbol,
+          activated: Boolean(signal.trade?.activatedAt),
+        });
+        const tp1Reached =
+          price !== null &&
+          priceReachedOneToOne(signal.direction, oneToOnePrice, price);
+        liveTrade = {
+          ...live,
+          tp1Price: oneToOnePrice,
+          tp1Reached,
+          entryPrice:
+            live.openPrice ??
+            (signal.trade?.entryPrice != null
+              ? Number(signal.trade.entryPrice)
+              : undefined),
+          canClose:
+            live.status === 'open' ||
+            (live.status === 'pending' && Boolean(signal.metaApiOrderId)),
+        };
+      } catch (err) {
+        this.logger.warn(
+          `Live trade state failed for ${signal.signalId}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
 
     return {
       signalId: signal.signalId,
@@ -646,6 +695,164 @@ export class SignalsService {
         !signal.metaApiExecutedAt &&
         this.metaApi.isConfigured &&
         Boolean(linkedAccountId),
+      liveTrade,
+    };
+  }
+
+  async closeSetupTrade(userId: string, signalId: string) {
+    await this.compliance.requireActiveTrader(userId);
+
+    if (!this.metaApi.isConfigured) {
+      throw new ServiceUnavailableException('Live trading is not configured');
+    }
+
+    const signal = await this.prisma.signal.findFirst({
+      where: { signalId, userId, status: 'OPEN' },
+      include: { trade: true },
+    });
+    if (!signal) throw new NotFoundException('Open setup not found');
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const accountId = this.metaApi.resolveAccountId(
+      signal.metaApiAccountId ?? user.metaApiAccountId,
+    );
+    if (!accountId) {
+      throw new BadRequestException('No MetaAPI account linked');
+    }
+
+    const account = await this.metaApi.ensureAccountReady(accountId);
+    const { clientId } = this.metaApi.buildIdentifiersForUser(
+      user.displayName,
+      userId,
+      signal.signalId,
+      signal.symbol,
+    );
+    const live = await this.metaApi.findLiveTradeForSignal(account, {
+      positionId: signal.metaApiPositionId,
+      orderId: signal.metaApiOrderId,
+      clientId,
+      displayName: user.displayName,
+      userId,
+      symbol: signal.symbol,
+      activated: Boolean(signal.trade?.activatedAt),
+    });
+
+    if (live.status === 'none') {
+      throw new BadRequestException(
+        'No open position with your name in the trade comment was found for this setup',
+      );
+    }
+
+    const entryMin = Number(signal.entryMin);
+    const entryMax = Number(signal.entryMax);
+    const tp = Number(signal.takeProfit);
+    const sl = Number(signal.stopLoss);
+    const oneToOnePrice = computeOneToOnePrice(
+      signal.direction,
+      entryMin,
+      entryMax,
+      sl,
+    );
+
+    if (live.status === 'pending' && live.orderId) {
+      await this.metaApi.cancelPendingOrder(account, live.orderId);
+      await this.prisma.signal.update({
+        where: { id: signal.id },
+        data: {
+          metaApiAccountId: null,
+          metaApiOrderId: null,
+          metaApiPositionId: null,
+          metaApiExecutedAt: null,
+        },
+      });
+      return {
+        status: 'cancelled',
+        signalId: signal.signalId,
+        message: 'Pending order cancelled — setup remains open',
+      };
+    }
+
+    if (!live.positionId) {
+      throw new BadRequestException('Could not resolve MetaAPI position id');
+    }
+
+    const quote = await this.metaApi.getSymbolPrice(account, signal.symbol);
+    const exitPrice =
+      signal.direction === 'BUY' ? quote.bid : quote.ask;
+
+    await this.metaApi.closePositionById(account, live.positionId);
+
+    await this.priceMonitor.ensureTradeActivated(
+      signal.trade!,
+      signal,
+      live.openPrice ?? exitPrice,
+    );
+
+    const hitFullTp =
+      this.priceMonitor.outcomeAtPrice(
+        signal.direction,
+        tp,
+        sl,
+        exitPrice,
+      ) === 'tp';
+    const manualOutcome = classifyManualCloseOutcome(
+      signal.direction,
+      entryMin,
+      entryMax,
+      oneToOnePrice,
+      exitPrice,
+    );
+
+    let result: Record<string, unknown>;
+    if (manualOutcome === 'tp') {
+      result = (await this.wallet.resolveAsManualWin(
+        userId,
+        signal.id,
+        exitPrice,
+        { fullTp: hitFullTp },
+      )) as Record<string, unknown>;
+    } else if (manualOutcome === 'even') {
+      result = (await this.wallet.resolveAsEven(
+        userId,
+        signal.id,
+        exitPrice,
+      )) as Record<string, unknown>;
+    } else {
+      result = (await this.wallet.resolveAsLoss(
+        userId,
+        signal.id,
+        exitPrice,
+      )) as Record<string, unknown>;
+    }
+
+    const scoringPoints =
+      result &&
+      typeof result === 'object' &&
+      'scoring' in result &&
+      result.scoring &&
+      typeof result.scoring === 'object' &&
+      'totalPoints' in result.scoring
+        ? Number((result.scoring as { totalPoints: number }).totalPoints)
+        : undefined;
+
+    return {
+      status: 'closed',
+      signalId: signal.signalId,
+      exitPrice,
+      outcome: manualOutcome,
+      fullTp: hitFullTp,
+      tp1Price: oneToOnePrice,
+      pointsAwarded: scoringPoints,
+      message:
+        manualOutcome === 'tp'
+          ? hitFullTp
+            ? 'Trade closed at full TP — counted as a win'
+            : 'Trade closed after TP1 (1:1) — counted as a win'
+          : manualOutcome === 'even'
+            ? 'Trade closed before TP1 — recorded as even (no win/loss points)'
+            : 'Trade closed in loss — counted as a loss',
     };
   }
 

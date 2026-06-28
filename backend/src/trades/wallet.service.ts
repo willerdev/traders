@@ -142,4 +142,61 @@ export class WalletService {
 
     return { signalId: signal.signalId, scoring };
   }
+
+  /** Manual close before full TP — no USD reward, but counts as a win if TP1 was reached. */
+  async resolveAsManualWin(
+    userId: string,
+    signalId: string,
+    exitPrice: number,
+    options?: { fullTp?: boolean },
+  ) {
+    const reward = options?.fullTp
+      ? Number(
+          (
+            await this.prisma.platformConfig.findUnique({
+              where: { id: 'default' },
+            })
+          )?.tpRewardUsd ?? TP_REWARD_USD,
+        )
+      : 0;
+
+    return this.creditTpReward(userId, signalId, exitPrice, {
+      reward,
+      rewardLabel: options?.fullTp
+        ? 'Manual close at full TP'
+        : 'Manual close (TP1+)',
+    });
+  }
+
+  /** Closed in profit zone but before TP1 — neutral outcome, no win/loss points. */
+  async resolveAsEven(userId: string, signalId: string, exitPrice: number) {
+    const signal = await this.prisma.signal.findUnique({
+      where: { id: signalId },
+      include: { trade: true },
+    });
+
+    if (!signal || !signal.trade || signal.status !== 'OPEN') return null;
+
+    await this.prisma.$transaction([
+      this.prisma.signal.update({
+        where: { id: signalId },
+        data: { status: 'ARCHIVED', resolvedAt: new Date(), pnl: 0 },
+      }),
+      this.prisma.trade.update({
+        where: { id: signal.trade.id },
+        data: {
+          isWin: false,
+          exitPrice,
+          pnl: 0,
+          closedAt: new Date(),
+        },
+      }),
+      this.prisma.virtualAccount.update({
+        where: { userId },
+        data: { totalTrades: { increment: 1 } },
+      }),
+    ]);
+
+    return { signalId: signal.signalId, outcome: 'even' as const };
+  }
 }

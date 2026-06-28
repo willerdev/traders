@@ -15,6 +15,9 @@ import {
 import {
   MetaApiOrderAction,
   MetaApiPendingAction,
+  buildMetaApiTradeIdentifiers,
+  normalizeTraderCommentName,
+  tradeCommentBelongsToUser,
   resolvePendingOpenPrice,
   resolvePendingOrderType,
   roundToSymbolDigits,
@@ -120,6 +123,22 @@ export type MetaApiPlacedOrder = {
   orderKind: MetaApiOrderAction;
   openPrice: number;
   pending: boolean;
+};
+
+export type MetaApiLiveTradeState = {
+  status: 'open' | 'pending' | 'none';
+  positionId?: string;
+  orderId?: string;
+  openPrice?: number;
+  currentPrice?: number;
+  volume?: number;
+  profit?: number;
+  unrealizedProfit?: number;
+  swap?: number;
+  commission?: number;
+  currency?: string;
+  symbol?: string;
+  comment?: string;
 };
 
 @Injectable()
@@ -903,5 +922,143 @@ export class MetaApiService {
         );
       }
     }
+  }
+
+  async findLiveTradeForSignal(
+    account: MetaApiAccount,
+    lookup: {
+      positionId?: string | null;
+      orderId?: string | null;
+      clientId: string;
+      displayName: string;
+      userId: string;
+      symbol: string;
+      activated: boolean;
+    },
+  ): Promise<MetaApiLiveTradeState> {
+    const ready = await this.ensureAccountReady(account.id);
+    const positions = await this.getPositions(ready);
+    const info = await this.getAccountInformation(ready).catch(() => null);
+
+    const userPositions = positions.filter((p) =>
+      tradeCommentBelongsToUser(p.comment, lookup.displayName, lookup.userId),
+    );
+
+    const symbolVariants = new Set(
+      [
+        ...getSymbolLookupVariants(lookup.symbol),
+        normalizeDerivSymbol(lookup.symbol),
+      ].map((s) => s.toLowerCase()),
+    );
+    const matchesSymbol = (brokerSymbol: string) => {
+      const norm = normalizeDerivSymbol(brokerSymbol).toLowerCase();
+      if (symbolVariants.has(brokerSymbol.toLowerCase())) return true;
+      if (symbolVariants.has(norm)) return true;
+      return [...symbolVariants].some(
+        (v) =>
+          brokerSymbol.toLowerCase().includes(v) ||
+          v.includes(brokerSymbol.toLowerCase()),
+      );
+    };
+
+    const mapPosition = (position: MetaApiPosition): MetaApiLiveTradeState => ({
+      status: 'open',
+      positionId: position.id,
+      openPrice: position.openPrice,
+      currentPrice: position.currentPrice,
+      volume: position.volume,
+      profit: position.profit,
+      unrealizedProfit: position.unrealizedProfit,
+      swap: position.swap,
+      commission: position.commission,
+      currency: info?.currency ?? account.baseCurrency,
+      symbol: position.symbol,
+      comment: position.comment,
+    });
+
+    if (lookup.positionId) {
+      const owned = userPositions.find((p) => p.id === lookup.positionId);
+      if (owned) return mapPosition(owned);
+    }
+
+    const byClient = userPositions.find(
+      (p) => p.clientId && p.clientId === lookup.clientId,
+    );
+    if (byClient) return mapPosition(byClient);
+
+    const bySymbol = userPositions.find((p) => matchesSymbol(p.symbol));
+    if (bySymbol) return mapPosition(bySymbol);
+
+    if (!lookup.activated && lookup.orderId) {
+      return {
+        status: 'pending',
+        orderId: lookup.orderId,
+        currency: info?.currency ?? account.baseCurrency,
+        comment: normalizeTraderCommentName(
+          lookup.displayName,
+          lookup.userId,
+        ),
+      };
+    }
+
+    return { status: 'none' };
+  }
+
+  /** All open positions on the account that belong to this trader (by MT5 comment). */
+  async findUserOpenPositions(
+    account: MetaApiAccount,
+    displayName: string,
+    userId: string,
+  ): Promise<MetaApiPosition[]> {
+    const ready = await this.ensureAccountReady(account.id);
+    const positions = await this.getPositions(ready);
+    return positions.filter((p) =>
+      tradeCommentBelongsToUser(p.comment, displayName, userId),
+    );
+  }
+
+  async closePositionById(
+    account: MetaApiAccount,
+    positionId: string,
+  ): Promise<MetaApiTradeResult> {
+    const ready = await this.ensureAccountReady(account.id);
+    return this.submitTrade(ready, {
+      actionType: 'POSITION_CLOSE_ID',
+      positionId,
+    });
+  }
+
+  async cancelPendingOrder(
+    account: MetaApiAccount,
+    orderId: string,
+  ): Promise<MetaApiTradeResult> {
+    const ready = await this.ensureAccountReady(account.id);
+    return this.submitTrade(ready, {
+      actionType: 'ORDER_CANCEL',
+      orderId,
+    });
+  }
+
+  buildClientIdForSignal(signalId: string, symbol: string): string {
+    return buildMetaApiTradeIdentifiers({
+      displayName: 'x',
+      userId: 'x',
+      signalId,
+      symbol,
+    }).clientId;
+  }
+
+  buildIdentifiersForUser(
+    displayName: string,
+    userId: string,
+    signalId: string,
+    symbol: string,
+  ) {
+    return buildMetaApiTradeIdentifiers({
+      displayName,
+      userId,
+      signalId,
+      symbol,
+    });
   }
 }

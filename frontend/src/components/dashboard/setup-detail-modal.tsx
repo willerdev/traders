@@ -9,6 +9,7 @@ import {
   api,
   type HubLogEvent,
   type HubSignalStatus,
+  type SetupLiveTrade,
   type SetupResolution,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -20,6 +21,7 @@ import {
   Target,
   TrendingUp,
   X,
+  XCircle,
 } from "lucide-react";
 import { ClaimTpModal } from "@/components/dashboard/claim-tp-modal";
 
@@ -231,6 +233,14 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (resolution?.liveTrade?.status !== "open" || !isOpen) return;
+    const timer = setInterval(() => {
+      void load();
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [resolution?.liveTrade?.status, isOpen, load]);
+
   async function handlePlaceTrade() {
     if (
       !confirm(
@@ -253,6 +263,34 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
       await load();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Could not place trade");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleCloseTrade() {
+    const tp1 = resolution?.liveTrade?.tp1Price ?? resolution?.oneToOnePrice;
+    const tp1Label = tp1 != null ? String(tp1) : "1:1 RR";
+    if (
+      !confirm(
+        `Close this live trade now?\n\nWin: only if price reached TP1 (${tp1Label})\nEven: closed before TP1 but not in loss\nLoss: closed below entry (buy) or above entry (sell)`,
+      )
+    ) {
+      return;
+    }
+    setActionLoading("close");
+    setActionError(null);
+    try {
+      const result = await api.signals.closeTrade(setup.signalId);
+      setSuccess(result.message ?? "Trade closed");
+      onUpdated();
+      if (result.status === "closed") {
+        onClose();
+      } else {
+        await load();
+      }
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not close trade");
     } finally {
       setActionLoading(null);
     }
@@ -375,6 +413,10 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
                   />
                 </div>
 
+                {res?.liveTrade && res.liveTrade.status !== "none" && (
+                  <LiveTradePanel live={res.liveTrade} direction={setup.direction} />
+                )}
+
                 {setup.screenshotUrl && (
                   <div>
                     <p className="mb-2 text-xs font-medium uppercase tracking-wider text-gray-500">
@@ -485,7 +527,23 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
                         Place trade
                       </Button>
                     )}
-                    {res?.metaApiExecuted && (
+                    {res?.liveTrade?.canClose && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="gap-1 border-amber-500/40 text-amber-300"
+                        disabled={actionLoading === "close"}
+                        onClick={() => void handleCloseTrade()}
+                      >
+                        {actionLoading === "close" ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <XCircle className="h-3.5 w-3.5" />
+                        )}
+                        Close trade
+                      </Button>
+                    )}
+                    {res?.metaApiExecuted && !res?.liveTrade?.canClose && (
                       <span className="self-center text-xs text-success">
                         Live trade placed
                         {res.metaApiOrderId ? ` · order ${res.metaApiOrderId}` : ""}
@@ -603,6 +661,93 @@ function InfoRow({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2">
       <p className="text-xs text-gray-500">{label}</p>
       <p className="font-medium text-white">{value}</p>
+    </div>
+  );
+}
+
+function LiveTradePanel({
+  live,
+  direction,
+}: {
+  live: SetupLiveTrade;
+  direction: string;
+}) {
+  const currency = live.currency ?? "USD";
+  const pnl =
+    live.profit ??
+    live.unrealizedProfit ??
+    (live.openPrice != null && live.currentPrice != null
+      ? direction === "BUY"
+        ? (live.currentPrice - live.openPrice) * (live.volume ?? 0)
+        : (live.openPrice - live.currentPrice) * (live.volume ?? 0)
+      : undefined);
+
+  if (live.status === "pending") {
+    return (
+      <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-4 py-3">
+        <p className="text-xs font-medium uppercase tracking-wider text-amber-400">
+          Live order
+        </p>
+        <p className="mt-1 text-sm text-gray-300">
+          Pending fill — P/L available once the position opens.
+        </p>
+      </div>
+    );
+  }
+
+  const inProfit = pnl != null && pnl > 0;
+  const inLoss = pnl != null && pnl < 0;
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wider text-gray-500">
+            Live P/L
+          </p>
+          <p
+            className={cn(
+              "mt-1 text-2xl font-semibold tabular-nums",
+              inProfit && "text-success",
+              inLoss && "text-danger",
+              pnl != null && pnl === 0 && "text-gray-300",
+              pnl == null && "text-gray-400",
+            )}
+          >
+            {pnl != null
+              ? `${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)} ${currency}`
+              : "—"}
+          </p>
+        </div>
+        <div className="text-right text-xs text-gray-500">
+          {live.volume != null && <p>{live.volume} lots</p>}
+          {live.openPrice != null && <p>Entry {live.openPrice}</p>}
+          {live.currentPrice != null && <p>Mark {live.currentPrice}</p>}
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+        {live.tp1Price != null && (
+          <span
+            className={cn(
+              "rounded-full px-2 py-0.5",
+              live.tp1Reached
+                ? "bg-success/15 text-success"
+                : "bg-white/5 text-gray-400",
+            )}
+          >
+            TP1 (1:1) {live.tp1Price}
+            {live.tp1Reached ? " · reached" : ""}
+          </span>
+        )}
+        <span className="rounded-full bg-white/5 px-2 py-0.5 text-gray-400">
+          Win on close only if TP1 was reached
+        </span>
+        {live.comment && (
+          <span className="rounded-full bg-white/5 px-2 py-0.5 text-gray-400">
+            Comment: {live.comment}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
