@@ -1099,6 +1099,8 @@ export interface PlaceTradeResult {
   entryPrice: number;
   stopLoss: number;
   takeProfit: number;
+  pending: boolean;
+  orderKind?: string;
   quote: { symbol: string; bid: number; ask: number; time: string };
   risk: {
     volume: number;
@@ -1116,6 +1118,8 @@ export interface PlaceTradeResult {
     orderId?: string;
     positionId?: string;
     message: string;
+    comment?: string;
+    orderKind?: string;
   };
 }
 
