@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/stores/auth";
-import { api, type SignalDraft, type MatchedDuplicateSignal } from "@/lib/api";
+import { api, type SignalDraft, type MatchedDuplicateSignal, type HubQuote } from "@/lib/api";
 import { normalizeSetupFields, setupValidationError } from "@/lib/chart-setup";
 import { RegistrationCheckout } from "@/components/payments/registration-checkout";
 import {
@@ -149,6 +149,16 @@ export default function SubmitSignalPage() {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   const [form, setForm] = useState(EMPTY_FORM);
+  const [forceEntry, setForceEntry] = useState(false);
+  const [liveQuote, setLiveQuote] = useState<{
+    bid: number;
+    ask: number;
+    mid: number;
+    spread: number;
+    resolved_symbol?: string;
+  } | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
   const [step, setStep] = useState<"edit" | "review">("edit");
   const [review, setReview] = useState<ReviewPayload | null>(null);
   const [resumingDraftId, setResumingDraftId] = useState<string | null>(null);
@@ -199,6 +209,40 @@ export default function SubmitSignalPage() {
       .then(setHubHealth)
       .catch(() => setHubHealth(null));
   }, [success]);
+
+  useEffect(() => {
+    const symbol = form.symbol.trim();
+    if (!symbol || symbol.length < 3) {
+      setLiveQuote(null);
+      setQuoteError(null);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setQuoteLoading(true);
+      setQuoteError(null);
+      void api.signals
+        .quote(symbol)
+        .then((q: HubQuote) => {
+          setLiveQuote({
+            bid: q.bid,
+            ask: q.ask,
+            mid: q.mid ?? q.price,
+            spread: q.spread,
+            resolved_symbol: q.resolved_symbol,
+          });
+        })
+        .catch((err) => {
+          setLiveQuote(null);
+          setQuoteError(
+            err instanceof Error ? err.message : "Live quote unavailable",
+          );
+        })
+        .finally(() => setQuoteLoading(false));
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [form.symbol]);
 
   const buildDraftPayload = useCallback(() => {
     const payload: Parameters<typeof api.signals.createDraft>[0] = {
@@ -346,6 +390,9 @@ export default function SubmitSignalPage() {
     setDuplicateMatch(null);
     setAiFilled(false);
     setSaveStatus("idle");
+    setForceEntry(false);
+    setLiveQuote(null);
+    setQuoteError(null);
     setStep("edit");
     setReview(null);
     setTimeout(() => {
@@ -469,6 +516,7 @@ export default function SubmitSignalPage() {
       description: form.description.trim(),
       screenshotUrl,
       previewUrl: setupPreview || screenshotUrl || null,
+      forceEntry,
     };
   }
 
@@ -513,6 +561,7 @@ export default function SubmitSignalPage() {
         riskRewardRatio: review.riskRewardRatio,
         description: review.description,
         screenshotUrl: imageUrl,
+        ...(review.forceEntry ? { forceEntry: true } : {}),
       });
 
       if ("status" in result && result.status === "duplicate_signal") {
@@ -950,7 +999,64 @@ export default function SubmitSignalPage() {
                     {entryMid.toFixed(5)}
                   </p>
                 )}
+                {form.symbol.trim().length >= 3 && (
+                  <div className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-xs">
+                    {quoteLoading ? (
+                      <span className="text-gray-500">Fetching live quote…</span>
+                    ) : liveQuote ? (
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-gray-400">
+                        <span>
+                          Live{" "}
+                          {liveQuote.resolved_symbol
+                            ? liveQuote.resolved_symbol
+                            : form.symbol}
+                          :
+                        </span>
+                        <span>
+                          Bid{" "}
+                          <strong className="text-gray-300">
+                            {liveQuote.bid}
+                          </strong>
+                        </span>
+                        <span>
+                          Ask{" "}
+                          <strong className="text-gray-300">
+                            {liveQuote.ask}
+                          </strong>
+                        </span>
+                        <span>
+                          Mid{" "}
+                          <strong className="text-primary">
+                            {liveQuote.mid}
+                          </strong>
+                        </span>
+                        <span>Spread {liveQuote.spread}</span>
+                      </div>
+                    ) : quoteError ? (
+                      <span className="text-gray-500">{quoteError}</span>
+                    ) : null}
+                  </div>
+                )}
               </div>
+
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+                <input
+                  type="checkbox"
+                  checked={forceEntry}
+                  onChange={(e) => setForceEntry(e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-white/20 bg-white/5"
+                />
+                <div>
+                  <p className="text-sm font-medium text-white">
+                    Force market entry
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Skip the limit order — execute immediately at current market
+                    price when Hub processes the signal. Use when price is already
+                    in your zone.
+                  </p>
+                </div>
+              </label>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">

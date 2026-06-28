@@ -39,7 +39,10 @@ export class UsersService {
     });
 
     const recentSignals = await this.prisma.signal.findMany({
-      where: { userId },
+      where: {
+        userId,
+        status: { notIn: ['ARCHIVED', 'CANCELLED', 'REJECTED_DUPLICATE'] },
+      },
       orderBy: { submittedAt: 'desc' },
       take: 5,
     });

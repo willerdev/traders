@@ -20,6 +20,7 @@ import {
 } from '../trades/price-monitor.service';
 import { WalletService } from '../trades/wallet.service';
 import { TpClaimsService } from '../tp-claims/tp-claims.service';
+import { NotificationService } from '../email/notification.service';
 import { Signal, Trade, User } from '@prisma/client';
 
 @Injectable()
@@ -34,6 +35,7 @@ export class SignalsService {
     private priceMonitor: PriceMonitorService,
     private wallet: WalletService,
     private tpClaims: TpClaimsService,
+    private notifications: NotificationService,
   ) {}
 
   private validateEntryRange(dto: CreateSignalDto) {
@@ -502,6 +504,81 @@ export class SignalsService {
       throw new NotFoundException('Open setup not found');
     }
 
+    await this.applyArchiveToOpenSignal(signal);
+
+    this.logger.log(`Setup archived: ${signal.signalId} by ${userId}`);
+
+    return {
+      status: 'archived',
+      signalId: signal.signalId,
+    };
+  }
+
+  async archiveAllSetups(userId: string) {
+    await this.compliance.requireActiveTrader(userId);
+
+    const open = await this.prisma.signal.findMany({
+      where: { userId, status: 'OPEN' },
+      include: { trade: true },
+    });
+
+    if (open.length === 0) {
+      return { archivedCount: 0, signalIds: [] as string[] };
+    }
+
+    for (const signal of open) {
+      await this.applyArchiveToOpenSignal(signal);
+    }
+
+    this.logger.log(`Archived ${open.length} setup(s) for ${userId}`);
+
+    return {
+      archivedCount: open.length,
+      signalIds: open.map((s) => s.signalId),
+    };
+  }
+
+  async listArchivedSetups(userId: string, limit = 50) {
+    await this.compliance.requireActiveTrader(userId);
+    const take = Math.min(Math.max(limit, 1), 100);
+
+    const items = await this.prisma.signal.findMany({
+      where: {
+        userId,
+        status: { in: ['ARCHIVED', 'CANCELLED'] },
+      },
+      orderBy: { resolvedAt: 'desc' },
+      take,
+      select: {
+        id: true,
+        signalId: true,
+        symbol: true,
+        direction: true,
+        status: true,
+        entryMin: true,
+        entryMax: true,
+        stopLoss: true,
+        takeProfit: true,
+        submittedAt: true,
+        resolvedAt: true,
+      },
+    });
+
+    return {
+      items: items.map((row) => ({
+        ...row,
+        entryMin: Number(row.entryMin),
+        entryMax: Number(row.entryMax),
+        stopLoss: Number(row.stopLoss),
+        takeProfit: Number(row.takeProfit),
+      })),
+      count: items.length,
+    };
+  }
+
+  private async applyArchiveToOpenSignal(
+    signal: Signal & { trade: Trade | null },
+  ) {
     const now = new Date();
     await this.prisma.$transaction([
       this.prisma.signal.update({
@@ -520,13 +597,6 @@ export class SignalsService {
           ]
         : []),
     ]);
-
-    this.logger.log(`Setup archived: ${signal.signalId} by ${userId}`);
-
-    return {
-      status: 'archived',
-      signalId: signal.signalId,
-    };
   }
 
   async invalidateSetup(
@@ -570,6 +640,19 @@ export class SignalsService {
       );
       if (result.data) {
         hub = result.data as Record<string, unknown>;
+      } else if (result.notOnHub && signal.hubRecordId) {
+        const byId = await this.signalHub.invalidateByHubId(
+          signal.hubRecordId,
+          sendername,
+          reason,
+        );
+        if (byId.data) {
+          hub = byId.data as Record<string, unknown>;
+        } else if (byId.error && !byId.error.includes('404')) {
+          hubWarning = byId.error;
+        } else {
+          hubNotFound = true;
+        }
       } else if (result.notOnHub) {
         hubNotFound = true;
       } else if (result.error) {
@@ -586,7 +669,7 @@ export class SignalsService {
       this.prisma.signal.update({
         where: { id: signal.id },
         data: {
-          status: 'CANCELLED',
+          status: 'ARCHIVED',
           resolvedAt: now,
         },
       }),
@@ -613,7 +696,7 @@ export class SignalsService {
     );
 
     return {
-      status: 'cancelled',
+      status: 'archived',
       signalId: signal.signalId,
       hub,
       hubNotFound,
@@ -707,6 +790,10 @@ export class SignalsService {
 
     if (event === 'opened') {
       return this.handleTradeOpenedEvent(signal, item, sender);
+    }
+
+    if (event === 'partial' || event === 'partial_close') {
+      return this.handleTradePartialEvent(signal, item, sender);
     }
 
     return this.handleTradeClosedEvent(signal, item, sender);
@@ -835,6 +922,37 @@ export class SignalsService {
       tp: item.tp ?? Number(signal.takeProfit),
       ticket: item.ticket ?? null,
       tradeState: 'in_trade',
+    };
+  }
+
+  private async handleTradePartialEvent(
+    signal: Signal & { trade: Trade | null; user: User },
+    item: TradeLifecycleItemDto,
+    sender: string,
+  ) {
+    this.notifications.tradePartialClose(signal.userId, {
+      symbol: signal.symbol,
+      signalId: signal.signalId,
+      volume: item.volume,
+      profit: item.profit,
+      exitPrice: item.exit_price,
+      message: item.message,
+    });
+
+    this.logger.log(
+      `Partial close via webhook: ${signal.signalId} sender=${sender}`,
+    );
+
+    return {
+      status: 'partial',
+      event: 'partial_close',
+      signalId: signal.signalId,
+      sender,
+      symbol: signal.symbol,
+      volume: item.volume ?? null,
+      profit: item.profit ?? null,
+      exit_price: item.exit_price ?? null,
+      tradeState: 'partial',
     };
   }
 
@@ -1078,6 +1196,27 @@ export class SignalsService {
       throw new BadRequestException(
         'Setup could not be resolved — it may already be closed.',
       );
+    }
+
+    const signalRow = await this.prisma.signal.findUnique({
+      where: { id: signal.id },
+      select: { symbol: true, signalId: true },
+    });
+
+    if (signalRow) {
+      this.notifications.tradeOutcome(signal.userId, {
+        symbol: signalRow.symbol,
+        signalId: signalRow.signalId,
+        outcome,
+        exitPrice,
+        reward:
+          outcome === 'tp' && 'reward' in result ?
+            Number(result.reward)
+          : undefined,
+        pointsAwarded:
+          'scoring' in result ? result.scoring?.totalPoints : undefined,
+        source,
+      });
     }
 
     return {
@@ -1334,6 +1473,18 @@ export class SignalsService {
         error || 'Signal Hub did not accept the action',
       );
     }
+
+    if (dto.action === 'partial_close') {
+      this.notifications.tradePartialClose(userId, {
+        symbol: dto.symbol?.trim() || 'position',
+        signalId: dto.external_id || dto.ticket?.toString() || '—',
+        volume: dto.lot,
+        message:
+          dto.message ||
+          `Partial close on ${dto.symbol?.trim() || 'position'} via dashboard`,
+      });
+    }
+
     return hub;
   }
 

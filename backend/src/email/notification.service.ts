@@ -335,4 +335,107 @@ export class NotificationService {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
   }
+
+  tradeOutcome(
+    userId: string,
+    data: {
+      symbol: string;
+      signalId: string;
+      outcome: 'tp' | 'sl';
+      exitPrice: number;
+      reward?: number;
+      pointsAwarded?: number;
+      source?: 'claim' | 'webhook';
+    },
+  ) {
+    this.dispatch(this.sendTradeOutcome(userId, data), 'Trade outcome');
+  }
+
+  tradePartialClose(
+    userId: string,
+    data: {
+      symbol: string;
+      signalId: string;
+      volume?: number;
+      profit?: number;
+      exitPrice?: number;
+      message?: string;
+    },
+  ) {
+    this.dispatch(this.sendTradePartialClose(userId, data), 'Partial close');
+  }
+
+  private async sendTradeOutcome(
+    userId: string,
+    data: {
+      symbol: string;
+      signalId: string;
+      outcome: 'tp' | 'sl';
+      exitPrice: number;
+      reward?: number;
+      pointsAwarded?: number;
+      source?: 'claim' | 'webhook';
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+
+    const isTp = data.outcome === 'tp';
+    const title = isTp ? 'Take profit hit' : 'Stop loss hit';
+    const detail = isTp
+      ? `<p>Your <strong>${this.escape(data.symbol)}</strong> setup closed at take profit.</p>
+         <p>Exit price: <strong>${data.exitPrice}</strong></p>
+         ${data.reward != null ? `<p>Reward credited: <strong>$${data.reward.toFixed(2)}</strong></p>` : ''}
+         ${data.pointsAwarded != null ? `<p>Score change: <strong>+${data.pointsAwarded} pts</strong></p>` : ''}`
+      : `<p>Your <strong>${this.escape(data.symbol)}</strong> setup closed at stop loss.</p>
+         <p>Exit price: <strong>${data.exitPrice}</strong></p>
+         ${data.pointsAwarded != null ? `<p>Score change: <strong>${data.pointsAwarded} pts</strong></p>` : ''}`;
+
+    const html = this.email.layout(
+      title,
+      `<p>Hi ${user.name},</p>
+      ${detail}
+      ${this.email.button(`${this.email.frontendUrl}/dashboard`, 'View dashboard')}`,
+    );
+
+    return this.email.send({
+      to: user.email,
+      subject: `${title} — ${data.symbol}`,
+      html,
+      text: `${title}: ${data.symbol} @ ${data.exitPrice}`,
+    });
+  }
+
+  private async sendTradePartialClose(
+    userId: string,
+    data: {
+      symbol: string;
+      signalId: string;
+      volume?: number;
+      profit?: number;
+      exitPrice?: number;
+      message?: string;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+
+    const html = this.email.layout(
+      'Partial close on your trade',
+      `<p>Hi ${user.name},</p>
+      <p>Part of your <strong>${this.escape(data.symbol)}</strong> position was closed.</p>
+      ${data.volume != null ? `<p>Volume closed: <strong>${data.volume}</strong></p>` : ''}
+      ${data.profit != null ? `<p>Realized P/L: <strong>${data.profit >= 0 ? '+' : ''}${data.profit.toFixed(2)}</strong></p>` : ''}
+      ${data.exitPrice != null ? `<p>Close price: <strong>${data.exitPrice}</strong></p>` : ''}
+      ${data.message ? `<p style="color:#94a3b8;font-size:14px;">${this.escape(data.message)}</p>` : ''}
+      ${this.email.button(`${this.email.frontendUrl}/dashboard`, 'View dashboard')}`,
+    );
+
+    return this.email.send({
+      to: user.email,
+      subject: `Partial close — ${data.symbol}`,
+      html,
+      text: `Partial close on ${data.symbol}${data.profit != null ? ` P/L ${data.profit}` : ''}`,
+    });
+  }
 }

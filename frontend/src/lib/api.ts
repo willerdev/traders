@@ -239,6 +239,15 @@ class ApiClient {
         `/signals/archive/${signalId}`,
         { method: "POST" },
       ),
+    archiveAll: () =>
+      this.request<{ archivedCount: number; signalIds: string[] }>(
+        "/signals/archive-all",
+        { method: "POST" },
+      ),
+    archived: (limit = 50) =>
+      this.request<{ items: ArchivedSetupItem[]; count: number }>(
+        `/signals/archived/list?limit=${limit}`,
+      ),
     invalidate: (signalId: string, reason?: string) =>
       this.request<InvalidateSetupResult>(`/signals/invalidate/${signalId}`, {
         method: "POST",
@@ -255,10 +264,19 @@ class ApiClient {
         `/signals/hub/logs${qs ? `?${qs}` : ""}`,
       );
     },
-    hubList: (params?: { status?: string; limit?: number }) => {
+    hubList: (params?: {
+      status?: string;
+      limit?: number;
+      offset?: number;
+      since?: string;
+      external_id?: string;
+    }) => {
       const q = new URLSearchParams();
       if (params?.status) q.set("status", params.status);
       if (params?.limit) q.set("limit", String(params.limit ?? 50));
+      if (params?.offset) q.set("offset", String(params.offset));
+      if (params?.since) q.set("since", params.since);
+      if (params?.external_id) q.set("external_id", params.external_id);
       const qs = q.toString();
       return this.request<HubSignalList>(`/signals/hub/list${qs ? `?${qs}` : ""}`);
     },
@@ -694,6 +712,33 @@ export interface SignalInput {
   riskRewardRatio: number;
   description: string;
   screenshotUrl: string;
+  forceEntry?: boolean;
+}
+
+export interface ArchivedSetupItem {
+  id: string;
+  signalId: string;
+  symbol: string;
+  direction: string;
+  status: string;
+  entryMin: number;
+  entryMax: number;
+  stopLoss: number;
+  takeProfit: number;
+  submittedAt: string;
+  resolvedAt: string | null;
+}
+
+export interface HubQuote {
+  symbol: string;
+  resolved_symbol: string;
+  bid: number;
+  ask: number;
+  price: number;
+  mid: number;
+  spread: number;
+  time: string;
+  source?: string;
 }
 
 export interface SetupAnalysis {
@@ -876,18 +921,6 @@ export interface HubPositions {
   items: HubPosition[];
 }
 
-export interface HubQuote {
-  symbol: string;
-  resolved_symbol: string;
-  bid: number;
-  ask: number;
-  price: number;
-  mid: number;
-  spread: number;
-  time: string;
-  source?: string;
-}
-
 export type HubActionType =
   | "open"
   | "add"
@@ -913,17 +946,23 @@ export interface HubActionInput {
 
 export interface HubSenderStat {
   rank?: number;
-  sendername: string;
+  sendername?: string;
+  sender?: string;
   signals?: number;
+  executed?: number;
+  skipped?: number;
+  failed?: number;
   closed_trades?: number;
   wins?: number;
   losses?: number;
   win_rate?: number;
   net_profit?: number;
+  profit?: number;
   gross_profit?: number;
   gross_loss?: number;
   profit_factor?: number;
   expectancy?: number;
+  profitable?: boolean;
 }
 
 export interface HubSenderReport {
@@ -1023,7 +1062,7 @@ export interface ClaimSetupResult {
 }
 
 export interface InvalidateSetupResult {
-  status: "cancelled";
+  status: "cancelled" | "archived";
   signalId: string;
   hub?: {
     id: string;

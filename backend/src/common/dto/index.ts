@@ -154,6 +154,10 @@ export class CreateSignalDto {
   @IsString()
   @IsNotEmpty()
   screenshotUrl: string;
+
+  @IsOptional()
+  @IsBoolean()
+  forceEntry?: boolean;
 }
 
 export class RequestPayoutDto {
@@ -364,10 +368,10 @@ export class TradeOutcomeWebhookDto {
   status?: string;
 }
 
-/** Trade lifecycle sync — opened / in-trade / closed (TP or SL). */
+/** Trade lifecycle sync — opened / in-trade / closed / partial. */
 export class TradeLifecycleItemDto {
-  @IsIn(['opened', 'open', 'closed'])
-  event: 'opened' | 'open' | 'closed';
+  @IsIn(['opened', 'open', 'closed', 'partial', 'partial_close'])
+  event: 'opened' | 'open' | 'closed' | 'partial' | 'partial_close';
 
   @IsString()
   @IsNotEmpty()
@@ -424,6 +428,18 @@ export class TradeLifecycleItemDto {
   @IsOptional()
   @IsString()
   closed_at?: string;
+
+  @IsOptional()
+  @IsNumber()
+  volume?: number;
+
+  @IsOptional()
+  @IsNumber()
+  profit?: number;
+
+  @IsOptional()
+  @IsString()
+  message?: string;
 }
 
 export class TradeLifecycleWebhookDto {
@@ -434,8 +450,8 @@ export class TradeLifecycleWebhookDto {
   trades?: TradeLifecycleItemDto[];
 
   @IsOptional()
-  @IsIn(['opened', 'open', 'closed'])
-  event?: 'opened' | 'open' | 'closed';
+  @IsIn(['opened', 'open', 'closed', 'partial', 'partial_close'])
+  event?: 'opened' | 'open' | 'closed' | 'partial' | 'partial_close';
 
   @IsOptional()
   @IsString()

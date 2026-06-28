@@ -13,6 +13,8 @@ import { Send, ArrowRight } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
+import { ArchivedSetupsCard } from "@/components/dashboard/archived-setups";
+import { HubExecutionsCard } from "@/components/dashboard/hub-executions";
 import { Mt5PositionsPanel } from "@/components/dashboard/open-positions";
 import { UnresolvedSetupsCard } from "@/components/dashboard/unresolved-setups";
 import { PayoutRewardTiersCard } from "@/components/dashboard/payout-reward-tiers";
@@ -139,6 +141,8 @@ export default function DashboardPage() {
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
         <UnresolvedSetupsCard onClaimed={() => fetchDashboard()} />
         <Mt5PositionsPanel />
+        <ArchivedSetupsCard />
+        <HubExecutionsCard />
 
         <Card>
           <CardHeader>

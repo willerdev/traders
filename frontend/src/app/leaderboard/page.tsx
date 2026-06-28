@@ -124,35 +124,40 @@ export default function LeaderboardPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {hubSenders.map((sender, i) => (
+              {hubSenders.map((sender, i) => {
+                const name = sender.sendername ?? sender.sender ?? "Unknown";
+                const profit = Number(sender.net_profit ?? sender.profit ?? 0);
+                const closed = sender.closed_trades ?? sender.executed ?? 0;
+
+                return (
                 <div
-                  key={sender.sendername}
+                  key={name}
                   className="glass-card flex items-center gap-4 rounded-xl border border-white/5 p-4"
                 >
                   <span className="flex h-5 w-5 items-center justify-center text-sm font-bold text-gray-500">
                     {sender.rank ?? i + 1}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-white truncate">
-                      {sender.sendername}
-                    </p>
+                    <p className="font-semibold text-white truncate">{name}</p>
                     <p className="text-xs text-gray-500">
-                      {sender.closed_trades ?? 0} closed · WR{" "}
-                      {formatPercent(Number(sender.win_rate ?? 0))}
+                      {closed} closed
+                      {sender.skipped != null ? ` · ${sender.skipped} skipped` : ""}
+                      {sender.failed != null ? ` · ${sender.failed} failed` : ""}
+                      {" · "}
+                      WR {formatPercent(Number(sender.win_rate ?? 0))}
                     </p>
                   </div>
                   <p
                     className={cn(
                       "font-bold",
-                      Number(sender.net_profit ?? 0) >= 0
-                        ? "text-success"
-                        : "text-danger",
+                      profit >= 0 ? "text-success" : "text-danger",
                     )}
                   >
-                    {formatCurrency(Number(sender.net_profit ?? 0))}
+                    {formatCurrency(profit)}
                   </p>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>

@@ -252,6 +252,24 @@ export class SignalsController {
     return this.signalsService.archiveSetup(req.user.id, signalId);
   }
 
+  @Post('archive-all')
+  @UseGuards(JwtAuthGuard)
+  archiveAllSetups(@Request() req: { user: { id: string } }) {
+    return this.signalsService.archiveAllSetups(req.user.id);
+  }
+
+  @Get('archived/list')
+  @UseGuards(JwtAuthGuard)
+  listArchivedSetups(
+    @Request() req: { user: { id: string } },
+    @Query('limit') limit?: string,
+  ) {
+    return this.signalsService.listArchivedSetups(
+      req.user.id,
+      limit ? Number(limit) : 50,
+    );
+  }
+
   @Post('claim/:signalId')
   @UseGuards(JwtAuthGuard)
   claimSetup(

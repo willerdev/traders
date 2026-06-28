@@ -2,7 +2,7 @@
 
 Cancel a **pending** setup so Signal Hub / MT5 will **not** execute it. Use this when the trade idea is no longer valid (e.g. price already moved, limit order should be pulled).
 
-**Archive** (`POST /signals/archive/{signalId}`) only removes the setup from your dashboard locally — it does **not** tell Hub to cancel execution. **Invalidate** does both: Hub cancel + platform status `CANCELLED`.
+**Archive** (`POST /signals/archive/{signalId}`) only removes the setup from your dashboard locally — it does **not** tell Hub to cancel execution. **Invalidate** does both: Hub cancel + platform status **`ARCHIVED`**.
 
 ---
 
@@ -30,7 +30,7 @@ POST /api/v1/signals/invalidate/{signalId}
 
 ```json
 {
-  "status": "cancelled",
+  "status": "archived",
   "signalId": "cmqu4o80w0010pi016ddct8hb",
   "hub": {
     "id": "5395e158-9fca-4ecc-b4b4-48da90f89810",
@@ -48,8 +48,8 @@ POST /api/v1/signals/invalidate/{signalId}
 | Field | Description |
 |-------|-------------|
 | `hub` | Signal Hub response when `SIGNAL_HUB_PROVIDER_KEY` is configured |
-| `hubNotFound` | Setup was not on Hub (never forwarded or already gone) — platform still cancelled |
-| `hubWarning` | Present if Hub call failed (non-404) but platform still marked setup `CANCELLED` |
+| `hubNotFound` | Setup was not on Hub (never forwarded or already gone) — platform still archived |
+| `hubWarning` | Present if Hub call failed (non-404) but platform still marked setup `ARCHIVED` |
 
 **Errors:**
 
@@ -94,7 +94,7 @@ Alternative: `POST /v1/signals/{signal_id}/invalidate` when you have the Hub UUI
 
 ## Platform effects
 
-1. Signal status → **`CANCELLED`** (not scored, not claimable)
+1. Signal status → **`ARCHIVED`** (not scored, not claimable)
 2. Trade row `closedAt` set if present
 3. Pending **TP claims** for this setup → **rejected** with your reason
 4. Hub pending queue → invalidation event for Quantum to ack
@@ -105,7 +105,7 @@ Alternative: `POST /v1/signals/{signal_id}/invalidate` when you have the Hub UUI
 
 | Action | Hub cancel | Platform status | Score/wallet |
 |--------|------------|-----------------|--------------|
-| **Invalidate** | Yes | `CANCELLED` | No change |
+| **Invalidate** | Yes | `ARCHIVED` | No change |
 | **Archive** | No | `ARCHIVED` | No change |
 | **Claim TP/SL** | N/A | `WON` / `LOST` | Yes |
 

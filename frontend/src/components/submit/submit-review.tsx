@@ -16,6 +16,7 @@ export type ReviewPayload = {
   description: string;
   screenshotUrl: string;
   previewUrl: string | null;
+  forceEntry?: boolean;
 };
 
 export function SubmitReviewCard({
@@ -71,6 +72,14 @@ export function SubmitReviewCard({
               <p className="text-xs text-muted">Take profit</p>
               <p className="font-medium text-foreground">{review.takeProfit}</p>
             </div>
+            {review.forceEntry && (
+              <div className="sm:col-span-2">
+                <p className="text-xs text-muted">MT5 order type</p>
+                <p className="font-medium text-amber-400">
+                  Market entry (force entry at current price)
+                </p>
+              </div>
+            )}
           </div>
 
           <div>

@@ -52,6 +52,7 @@ export interface SignalHubPayload {
   image_mime?: string;
   lot?: number;
   ticket?: number;
+  force_entry?: boolean;
 }
 
 export interface SignalHubQuote {
@@ -373,11 +374,12 @@ export class SignalHubService {
     displayName: string,
     userId: string,
     confidence?: number,
+    options?: { forceEntry?: boolean },
   ): SignalHubPayload {
     const payload: SignalHubPayload = {
       external_id: externalId,
       action: 'open',
-      order_type: this.getOrderType(),
+      order_type: options?.forceEntry ? 'market' : this.getOrderType(),
       symbol: normalizeChartSymbol(dto.symbol),
       direction: this.toDirection(dto.direction),
       entry: (dto.entryMin + dto.entryMax) / 2,
@@ -387,6 +389,7 @@ export class SignalHubService {
       sendername: this.toSenderName(displayName, userId),
       provider_name: this.providerName,
       message: dto.description.trim().slice(0, 4000),
+      force_entry: Boolean(options?.forceEntry),
     };
 
     if (this.callbackUrl?.startsWith('https://')) {
@@ -448,6 +451,7 @@ export class SignalHubService {
       displayName,
       userId,
       validation.confidence,
+      { forceEntry: Boolean(dto.forceEntry) },
     );
     const sentPrices = {
       symbol: payload.symbol,
@@ -573,6 +577,40 @@ export class SignalHubService {
     }
 
     return { data: null, error: undefined, notOnHub: true };
+  }
+
+  async invalidateByHubId(
+    hubId: string,
+    sendername: string,
+    reason?: string,
+  ): Promise<{
+    data: {
+      id: string;
+      status: string;
+      ok?: boolean;
+      duplicate?: boolean;
+      progress?: { stage: string; message: string; executed: boolean };
+    } | null;
+    error?: string;
+  }> {
+    const q = new URLSearchParams({ sendername });
+    const body =
+      reason?.trim() ?
+        JSON.stringify({ reason: reason.trim().slice(0, 500) })
+      : undefined;
+
+    const { data, error } = await this.hubRequest<{
+      id: string;
+      status: string;
+      ok?: boolean;
+      duplicate?: boolean;
+      progress?: { stage: string; message: string; executed: boolean };
+    }>(`/v1/signals/${encodeURIComponent(hubId)}/invalidate?${q}`, {
+      method: 'POST',
+      ...(body ? { body } : {}),
+    });
+
+    return { data, error: error || undefined };
   }
 
   async listSignals(

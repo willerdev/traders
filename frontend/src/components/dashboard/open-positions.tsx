@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { api, type HubLogEvent, type HubPosition } from "@/lib/api";
 import { formatCurrency, cn } from "@/lib/utils";
 import {
@@ -83,6 +84,12 @@ function OpenPositionsCard({ onHide }: OpenPositionsCardProps) {
   const [error, setError] = useState<string | null>(null);
   const [closingTicket, setClosingTicket] = useState<number | null>(null);
   const [breakingEven, setBreakingEven] = useState<number | null>(null);
+  const [modifyingTicket, setModifyingTicket] = useState<number | null>(null);
+  const [modifySl, setModifySl] = useState("");
+  const [modifyTp, setModifyTp] = useState("");
+  const [editTicket, setEditTicket] = useState<number | null>(null);
+  const [partialLot, setPartialLot] = useState("");
+  const [partialClosing, setPartialClosing] = useState<number | null>(null);
   const [closingAll, setClosingAll] = useState(false);
 
   const load = useCallback(async () => {
@@ -139,6 +146,70 @@ function OpenPositionsCard({ onHide }: OpenPositionsCardProps) {
       );
     } finally {
       setBreakingEven(null);
+    }
+  }
+
+  async function handleModify(pos: HubPosition) {
+    const ticket = Number(pos.ticket);
+    if (!ticket) return;
+    const sl = parseFloat(modifySl);
+    const tp = parseFloat(modifyTp);
+    if (isNaN(sl) && isNaN(tp)) {
+      setError("Enter at least one of SL or TP");
+      return;
+    }
+    setModifyingTicket(ticket);
+    try {
+      await api.signals.hubAction({
+        action: "modify",
+        ticket,
+        symbol: pos.symbol,
+        ...(isNaN(sl) ? {} : { sl }),
+        ...(isNaN(tp) ? {} : { tp }),
+      });
+      setEditTicket(null);
+      setModifySl("");
+      setModifyTp("");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to modify position");
+    } finally {
+      setModifyingTicket(null);
+    }
+  }
+
+  async function handlePartialClose(pos: HubPosition) {
+    const ticket = Number(pos.ticket);
+    if (!ticket) return;
+    const lot = parseFloat(partialLot);
+    if (isNaN(lot) || lot <= 0) {
+      setError("Enter a valid lot size to close");
+      return;
+    }
+    if (
+      !confirm(
+        `Partial close ${lot} lot(s) on ${pos.symbol ?? "position"} #${ticket}?`,
+      )
+    ) {
+      return;
+    }
+    setPartialClosing(ticket);
+    try {
+      await api.signals.hubAction({
+        action: "partial_close",
+        ticket,
+        symbol: pos.symbol,
+        lot,
+        message: `Partial close ${lot} lot via dashboard`,
+      });
+      setPartialLot("");
+      await load();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to partial close position",
+      );
+    } finally {
+      setPartialClosing(null);
     }
   }
 
@@ -252,8 +323,9 @@ function OpenPositionsCard({ onHide }: OpenPositionsCardProps) {
               return (
                 <div
                   key={ticket || `${pos.symbol}-${pos.price_open}`}
-                  className="flex flex-col gap-3 rounded-lg border border-white/5 bg-white/[0.02] p-4 sm:flex-row sm:items-center sm:justify-between"
+                  className="flex flex-col gap-3 rounded-lg border border-white/5 bg-white/[0.02] p-4"
                 >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-lg font-bold text-white">
@@ -308,7 +380,7 @@ function OpenPositionsCard({ onHide }: OpenPositionsCardProps) {
                       </p>
                     </div>
                     {ticket > 0 && (
-                      <div className="flex flex-col gap-2 sm:flex-row">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                         <Button
                           variant="ghost"
                           size="sm"
@@ -320,6 +392,17 @@ function OpenPositionsCard({ onHide }: OpenPositionsCardProps) {
                           ) : (
                             "Breakeven"
                           )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setEditTicket(ticket);
+                            setModifySl(String(pos.sl ?? ""));
+                            setModifyTp(String(pos.tp ?? ""));
+                          }}
+                        >
+                          Modify SL/TP
                         </Button>
                         <Button
                           variant="secondary"
@@ -338,6 +421,89 @@ function OpenPositionsCard({ onHide }: OpenPositionsCardProps) {
                       </div>
                     )}
                   </div>
+                  </div>
+
+                  {editTicket === ticket && (
+                    <div className="rounded-lg border border-white/10 bg-black/20 p-3 space-y-3">
+                      <p className="text-xs font-medium text-gray-400">
+                        Modify stop loss / take profit
+                      </p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <Input
+                          type="number"
+                          step="any"
+                          placeholder="Stop loss"
+                          value={modifySl}
+                          onChange={(e) => setModifySl(e.target.value)}
+                        />
+                        <Input
+                          type="number"
+                          step="any"
+                          placeholder="Take profit"
+                          value={modifyTp}
+                          onChange={(e) => setModifyTp(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          disabled={modifyingTicket === ticket}
+                          onClick={() => void handleModify(pos)}
+                        >
+                          {modifyingTicket === ticket ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            "Apply modify"
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setEditTicket(null);
+                            setModifySl("");
+                            setModifyTp("");
+                            setPartialLot("");
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+
+                      <div className="border-t border-white/5 pt-3">
+                        <p className="text-xs font-medium text-gray-400">
+                          Partial close
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-end gap-2">
+                          <div className="min-w-[120px] flex-1">
+                            <Input
+                              type="number"
+                              step="any"
+                              min="0.01"
+                              placeholder={`Lot (max ${pos.volume ?? "?"})`}
+                              value={partialLot}
+                              onChange={(e) => setPartialLot(e.target.value)}
+                            />
+                          </div>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={partialClosing === ticket}
+                            onClick={() => void handlePartialClose(pos)}
+                          >
+                            {partialClosing === ticket ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              "Partial close"
+                            )}
+                          </Button>
+                        </div>
+                        <p className="mt-1 text-xs text-gray-600">
+                          You will receive an email when partial closes are recorded.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

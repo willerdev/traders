@@ -20,6 +20,7 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [claiming, setClaiming] = useState<string | null>(null);
   const [archiving, setArchiving] = useState<string | null>(null);
+  const [archivingAll, setArchivingAll] = useState(false);
   const [invalidating, setInvalidating] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [tpModal, setTpModal] = useState<{ signalId: string; symbol: string } | null>(null);
@@ -73,6 +74,32 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
     setTpModal({ signalId, symbol });
   }
 
+  async function handleArchiveAll() {
+    if (
+      !confirm(
+        `Archive all ${items.length} open setup(s)? This hides them locally without cancelling Hub orders. Use Invalidate on individual setups if you need Hub to stop execution.`,
+      )
+    ) {
+      return;
+    }
+
+    setArchivingAll(true);
+    setSuccess(null);
+    setError(null);
+    try {
+      const result = await api.signals.archiveAll();
+      setSuccess(
+        `${result.archivedCount} setup${result.archivedCount !== 1 ? "s" : ""} archived`,
+      );
+      await load();
+      onClaimed?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Archive all failed");
+    } finally {
+      setArchivingAll(false);
+    }
+  }
+
   async function handleInvalidate(signalId: string, symbol: string) {
     if (
       !confirm(
@@ -89,11 +116,11 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
       const result = await api.signals.invalidate(signalId);
       if (result.hubWarning) {
         setSuccess(
-          `${symbol} cancelled on platform. Hub note: ${result.hubWarning}`,
+          `${symbol} archived on platform. Hub note: ${result.hubWarning}`,
         );
       } else if (result.hubNotFound) {
         setSuccess(
-          `${symbol} cancelled — it was not queued on Signal Hub (nothing to cancel there).`,
+          `${symbol} archived — it was not queued on Signal Hub (nothing to cancel there).`,
         );
       } else {
         setSuccess(`${symbol} invalidated — Hub will not execute this setup`);
@@ -155,16 +182,34 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
             .
           </p>
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={load}
-          disabled={loading}
-          className="gap-1"
-        >
-          <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-          Refresh
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          {items.length > 1 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1 text-gray-400"
+              disabled={loading || archivingAll}
+              onClick={() => void handleArchiveAll()}
+            >
+              {archivingAll ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Archive className="h-3.5 w-3.5" />
+              )}
+              Archive all
+            </Button>
+          )}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={load}
+            disabled={loading}
+            className="gap-1"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+            Refresh
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         {loading && items.length === 0 ? (
