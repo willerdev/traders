@@ -902,6 +902,7 @@ export default function App() {
               <thead>
                 <tr>
                   <th>Trader</th>
+                  <th>Type</th>
                   <th>Amount</th>
                   <th>Method</th>
                   <th>Destination</th>
@@ -915,6 +916,11 @@ export default function App() {
                 {payouts.map((p) => (
                   <tr key={p.id}>
                     <td>{p.user.displayName}</td>
+                    <td className="muted">
+                      {p.source === "TP_REWARD"
+                        ? p.notes?.replace(/^TP reward — /, "") ?? "TP reward"
+                        : "Weekly tier"}
+                    </td>
                     <td>{fmtMoney(p.traderShare)}</td>
                     <td>{p.payoutMethod === "MOBILE_MONEY" ? "Mobile money" : p.payoutMethod === "TRC20" ? "TRC20" : "—"}</td>
                     <td className="muted">{p.walletAddress || "—"}</td>

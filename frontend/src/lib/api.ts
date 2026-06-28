@@ -501,6 +501,19 @@ class ApiClient {
         method: "POST",
         body: JSON.stringify(evidence),
       }),
+    requestPayout: (claimId: string, walletAddress?: string) =>
+      this.request<{
+        status: string;
+        payoutId: string;
+        amount: number;
+        claimId: string;
+        symbol: string;
+      }>(`/tp-claims/${claimId}/request-payout`, {
+        method: "POST",
+        body: JSON.stringify(
+          walletAddress?.trim() ? { walletAddress: walletAddress.trim() } : {},
+        ),
+      }),
   };
 
   payouts = {
@@ -554,11 +567,13 @@ export interface PayoutRecord {
   traderShare: number;
   platformShare: number;
   status: string;
+  source?: "WEEKLY" | "TP_REWARD";
   rewardTier?: string | null;
   payoutMethod?: "TRC20" | "MOBILE_MONEY" | null;
   weekNumber: number;
   year: number;
   walletAddress?: string | null;
+  notes?: string | null;
   requestedAt: string;
 }
 
@@ -1088,6 +1103,15 @@ export interface TpClaimRecord {
   reviewedAt?: string | null;
   submittedAt: string;
   updatedAt: string;
+  rewardAmount?: number;
+  canRequestPayout?: boolean;
+  payout?: {
+    id: string;
+    status: string;
+    walletAddress?: string | null;
+    amount: number;
+    requestedAt: string;
+  } | null;
   setup?: {
     entryMin: number;
     entryMax: number;

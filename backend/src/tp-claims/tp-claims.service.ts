@@ -9,6 +9,7 @@ import { WalletService } from '../trades/wallet.service';
 import { PriceMonitorService } from '../trades/price-monitor.service';
 import { NotificationService } from '../email/notification.service';
 import { Signal, Trade } from '@prisma/client';
+import { TP_REWARD_USD } from '../common/constants';
 
 @Injectable()
 export class TpClaimsService {
@@ -158,27 +159,51 @@ export class TpClaimsService {
   }
 
   async listUserClaims(userId: string) {
-    const claims = await this.prisma.tpClaim.findMany({
-      where: { userId },
-      orderBy: { submittedAt: 'desc' },
-      include: {
-        signal: {
-          select: {
-            signalId: true,
-            entryMin: true,
-            entryMax: true,
-            stopLoss: true,
-            takeProfit: true,
-            status: true,
+    const [claims, config] = await Promise.all([
+      this.prisma.tpClaim.findMany({
+        where: { userId },
+        orderBy: { submittedAt: 'desc' },
+        include: {
+          payout: {
+            select: {
+              id: true,
+              status: true,
+              walletAddress: true,
+              traderShare: true,
+              requestedAt: true,
+            },
+          },
+          signal: {
+            select: {
+              signalId: true,
+              entryMin: true,
+              entryMax: true,
+              stopLoss: true,
+              takeProfit: true,
+              status: true,
+            },
           },
         },
-      },
-    });
+      }),
+      this.prisma.platformConfig.findUnique({ where: { id: 'default' } }),
+    ]);
+
+    const rewardAmount = Number(config?.tpRewardUsd ?? TP_REWARD_USD);
 
     return claims.map((c) => ({
       ...this.formatClaim(c),
-      canResubmit:
-        c.status === 'REJECTED' && c.signal.status === 'OPEN',
+      rewardAmount,
+      canResubmit: c.status === 'REJECTED' && c.signal.status === 'OPEN',
+      canRequestPayout: c.status === 'APPROVED' && !c.payout,
+      payout: c.payout
+        ? {
+            id: c.payout.id,
+            status: c.payout.status,
+            walletAddress: c.payout.walletAddress,
+            amount: Number(c.payout.traderShare),
+            requestedAt: c.payout.requestedAt.toISOString(),
+          }
+        : null,
     }));
   }
 

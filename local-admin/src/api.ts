@@ -255,6 +255,8 @@ export type KycRow = {
 export type PayoutRow = {
   id: string;
   status: string;
+  source?: string;
+  notes?: string | null;
   traderShare: string;
   walletAddress?: string;
   payoutMethod?: string;

@@ -90,8 +90,9 @@ export class NotificationService {
       'TP claim approved',
       `<p>Hi ${user.name},</p>
       <p>Your take-profit claim for <strong>${data.symbol}</strong> was approved.</p>
-      <p><strong>$${data.reward.toFixed(2)}</strong> has been credited to your wallet.</p>
-      ${this.email.button(`${this.email.frontendUrl}/tp-claims`, 'View TP claims')}`,
+      <p><strong>$${data.reward.toFixed(2)}</strong> has been credited to your account.</p>
+      <p>Request your USDT payout from the TP Claims page once KYC is verified.</p>
+      ${this.email.button(`${this.email.frontendUrl}/tp-claims`, 'Request TP payout')}`,
     );
 
     return this.email.send({

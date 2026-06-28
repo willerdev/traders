@@ -170,6 +170,12 @@ export class RequestPayoutDto {
   walletAddress?: string;
 }
 
+export class RequestTpClaimPayoutDto {
+  @IsOptional()
+  @IsString()
+  walletAddress?: string;
+}
+
 export class CreatePaymentDto {
   @IsString()
   @IsNotEmpty()
