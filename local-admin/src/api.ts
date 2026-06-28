@@ -100,6 +100,9 @@ export const api = {
     request<{ items: UserRow[]; count: number; suspiciousOnly?: boolean }>(
       `/admin/users?limit=50&offset=${offset}${suspiciousOnly ? "&suspicious=true" : ""}`,
     ),
+
+  getUser: (userId: string) =>
+    request<AdminUserDetail>(`/admin/users/${userId}`),
   signals: (offset = 0) =>
     request<{ items: SignalRow[]; count: number }>(
       `/admin/signals?limit=50&offset=${offset}`,
@@ -138,9 +141,25 @@ export const api = {
       body: JSON.stringify({ amount, network }),
     }),
 
-  custodyDeposits: (limit = 10) =>
-    request<CustodyDepositRow[]>(
-      `/admin/payouts/custody/deposits?limit=${limit}`,
+  custodyDeposits: (limit = 20, sync = false, status?: string) => {
+    const q = new URLSearchParams({ limit: String(limit) });
+    if (sync) q.set("sync", "true");
+    if (status) q.set("status", status);
+    return request<CustodyDepositsList | CustodyDepositRow[]>(
+      `/admin/payouts/custody/deposits?${q.toString()}`,
+    ).then(normalizeCustodyDepositsList);
+  },
+
+  syncCustodyDeposit: (depositId: string) =>
+    request<CustodyDepositStatus>(
+      `/admin/payouts/custody/deposits/${depositId}/sync`,
+      { method: "POST" },
+    ),
+
+  syncAllCustodyDeposits: () =>
+    request<{ scanned: number; confirmed: number }>(
+      "/admin/payouts/custody/deposits/sync-all",
+      { method: "POST" },
     ),
 
   custodyDepositStatus: (depositId: string) =>
@@ -257,6 +276,110 @@ export type UserRow = {
   _count: { signals: number; payouts: number };
 };
 
+export type AdminUserDetail = {
+  id: string;
+  email: string | null;
+  displayName: string;
+  avatarUrl: string | null;
+  role: string;
+  status: string;
+  walletAddress: string | null;
+  registrationPaid: boolean;
+  emailVerified: boolean;
+  lastLoginIp: string | null;
+  createdAt: string;
+  updatedAt: string;
+  emailAssessment?: EmailAssessment;
+  profile: {
+    firstName: string | null;
+    lastName: string | null;
+    phone: string | null;
+    dateOfBirth: string | null;
+    country: string | null;
+    state: string | null;
+    city: string | null;
+    addressLine1: string | null;
+    addressLine2: string | null;
+    postalCode: string | null;
+    payoutMethod: string | null;
+    trc20Address: string | null;
+    mobileMoneyProvider: string | null;
+    mobileMoneyNumber: string | null;
+    mobileMoneyAccountName: string | null;
+  } | null;
+  kyc: {
+    status: string;
+    documentType: string | null;
+    documentNumber: string | null;
+    documentFrontUrl: string | null;
+    documentBackUrl: string | null;
+    selfieUrl: string | null;
+    rejectionReason: string | null;
+    submittedAt: string | null;
+    reviewedAt: string | null;
+  } | null;
+  virtualAccount: {
+    tier: string;
+    balance: number;
+    score: number;
+    weeklyProfit: number;
+    totalProfit: number;
+    winRate: number;
+    totalTrades: number;
+    winningTrades: number;
+    losingTrades: number;
+  } | null;
+  payments: Array<{
+    id: string;
+    amount: number;
+    currency: string;
+    network: string;
+    status: string;
+    purpose: string;
+    txHash: string | null;
+    payAddress: string | null;
+    createdAt: string;
+    confirmedAt: string | null;
+  }>;
+  payouts: Array<{
+    id: string;
+    status: string;
+    source: string;
+    traderShare: number;
+    payoutMethod: string | null;
+    walletAddress: string | null;
+    weekNumber: number;
+    year: number;
+    notes: string | null;
+    requestedAt: string;
+    processedAt: string | null;
+  }>;
+  walletTransactions: Array<{
+    id: string;
+    amount: number;
+    type: string;
+    description: string;
+    referenceId: string | null;
+    createdAt: string;
+  }>;
+  tpClaims: Array<{
+    id: string;
+    symbol: string;
+    direction: string;
+    status: string;
+    claimType: string | null;
+    submittedAt: string;
+    reviewedAt: string | null;
+  }>;
+  counts: {
+    signals: number;
+    payouts: number;
+    payments: number;
+    tpClaims: number;
+    walletTransactions: number;
+  };
+};
+
 export type SignalRow = {
   signalId: string;
   symbol: string;
@@ -328,12 +451,49 @@ export type CustodyDepositCreated = {
 export type CustodyDepositRow = {
   id: string;
   amount: string;
+  currency?: string;
   network: string;
   status: string;
+  gatewayId?: string | null;
+  payAddress?: string | null;
+  payAmount?: number | null;
+  txHash?: string | null;
+  liveStatus?: string;
   createdAt: string;
   confirmedAt?: string | null;
   admin?: { email: string | null; displayName: string };
 };
+
+export type CustodyDepositsList = {
+  items: CustodyDepositRow[];
+  pendingCount: number;
+  confirmedCount: number;
+  confirmedTotalUsdt: number;
+};
+
+export function normalizeCustodyDepositsList(
+  data: CustodyDepositsList | CustodyDepositRow[],
+): CustodyDepositsList {
+  if (Array.isArray(data)) {
+    const confirmed = data.filter((d) => d.status === "CONFIRMED");
+    return {
+      items: data,
+      pendingCount: data.filter((d) => d.status === "PENDING").length,
+      confirmedCount: confirmed.length,
+      confirmedTotalUsdt: confirmed.reduce(
+        (sum, d) => sum + Number(d.amount),
+        0,
+      ),
+    };
+  }
+
+  return {
+    items: data.items ?? [],
+    pendingCount: data.pendingCount ?? 0,
+    confirmedCount: data.confirmedCount ?? 0,
+    confirmedTotalUsdt: data.confirmedTotalUsdt ?? 0,
+  };
+}
 
 export type CustodyDepositStatus = {
   deposit: CustodyDepositRow;
@@ -341,6 +501,7 @@ export type CustodyDepositStatus = {
   payAddress?: string;
   payAmount?: number;
   confirmed: boolean;
+  wallet?: NowPaymentsWalletSummary | null;
 };
 
 export type TpClaimRow = {

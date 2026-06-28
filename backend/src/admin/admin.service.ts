@@ -271,6 +271,140 @@ export class AdminService {
     return { items, count, limit: take, offset: skip, suspiciousOnly: false };
   }
 
+  async getUserDetail(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        profile: true,
+        kyc: true,
+        virtualAccount: true,
+        payments: {
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        },
+        payouts: {
+          orderBy: { requestedAt: 'desc' },
+          take: 10,
+        },
+        walletTransactions: {
+          orderBy: { createdAt: 'desc' },
+          take: 15,
+        },
+        tpClaims: {
+          orderBy: { submittedAt: 'desc' },
+          take: 5,
+          select: {
+            id: true,
+            symbol: true,
+            direction: true,
+            status: true,
+            claimType: true,
+            submittedAt: true,
+            reviewedAt: true,
+          },
+        },
+        _count: {
+          select: {
+            signals: true,
+            payouts: true,
+            payments: true,
+            tpClaims: true,
+            walletTransactions: true,
+          },
+        },
+      },
+    });
+
+    if (!user) throw new NotFoundException('User not found');
+
+    const va = user.virtualAccount;
+
+    return {
+      id: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
+      role: user.role,
+      status: user.status,
+      walletAddress: user.walletAddress,
+      registrationPaid: user.registrationPaid,
+      emailVerified: user.emailVerified,
+      lastLoginIp: user.lastLoginIp,
+      createdAt: user.createdAt.toISOString(),
+      updatedAt: user.updatedAt.toISOString(),
+      emailAssessment: assessEmail(user.email),
+      profile: user.profile
+        ? {
+            ...user.profile,
+            dateOfBirth: user.profile.dateOfBirth?.toISOString() ?? null,
+            createdAt: user.profile.createdAt.toISOString(),
+            updatedAt: user.profile.updatedAt.toISOString(),
+          }
+        : null,
+      kyc: user.kyc
+        ? {
+            ...user.kyc,
+            submittedAt: user.kyc.submittedAt?.toISOString() ?? null,
+            reviewedAt: user.kyc.reviewedAt?.toISOString() ?? null,
+            createdAt: user.kyc.createdAt.toISOString(),
+            updatedAt: user.kyc.updatedAt.toISOString(),
+          }
+        : null,
+      virtualAccount: va
+        ? {
+            tier: va.tier,
+            balance: Number(va.balance),
+            score: va.score,
+            weeklyProfit: Number(va.weeklyProfit),
+            totalProfit: Number(va.totalProfit),
+            winRate: Number(va.winRate),
+            totalTrades: va.totalTrades,
+            winningTrades: va.winningTrades,
+            losingTrades: va.losingTrades,
+          }
+        : null,
+      payments: user.payments.map((p) => ({
+        id: p.id,
+        amount: Number(p.amount),
+        currency: p.currency,
+        network: p.network,
+        status: p.status,
+        purpose: p.purpose,
+        txHash: p.txHash,
+        payAddress: p.payAddress,
+        createdAt: p.createdAt.toISOString(),
+        confirmedAt: p.confirmedAt?.toISOString() ?? null,
+      })),
+      payouts: user.payouts.map((p) => ({
+        id: p.id,
+        status: p.status,
+        source: p.source,
+        traderShare: Number(p.traderShare),
+        payoutMethod: p.payoutMethod,
+        walletAddress: p.walletAddress,
+        weekNumber: p.weekNumber,
+        year: p.year,
+        notes: p.notes,
+        requestedAt: p.requestedAt.toISOString(),
+        processedAt: p.processedAt?.toISOString() ?? null,
+      })),
+      walletTransactions: user.walletTransactions.map((t) => ({
+        id: t.id,
+        amount: Number(t.amount),
+        type: t.type,
+        description: t.description,
+        referenceId: t.referenceId,
+        createdAt: t.createdAt.toISOString(),
+      })),
+      tpClaims: user.tpClaims.map((c) => ({
+        ...c,
+        submittedAt: c.submittedAt.toISOString(),
+        reviewedAt: c.reviewedAt?.toISOString() ?? null,
+      })),
+      counts: user._count,
+    };
+  }
+
   async listSignals(limit = 50, offset = 0) {
     const take = Math.min(Math.max(limit, 1), 100);
     const skip = Math.max(offset, 0);
@@ -361,12 +495,20 @@ export class AdminService {
     return this.custodyDeposits.createDeposit(adminId, amount, network);
   }
 
-  listCustodyDeposits(limit?: number) {
-    return this.custodyDeposits.listDeposits(limit);
+  listCustodyDeposits(limit?: number, status?: string, syncPending?: boolean) {
+    return this.custodyDeposits.listDeposits(limit, { status, syncPending });
   }
 
   getCustodyDepositStatus(depositId: string) {
     return this.custodyDeposits.getDepositStatus(depositId);
+  }
+
+  syncCustodyDeposit(depositId: string) {
+    return this.custodyDeposits.syncDeposit(depositId);
+  }
+
+  syncAllCustodyDeposits() {
+    return this.custodyDeposits.syncAllPendingDeposits();
   }
 
   verifyNowPaymentsPayout(payoutId: string, code: string, adminId: string) {

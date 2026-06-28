@@ -497,6 +497,7 @@ model CustodyDeposit {
   gatewayResponse Json?
   payAddress      String?
   payAmount       Decimal?      @db.Decimal(18, 8)
+  txHash          String?
   confirmedAt     DateTime?
   createdAt       DateTime      @default(now())
 

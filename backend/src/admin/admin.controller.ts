@@ -65,6 +65,11 @@ export class AdminController {
     );
   }
 
+  @Get('users/:userId')
+  getUser(@Param('userId') userId: string) {
+    return this.adminService.getUserDetail(userId);
+  }
+
   @Get('signals')
   listSignals(
     @Query('limit') limit?: string,
@@ -113,10 +118,26 @@ export class AdminController {
   }
 
   @Get('payouts/custody/deposits')
-  listPayoutCustodyDeposits(@Query('limit') limit?: string) {
+  listPayoutCustodyDeposits(
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+    @Query('sync') sync?: string,
+  ) {
     return this.adminService.listCustodyDeposits(
       limit ? Number(limit) : undefined,
+      status,
+      sync === 'true' || sync === '1',
     );
+  }
+
+  @Post('payouts/custody/deposits/sync-all')
+  syncAllCustodyDeposits() {
+    return this.adminService.syncAllCustodyDeposits();
+  }
+
+  @Post('payouts/custody/deposits/:depositId/sync')
+  syncCustodyDeposit(@Param('depositId') depositId: string) {
+    return this.adminService.syncCustodyDeposit(depositId);
   }
 
   @Get('payouts/custody/deposits/:depositId')

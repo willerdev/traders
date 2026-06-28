@@ -130,72 +130,161 @@ export class CustodyDepositService {
     };
   }
 
-  async listDeposits(limit = 20) {
+  async listDeposits(
+    limit = 20,
+    options?: { status?: string; syncPending?: boolean },
+  ) {
+    if (options?.syncPending) {
+      await this.syncAllPendingDeposits();
+    }
+
     const take = Math.min(Math.max(limit, 1), 50);
-    return this.prisma.custodyDeposit.findMany({
-      take,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        admin: { select: { email: true, displayName: true } },
-      },
+    const where = options?.status
+      ? { status: options.status as 'PENDING' | 'CONFIRMED' | 'FAILED' | 'EXPIRED' }
+      : {};
+
+    const [items, pendingCount, confirmedAgg] = await Promise.all([
+      this.prisma.custodyDeposit.findMany({
+        where,
+        take,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          admin: { select: { email: true, displayName: true } },
+        },
+      }),
+      this.prisma.custodyDeposit.count({ where: { status: 'PENDING' } }),
+      this.prisma.custodyDeposit.aggregate({
+        where: { status: 'CONFIRMED' },
+        _sum: { amount: true },
+        _count: true,
+      }),
+    ]);
+
+    return {
+      items: items.map((d) => this.formatDeposit(d)),
+      pendingCount,
+      confirmedCount: confirmedAgg._count,
+      confirmedTotalUsdt: Number(confirmedAgg._sum.amount ?? 0),
+    };
+  }
+
+  private formatDeposit(
+    deposit: {
+      id: string;
+      amount: { toString(): string };
+      currency: string;
+      network: string;
+      status: string;
+      gatewayId?: string | null;
+      gatewayResponse: unknown;
+      payAddress?: string | null;
+      payAmount?: { toString(): string } | null;
+      txHash?: string | null;
+      confirmedAt?: Date | null;
+      createdAt: Date;
+      admin?: { email: string | null; displayName: string };
+    },
+  ) {
+    const stored = deposit.gatewayResponse as Record<string, unknown> | null;
+    const liveStatus =
+      typeof stored?.payment_status === 'string'
+        ? stored.payment_status
+        : typeof stored?.blockchain === 'object' && stored.blockchain
+          ? 'blockchain_confirmed'
+          : undefined;
+
+    return {
+      id: deposit.id,
+      amount: deposit.amount.toString(),
+      currency: deposit.currency,
+      network: deposit.network,
+      status: deposit.status,
+      gatewayId: deposit.gatewayId,
+      payAddress:
+        deposit.payAddress || (stored?.pay_address as string | undefined),
+      payAmount:
+        deposit.payAmount != null
+          ? Number(deposit.payAmount)
+          : stored?.pay_amount != null
+            ? Number(stored.pay_amount)
+            : Number(deposit.amount),
+      txHash: deposit.txHash,
+      liveStatus,
+      confirmedAt: deposit.confirmedAt?.toISOString() ?? null,
+      createdAt: deposit.createdAt.toISOString(),
+      admin: deposit.admin,
+    };
+  }
+
+  async syncDeposit(depositId: string) {
+    const before = await this.prisma.custodyDeposit.findUnique({
+      where: { id: depositId },
     });
+    if (!before) throw new NotFoundException('Custody deposit not found');
+
+    if (before.status === 'PENDING') {
+      await this.syncPendingDeposit(depositId);
+    }
+
+    return this.getDepositStatus(depositId);
   }
 
   async getDepositStatus(depositId: string) {
     const deposit = await this.prisma.custodyDeposit.findUnique({
       where: { id: depositId },
+      include: {
+        admin: { select: { email: true, displayName: true } },
+      },
     });
     if (!deposit) throw new NotFoundException('Custody deposit not found');
 
-    let liveStatus: string | undefined;
-    let payAddress: string | undefined;
-    let payAmount: number | undefined;
-
-    const gatewayId = deposit.gatewayId;
-    if (gatewayId && this.nowPayments.isConfigured) {
-      try {
-        const live = await this.nowPayments.getPaymentStatus(gatewayId);
-        liveStatus = live.payment_status;
-        payAddress = live.pay_address;
-        payAmount = live.pay_amount;
-
-        const status = live.payment_status?.toLowerCase();
-        const confirmed = ['finished', 'confirmed', 'sent'].includes(
-          status || '',
-        );
-
-        if (confirmed && deposit.status !== 'CONFIRMED') {
-          await this.confirmDeposit(deposit.id, live as object, gatewayId);
-        } else if (status === 'failed' || status === 'expired') {
-          await this.prisma.custodyDeposit.update({
-            where: { id: deposit.id },
-            data: {
-              status: status === 'failed' ? 'FAILED' : 'EXPIRED',
-              gatewayResponse: live as object,
-            },
-          });
-        }
-      } catch {
-        /* use stored deposit */
-      }
+    if (deposit.status === 'PENDING') {
+      await this.syncPendingDeposit(depositId);
     }
-
-    const stored = deposit.gatewayResponse as Record<string, unknown> | null;
-    payAddress =
-      payAddress || (stored?.pay_address as string | undefined);
-    payAmount = payAmount ?? (stored?.pay_amount as number | undefined);
 
     const refreshed = await this.prisma.custodyDeposit.findUniqueOrThrow({
       where: { id: depositId },
+      include: {
+        admin: { select: { email: true, displayName: true } },
+      },
     });
 
+    const stored = refreshed.gatewayResponse as Record<string, unknown> | null;
+    const payAddress =
+      refreshed.payAddress || (stored?.pay_address as string | undefined);
+    const payAmount =
+      refreshed.payAmount != null
+        ? Number(refreshed.payAmount)
+        : stored?.pay_amount != null
+          ? Number(stored.pay_amount)
+          : Number(refreshed.amount);
+    const liveStatus =
+      typeof stored?.payment_status === 'string'
+        ? stored.payment_status
+        : refreshed.txHash
+          ? 'confirmed'
+          : undefined;
+
     return {
-      deposit: refreshed,
+      deposit: this.formatDeposit(refreshed),
       liveStatus,
       payAddress,
       payAmount,
       confirmed: refreshed.status === 'CONFIRMED',
+      wallet: refreshed.status === 'CONFIRMED'
+        ? await this.getWalletSummary().catch(() => null)
+        : null,
     };
+  }
+
+  private extractTxHash(gatewayPayload: object): string | undefined {
+    const p = gatewayPayload as Record<string, unknown>;
+    if (typeof p.txHash === 'string') return p.txHash;
+    const chain = p.blockchain as { txHash?: string } | undefined;
+    if (chain?.txHash) return chain.txHash;
+    if (typeof p.payin_hash === 'string') return p.payin_hash;
+    if (typeof p.outcome_hash === 'string') return p.outcome_hash;
+    return undefined;
   }
 
   private async confirmDeposit(
@@ -203,16 +292,18 @@ export class CustodyDepositService {
     gatewayPayload: object,
     gatewayId?: string,
   ) {
+    const txHash = this.extractTxHash(gatewayPayload);
     await this.prisma.custodyDeposit.update({
       where: { id: depositId },
       data: {
         status: 'CONFIRMED',
         gatewayId: gatewayId ?? undefined,
         gatewayResponse: gatewayPayload,
+        txHash: txHash ?? undefined,
         confirmedAt: new Date(),
       },
     });
-    return { status: 'confirmed', depositId };
+    return { status: 'confirmed', depositId, txHash };
   }
 
   async handleIpn(payload: {
@@ -317,16 +408,14 @@ export class CustodyDepositService {
           return { confirmed: false };
         }
 
-        if (!deposit.payAddress && live.pay_address) {
-          await this.prisma.custodyDeposit.update({
-            where: { id: deposit.id },
-            data: {
-              payAddress: live.pay_address,
-              payAmount: live.pay_amount,
-              gatewayResponse: live as object,
-            },
-          });
-        }
+        await this.prisma.custodyDeposit.update({
+          where: { id: deposit.id },
+          data: {
+            gatewayResponse: live as object,
+            payAddress: live.pay_address ?? deposit.payAddress ?? undefined,
+            payAmount: live.pay_amount ?? deposit.payAmount ?? undefined,
+          },
+        });
       } catch {
         /* fall through to blockchain */
       }

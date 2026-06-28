@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, Fragment } from "react";
 import {
   api,
   getToken,
@@ -20,6 +20,7 @@ import {
 } from "./api";
 import { AdminImage } from "./AdminImage";
 import { Sidebar, type Tab } from "./Sidebar";
+import { UserDetailModal } from "./UserDetailModal";
 
 function badgeClass(status: string) {
   return `badge ${status.toLowerCase()}`;
@@ -54,6 +55,16 @@ function isBanCandidate(user: UserRow) {
   );
 }
 
+function depositProgressLabel(d: CustodyDepositRow) {
+  if (d.status === "CONFIRMED") return "Complete";
+  if (d.status === "FAILED" || d.status === "EXPIRED") return d.status;
+  const live = d.liveStatus?.toLowerCase() ?? "";
+  if (live === "confirming") return "Confirming on chain";
+  if (live === "partially_paid") return "Partial payment received";
+  if (live === "waiting") return "Waiting for transfer";
+  return d.liveStatus || "Waiting for payment";
+}
+
 export default function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
   const [email, setEmail] = useState(getAdminEmail() ?? "");
@@ -76,6 +87,11 @@ export default function App() {
   const [payouts, setPayouts] = useState<PayoutRow[]>([]);
   const [npWallet, setNpWallet] = useState<NowPaymentsWalletSummary | null>(null);
   const [custodyDeposits, setCustodyDeposits] = useState<CustodyDepositRow[]>([]);
+  const [depositPendingCount, setDepositPendingCount] = useState(0);
+  const [depositConfirmedTotal, setDepositConfirmedTotal] = useState(0);
+  const [depositSyncLoading, setDepositSyncLoading] = useState(false);
+  const [watchingDepositId, setWatchingDepositId] = useState<string | null>(null);
+  const [expandedDepositId, setExpandedDepositId] = useState<string | null>(null);
   const [depositAmount, setDepositAmount] = useState("100");
   const [depositNetwork, setDepositNetwork] = useState("TRC20");
   const [activeDeposit, setActiveDeposit] = useState<CustodyDepositCreated | null>(null);
@@ -91,6 +107,7 @@ export default function App() {
   const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
   const [tpRejectReason, setTpRejectReason] = useState<Record<string, string>>({});
   const [paymentModalUser, setPaymentModalUser] = useState<UserRow | null>(null);
+  const [userDetailId, setUserDetailId] = useState<string | null>(null);
   const [paymentDenyReason, setPaymentDenyReason] = useState("");
   const [paymentActionLoading, setPaymentActionLoading] = useState(false);
   const [messageThreads, setMessageThreads] = useState<MessageThreadSummary[]>([]);
@@ -104,6 +121,14 @@ export default function App() {
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [banLoadingId, setBanLoadingId] = useState<string | null>(null);
   const [bulkBanLoading, setBulkBanLoading] = useState(false);
+
+  const refreshCustodyDeposits = useCallback(async (sync = true) => {
+    const res = await api.custodyDeposits(20, sync);
+    setCustodyDeposits(res.items);
+    setDepositPendingCount(res.pendingCount);
+    setDepositConfirmedTotal(res.confirmedTotalUsdt);
+    return res;
+  }, []);
 
   const loadTab = useCallback(async (active: Tab) => {
     setLoading(true);
@@ -132,7 +157,7 @@ export default function App() {
         const [payoutsRes, walletRes, depositsRes] = await Promise.allSettled([
           api.payouts(),
           api.nowPaymentsWallet(),
-          api.custodyDeposits(10),
+          api.custodyDeposits(20, true),
         ]);
 
         if (payoutsRes.status === "fulfilled") {
@@ -161,9 +186,14 @@ export default function App() {
         }
 
         if (depositsRes.status === "fulfilled") {
-          setCustodyDeposits(depositsRes.value);
+          const dep = depositsRes.value;
+          setCustodyDeposits(dep.items);
+          setDepositPendingCount(dep.pendingCount);
+          setDepositConfirmedTotal(dep.confirmedTotalUsdt);
         } else {
           setCustodyDeposits([]);
+          setDepositPendingCount(0);
+          setDepositConfirmedTotal(0);
         }
       } else if (active === "tpClaims") {
         setTpClaims(await api.tpClaimsPending());
@@ -187,6 +217,40 @@ export default function App() {
       setLoading(false);
     }
   }, [suspiciousOnly]);
+
+  useEffect(() => {
+    if (tab !== "payouts" || !authed) return;
+    const hasPending =
+      depositPendingCount > 0 ||
+      watchingDepositId != null ||
+      custodyDeposits.some((d) => d?.status === "PENDING");
+    if (!hasPending) return;
+
+    const tick = () => {
+      void refreshCustodyDeposits(true).then((res) => {
+        if (!res || !watchingDepositId) return;
+        const watched = res.items.find((d) => d.id === watchingDepositId);
+        if (watched?.status === "CONFIRMED") {
+          setMessage(
+            `Custody deposit confirmed — ${fmtMoney(watched.amount)} added to NOWPayments balance.`,
+          );
+          setWatchingDepositId(null);
+          setActiveDeposit(null);
+          void api.nowPaymentsWallet().then(setNpWallet).catch(() => {});
+        }
+      });
+    };
+
+    const id = window.setInterval(tick, 15000);
+    return () => window.clearInterval(id);
+  }, [
+    tab,
+    authed,
+    depositPendingCount,
+    watchingDepositId,
+    custodyDeposits,
+    refreshCustodyDeposits,
+  ]);
 
   async function banUserAccount(user: UserRow) {
     const reason =
@@ -663,7 +727,15 @@ export default function App() {
                         />
                       ) : null}
                     </td>
-                    <td>{u.displayName}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="link-button"
+                        onClick={() => setUserDetailId(u.id)}
+                      >
+                        {u.displayName}
+                      </button>
+                    </td>
                     <td
                       className={
                         u.emailAssessment?.suspicious ? "email-suspicious" : ""
@@ -700,6 +772,13 @@ export default function App() {
                     <td>{u._count.signals}</td>
                     <td>{fmtDate(u.createdAt)}</td>
                     <td className="actions-cell">
+                      <button
+                        type="button"
+                        className="chat-link"
+                        onClick={() => setUserDetailId(u.id)}
+                      >
+                        View
+                      </button>
                       {isBanCandidate(u) && (
                         <button
                           type="button"
@@ -1027,8 +1106,10 @@ export default function App() {
                       .createCustodyDeposit(amount, depositNetwork)
                       .then((res) => {
                         setActiveDeposit(res);
+                        setWatchingDepositId(res.depositId);
+                        setExpandedDepositId(res.depositId);
                         setMessage(res.message);
-                        return loadTab("payouts");
+                        return refreshCustodyDeposits(false);
                       })
                       .catch((err: Error) => setMessage(err.message))
                       .finally(() => setDepositLoading(false));
@@ -1071,35 +1152,162 @@ export default function App() {
                 </div>
               )}
 
-              {custodyDeposits.length > 0 && (
-                <div style={{ marginTop: "1rem" }}>
-                  <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.35rem" }}>
-                    Recent custody deposits
-                  </p>
+              <div style={{ marginTop: "1rem" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "0.5rem",
+                      marginBottom: "0.35rem",
+                    }}
+                  >
+                    <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
+                      Custody deposits
+                      {depositPendingCount > 0 && (
+                        <span style={{ marginLeft: "0.5rem" }}>
+                          · {depositPendingCount} pending
+                          {watchingDepositId ? " (auto-checking every 15s)" : ""}
+                        </span>
+                      )}
+                      {depositConfirmedTotal > 0 && (
+                        <span style={{ marginLeft: "0.5rem" }}>
+                          · {fmtMoney(depositConfirmedTotal)} confirmed total
+                        </span>
+                      )}
+                    </p>
+                    <button
+                      type="button"
+                      disabled={depositSyncLoading}
+                      onClick={() => {
+                        setDepositSyncLoading(true);
+                        void refreshCustodyDeposits(true)
+                          .then(() => api.nowPaymentsWallet().then(setNpWallet))
+                          .then(() => setMessage("Deposits synced with NOWPayments and blockchain."))
+                          .catch((err: Error) => setMessage(err.message))
+                          .finally(() => setDepositSyncLoading(false));
+                      }}
+                    >
+                      {depositSyncLoading ? "Syncing…" : "Sync pending"}
+                    </button>
+                  </div>
+                  {custodyDeposits.length === 0 ? (
+                    <p className="muted" style={{ fontSize: "0.85rem" }}>
+                      No custody deposits yet. Create one above to fund trader payouts.
+                    </p>
+                  ) : (
                   <table>
                     <thead>
                       <tr>
                         <th>Amount</th>
                         <th>Network</th>
+                        <th>Progress</th>
                         <th>Status</th>
                         <th>Created</th>
+                        <th>Confirmed</th>
+                        <th />
                       </tr>
                     </thead>
                     <tbody>
                       {custodyDeposits.map((d) => (
-                        <tr key={d.id}>
-                          <td>{fmtMoney(d.amount)}</td>
-                          <td>{d.network}</td>
-                          <td>
-                            <span className={badgeClass(d.status)}>{d.status}</span>
-                          </td>
-                          <td>{fmtDate(d.createdAt)}</td>
-                        </tr>
+                        <Fragment key={d.id}>
+                          <tr>
+                            <td>{fmtMoney(d.amount)}</td>
+                            <td>{d.network}</td>
+                            <td className="muted">{depositProgressLabel(d)}</td>
+                            <td>
+                              <span className={badgeClass(d.status)}>{d.status}</span>
+                            </td>
+                            <td>{fmtDate(d.createdAt)}</td>
+                            <td>{d.confirmedAt ? fmtDate(d.confirmedAt) : "—"}</td>
+                            <td>
+                              <div className="row-actions">
+                                {d.status === "PENDING" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void api
+                                        .syncCustodyDeposit(d.id)
+                                        .then((res) => {
+                                          setCustodyDeposits((rows) =>
+                                            rows.map((row) =>
+                                              row.id === d.id ? res.deposit : row,
+                                            ),
+                                          );
+                                          if (res.confirmed) {
+                                            setMessage(
+                                              `Deposit confirmed${res.deposit.txHash ? ` (tx ${res.deposit.txHash.slice(0, 12)}…)` : ""}.`,
+                                            );
+                                            setWatchingDepositId(null);
+                                            if (res.wallet) setNpWallet(res.wallet);
+                                            void refreshCustodyDeposits(false);
+                                          } else {
+                                            setMessage(
+                                              `Still pending — gateway: ${res.liveStatus ?? "waiting"}.`,
+                                            );
+                                          }
+                                        })
+                                        .catch((err: Error) => setMessage(err.message));
+                                    }}
+                                  >
+                                    Check
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedDepositId((cur) =>
+                                      cur === d.id ? null : d.id,
+                                    )
+                                  }
+                                >
+                                  {expandedDepositId === d.id ? "Hide" : "Details"}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          {expandedDepositId === d.id && (
+                            <tr key={`${d.id}-detail`}>
+                              <td colSpan={7} style={{ background: "rgba(0,0,0,0.15)" }}>
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gap: "0.35rem",
+                                    fontSize: "0.85rem",
+                                    padding: "0.35rem 0",
+                                  }}
+                                >
+                                  <p className="muted" style={{ margin: 0 }}>
+                                    ID: <code>{d.id}</code>
+                                    {d.gatewayId ? ` · Gateway ${d.gatewayId}` : ""}
+                                  </p>
+                                  {d.payAddress && (
+                                    <p style={{ margin: 0, wordBreak: "break-all" }}>
+                                      Pay address: <code>{d.payAddress}</code>
+                                      {d.payAmount != null && (
+                                        <span className="muted">
+                                          {" "}
+                                          · send {d.payAmount} USDT
+                                        </span>
+                                      )}
+                                    </p>
+                                  )}
+                                  {d.txHash && (
+                                    <p style={{ margin: 0, wordBreak: "break-all" }}>
+                                      Tx: <code>{d.txHash}</code>
+                                    </p>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       ))}
                     </tbody>
                   </table>
+                  )}
                 </div>
-              )}
             </div>
 
             <table>
@@ -1580,6 +1788,19 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <UserDetailModal
+        userId={userDetailId}
+        onClose={() => setUserDetailId(null)}
+        onChat={(id) => {
+          const user = users.find((u) => u.id === id);
+          if (user) openChatWithUser(user);
+          else {
+            setTab("messages");
+            setActiveChatUserId(id);
+          }
+        }}
+      />
 
       {chatModalUser && (
         <div className="modal-overlay" role="presentation" onClick={closeChatModal}>
