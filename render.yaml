@@ -42,6 +42,18 @@ services:
         value: limit
       - key: TRADE_OUTCOME_WEBHOOK_SECRET
         sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY
+        sync: false
+      - key: S3_SECRET_KEY
+        sync: false
+      - key: S3_REGION
+        value: us-east-1
+      - key: S3_PUBLIC_URL
+        sync: false
 
   - type: web
     name: traders-web

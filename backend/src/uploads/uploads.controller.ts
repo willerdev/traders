@@ -7,7 +7,6 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
-  NotFoundException,
   ForbiddenException,
   Request,
   Res,
@@ -15,37 +14,33 @@ import {
 import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage, memoryStorage } from 'multer';
-import { extname, join, basename } from 'path';
+import { extname, join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { JwtAuthGuard } from '../auth/guards';
 import { randomBytes } from 'crypto';
 import { VisionService } from '../ai/vision.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { UploadStorageService } from './upload-storage.service';
 
-const UPLOAD_DIR = join(process.cwd(), 'uploads', 'setups');
-const KYC_UPLOAD_DIR = join(process.cwd(), 'uploads', 'kyc');
+const SETUP_DIR = join(process.cwd(), 'uploads', 'setups');
+const KYC_DIR = join(process.cwd(), 'uploads', 'kyc');
 
-function ensureUploadDir() {
-  if (!existsSync(UPLOAD_DIR)) {
-    mkdirSync(UPLOAD_DIR, { recursive: true });
-  }
-}
-
-function ensureKycUploadDir() {
-  if (!existsSync(KYC_UPLOAD_DIR)) {
-    mkdirSync(KYC_UPLOAD_DIR, { recursive: true });
+function ensureDir(dir: string) {
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
   }
 }
 
 @Controller('uploads')
-@UseGuards(JwtAuthGuard)
 export class UploadsController {
   constructor(
     private vision: VisionService,
     private prisma: PrismaService,
+    private storage: UploadStorageService,
   ) {}
 
   @Post('setup/analyze')
+  @UseGuards(JwtAuthGuard)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -70,12 +65,13 @@ export class UploadsController {
   }
 
   @Post('setup')
+  @UseGuards(JwtAuthGuard)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
         destination: (_req, _file, cb) => {
-          ensureUploadDir();
-          cb(null, UPLOAD_DIR);
+          ensureDir(SETUP_DIR);
+          cb(null, SETUP_DIR);
         },
         filename: (_req, file, cb) => {
           const unique = randomBytes(8).toString('hex');
@@ -93,13 +89,15 @@ export class UploadsController {
       },
     }),
   )
-  uploadSetup(
+  async uploadSetup(
     @UploadedFile() file: Express.Multer.File,
     @Request() req: { user: { id: string } },
   ) {
     if (!file) {
       throw new BadRequestException('Setup image is required');
     }
+
+    await this.storage.persistLocalFile('setups', file.filename, file.mimetype);
 
     const baseUrl =
       process.env.API_PUBLIC_URL || `http://localhost:${process.env.PORT || 4000}`;
@@ -112,13 +110,19 @@ export class UploadsController {
     };
   }
 
+  @Get('setups/:filename')
+  async getSetupFile(@Param('filename') filename: string, @Res() res: Response) {
+    return this.storage.sendFile('setups', filename, res);
+  }
+
   @Post('kyc')
+  @UseGuards(JwtAuthGuard)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
         destination: (_req, _file, cb) => {
-          ensureKycUploadDir();
-          cb(null, KYC_UPLOAD_DIR);
+          ensureDir(KYC_DIR);
+          cb(null, KYC_DIR);
         },
         filename: (_req, file, cb) => {
           const unique = randomBytes(8).toString('hex');
@@ -136,13 +140,15 @@ export class UploadsController {
       },
     }),
   )
-  uploadKyc(
+  async uploadKyc(
     @UploadedFile() file: Express.Multer.File,
     @Request() req: { user: { id: string } },
   ) {
     if (!file) {
       throw new BadRequestException('KYC document image is required');
     }
+
+    await this.storage.persistLocalFile('kyc', file.filename, file.mimetype);
 
     const baseUrl =
       process.env.API_PUBLIC_URL || `http://localhost:${process.env.PORT || 4000}`;
@@ -156,15 +162,13 @@ export class UploadsController {
   }
 
   @Get('kyc/:filename')
+  @UseGuards(JwtAuthGuard)
   async getKycFile(
     @Param('filename') filename: string,
     @Request() req: { user: { id: string; role: string } },
     @Res() res: Response,
   ) {
-    const safeName = basename(filename);
-    if (!/^[a-f0-9]+\.(jpe?g|png|webp)$/i.test(safeName)) {
-      throw new BadRequestException('Invalid filename');
-    }
+    const safeName = this.storage.validateFilename(filename);
 
     const isStaff =
       req.user.role === 'ADMIN' || req.user.role === 'MODERATOR';
@@ -180,11 +184,6 @@ export class UploadsController {
       }
     }
 
-    const filePath = join(KYC_UPLOAD_DIR, safeName);
-    if (!existsSync(filePath)) {
-      throw new NotFoundException('File not found');
-    }
-
-    return res.sendFile(filePath);
+    return this.storage.sendFile('kyc', safeName, res);
   }
 }

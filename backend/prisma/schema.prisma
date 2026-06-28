@@ -181,6 +181,18 @@ model KycVerification {
   @@map("kyc_verifications")
 }
 
+model UploadBlob {
+  filename    String   @id
+  category    String
+  data        Bytes
+  contentType String   @map("content_type")
+  size        Int
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([category])
+  @@map("upload_blobs")
+}
+
 model VirtualAccount {
   id                  String   @id @default(cuid())
   userId              String   @unique

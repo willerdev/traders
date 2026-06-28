@@ -8,6 +8,7 @@ import { PaymentsModule } from '../payments/payments.module';
 import { SignalHubModule } from '../signals/signal-hub.module';
 import { AuthModule } from '../auth/auth.module';
 import { MessagesModule } from '../messages/messages.module';
+import { UploadsModule } from '../uploads/uploads.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { MessagesModule } from '../messages/messages.module';
     SignalHubModule,
     AuthModule,
     MessagesModule,
+    UploadsModule,
   ],
   controllers: [AdminController],
   providers: [AdminService],

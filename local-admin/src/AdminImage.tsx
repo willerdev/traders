@@ -47,15 +47,22 @@ export function AdminImage({
           let res: Response | null = null;
 
           if (setup) {
-            res = await fetch(`/uploads/setups/${encodeURIComponent(setup)}`);
+            const encoded = encodeURIComponent(setup);
+            res = await fetch(`/uploads/setups/${encoded}`);
             if (!res.ok) {
-              res = await fetch(
-                `/api/v1/admin/uploads/setups/${encodeURIComponent(setup)}`,
-                { headers },
-              );
+              res = await fetch(`/api/v1/uploads/setups/${encoded}`);
+            }
+            if (!res.ok) {
+              res = await fetch(`/api/v1/admin/uploads/setups/${encoded}`, { headers });
             }
           } else {
-            res = await fetch(fetchPath, { headers });
+            const kycName = kycFetchPath(src)?.split("/").pop();
+            if (kycName) {
+              res = await fetch(`/api/v1/uploads/kyc/${kycName}`, { headers });
+              if (!res.ok) {
+                res = await fetch(`/api/v1/admin/uploads/kyc/${kycName}`, { headers });
+              }
+            }
           }
 
           if (!res?.ok) throw new Error("Failed to load image");
@@ -97,7 +104,11 @@ export function AdminImage({
   if (failed || !displaySrc) {
     return (
       <div className={className ?? "admin-image-fallback"} aria-label={alt} role="img">
-        <span>{failed ? "Image unavailable (file missing on server)" : "Loading…"}</span>
+        <span>
+          {failed
+            ? "Image unavailable — ask the trader to re-upload (file lost before persistent storage)"
+            : "Loading…"}
+        </span>
       </div>
     );
   }

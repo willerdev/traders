@@ -8,22 +8,22 @@ import {
   UseGuards,
   Request,
   Res,
-  BadRequestException,
-  NotFoundException,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { join, basename } from 'path';
-import { existsSync } from 'fs';
 import { AdminService } from './admin.service';
 import { CreatePromoCodeDto, SendMessageDto } from '../common/dto';
 import { JwtAuthGuard, RolesGuard } from '../auth/guards';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { UploadStorageService } from '../uploads/upload-storage.service';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('ADMIN')
 export class AdminController {
-  constructor(private adminService: AdminService) {}
+  constructor(
+    private adminService: AdminService,
+    private uploadStorage: UploadStorageService,
+  ) {}
 
   @Get('overview')
   getOverview() {
@@ -227,16 +227,14 @@ export class AdminController {
     @Param('filename') filename: string,
     @Res() res: Response,
   ) {
-    const safeName = basename(filename);
-    if (!/^[a-f0-9]+\.(jpe?g|png|webp)$/i.test(safeName)) {
-      throw new BadRequestException('Invalid filename');
-    }
+    return this.uploadStorage.sendFile('setups', filename, res);
+  }
 
-    const filePath = join(process.cwd(), 'uploads', 'setups', safeName);
-    if (!existsSync(filePath)) {
-      throw new NotFoundException('File not found');
-    }
-
-    return res.sendFile(filePath);
+  @Get('uploads/kyc/:filename')
+  getKycUpload(
+    @Param('filename') filename: string,
+    @Res() res: Response,
+  ) {
+    return this.uploadStorage.sendFile('kyc', filename, res);
   }
 }
