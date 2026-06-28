@@ -15,6 +15,7 @@ import { formatCurrency } from "@/lib/utils";
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
 import { Mt5PositionsPanel } from "@/components/dashboard/open-positions";
 import { UnresolvedSetupsCard } from "@/components/dashboard/unresolved-setups";
+import { PayoutRewardTiersCard } from "@/components/dashboard/payout-reward-tiers";
 import { RegistrationCheckout } from "@/components/payments/registration-checkout";
 import { RISK_PERCENT, MAX_RISK_PER_TRADE } from "@/lib/platform-rules";
 
@@ -127,6 +128,12 @@ export default function DashboardPage() {
           consecutiveLosses={account.consecutiveLosses}
           drawdown={Number(account.maxDrawdown)}
         />
+      )}
+
+      {data.payoutReward && (
+        <div className="mt-8">
+          <PayoutRewardTiersCard reward={data.payoutReward} />
+        </div>
       )}
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">

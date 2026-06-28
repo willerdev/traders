@@ -441,6 +441,7 @@ model Payout {
   weekNumber      Int
   year            Int
   walletAddress   String?
+  rewardTier      String?
   requestedAt     DateTime     @default(now())
   processedAt     DateTime?
   notes           String?

@@ -10,9 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthStore } from "@/stores/auth";
-import { api, PayoutRecord, UserSettings } from "@/lib/api";
+import { api, PayoutRecord, UserSettings, PayoutRewardStatus } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { Wallet, Info, ShieldAlert, Loader2, Settings2 } from "lucide-react";
+import { PayoutRewardTiersCard } from "@/components/dashboard/payout-reward-tiers";
 
 function payoutDestinationLabel(settings: UserSettings | null) {
   const profile = settings?.profile;
@@ -126,6 +127,7 @@ export default function PayoutsPage() {
   const { isAuthenticated } = useAuthStore();
   const [payouts, setPayouts] = useState<PayoutRecord[]>([]);
   const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [rewardTier, setRewardTier] = useState<PayoutRewardStatus | null>(null);
   const [kycStatus, setKycStatus] = useState<string>("NOT_STARTED");
   const [loading, setLoading] = useState(true);
 
@@ -133,9 +135,11 @@ export default function PayoutsPage() {
     return Promise.all([
       api.payouts.history().catch(() => [] as PayoutRecord[]),
       api.users.settings().catch(() => null),
-    ]).then(([history, userSettings]) => {
+      api.payouts.rewardTier().catch(() => null),
+    ]).then(([history, userSettings, tier]) => {
       setPayouts(history);
       setSettings(userSettings);
+      setRewardTier(tier);
       setKycStatus(userSettings?.kyc?.status ?? "NOT_STARTED");
     });
   }
@@ -172,9 +176,15 @@ export default function PayoutsPage() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-white">Payouts</h1>
           <p className="mt-1 text-gray-400">
-            Weekly profit sharing — 40% trader / 60% platform
+            Weekly USDT rewards by performance tier — $10 Starter, $50 Pro, $100 Elite
           </p>
         </div>
+
+        {rewardTier && (
+          <div className="mb-6">
+            <PayoutRewardTiersCard reward={rewardTier} compact />
+          </div>
+        )}
 
         {!kycApproved && (
           <Card className="mb-6 border-rank-gold/30 bg-rank-gold/5">
@@ -282,6 +292,11 @@ export default function PayoutsPage() {
                         {payout.payoutMethod && (
                           <p className="mt-1 text-xs text-gray-500">
                             Method: {payout.payoutMethod === "MOBILE_MONEY" ? "Mobile money" : "TRC20"}
+                          </p>
+                        )}
+                        {payout.rewardTier && (
+                          <p className="mt-1 text-xs text-gray-500">
+                            Tier: {payout.rewardTier}
                           </p>
                         )}
                         {payout.walletAddress && (

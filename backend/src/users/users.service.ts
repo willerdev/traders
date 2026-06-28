@@ -13,6 +13,7 @@ import {
 import { currentWeekYear } from '../common/week.util';
 import { assertAllowedDisplayName } from '../common/display-name.util';
 import { isValidTrc20Address } from '../common/payout.util';
+import { getPayoutRewardStatus } from '../payouts/payout-reward-tier.util';
 
 @Injectable()
 export class UsersService {
@@ -49,6 +50,8 @@ export class UsersService {
       take: 10,
     });
 
+    const payoutReward = await getPayoutRewardStatus(this.prisma, userId);
+
     return {
       user: {
         id: user.id,
@@ -77,6 +80,7 @@ export class UsersService {
       tier: user.virtualAccount?.tier ?? 'BRONZE',
       recentSignals,
       walletTransactions,
+      payoutReward,
     };
   }
 

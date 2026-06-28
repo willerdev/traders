@@ -475,6 +475,7 @@ class ApiClient {
 
   payouts = {
     history: () => this.request<PayoutRecord[]>("/payouts"),
+    rewardTier: () => this.request<PayoutRewardStatus>("/payouts/reward-tier"),
     request: (payoutId: string, walletAddress?: string) =>
       this.request("/payouts/request", {
         method: "POST",
@@ -523,11 +524,35 @@ export interface PayoutRecord {
   traderShare: number;
   platformShare: number;
   status: string;
+  rewardTier?: string | null;
   payoutMethod?: "TRC20" | "MOBILE_MONEY" | null;
   weekNumber: number;
   year: number;
   walletAddress?: string | null;
   requestedAt: string;
+}
+
+export interface PayoutRewardTierDef {
+  id: "STARTER" | "PRO" | "ELITE";
+  label: string;
+  amountUsdt: number;
+  winsMin: number;
+  winsMax: number;
+  requirement: string;
+}
+
+export interface PayoutRewardStatus {
+  windowSize: number;
+  resolved: number;
+  wins: number;
+  losses: number;
+  currentTierId: "STARTER" | "PRO" | "ELITE";
+  currentTierLabel: string;
+  currentRewardUsdt: number;
+  nextTierId: "PRO" | "ELITE" | null;
+  winsToNextTier: number;
+  tiers: PayoutRewardTierDef[];
+  recentResults: ("W" | "L")[];
 }
 
 export interface DashboardData {
@@ -557,6 +582,7 @@ export interface DashboardData {
   tier: string;
   recentSignals: SignalRecord[];
   walletTransactions: WalletTransaction[];
+  payoutReward?: PayoutRewardStatus;
 }
 
 export interface OnboardingStatus {

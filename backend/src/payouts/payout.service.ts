@@ -1,14 +1,14 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
-import {
-  PLATFORM_PAYOUT_PERCENT,
-  TRADER_PAYOUT_PERCENT,
-} from '../common/constants';
 import { PrismaService } from '../prisma/prisma.service';
 import { NowPaymentsService } from '../payments/nowpayments.service';
 import { ConfigService } from '@nestjs/config';
 import { ComplianceService } from '../compliance/compliance.service';
 import { NotificationService } from '../email/notification.service';
 import { resolvePayoutDestination } from '../common/payout.util';
+import {
+  getPayoutRewardStatus,
+  resolvePayoutRewardTier,
+} from './payout-reward-tier.util';
 
 @Injectable()
 export class PayoutService {
@@ -29,6 +29,10 @@ export class PayoutService {
     return `${base}/api/v1/payouts/ipn`;
   }
 
+  async getRewardTier(userId: string) {
+    return getPayoutRewardStatus(this.prisma, userId);
+  }
+
   async calculateWeeklyPayouts(weekNumber: number, year: number) {
     const accounts = await this.prisma.virtualAccount.findMany({
       where: { weeklyProfit: { gt: 0 } },
@@ -47,8 +51,13 @@ export class PayoutService {
       const virtualProfit = Number(account.weeklyProfit);
       if (virtualProfit <= 0) continue;
 
-      const traderShare = (virtualProfit * TRADER_PAYOUT_PERCENT) / 100;
-      const platformShare = (virtualProfit * PLATFORM_PAYOUT_PERCENT) / 100;
+      const rewardStatus = await getPayoutRewardStatus(
+        this.prisma,
+        account.userId,
+      );
+      const tier = resolvePayoutRewardTier(rewardStatus.wins);
+      const traderShare = tier.amountUsdt;
+      const platformShare = Math.max(0, virtualProfit - traderShare);
 
       const payout = await this.prisma.payout.create({
         data: {
@@ -56,10 +65,12 @@ export class PayoutService {
           virtualProfit,
           traderShare,
           platformShare,
-          traderPercent: TRADER_PAYOUT_PERCENT,
+          traderPercent: virtualProfit > 0 ? (traderShare / virtualProfit) * 100 : 0,
+          rewardTier: tier.tierId,
           weekNumber,
           year,
           status: 'PENDING',
+          notes: `${tier.label} tier — ${rewardStatus.wins}/${rewardStatus.windowSize} wins in rolling window`,
         },
       });
 

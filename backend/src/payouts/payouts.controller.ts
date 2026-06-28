@@ -25,6 +25,11 @@ export class PayoutsController {
     private nowPayments: NowPaymentsService,
   ) {}
 
+  @Get('reward-tier')
+  getRewardTier(@Request() req: { user: { id: string } }) {
+    return this.payoutService.getRewardTier(req.user.id);
+  }
+
   @Get()
   getHistory(@Request() req: { user: { id: string } }) {
     return this.payoutService.getPayoutHistory(req.user.id);
