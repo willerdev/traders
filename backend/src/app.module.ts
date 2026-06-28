@@ -14,6 +14,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { TradesModule } from './trades/trades.module';
 import { AdminModule } from './admin/admin.module';
+import { MessagesModule } from './messages/messages.module';
 import { PlatformModule } from './platform/platform.module';
 
 @Module({
@@ -33,6 +34,7 @@ import { PlatformModule } from './platform/platform.module';
     UploadsModule,
     TradesModule,
     AdminModule,
+    MessagesModule,
     PlatformModule,
   ],
 })

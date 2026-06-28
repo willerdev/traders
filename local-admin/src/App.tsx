@@ -10,11 +10,14 @@ import {
   type PromoCodeRow,
   type HubSenderReport,
   type TpClaimRow,
+  type MessageThreadSummary,
+  type DirectMessage,
 } from "./api";
 
 type Tab =
   | "overview"
   | "users"
+  | "messages"
   | "signals"
   | "kyc"
   | "payouts"
@@ -25,12 +28,13 @@ type Tab =
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview", label: "1. Overview" },
   { id: "users", label: "2. Users" },
-  { id: "signals", label: "3. Setups" },
-  { id: "kyc", label: "4. KYC" },
-  { id: "payouts", label: "5. Payouts" },
-  { id: "tpClaims", label: "6. TP Claims" },
-  { id: "promos", label: "7. Promo codes" },
-  { id: "hub", label: "8. Hub MT5 report" },
+  { id: "messages", label: "3. Messages" },
+  { id: "signals", label: "4. Setups" },
+  { id: "kyc", label: "5. KYC" },
+  { id: "payouts", label: "6. Payouts" },
+  { id: "tpClaims", label: "7. TP Claims" },
+  { id: "promos", label: "8. Promo codes" },
+  { id: "hub", label: "9. Hub MT5 report" },
 ];
 
 function badgeClass(status: string) {
@@ -76,6 +80,13 @@ export default function App() {
   const [paymentModalUser, setPaymentModalUser] = useState<UserRow | null>(null);
   const [paymentDenyReason, setPaymentDenyReason] = useState("");
   const [paymentActionLoading, setPaymentActionLoading] = useState(false);
+  const [messageThreads, setMessageThreads] = useState<MessageThreadSummary[]>([]);
+  const [activeChatUserId, setActiveChatUserId] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<DirectMessage[]>([]);
+  const [chatDraft, setChatDraft] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatSending, setChatSending] = useState(false);
+  const [chatModalUser, setChatModalUser] = useState<UserRow | null>(null);
 
   const loadTab = useCallback(async (active: Tab) => {
     setLoading(true);
@@ -87,6 +98,12 @@ export default function App() {
         const res = await api.users();
         setUsers(res.items);
         setUserCount(res.count);
+      } else if (active === "messages") {
+        const res = await api.messageThreads();
+        setMessageThreads(res.items);
+        if (res.items.length > 0 && !activeChatUserId) {
+          setActiveChatUserId(res.items[0].userId);
+        }
       } else if (active === "signals") {
         const res = await api.signals();
         setSignals(res.items);
@@ -111,6 +128,64 @@ export default function App() {
       setLoading(false);
     }
   }, []);
+
+  const loadChatThread = useCallback(async (userId: string) => {
+    setChatLoading(true);
+    try {
+      const thread = await api.getMessageThread(userId);
+      setChatMessages(thread.messages ?? []);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Could not load chat");
+    } finally {
+      setChatLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!authed) return;
+    if (tab === "messages" && activeChatUserId) {
+      void loadChatThread(activeChatUserId);
+      const timer = setInterval(() => void loadChatThread(activeChatUserId), 12000);
+      return () => clearInterval(timer);
+    }
+    return undefined;
+  }, [authed, tab, activeChatUserId, loadChatThread]);
+
+  useEffect(() => {
+    if (!chatModalUser) return;
+    void loadChatThread(chatModalUser.id);
+    const timer = setInterval(() => void loadChatThread(chatModalUser.id), 12000);
+    return () => clearInterval(timer);
+  }, [chatModalUser, loadChatThread]);
+
+  async function sendChatMessage(userId: string) {
+    const body = chatDraft.trim();
+    if (!body || chatSending) return;
+    setChatSending(true);
+    try {
+      const msg = await api.sendMessage(userId, body);
+      setChatMessages((prev) => [...prev, msg]);
+      setChatDraft("");
+      if (tab === "messages") {
+        const res = await api.messageThreads();
+        setMessageThreads(res.items);
+      }
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Could not send message");
+    } finally {
+      setChatSending(false);
+    }
+  }
+
+  function openChatWithUser(user: UserRow) {
+    setChatDraft("");
+    setChatModalUser(user);
+  }
+
+  function closeChatModal() {
+    setChatModalUser(null);
+    setChatDraft("");
+  }
 
   useEffect(() => {
     if (authed) void loadTab(tab);
@@ -313,6 +388,7 @@ export default function App() {
                   <th>Paid</th>
                   <th>Setups</th>
                   <th>Joined</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
@@ -338,10 +414,106 @@ export default function App() {
                     <td>{u.registrationPaid ? "Yes" : "No"}</td>
                     <td>{u._count.signals}</td>
                     <td>{fmtDate(u.createdAt)}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="chat-link"
+                        onClick={() => openChatWithUser(u)}
+                      >
+                        Chat
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </>
+        )}
+
+        {tab === "messages" && (
+          <>
+            <div className="toolbar">
+              <h2>Direct messages</h2>
+            </div>
+            <div className="chat-layout">
+              <aside className="chat-threads">
+                {messageThreads.length === 0 ? (
+                  <p className="muted" style={{ padding: "1rem" }}>
+                    No conversations yet. Open a user from the Users tab and click Chat.
+                  </p>
+                ) : (
+                  messageThreads.map((t) => (
+                    <button
+                      key={t.userId}
+                      type="button"
+                      className={`chat-thread${activeChatUserId === t.userId ? " active" : ""}`}
+                      onClick={() => setActiveChatUserId(t.userId)}
+                    >
+                      <div className="chat-thread-top">
+                        <strong>{t.displayName}</strong>
+                        {t.unreadCount > 0 && (
+                          <span className="chat-unread">{t.unreadCount}</span>
+                        )}
+                      </div>
+                      <span className="muted">{t.email ?? "—"}</span>
+                      <span className="chat-preview">{t.lastMessage.body}</span>
+                    </button>
+                  ))
+                )}
+              </aside>
+              <section className="chat-panel">
+                {!activeChatUserId ? (
+                  <p className="muted">Select a conversation</p>
+                ) : (
+                  <>
+                    <div className="chat-panel-header">
+                      <strong>
+                        {messageThreads.find((t) => t.userId === activeChatUserId)
+                          ?.displayName ?? "Trader"}
+                      </strong>
+                    </div>
+                    <div className="chat-messages">
+                      {chatLoading && chatMessages.length === 0 ? (
+                        <p className="muted">Loading…</p>
+                      ) : chatMessages.length === 0 ? (
+                        <p className="muted">No messages yet — send the first one.</p>
+                      ) : (
+                        chatMessages.map((msg) => (
+                          <div
+                            key={msg.id}
+                            className={`chat-bubble ${msg.fromAdmin ? "out" : "in"}`}
+                          >
+                            {!msg.fromAdmin && (
+                              <span className="chat-sender">{msg.senderName}</span>
+                            )}
+                            <p>{msg.body}</p>
+                            <time>{fmtDate(msg.createdAt)}</time>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <form
+                      className="chat-compose"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void sendChatMessage(activeChatUserId);
+                      }}
+                    >
+                      <textarea
+                        rows={2}
+                        placeholder="Write to trader…"
+                        value={chatDraft}
+                        onChange={(e) => setChatDraft(e.target.value)}
+                        maxLength={4000}
+                      />
+                      <button type="submit" className="primary" disabled={chatSending}>
+                        {chatSending ? "Sending…" : "Send"}
+                      </button>
+                    </form>
+                  </>
+                )}
+              </section>
+            </div>
           </>
         )}
 
@@ -854,6 +1026,62 @@ export default function App() {
                 {paymentActionLoading ? "Working…" : "Approve payment"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {chatModalUser && (
+        <div className="modal-overlay" role="presentation" onClick={closeChatModal}>
+          <div
+            className="modal modal-chat"
+            role="dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3>Chat with {chatModalUser.displayName}</h3>
+            <p className="muted">{chatModalUser.email}</p>
+            <div className="chat-messages modal-chat-messages">
+              {chatLoading && chatMessages.length === 0 ? (
+                <p className="muted">Loading…</p>
+              ) : chatMessages.length === 0 ? (
+                <p className="muted">No messages yet.</p>
+              ) : (
+                chatMessages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`chat-bubble ${msg.fromAdmin ? "out" : "in"}`}
+                  >
+                    {!msg.fromAdmin && (
+                      <span className="chat-sender">{msg.senderName}</span>
+                    )}
+                    <p>{msg.body}</p>
+                    <time>{fmtDate(msg.createdAt)}</time>
+                  </div>
+                ))
+              )}
+            </div>
+            <form
+              className="chat-compose"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void sendChatMessage(chatModalUser.id);
+              }}
+            >
+              <textarea
+                rows={3}
+                placeholder="Write to trader…"
+                value={chatDraft}
+                onChange={(e) => setChatDraft(e.target.value)}
+                maxLength={4000}
+              />
+              <div className="modal-actions">
+                <button type="button" className="secondary" onClick={closeChatModal}>
+                  Close
+                </button>
+                <button type="submit" className="primary" disabled={chatSending}>
+                  {chatSending ? "Sending…" : "Send"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

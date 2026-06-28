@@ -7,6 +7,7 @@ import {
   IsString,
   IsBoolean,
   MinLength,
+  MaxLength,
   Equals,
   IsIn,
   ValidateIf,
@@ -473,4 +474,11 @@ export class HubActionDto {
   @IsOptional()
   @IsString()
   message?: string;
+}
+
+export class SendMessageDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(4000)
+  body: string;
 }

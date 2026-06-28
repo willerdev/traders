@@ -108,6 +108,21 @@ export const api = {
       body: JSON.stringify({ reason }),
     }),
 
+  messageThreads: () =>
+    request<{ items: MessageThreadSummary[] }>("/admin/messages/threads"),
+
+  getMessageThread: (userId: string) =>
+    request<MessageThreadDetail>(`/admin/messages/users/${userId}`),
+
+  sendMessage: (userId: string, body: string) =>
+    request<DirectMessage>(`/admin/messages/users/${userId}`, {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    }),
+
+  messagesUnreadCount: () =>
+    request<{ count: number }>("/admin/messages/unread-count"),
+
   hubSenderReport: (params?: {
     days?: number;
     sort?: string;
@@ -220,4 +235,39 @@ export type HubSenderReport = {
   total_senders: number;
   returned: number;
   senders: HubSenderStat[];
+};
+
+export type DirectMessage = {
+  id: string;
+  userId: string;
+  senderId: string;
+  senderRole: string;
+  senderName: string;
+  body: string;
+  readAt: string | null;
+  createdAt: string;
+  fromAdmin: boolean;
+};
+
+export type MessageThreadSummary = {
+  userId: string;
+  displayName: string;
+  email: string | null;
+  status: string;
+  unreadCount: number;
+  lastMessage: {
+    body: string;
+    createdAt: string;
+    fromAdmin: boolean;
+    senderName: string;
+  };
+};
+
+export type MessageThreadDetail = {
+  userId: string;
+  displayName: string;
+  email: string | null;
+  status: string;
+  messages: DirectMessage[];
+  unreadCount: number;
 };

@@ -131,6 +131,8 @@ model User {
   profile            UserProfile?
   kyc                KycVerification?
   tpClaims           TpClaim[]
+  directMessages     DirectMessage[] @relation("MessageThread")
+  sentDirectMessages DirectMessage[] @relation("MessageSender")
 
   @@index([status])
   @@index([role])
@@ -517,4 +519,21 @@ model AuditLog {
   @@index([adminId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+model DirectMessage {
+  id         String    @id @default(cuid())
+  userId     String
+  senderId   String
+  senderRole UserRole
+  body       String    @db.Text
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  threadUser User @relation("MessageThread", fields: [userId], references: [id], onDelete: Cascade)
+  sender     User @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+  @@map("direct_messages")
 }

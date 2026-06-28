@@ -340,6 +340,17 @@ class ApiClient {
     },
   };
 
+  messages = {
+    getThread: () => this.request<DirectMessageThread>("/messages"),
+    send: (body: string) =>
+      this.request<DirectMessage>("/messages", {
+        method: "POST",
+        body: JSON.stringify({ body }),
+      }),
+    unreadCount: () =>
+      this.request<{ count: number }>("/messages/unread-count"),
+  };
+
   leaderboard = {
     get: (week?: number, year?: number) => {
       const params = new URLSearchParams();
@@ -817,6 +828,24 @@ export interface HubSenderReport {
   returned: number;
   generated_at?: string | null;
   senders: HubSenderStat[];
+}
+
+export interface DirectMessage {
+  id: string;
+  userId: string;
+  senderId: string;
+  senderRole: string;
+  senderName: string;
+  body: string;
+  readAt: string | null;
+  createdAt: string;
+  fromAdmin: boolean;
+}
+
+export interface DirectMessageThread {
+  userId: string;
+  messages: DirectMessage[];
+  unreadCount: number;
 }
 
 export interface SetupResolution {

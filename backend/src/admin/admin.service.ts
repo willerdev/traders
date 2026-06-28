@@ -12,7 +12,8 @@ import { TpClaimsService } from '../tp-claims/tp-claims.service';
 import { PromoService } from '../payments/promo.service';
 import { SignalHubService } from '../signals/signal-hub.service';
 import { AuthService } from '../auth/auth.service';
-import { CreatePromoCodeDto } from '../common/dto';
+import { MessagesService } from '../messages/messages.service';
+import { CreatePromoCodeDto, SendMessageDto } from '../common/dto';
 
 @Injectable()
 export class AdminService {
@@ -24,6 +25,7 @@ export class AdminService {
     private promo: PromoService,
     private signalHub: SignalHubService,
     private auth: AuthService,
+    private messages: MessagesService,
   ) {}
 
   async getOverview() {
@@ -90,6 +92,22 @@ export class AdminService {
       );
     }
     return report;
+  }
+
+  listMessageThreads() {
+    return this.messages.listAdminThreads();
+  }
+
+  getMessageThread(userId: string) {
+    return this.messages.getAdminThread(userId);
+  }
+
+  sendMessageToUser(adminId: string, userId: string, dto: SendMessageDto) {
+    return this.messages.sendAdminMessage(adminId, userId, dto.body);
+  }
+
+  getMessagesUnreadTotal() {
+    return this.messages.getAdminUnreadTotal().then((count) => ({ count }));
   }
 
   async listPendingKyc() {

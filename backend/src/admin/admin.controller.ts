@@ -9,7 +9,7 @@ import {
   Request,
 } from '@nestjs/common';
 import { AdminService } from './admin.service';
-import { CreatePromoCodeDto } from '../common/dto';
+import { CreatePromoCodeDto, SendMessageDto } from '../common/dto';
 import { JwtAuthGuard, RolesGuard } from '../auth/guards';
 import { Roles } from '../auth/decorators/roles.decorator';
 
@@ -190,5 +190,29 @@ export class AdminController {
       req.user.id,
       reason || 'Registration payment not accepted',
     );
+  }
+
+  @Get('messages/threads')
+  listMessageThreads() {
+    return this.adminService.listMessageThreads();
+  }
+
+  @Get('messages/unread-count')
+  messagesUnreadCount() {
+    return this.adminService.getMessagesUnreadTotal();
+  }
+
+  @Get('messages/users/:userId')
+  getMessageThread(@Param('userId') userId: string) {
+    return this.adminService.getMessageThread(userId);
+  }
+
+  @Post('messages/users/:userId')
+  sendMessageToUser(
+    @Param('userId') userId: string,
+    @Request() req: { user: { id: string } },
+    @Body() dto: SendMessageDto,
+  ) {
+    return this.adminService.sendMessageToUser(req.user.id, userId, dto);
   }
 }
