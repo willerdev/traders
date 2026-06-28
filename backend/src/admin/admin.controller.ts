@@ -94,6 +94,36 @@ export class AdminController {
     return this.adminService.listPendingPayouts();
   }
 
+  @Get('payouts/custody/wallet')
+  getPayoutCustodyWallet() {
+    return this.adminService.getNowPaymentsWallet();
+  }
+
+  @Post('payouts/custody/deposit')
+  createPayoutCustodyDeposit(
+    @Request() req: { user: { id: string } },
+    @Body('amount') amount: number,
+    @Body('network') network: string,
+  ) {
+    return this.adminService.createCustodyDeposit(
+      req.user.id,
+      Number(amount),
+      network || 'TRC20',
+    );
+  }
+
+  @Get('payouts/custody/deposits')
+  listPayoutCustodyDeposits(@Query('limit') limit?: string) {
+    return this.adminService.listCustodyDeposits(
+      limit ? Number(limit) : undefined,
+    );
+  }
+
+  @Get('payouts/custody/deposits/:depositId')
+  getPayoutCustodyDeposit(@Param('depositId') depositId: string) {
+    return this.adminService.getCustodyDepositStatus(depositId);
+  }
+
   @Post('payouts/:payoutId/approve')
   approvePayout(
     @Param('payoutId') payoutId: string,

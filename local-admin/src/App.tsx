@@ -129,14 +129,42 @@ export default function App() {
       } else if (active === "kyc") {
         setKycQueue(await api.kycPending());
       } else if (active === "payouts") {
-        const [res, wallet, deposits] = await Promise.all([
+        const [payoutsRes, walletRes, depositsRes] = await Promise.allSettled([
           api.payouts(),
           api.nowPaymentsWallet(),
           api.custodyDeposits(10),
         ]);
-        setPayouts(res.items);
-        setNpWallet(wallet);
-        setCustodyDeposits(deposits);
+
+        if (payoutsRes.status === "fulfilled") {
+          setPayouts(payoutsRes.value.items);
+        } else {
+          throw payoutsRes.reason;
+        }
+
+        if (walletRes.status === "fulfilled") {
+          setNpWallet(walletRes.value);
+        } else {
+          const errMsg =
+            walletRes.reason instanceof Error
+              ? walletRes.reason.message
+              : "Failed to load custody wallet";
+          setNpWallet({
+            configured: false,
+            usdtBalance: 0,
+            pendingCryptoPayoutTotal: 0,
+            pendingCryptoPayoutCount: 0,
+            message:
+              errMsg.includes("Cannot GET") || errMsg.includes("404")
+                ? "Custody wallet API is not deployed yet — redeploy traders-api on Render, then refresh."
+                : errMsg,
+          });
+        }
+
+        if (depositsRes.status === "fulfilled") {
+          setCustodyDeposits(depositsRes.value);
+        } else {
+          setCustodyDeposits([]);
+        }
       } else if (active === "tpClaims") {
         setTpClaims(await api.tpClaimsPending());
       } else if (active === "promos") {

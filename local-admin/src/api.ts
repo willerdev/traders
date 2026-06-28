@@ -130,19 +130,23 @@ export const api = {
     }),
 
   nowPaymentsWallet: () =>
-    request<NowPaymentsWalletSummary>("/admin/nowpayments/wallet"),
+    request<NowPaymentsWalletSummary>("/admin/payouts/custody/wallet"),
 
   createCustodyDeposit: (amount: number, network: string) =>
-    request<CustodyDepositCreated>("/admin/nowpayments/deposit", {
+    request<CustodyDepositCreated>("/admin/payouts/custody/deposit", {
       method: "POST",
       body: JSON.stringify({ amount, network }),
     }),
 
   custodyDeposits: (limit = 10) =>
-    request<CustodyDepositRow[]>(`/admin/nowpayments/deposits?limit=${limit}`),
+    request<CustodyDepositRow[]>(
+      `/admin/payouts/custody/deposits?limit=${limit}`,
+    ),
 
   custodyDepositStatus: (depositId: string) =>
-    request<CustodyDepositStatus>(`/admin/nowpayments/deposits/${depositId}`),
+    request<CustodyDepositStatus>(
+      `/admin/payouts/custody/deposits/${depositId}`,
+    ),
 
   tpClaimsPending: () => request<TpClaimRow[]>("/admin/tp-claims/pending"),
   approveTpClaim: (claimId: string) =>
