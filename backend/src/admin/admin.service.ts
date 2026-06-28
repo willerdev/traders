@@ -13,6 +13,7 @@ import { PromoService } from '../payments/promo.service';
 import { SignalHubService } from '../signals/signal-hub.service';
 import { AuthService } from '../auth/auth.service';
 import { MessagesService } from '../messages/messages.service';
+import { NotificationService } from '../email/notification.service';
 import { CreatePromoCodeDto, SendMessageDto } from '../common/dto';
 
 @Injectable()
@@ -26,6 +27,7 @@ export class AdminService {
     private signalHub: SignalHubService,
     private auth: AuthService,
     private messages: MessagesService,
+    private notifications: NotificationService,
   ) {}
 
   async getOverview() {
@@ -148,6 +150,7 @@ export class AdminService {
     });
 
     await this.logAction(adminId, 'KYC_APPROVED', userId);
+    this.notifications.kycApproved(userId);
     return updated;
   }
 
@@ -171,6 +174,7 @@ export class AdminService {
     });
 
     await this.logAction(adminId, 'KYC_REJECTED', userId, { reason });
+    this.notifications.kycRejected(userId, reason.trim());
     return updated;
   }
 
@@ -348,6 +352,8 @@ export class AdminService {
       amount: fee,
     });
 
+    this.notifications.accountActivated(userId);
+
     return {
       userId,
       status: 'ACTIVE',
@@ -378,6 +384,8 @@ export class AdminService {
     });
 
     await this.logAction(adminId, 'REGISTRATION_DENIED', userId, { reason });
+
+    this.notifications.registrationDenied(userId, reason.trim());
 
     return {
       userId,

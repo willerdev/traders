@@ -15,12 +15,14 @@ import { UploadsModule } from './uploads/uploads.module';
 import { TradesModule } from './trades/trades.module';
 import { AdminModule } from './admin/admin.module';
 import { MessagesModule } from './messages/messages.module';
+import { EmailModule } from './email/email.module';
 import { PlatformModule } from './platform/platform.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
+    EmailModule,
     PrismaModule,
     ComplianceModule,
     AuthModule,

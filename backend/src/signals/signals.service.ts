@@ -498,6 +498,87 @@ export class SignalsService {
     };
   }
 
+  async invalidateSetup(
+    userId: string,
+    signalId: string,
+    reason?: string,
+  ) {
+    await this.compliance.requireActiveTrader(userId);
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const signal = await this.prisma.signal.findFirst({
+      where: { signalId, userId, status: 'OPEN' },
+      include: { trade: true },
+    });
+    if (!signal) {
+      throw new NotFoundException('Open setup not found');
+    }
+
+    let hub: Record<string, unknown> | null = null;
+    let hubWarning: string | undefined;
+
+    if (this.signalHub.isConfigured) {
+      const sendername = this.signalHub.toSenderName(
+        user.displayName,
+        userId,
+      );
+      const result = await this.signalHub.invalidateByExternalId(
+        signal.signalId,
+        sendername,
+        reason,
+      );
+      if (result.data) {
+        hub = result.data as Record<string, unknown>;
+      } else {
+        hubWarning = result.error;
+      }
+    }
+
+    const now = new Date();
+    const note =
+      reason?.trim() ||
+      'Setup invalidated by trader — pending Hub execution cancelled';
+
+    await this.prisma.$transaction([
+      this.prisma.signal.update({
+        where: { id: signal.id },
+        data: {
+          status: 'CANCELLED',
+          resolvedAt: now,
+        },
+      }),
+      ...(signal.trade
+        ? [
+            this.prisma.trade.update({
+              where: { id: signal.trade.id },
+              data: { closedAt: now },
+            }),
+          ]
+        : []),
+      this.prisma.tpClaim.updateMany({
+        where: { signalId: signal.id, status: 'PENDING_REVIEW' },
+        data: {
+          status: 'REJECTED',
+          adminNote: note,
+          reviewedAt: now,
+        },
+      }),
+    ]);
+
+    this.logger.log(
+      `Setup invalidated: ${signal.signalId} by ${userId}${hubWarning ? ` (hub: ${hubWarning})` : ''}`,
+    );
+
+    return {
+      status: 'cancelled',
+      signalId: signal.signalId,
+      hub,
+      hubWarning,
+    };
+  }
+
   async handleTradeLifecycleWebhook(dto: TradeLifecycleWebhookDto) {
     const items = this.extractLifecycleItems(dto);
     const results: Record<string, unknown>[] = [];

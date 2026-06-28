@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api, type OpenSetupItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, Loader2, RefreshCw, Target, Archive, Clock } from "lucide-react";
+import { CheckCircle2, Loader2, RefreshCw, Target, Archive, Clock, Ban } from "lucide-react";
 import Link from "next/link";
 import { ClaimTpModal } from "@/components/dashboard/claim-tp-modal";
 
@@ -20,6 +20,7 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [claiming, setClaiming] = useState<string | null>(null);
   const [archiving, setArchiving] = useState<string | null>(null);
+  const [invalidating, setInvalidating] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [tpModal, setTpModal] = useState<{ signalId: string; symbol: string } | null>(null);
 
@@ -70,6 +71,34 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
   function openTpModal(signalId: string, symbol: string) {
     setError(null);
     setTpModal({ signalId, symbol });
+  }
+
+  async function handleInvalidate(signalId: string, symbol: string) {
+    if (
+      !confirm(
+        `Invalidate ${symbol}? This cancels the pending Signal Hub order so it will not execute. Use Archive instead if you only want to hide a stale setup locally.`,
+      )
+    ) {
+      return;
+    }
+
+    setInvalidating(signalId);
+    setSuccess(null);
+    setError(null);
+    try {
+      const result = await api.signals.invalidate(signalId);
+      setSuccess(
+        result.hubWarning
+          ? `${symbol} invalidated on platform (Hub: ${result.hubWarning})`
+          : `${symbol} invalidated — Hub will not execute this setup`,
+      );
+      await load();
+      onClaimed?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Invalidate failed");
+    } finally {
+      setInvalidating(null);
+    }
   }
 
   async function handleArchive(signalId: string, symbol: string) {
@@ -170,6 +199,7 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
               const res = setup.resolution;
               const claimingSl = claiming === `${setup.signalId}:sl`;
               const isArchiving = archiving === setup.signalId;
+              const isInvalidating = invalidating === setup.signalId;
 
               return (
                 <div
@@ -257,8 +287,24 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
                       <Button
                         variant="ghost"
                         size="sm"
+                        className="gap-1 text-amber-400/90"
+                        disabled={Boolean(claiming) || isInvalidating || isArchiving}
+                        onClick={() =>
+                          handleInvalidate(setup.signalId, setup.symbol)
+                        }
+                      >
+                        {isInvalidating ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Ban className="h-3.5 w-3.5" />
+                        )}
+                        Invalidate
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         className="gap-1 text-gray-400"
-                        disabled={Boolean(claiming) || isArchiving}
+                        disabled={Boolean(claiming) || isArchiving || isInvalidating}
                         onClick={() =>
                           handleArchive(setup.signalId, setup.symbol)
                         }

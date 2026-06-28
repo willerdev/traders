@@ -486,6 +486,13 @@ export class HubActionDto {
   message?: string;
 }
 
+export class InvalidateSetupDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
+}
+
 export class SendMessageDto {
   @IsString()
   @IsNotEmpty()

@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletService } from '../trades/wallet.service';
 import { PriceMonitorService } from '../trades/price-monitor.service';
+import { NotificationService } from '../email/notification.service';
 import { Signal, Trade } from '@prisma/client';
 
 @Injectable()
@@ -15,6 +16,7 @@ export class TpClaimsService {
     private prisma: PrismaService,
     private wallet: WalletService,
     private priceMonitor: PriceMonitorService,
+    private notifications: NotificationService,
   ) {}
 
   async hasPendingClaim(signalId: string): Promise<boolean> {
@@ -259,6 +261,12 @@ export class TpClaimsService {
       },
     });
 
+    this.notifications.tpClaimApproved(claim.userId, {
+      symbol: claim.symbol,
+      reward: result.reward,
+      signalId: claim.signal.signalId,
+    });
+
     return {
       status: 'approved',
       claimId,
@@ -297,6 +305,11 @@ export class TpClaimsService {
         targetId: claimId,
         metadata: { userId: claim.userId, reason: note },
       },
+    });
+
+    this.notifications.tpClaimRejected(claim.userId, {
+      symbol: claim.symbol,
+      reason: note,
     });
 
     return {

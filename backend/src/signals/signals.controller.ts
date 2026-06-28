@@ -18,6 +18,7 @@ import {
   CreateSignalDto,
   SaveSignalDraftDto,
   ClaimSetupDto,
+  InvalidateSetupDto,
   TradeOutcomeWebhookDto,
   TradeLifecycleWebhookDto,
   HubActionDto,
@@ -226,6 +227,20 @@ export class SignalsController {
   @UseGuards(JwtAuthGuard)
   listOpenSetups(@Request() req: { user: { id: string } }) {
     return this.signalsService.getOpenSignalsWithResolution(req.user.id);
+  }
+
+  @Post('invalidate/:signalId')
+  @UseGuards(JwtAuthGuard)
+  invalidateSetup(
+    @Request() req: { user: { id: string } },
+    @Param('signalId') signalId: string,
+    @Body() dto: InvalidateSetupDto,
+  ) {
+    return this.signalsService.invalidateSetup(
+      req.user.id,
+      signalId,
+      dto.reason,
+    );
   }
 
   @Post('archive/:signalId')

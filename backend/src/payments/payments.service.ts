@@ -9,6 +9,7 @@ import { AuthService } from '../auth/auth.service';
 import { NowPaymentsService } from './nowpayments.service';
 import { PromoService } from './promo.service';
 import { REGISTRATION_FEE_USDT } from '../common/constants';
+import { NotificationService } from '../email/notification.service';
 
 @Injectable()
 export class PaymentsService {
@@ -18,6 +19,7 @@ export class PaymentsService {
     private nowPayments: NowPaymentsService,
     private promo: PromoService,
     private config: ConfigService,
+    private notifications: NotificationService,
   ) {}
 
   private ipnUrl() {
@@ -63,6 +65,8 @@ export class PaymentsService {
     });
 
     await this.authService.activateAccount(userId);
+
+    this.notifications.accountActivated(userId);
 
     return {
       success: true,
@@ -207,6 +211,7 @@ export class PaymentsService {
     });
 
     await this.authService.activateAccount(payment.userId);
+    this.notifications.paymentConfirmed(payment.userId);
     return { status: 'confirmed', paymentId: payment.id };
   }
 

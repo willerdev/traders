@@ -515,6 +515,38 @@ export class SignalHubService {
     return data;
   }
 
+  async invalidateByExternalId(
+    externalId: string,
+    sendername: string,
+    reason?: string,
+  ) {
+    const q = new URLSearchParams({ sendername });
+    const body =
+      reason?.trim() ?
+        JSON.stringify({ reason: reason.trim().slice(0, 500) })
+      : undefined;
+
+    const { data, error } = await this.hubRequest<{
+      id: string;
+      status: string;
+      ok?: boolean;
+      duplicate?: boolean;
+      progress?: { stage: string; message: string; executed: boolean };
+    }>(
+      `/v1/signals/external/${encodeURIComponent(externalId)}/invalidate?${q}`,
+      {
+        method: 'POST',
+        ...(body ? { body } : {}),
+      },
+    );
+
+    if (!data) {
+      return { data: null, error: error || 'Signal Hub invalidate failed' };
+    }
+
+    return { data, error: undefined };
+  }
+
   async listSignals(
     sendername: string,
     filters?: {

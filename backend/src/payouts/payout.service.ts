@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NowPaymentsService } from '../payments/nowpayments.service';
 import { ConfigService } from '@nestjs/config';
 import { ComplianceService } from '../compliance/compliance.service';
+import { NotificationService } from '../email/notification.service';
 
 @Injectable()
 export class PayoutService {
@@ -17,6 +18,7 @@ export class PayoutService {
     private nowPayments: NowPaymentsService,
     private config: ConfigService,
     private compliance: ComplianceService,
+    private notifications: NotificationService,
   ) {}
 
   private ipnUrl() {
@@ -62,6 +64,12 @@ export class PayoutService {
 
       payouts.push(payout);
       processedUserIds.push(account.userId);
+
+      this.notifications.payoutAvailable(account.userId, {
+        amount: traderShare,
+        weekNumber,
+        year,
+      });
     }
 
     if (processedUserIds.length > 0) {
@@ -149,6 +157,15 @@ export class PayoutService {
         description: `Crypto payout to ${payout.walletAddress.slice(0, 8)}...`,
       },
     });
+
+    if (payout.walletAddress) {
+      this.notifications.payoutApproved(payout.userId, {
+        amount: Number(payout.traderShare),
+        walletAddress: payout.walletAddress,
+        weekNumber: payout.weekNumber,
+        year: payout.year,
+      });
+    }
 
     return { payout: updated, gatewayResponse };
   }

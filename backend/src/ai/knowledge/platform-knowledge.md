@@ -34,7 +34,8 @@ TraderRank Pro (thetradeguard.com) is a **trader talent-discovery and funding pl
 - **Dashboard → Unresolved Setups**: setups that hit TP or SL but were not auto-recorded
 - **Claim TP**: requires before + after chart screenshots; goes to **admin review** before wallet credit
 - **Claim SL**: marks setup resolved and applies scoring
-- **Archive**: removes from open list without score/wallet change
+- **Archive**: removes from open list without score/wallet change (local only)
+- **Invalidate**: cancels pending Signal Hub execution and marks setup `CANCELLED` — use when the trade idea is no longer valid
 - Track TP claims on **TP Claims** page; rejected claims can be **resubmitted** with new screenshots
 
 ## Scoring & leaderboard

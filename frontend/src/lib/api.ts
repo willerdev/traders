@@ -212,6 +212,11 @@ class ApiClient {
         `/signals/archive/${signalId}`,
         { method: "POST" },
       ),
+    invalidate: (signalId: string, reason?: string) =>
+      this.request<InvalidateSetupResult>(`/signals/invalidate/${signalId}`, {
+        method: "POST",
+        body: JSON.stringify(reason ? { reason } : {}),
+      }),
     executionStatus: (signalId: string) =>
       this.request<HubSignalStatus>(`/signals/hub/execution/${signalId}`),
     executionLogs: (params?: { signal_id?: string; limit?: number }) => {
@@ -929,6 +934,19 @@ export interface ClaimSetupResult {
   exitPrice?: number;
   reward?: number;
   pointsAwarded?: number;
+}
+
+export interface InvalidateSetupResult {
+  status: "cancelled";
+  signalId: string;
+  hub?: {
+    id: string;
+    status: string;
+    ok?: boolean;
+    duplicate?: boolean;
+    progress?: { stage: string; message: string; executed: boolean };
+  } | null;
+  hubWarning?: string;
 }
 
 export interface TpClaimRecord {
