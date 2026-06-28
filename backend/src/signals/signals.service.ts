@@ -569,46 +569,6 @@ export class SignalsService {
       oneToOnePrice,
       tp,
     );
-    const price = await this.priceMonitor.fetchPrice(signal.symbol);
-    const priceOutcome =
-      price !== null
-        ? this.priceMonitor.outcomeAtPrice(signal.direction, tp, sl, price)
-        : null;
-
-    let hubStatus: string | null = null;
-    let hubOutcome: SetupOutcome | null = null;
-    if (this.signalHub.isConfigured) {
-      const user = await this.prisma.user.findUnique({ where: { id: userId } });
-      if (user) {
-        const sendername = this.signalHub.toSenderName(user.displayName, userId);
-        const hub = await this.signalHub.getByExternalId(signal.signalId, sendername);
-        hubStatus = hub?.status ?? null;
-        hubOutcome = await this.inferHubOutcome(sendername, hub);
-
-        if (!hubOutcome && hub?.progress?.executed && hubStatus === 'failed') {
-          hubOutcome = 'sl';
-        }
-      }
-    }
-
-    const canClaimTpBase =
-      priceOutcome === 'tp' || (priceOutcome === null && hubOutcome === 'tp');
-    const canClaimSl =
-      priceOutcome === 'sl' || (priceOutcome === null && hubOutcome === 'sl');
-
-    const pendingTpClaim = await this.tpClaims.hasPendingClaim(signal.id);
-    const activated = Boolean(signal.trade?.activatedAt);
-    const hitRr1 =
-      price !== null &&
-      priceReachedOneToOne(signal.direction, oneToOnePrice, price);
-    const canClaimTp = canClaimTpBase && !pendingTpClaim;
-    const canClaimTp1R1 =
-      !canClaimTpBase &&
-      hitRr1 &&
-      rr1Valid &&
-      activated &&
-      Number(signal.riskRewardRatio) >= 1 &&
-      !pendingTpClaim;
 
     const trader = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -624,9 +584,68 @@ export class SignalsService {
           userId,
           trader,
           oneToOnePrice,
-          price,
+          null,
         )
       : null;
+
+    let price = await this.priceMonitor.fetchPrice(signal.symbol);
+    let metaApiPrice: number | null =
+      liveTrade && typeof liveTrade.currentPrice === 'number'
+        ? liveTrade.currentPrice
+        : null;
+
+    if (metaApiPrice === null && trader && this.metaApi.isConfigured) {
+      metaApiPrice = await this.fetchMetaApiMarkPrice(
+        signal,
+        trader,
+        linkedAccountId,
+      );
+    }
+
+    if (price === null && metaApiPrice !== null) {
+      price = metaApiPrice;
+    }
+
+    const priceOutcome =
+      price !== null
+        ? this.priceMonitor.outcomeAtPrice(signal.direction, tp, sl, price)
+        : null;
+
+    let hubStatus: string | null = null;
+    let hubOutcome: SetupOutcome | null = null;
+    if (this.signalHub.isConfigured && trader) {
+      const sendername = this.signalHub.toSenderName(trader.displayName, userId);
+      const hub = await this.signalHub.getByExternalId(signal.signalId, sendername);
+      hubStatus = hub?.status ?? null;
+      hubOutcome = await this.inferHubOutcome(sendername, hub);
+
+      if (!hubOutcome && hub?.progress?.executed && hubStatus === 'failed') {
+        hubOutcome = 'sl';
+      }
+    }
+
+    const canClaimTpBase =
+      priceOutcome === 'tp' || (priceOutcome === null && hubOutcome === 'tp');
+    const canClaimSlBase =
+      priceOutcome === 'sl' || (priceOutcome === null && hubOutcome === 'sl');
+
+    const pendingTpClaim = await this.tpClaims.hasPendingClaim(signal.id);
+    const activated =
+      Boolean(signal.trade?.activatedAt) ||
+      liveTrade?.status === 'open' ||
+      liveTrade?.status === 'pending';
+    const hitRr1 =
+      price !== null &&
+      priceReachedOneToOne(signal.direction, oneToOnePrice, price);
+    const canClaimTp = canClaimTpBase && !pendingTpClaim;
+    const canClaimTp1R1 =
+      !canClaimTpBase &&
+      hitRr1 &&
+      rr1Valid &&
+      activated &&
+      Number(signal.riskRewardRatio) >= 1 &&
+      !pendingTpClaim;
+    const canClaimSl = canClaimSlBase;
 
     return {
       signalId: signal.signalId,
@@ -641,6 +660,7 @@ export class SignalsService {
       riskRewardRatio: Number(signal.riskRewardRatio),
       activated,
       currentPrice: price,
+      metaApiPrice,
       priceOutcome,
       hubStatus,
       hubOutcome,
@@ -659,6 +679,105 @@ export class SignalsService {
         Boolean(linkedAccountId),
       liveTrade,
     };
+  }
+
+  private async fetchMetaApiMarkPrice(
+    signal: { symbol: string; direction: TradeDirection; metaApiAccountId: string | null },
+    trader: { metaApiAccountId: string | null },
+    linkedAccountId: string | null,
+  ): Promise<number | null> {
+    const accountId = signal.metaApiAccountId ?? linkedAccountId;
+    if (!accountId) return null;
+
+    try {
+      const account = await this.metaApi.getAccount(accountId);
+      return await this.metaApi.getMarkPrice(
+        account,
+        signal.symbol,
+        signal.direction,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `MetaAPI mark price failed for ${signal.symbol}: ${err instanceof Error ? err.message : err}`,
+      );
+      return null;
+    }
+  }
+
+  private async verifyMetaApiTpClaim(
+    userId: string,
+    signal: {
+      signalId: string;
+      symbol: string;
+      direction: TradeDirection;
+      entryMin: unknown;
+      entryMax: unknown;
+      stopLoss: unknown;
+      takeProfit: unknown;
+      metaApiAccountId: string | null;
+      metaApiOrderId: string | null;
+      metaApiPositionId: string | null;
+      trade: { activatedAt: Date | null } | null;
+    },
+    user: { displayName: string; metaApiAccountId: string | null },
+    options: { fullTp: boolean },
+  ): Promise<{ metaApiClosed?: boolean }> {
+    if (!this.metaApi.isConfigured) return {};
+
+    const accountId = this.metaApi.resolveAccountId(
+      signal.metaApiAccountId ?? user.metaApiAccountId,
+    );
+    if (!accountId) return {};
+
+    const tp = Number(signal.takeProfit);
+    const account = await this.metaApi.getAccount(accountId);
+    const mark = await this.metaApi.getMarkPrice(
+      account,
+      signal.symbol,
+      signal.direction,
+    );
+
+    if (options.fullTp) {
+      const tpReached =
+        signal.direction === 'BUY' ? mark >= tp : mark <= tp;
+      if (!tpReached) {
+        throw new BadRequestException(
+          `MetaAPI price (${mark}) has not reached take profit (${tp}) yet`,
+        );
+      }
+
+      const closeResult = await this.metaApi.closeSignalTradeIfOpen({
+        accountId,
+        displayName: user.displayName,
+        userId,
+        signalId: signal.signalId,
+        symbol: signal.symbol,
+        metaApiPositionId: signal.metaApiPositionId,
+        metaApiOrderId: signal.metaApiOrderId,
+        tradeActivated: Boolean(signal.trade?.activatedAt),
+      });
+
+      return { metaApiClosed: closeResult.action === 'closed' };
+    }
+
+    const oneToOne = computeOneToOnePrice(
+      signal.direction,
+      Number(signal.entryMin),
+      Number(signal.entryMax),
+      Number(signal.stopLoss),
+    );
+    const rr1Reached = priceReachedOneToOne(
+      signal.direction,
+      oneToOne,
+      mark,
+    );
+    if (!rr1Reached) {
+      throw new BadRequestException(
+        `MetaAPI price (${mark}) has not reached 1:1 RR (${oneToOne}) yet`,
+      );
+    }
+
+    return {};
   }
 
   /** Lightweight MetaAPI poll — live P/L only, no Hub or claim resolution. */
@@ -988,7 +1107,30 @@ export class SignalsService {
         );
       }
 
-      return this.tpClaims.createPendingClaim(
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      const usesMetaApi =
+        this.metaApi.isConfigured &&
+        user &&
+        Boolean(
+          this.metaApi.resolveAccountId(
+            signal.metaApiAccountId ?? user.metaApiAccountId,
+          ),
+        );
+
+      let metaApiNote: string | undefined;
+      if (usesMetaApi && user) {
+        const metaResult = await this.verifyMetaApiTpClaim(
+          userId,
+          signal,
+          user,
+          { fullTp: !isRr1Claim },
+        );
+        if (metaResult.metaApiClosed) {
+          metaApiNote = 'MetaAPI position closed at take profit';
+        }
+      }
+
+      const claimResult = await this.tpClaims.createPendingClaim(
         userId,
         signal,
         exitPrice,
@@ -996,6 +1138,11 @@ export class SignalsService {
         dto.afterScreenshotUrl.trim(),
         isRr1Claim ? 'RR_1_TO_1' : 'FULL_TP',
       );
+
+      return {
+        ...claimResult,
+        ...(metaApiNote ? { metaApiNote } : {}),
+      };
     }
 
     await this.priceMonitor.ensureTradeActivated(

@@ -1088,6 +1088,7 @@ export interface SetupResolution {
   metaApiOrderId?: string | null;
   metaApiPositionId?: string | null;
   canPlaceTrade?: boolean;
+  metaApiPrice?: number | null;
   liveTrade?: SetupLiveTrade | null;
 }
 

@@ -1061,4 +1061,56 @@ export class MetaApiService {
       symbol,
     });
   }
+
+  async getMarkPrice(
+    account: MetaApiAccount,
+    symbol: string,
+    direction: TradeDirection,
+  ): Promise<number> {
+    const quote = await this.getSymbolPrice(account, symbol);
+    return direction === 'BUY' ? quote.bid : quote.ask;
+  }
+
+  /** Close or cancel a setup's MetaAPI trade when it belongs to this trader (comment match). */
+  async closeSignalTradeIfOpen(input: {
+    accountId: string;
+    displayName: string;
+    userId: string;
+    signalId: string;
+    symbol: string;
+    metaApiPositionId?: string | null;
+    metaApiOrderId?: string | null;
+    tradeActivated: boolean;
+  }): Promise<{ action: 'closed' | 'cancelled' | 'none'; positionId?: string }> {
+    if (!this.isConfigured) return { action: 'none' };
+
+    const account = await this.ensureAccountReady(input.accountId);
+    const { clientId } = this.buildIdentifiersForUser(
+      input.displayName,
+      input.userId,
+      input.signalId,
+      input.symbol,
+    );
+    const live = await this.findLiveTradeForSignal(account, {
+      positionId: input.metaApiPositionId,
+      orderId: input.metaApiOrderId,
+      clientId,
+      displayName: input.displayName,
+      userId: input.userId,
+      symbol: input.symbol,
+      activated: input.tradeActivated,
+    });
+
+    if (live.status === 'pending' && live.orderId) {
+      await this.cancelPendingOrder(account, live.orderId);
+      return { action: 'cancelled' };
+    }
+
+    if (live.status === 'open' && live.positionId) {
+      await this.closePositionById(account, live.positionId);
+      return { action: 'closed', positionId: live.positionId };
+    }
+
+    return { action: 'none' };
+  }
 }

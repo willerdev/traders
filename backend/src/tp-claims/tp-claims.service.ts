@@ -10,6 +10,7 @@ import { PriceMonitorService } from '../trades/price-monitor.service';
 import { NotificationService } from '../email/notification.service';
 import { Signal, Trade, TpClaimType } from '@prisma/client';
 import { TP_REWARD_USD } from '../common/constants';
+import { MetaApiService } from '../metaapi/metaapi.service';
 
 @Injectable()
 export class TpClaimsService {
@@ -18,6 +19,7 @@ export class TpClaimsService {
     private wallet: WalletService,
     private priceMonitor: PriceMonitorService,
     private notifications: NotificationService,
+    private metaApi: MetaApiService,
   ) {}
 
   async hasPendingClaim(signalId: string): Promise<boolean> {
@@ -245,7 +247,10 @@ export class TpClaimsService {
   async approveClaim(claimId: string, adminId: string) {
     const claim = await this.prisma.tpClaim.findUnique({
       where: { id: claimId },
-      include: { signal: { include: { trade: true } } },
+      include: {
+        signal: { include: { trade: true } },
+        user: { select: { displayName: true, metaApiAccountId: true } },
+      },
     });
 
     if (!claim) throw new NotFoundException('TP claim not found');
@@ -254,6 +259,32 @@ export class TpClaimsService {
     }
     if (!claim.signal.trade) {
       throw new BadRequestException('Setup has no trade record');
+    }
+
+    if (
+      claim.claimType === 'FULL_TP' &&
+      this.metaApi.isConfigured &&
+      claim.user
+    ) {
+      const accountId = this.metaApi.resolveAccountId(
+        claim.signal.metaApiAccountId ?? claim.user.metaApiAccountId,
+      );
+      if (accountId) {
+        try {
+          await this.metaApi.closeSignalTradeIfOpen({
+            accountId,
+            displayName: claim.user.displayName,
+            userId: claim.userId,
+            signalId: claim.signal.signalId,
+            symbol: claim.signal.symbol,
+            metaApiPositionId: claim.signal.metaApiPositionId,
+            metaApiOrderId: claim.signal.metaApiOrderId,
+            tradeActivated: Boolean(claim.signal.trade.activatedAt),
+          });
+        } catch {
+          // Position may already be closed when the trader submitted the claim
+        }
+      }
     }
 
     const exitPrice = Number(claim.exitPrice);
