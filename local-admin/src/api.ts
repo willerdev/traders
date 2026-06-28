@@ -119,7 +119,30 @@ export const api = {
       body: JSON.stringify({ reason }),
     }),
   approvePayout: (payoutId: string) =>
-    request(`/admin/payouts/${payoutId}/approve`, { method: "POST" }),
+    request<ApprovePayoutResponse>(`/admin/payouts/${payoutId}/approve`, {
+      method: "POST",
+    }),
+
+  verifyPayout: (payoutId: string, code: string) =>
+    request<{ message: string }>(`/admin/payouts/${payoutId}/verify`, {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    }),
+
+  nowPaymentsWallet: () =>
+    request<NowPaymentsWalletSummary>("/admin/nowpayments/wallet"),
+
+  createCustodyDeposit: (amount: number, network: string) =>
+    request<CustodyDepositCreated>("/admin/nowpayments/deposit", {
+      method: "POST",
+      body: JSON.stringify({ amount, network }),
+    }),
+
+  custodyDeposits: (limit = 10) =>
+    request<CustodyDepositRow[]>(`/admin/nowpayments/deposits?limit=${limit}`),
+
+  custodyDepositStatus: (depositId: string) =>
+    request<CustodyDepositStatus>(`/admin/nowpayments/deposits/${depositId}`),
 
   tpClaimsPending: () => request<TpClaimRow[]>("/admin/tp-claims/pending"),
   approveTpClaim: (claimId: string) =>
@@ -261,11 +284,59 @@ export type PayoutRow = {
   walletAddress?: string;
   payoutMethod?: string;
   requestedAt: string;
+  gatewayPayoutId?: string | null;
   user: {
     displayName: string;
     email: string;
     kyc?: { status: string } | null;
   };
+};
+
+export type ApprovePayoutResponse = {
+  verificationRequired?: boolean;
+  gatewayPayoutId?: string;
+  message?: string;
+};
+
+export type NowPaymentsWalletSummary = {
+  configured: boolean;
+  message?: string;
+  usdtBalance: number;
+  balances?: Record<string, { amount?: number; pendingAmount?: number }>;
+  pendingCryptoPayoutTotal: number;
+  pendingCryptoPayoutCount: number;
+};
+
+export type CustodyDepositCreated = {
+  depositId: string;
+  amount: number;
+  network: string;
+  payCurrency?: string;
+  payAmount?: number;
+  payAddress?: string;
+  gatewayPaymentId?: number;
+  liveStatus?: string;
+  invoiceUrl?: string;
+  configured: boolean;
+  message: string;
+};
+
+export type CustodyDepositRow = {
+  id: string;
+  amount: string;
+  network: string;
+  status: string;
+  createdAt: string;
+  confirmedAt?: string | null;
+  admin?: { email: string | null; displayName: string };
+};
+
+export type CustodyDepositStatus = {
+  deposit: CustodyDepositRow;
+  liveStatus?: string;
+  payAddress?: string;
+  payAmount?: number;
+  confirmed: boolean;
 };
 
 export type TpClaimRow = {

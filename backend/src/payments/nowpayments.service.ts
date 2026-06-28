@@ -187,6 +187,39 @@ export class NowPaymentsService {
     });
   }
 
+  async verifyPayout(payoutId: string, verificationCode: string) {
+    const token = await this.getPayoutAuthToken();
+
+    return this.request<{ ok?: boolean; message?: string }>(
+      `/payout/${payoutId}/verify`,
+      {
+        method: 'POST',
+        headers: this.headers({ Authorization: `Bearer ${token}` }),
+        body: JSON.stringify({ verification_code: verificationCode }),
+      },
+    );
+  }
+
+  async getBalance() {
+    return this.request<Record<string, { amount?: number; pendingAmount?: number }>>(
+      '/balance',
+      { headers: this.headers() },
+    );
+  }
+
+  /** Sum USDT custody balances (TRC20 + BEP20 + ERC20 when present). */
+  sumUsdtBalance(balances: Record<string, { amount?: number }>): number {
+    const keys = ['usdttrc20', 'usdtbsc', 'usdterc20', 'usdt'];
+    let total = 0;
+    for (const key of keys) {
+      const entry = balances[key];
+      if (entry?.amount != null && Number.isFinite(entry.amount)) {
+        total += entry.amount;
+      }
+    }
+    return total;
+  }
+
   verifyIpnSignature(payload: string, signature: string): boolean {
     const secret = this.config.get<string>('NOWPAYMENTS_IPN_SECRET');
     if (!secret) return true;

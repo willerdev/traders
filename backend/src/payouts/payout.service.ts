@@ -233,18 +233,33 @@ export class PayoutService {
     }
 
     let gatewayResponse: object | undefined;
+    let gatewayPayoutId: string | undefined;
+    let verificationRequired = false;
     const isMobileMoney = payout.payoutMethod === 'MOBILE_MONEY';
 
     if (!isMobileMoney && this.nowPayments.isConfigured) {
       try {
+        const balances = await this.nowPayments.getBalance();
+        const available = this.nowPayments.sumUsdtBalance(balances);
+        const needed = Number(payout.traderShare);
+        if (available < needed) {
+          throw new BadRequestException(
+            `Insufficient NOWPayments custody balance ($${available.toFixed(2)} available, $${needed.toFixed(2)} required). Top up via Admin → Payouts → Fund custody.`,
+          );
+        }
+
         const currency = this.nowPayments.mapNetworkToCurrency(network);
-        gatewayResponse = await this.nowPayments.createPayout({
+        const created = await this.nowPayments.createPayout({
           address: payout.walletAddress,
-          amount: Number(payout.traderShare),
+          amount: needed,
           currency,
           ipnCallbackUrl: this.ipnUrl(),
         });
+        gatewayResponse = created;
+        gatewayPayoutId = String(created.id);
+        verificationRequired = true;
       } catch (err) {
+        if (err instanceof BadRequestException) throw err;
         await this.prisma.payout.update({
           where: { id: payoutId },
           data: {
@@ -260,9 +275,12 @@ export class PayoutService {
       data: {
         status: 'APPROVED',
         processedAt: new Date(),
+        gatewayPayoutId,
         notes: isMobileMoney
           ? `Approved by admin ${adminId} — mobile money (manual transfer)`
-          : `Approved by admin ${adminId}${gatewayResponse ? ' — sent via NOWPayments' : ''}`,
+          : verificationRequired
+            ? `Approved by admin ${adminId} — NOWPayments payout ${gatewayPayoutId} created (enter email 2FA to release funds)`
+            : `Approved by admin ${adminId}${gatewayResponse ? ' — sent via NOWPayments' : ''}`,
       },
     });
 
@@ -287,7 +305,48 @@ export class PayoutService {
       });
     }
 
-    return { payout: updated, gatewayResponse };
+    return {
+      payout: updated,
+      gatewayResponse,
+      verificationRequired,
+      gatewayPayoutId,
+    };
+  }
+
+  async verifyGatewayPayout(
+    payoutId: string,
+    verificationCode: string,
+    adminId: string,
+  ) {
+    const code = verificationCode?.trim();
+    if (!code) {
+      throw new BadRequestException('NOWPayments 2FA verification code is required');
+    }
+
+    const payout = await this.prisma.payout.findUnique({
+      where: { id: payoutId },
+    });
+    if (!payout) throw new NotFoundException('Payout not found');
+    if (!payout.gatewayPayoutId) {
+      throw new BadRequestException(
+        'This payout has no pending NOWPayments batch — approve it first',
+      );
+    }
+
+    await this.nowPayments.verifyPayout(payout.gatewayPayoutId, code);
+
+    const updated = await this.prisma.payout.update({
+      where: { id: payoutId },
+      data: {
+        notes: `${payout.notes ?? ''} — verified by admin ${adminId}`.trim(),
+      },
+    });
+
+    return {
+      payout: updated,
+      message:
+        'Payout verified. NOWPayments will send USDT to the trader wallet shortly.',
+    };
   }
 
   async approvePayout(payoutId: string, adminId: string) {
@@ -303,6 +362,32 @@ export class PayoutService {
 
   async handlePayoutIpn(body: Record<string, unknown>) {
     this.logger.log(`Payout IPN received: ${JSON.stringify(body).slice(0, 400)}`);
+
+    const payoutId =
+      typeof body.id === 'string'
+        ? body.id
+        : typeof body.payout_id === 'string'
+          ? body.payout_id
+          : undefined;
+    const status =
+      typeof body.status === 'string'
+        ? body.status.toLowerCase()
+        : typeof body.payment_status === 'string'
+          ? body.payment_status.toLowerCase()
+          : '';
+
+    if (payoutId) {
+      const payout = await this.prisma.payout.findFirst({
+        where: { gatewayPayoutId: payoutId },
+      });
+      if (payout && ['finished', 'confirmed', 'sent', 'completed'].includes(status)) {
+        await this.prisma.payout.update({
+          where: { id: payout.id },
+          data: { status: 'PAID' },
+        });
+      }
+    }
+
     return { ok: true };
   }
 }

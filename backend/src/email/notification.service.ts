@@ -306,18 +306,34 @@ export class NotificationService {
     });
   }
 
-  paymentConfirmed(userId: string) {
-    this.dispatch(this.sendPaymentConfirmed(userId), 'Payment confirmed');
+  paymentConfirmed(
+    userId: string,
+    data?: { txHash?: string; amount?: number; network?: string },
+  ) {
+    this.dispatch(this.sendPaymentConfirmed(userId, data), 'Payment confirmed');
   }
 
-  private async sendPaymentConfirmed(userId: string) {
+  private async sendPaymentConfirmed(
+    userId: string,
+    data?: { txHash?: string; amount?: number; network?: string },
+  ) {
     const user = await this.userContact(userId);
     if (!user) return false;
+
+    const txLine = data?.txHash
+      ? `<p style="color:#94a3b8;font-size:14px;">Blockchain transaction: <code style="color:#93c5fd;">${this.escape(data.txHash)}</code></p>`
+      : '';
+    const amountLine =
+      data?.amount != null
+        ? `<p><strong>$${data.amount.toFixed(2)} USDT</strong>${data.network ? ` on ${this.escape(data.network)}` : ''} received.</p>`
+        : '';
 
     const html = this.email.layout(
       'Payment received',
       `<p>Hi ${user.name},</p>
+      ${amountLine}
       <p>We received your registration payment. Your account is now active.</p>
+      ${txLine}
       ${this.email.button(`${this.email.frontendUrl}/dashboard`, 'Start trading')}`,
     );
 
@@ -325,7 +341,9 @@ export class NotificationService {
       to: user.email,
       subject: 'Payment confirmed — account activated',
       html,
-      text: 'Registration payment confirmed. Your account is active.',
+      text: data?.txHash
+        ? `Registration payment confirmed (tx ${data.txHash}). Your account is active.`
+        : 'Registration payment confirmed. Your account is active.',
     });
   }
 

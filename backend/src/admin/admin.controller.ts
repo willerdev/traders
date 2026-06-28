@@ -102,6 +102,49 @@ export class AdminController {
     return this.adminService.approvePayout(payoutId, req.user.id);
   }
 
+  @Post('payouts/:payoutId/verify')
+  verifyPayout(
+    @Param('payoutId') payoutId: string,
+    @Request() req: { user: { id: string } },
+    @Body('code') code: string,
+  ) {
+    return this.adminService.verifyNowPaymentsPayout(
+      payoutId,
+      code,
+      req.user.id,
+    );
+  }
+
+  @Get('nowpayments/wallet')
+  getNowPaymentsWallet() {
+    return this.adminService.getNowPaymentsWallet();
+  }
+
+  @Post('nowpayments/deposit')
+  createCustodyDeposit(
+    @Request() req: { user: { id: string } },
+    @Body('amount') amount: number,
+    @Body('network') network: string,
+  ) {
+    return this.adminService.createCustodyDeposit(
+      req.user.id,
+      Number(amount),
+      network || 'TRC20',
+    );
+  }
+
+  @Get('nowpayments/deposits')
+  listCustodyDeposits(@Query('limit') limit?: string) {
+    return this.adminService.listCustodyDeposits(
+      limit ? Number(limit) : undefined,
+    );
+  }
+
+  @Get('nowpayments/deposits/:depositId')
+  getCustodyDeposit(@Param('depositId') depositId: string) {
+    return this.adminService.getCustodyDepositStatus(depositId);
+  }
+
   @Get('tp-claims/pending')
   listPendingTpClaims() {
     return this.adminService.listPendingTpClaims();

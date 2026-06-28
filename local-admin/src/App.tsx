@@ -14,6 +14,9 @@ import {
   type TpClaimRow,
   type MessageThreadSummary,
   type DirectMessage,
+  type NowPaymentsWalletSummary,
+  type CustodyDepositRow,
+  type CustodyDepositCreated,
 } from "./api";
 import { AdminImage } from "./AdminImage";
 import { Sidebar, type Tab } from "./Sidebar";
@@ -71,6 +74,15 @@ export default function App() {
   const [signalCount, setSignalCount] = useState(0);
   const [kycQueue, setKycQueue] = useState<KycRow[]>([]);
   const [payouts, setPayouts] = useState<PayoutRow[]>([]);
+  const [npWallet, setNpWallet] = useState<NowPaymentsWalletSummary | null>(null);
+  const [custodyDeposits, setCustodyDeposits] = useState<CustodyDepositRow[]>([]);
+  const [depositAmount, setDepositAmount] = useState("100");
+  const [depositNetwork, setDepositNetwork] = useState("TRC20");
+  const [activeDeposit, setActiveDeposit] = useState<CustodyDepositCreated | null>(null);
+  const [depositLoading, setDepositLoading] = useState(false);
+  const [verifyPayoutId, setVerifyPayoutId] = useState<string | null>(null);
+  const [verifyCode, setVerifyCode] = useState("");
+  const [verifyLoading, setVerifyLoading] = useState(false);
   const [tpClaims, setTpClaims] = useState<TpClaimRow[]>([]);
   const [promoCodes, setPromoCodes] = useState<PromoCodeRow[]>([]);
   const [hubReport, setHubReport] = useState<HubSenderReport | null>(null);
@@ -117,8 +129,14 @@ export default function App() {
       } else if (active === "kyc") {
         setKycQueue(await api.kycPending());
       } else if (active === "payouts") {
-        const res = await api.payouts();
+        const [res, wallet, deposits] = await Promise.all([
+          api.payouts(),
+          api.nowPaymentsWallet(),
+          api.custodyDeposits(10),
+        ]);
         setPayouts(res.items);
+        setNpWallet(wallet);
+        setCustodyDeposits(deposits);
       } else if (active === "tpClaims") {
         setTpClaims(await api.tpClaimsPending());
       } else if (active === "promos") {
@@ -898,6 +916,164 @@ export default function App() {
             <div className="toolbar">
               <h2>Payout requests</h2>
             </div>
+
+            <div className="kyc-card" style={{ marginBottom: "1rem" }}>
+              <h3 style={{ margin: "0 0 0.5rem" }}>NOWPayments custody wallet</h3>
+              {npWallet ? (
+                <>
+                  <p>
+                    Available USDT balance:{" "}
+                    <strong>{fmtMoney(npWallet.usdtBalance)}</strong>
+                    {npWallet.pendingCryptoPayoutCount > 0 && (
+                      <span className="muted">
+                        {" "}
+                        · {npWallet.pendingCryptoPayoutCount} pending crypto payout
+                        {npWallet.pendingCryptoPayoutCount === 1 ? "" : "s"} (
+                        {fmtMoney(npWallet.pendingCryptoPayoutTotal)})
+                      </span>
+                    )}
+                  </p>
+                  {!npWallet.configured && (
+                    <p className="muted">{npWallet.message}</p>
+                  )}
+                  {npWallet.configured &&
+                    npWallet.usdtBalance < npWallet.pendingCryptoPayoutTotal && (
+                      <p style={{ color: "var(--danger, #c0392b)" }}>
+                        Balance is below pending payout total — fund custody before
+                        approving crypto payouts.
+                      </p>
+                    )}
+                </>
+              ) : (
+                <p className="muted">Loading wallet…</p>
+              )}
+
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "0.5rem",
+                  alignItems: "end",
+                  marginTop: "0.75rem",
+                }}
+              >
+                <label>
+                  <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                    Top-up amount (USD)
+                  </span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={depositAmount}
+                    onChange={(e) => setDepositAmount(e.target.value)}
+                    style={{ width: "8rem" }}
+                  />
+                </label>
+                <label>
+                  <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                    Network
+                  </span>
+                  <select
+                    value={depositNetwork}
+                    onChange={(e) => setDepositNetwork(e.target.value)}
+                  >
+                    <option value="TRC20">TRC20</option>
+                    <option value="BEP20">BEP20</option>
+                    <option value="ERC20">ERC20</option>
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={depositLoading || !npWallet?.configured}
+                  onClick={() => {
+                    const amount = Number(depositAmount);
+                    if (!Number.isFinite(amount) || amount <= 0) {
+                      setMessage("Enter a valid deposit amount");
+                      return;
+                    }
+                    setDepositLoading(true);
+                    setMessage("");
+                    void api
+                      .createCustodyDeposit(amount, depositNetwork)
+                      .then((res) => {
+                        setActiveDeposit(res);
+                        setMessage(res.message);
+                        return loadTab("payouts");
+                      })
+                      .catch((err: Error) => setMessage(err.message))
+                      .finally(() => setDepositLoading(false));
+                  }}
+                >
+                  {depositLoading ? "Creating…" : "Create deposit"}
+                </button>
+              </div>
+
+              {activeDeposit?.payAddress && (
+                <div
+                  style={{
+                    marginTop: "0.75rem",
+                    padding: "0.75rem",
+                    background: "var(--surface-2, rgba(0,0,0,0.04))",
+                    borderRadius: "6px",
+                  }}
+                >
+                  <p className="muted" style={{ fontSize: "0.85rem" }}>
+                    Send exactly{" "}
+                    <strong>
+                      {activeDeposit.payAmount} {activeDeposit.payCurrency}
+                    </strong>{" "}
+                    to:
+                  </p>
+                  <code style={{ wordBreak: "break-all" }}>
+                    {activeDeposit.payAddress}
+                  </code>
+                  {activeDeposit.invoiceUrl && (
+                    <p style={{ marginTop: "0.5rem" }}>
+                      <a
+                        href={activeDeposit.invoiceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open NOWPayments invoice
+                      </a>
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {custodyDeposits.length > 0 && (
+                <div style={{ marginTop: "1rem" }}>
+                  <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.35rem" }}>
+                    Recent custody deposits
+                  </p>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Amount</th>
+                        <th>Network</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {custodyDeposits.map((d) => (
+                        <tr key={d.id}>
+                          <td>{fmtMoney(d.amount)}</td>
+                          <td>{d.network}</td>
+                          <td>
+                            <span className={badgeClass(d.status)}>{d.status}</span>
+                          </td>
+                          <td>{fmtDate(d.createdAt)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
             <table>
               <thead>
                 <tr>
@@ -938,21 +1114,95 @@ export default function App() {
                             disabled={
                               p.user.kyc?.status !== "APPROVED" || !p.walletAddress
                             }
-                            onClick={() =>
+                            onClick={() => {
+                              setMessage("");
                               void api
                                 .approvePayout(p.id)
-                                .then(() => loadTab("payouts"))
-                            }
+                                .then((res) => {
+                                  if (res.verificationRequired) {
+                                    setVerifyPayoutId(p.id);
+                                    setVerifyCode("");
+                                    setMessage(
+                                      "Payout created on NOWPayments — enter the 2FA code from your NOWPayments email to release funds.",
+                                    );
+                                  } else {
+                                    setMessage("Payout approved.");
+                                  }
+                                  return loadTab("payouts");
+                                })
+                                .catch((err: Error) => setMessage(err.message));
+                            }}
                           >
                             Approve
                           </button>
                         </div>
+                      )}
+                      {p.status === "APPROVED" && p.gatewayPayoutId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVerifyPayoutId(p.id);
+                            setVerifyCode("");
+                          }}
+                        >
+                          Enter 2FA
+                        </button>
                       )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+
+            {verifyPayoutId && (
+              <div className="modal-backdrop" role="dialog" aria-modal="true">
+                <div className="modal">
+                  <h3>NOWPayments 2FA verification</h3>
+                  <p className="muted">
+                    Enter the verification code sent to your NOWPayments payout account
+                    email to release this payout.
+                  </p>
+                  <input
+                    placeholder="6-digit code"
+                    value={verifyCode}
+                    onChange={(e) => setVerifyCode(e.target.value)}
+                    maxLength={8}
+                  />
+                  <div className="row-actions" style={{ marginTop: "0.75rem" }}>
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={verifyLoading || verifyCode.trim().length < 4}
+                      onClick={() => {
+                        setVerifyLoading(true);
+                        setMessage("");
+                        void api
+                          .verifyPayout(verifyPayoutId, verifyCode.trim())
+                          .then((res) => {
+                            setMessage(res.message);
+                            setVerifyPayoutId(null);
+                            setVerifyCode("");
+                            return loadTab("payouts");
+                          })
+                          .catch((err: Error) => setMessage(err.message))
+                          .finally(() => setVerifyLoading(false));
+                      }}
+                    >
+                      {verifyLoading ? "Verifying…" : "Verify payout"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVerifyPayoutId(null);
+                        setVerifyCode("");
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
 

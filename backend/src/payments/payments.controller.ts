@@ -17,12 +17,14 @@ import { PaymentsService } from './payments.service';
 import { CreatePaymentDto, ApplyPromoDto } from '../common/dto';
 import { JwtAuthGuard } from '../auth/guards';
 import { NowPaymentsService } from './nowpayments.service';
+import { CustodyDepositService } from './custody-deposit.service';
 
 @Controller('payments')
 export class PaymentsController {
   constructor(
     private paymentsService: PaymentsService,
     private nowPayments: NowPaymentsService,
+    private custodyDeposits: CustodyDepositService,
   ) {}
 
   @Post('registration')
@@ -94,8 +96,23 @@ export class PaymentsController {
       throw new UnauthorizedException('Invalid IPN signature');
     }
 
-    return this.paymentsService.handleIpn(
+    return this.routeIpn(
       body as Parameters<PaymentsService['handleIpn']>[0],
     );
+  }
+
+  private routeIpn(body: {
+    payment_id?: number;
+    payment_status?: string;
+    order_id?: string;
+    pay_address?: string;
+    actually_paid?: number;
+    outcome_amount?: number;
+  }) {
+    const orderId = body.order_id;
+    if (orderId && this.custodyDeposits.isCustodyOrderId(orderId)) {
+      return this.custodyDeposits.handleIpn(body);
+    }
+    return this.paymentsService.handleIpn(body);
   }
 }

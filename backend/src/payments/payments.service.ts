@@ -2,17 +2,21 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { NowPaymentsService } from './nowpayments.service';
 import { PromoService } from './promo.service';
+import { BlockchainScannerService } from './blockchain-scanner.service';
 import { REGISTRATION_FEE_USDT } from '../common/constants';
 import { NotificationService } from '../email/notification.service';
 
 @Injectable()
 export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
+
   constructor(
     private prisma: PrismaService,
     private authService: AuthService,
@@ -20,6 +24,7 @@ export class PaymentsService {
     private promo: PromoService,
     private config: ConfigService,
     private notifications: NotificationService,
+    private blockchain: BlockchainScannerService,
   ) {}
 
   private ipnUrl() {
@@ -153,6 +158,8 @@ export class PaymentsService {
       data: {
         gatewayId: String(npPayment.payment_id),
         gatewayResponse: npPayment as object,
+        payAddress: npPayment.pay_address,
+        payAmount: npPayment.pay_amount,
       },
     });
 
@@ -186,11 +193,48 @@ export class PaymentsService {
     };
   }
 
-  private async confirmPayment(
-    payment: { id: string; userId: string; status: string },
+  private extractPayDetails(payment: {
+    payAddress?: string | null;
+    payAmount?: { toString(): string } | null;
+    network: string;
+    amount: { toString(): string };
+    gatewayResponse: unknown;
+    createdAt: Date;
+  }) {
+    const stored = payment.gatewayResponse as Record<string, unknown> | null;
+    const payAddress =
+      payment.payAddress ||
+      (stored?.pay_address as string | undefined) ||
+      undefined;
+    const payAmount =
+      payment.payAmount != null
+        ? Number(payment.payAmount)
+        : stored?.pay_amount != null
+          ? Number(stored.pay_amount)
+          : Number(payment.amount);
+    return { payAddress, payAmount, network: payment.network };
+  }
+
+  private isConfirmedGatewayStatus(status?: string) {
+    return ['finished', 'confirmed', 'sent'].includes(
+      status?.toLowerCase() || '',
+    );
+  }
+
+  async confirmRegistrationPayment(
+    paymentId: string,
     gatewayPayload: object,
-    gatewayId?: string,
+    opts?: {
+      gatewayId?: string;
+      txHash?: string;
+      source?: 'ipn' | 'nowpayments' | 'blockchain' | 'manual';
+    },
   ) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+    });
+    if (!payment) throw new NotFoundException('Payment not found');
+
     if (payment.status === 'CONFIRMED') {
       return { alreadyConfirmed: true, paymentId: payment.id };
     }
@@ -199,8 +243,16 @@ export class PaymentsService {
       where: { id: payment.id },
       data: {
         status: 'CONFIRMED',
-        gatewayId: gatewayId ?? undefined,
-        gatewayResponse: gatewayPayload,
+        gatewayId: opts?.gatewayId ?? payment.gatewayId ?? undefined,
+        gatewayResponse: {
+          ...(payment.gatewayResponse &&
+          typeof payment.gatewayResponse === 'object'
+            ? (payment.gatewayResponse as object)
+            : {}),
+          ...gatewayPayload,
+          confirmationSource: opts?.source ?? 'nowpayments',
+        },
+        txHash: opts?.txHash ?? undefined,
         confirmedAt: new Date(),
       },
     });
@@ -211,8 +263,148 @@ export class PaymentsService {
     });
 
     await this.authService.activateAccount(payment.userId);
-    this.notifications.paymentConfirmed(payment.userId);
+
+    const { network } = this.extractPayDetails(payment);
+    this.notifications.paymentConfirmed(payment.userId, {
+      txHash: opts?.txHash,
+      amount: Number(payment.amount),
+      network,
+    });
+
+    this.logger.log(
+      `Registration payment ${paymentId} confirmed via ${opts?.source ?? 'nowpayments'}${opts?.txHash ? ` (tx ${opts.txHash.slice(0, 12)}…)` : ''}`,
+    );
+
     return { status: 'confirmed', paymentId: payment.id };
+  }
+
+  async syncAllPendingRegistrationPayments() {
+    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const pending = await this.prisma.payment.findMany({
+      where: {
+        status: 'PENDING',
+        purpose: 'registration',
+        createdAt: { gte: cutoff },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 50,
+    });
+
+    let confirmed = 0;
+    let viaBlockchain = 0;
+
+    for (const payment of pending) {
+      const { payAddress } = this.extractPayDetails(payment);
+      const gatewayId = payment.gatewayId;
+      const hasGateway =
+        gatewayId &&
+        !gatewayId.startsWith('pending_') &&
+        !gatewayId.startsWith('promo_');
+      if (!payAddress && !hasGateway) continue;
+
+      const result = await this.syncPendingRegistrationPayment(payment.id);
+      if (result?.confirmed) {
+        confirmed += 1;
+        if (result.source === 'blockchain') viaBlockchain += 1;
+      }
+    }
+
+    return { scanned: pending.length, confirmed, viaBlockchain };
+  }
+
+  async syncPendingRegistrationPayment(paymentId: string) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+    });
+    if (!payment || payment.status !== 'PENDING') return null;
+
+    const { payAddress, payAmount, network } = this.extractPayDetails(payment);
+    if (!payAddress) return null;
+
+    const gatewayId = payment.gatewayId;
+    const hasGateway =
+      gatewayId &&
+      !gatewayId.startsWith('pending_') &&
+      !gatewayId.startsWith('promo_');
+
+    if (hasGateway && this.nowPayments.isConfigured) {
+      try {
+        const live = await this.nowPayments.getPaymentStatus(gatewayId);
+        const status = live.payment_status?.toLowerCase();
+
+        if (this.isConfirmedGatewayStatus(status)) {
+          await this.confirmRegistrationPayment(payment.id, live as object, {
+            gatewayId,
+            source: 'nowpayments',
+          });
+          return { confirmed: true, source: 'nowpayments' as const };
+        }
+
+        if (status === 'failed' || status === 'expired') {
+          await this.prisma.payment.update({
+            where: { id: payment.id },
+            data: {
+              status: status === 'failed' ? 'FAILED' : 'EXPIRED',
+              gatewayResponse: live as object,
+            },
+          });
+          return { confirmed: false, source: 'nowpayments' as const };
+        }
+
+        if (!payment.payAddress && live.pay_address) {
+          await this.prisma.payment.update({
+            where: { id: payment.id },
+            data: {
+              payAddress: live.pay_address,
+              payAmount: live.pay_amount,
+              gatewayResponse: live as object,
+            },
+          });
+        }
+      } catch {
+        /* fall through to blockchain scan */
+      }
+    }
+
+    const chainMatch = await this.blockchain.findUsdtDeposit({
+      network,
+      payAddress,
+      expectedAmount: payAmount,
+      since: payment.createdAt,
+    });
+
+    if (chainMatch) {
+      await this.confirmRegistrationPayment(
+        payment.id,
+        {
+          blockchain: chainMatch,
+          pay_address: payAddress,
+          pay_amount: payAmount,
+          actually_paid: chainMatch.amount,
+        },
+        {
+          gatewayId: hasGateway ? gatewayId : undefined,
+          txHash: chainMatch.txHash,
+          source: 'blockchain',
+        },
+      );
+      return { confirmed: true, source: 'blockchain' as const };
+    }
+
+    return { confirmed: false };
+  }
+
+  private async confirmPayment(
+    payment: { id: string; userId: string; status: string },
+    gatewayPayload: object,
+    gatewayId?: string,
+    opts?: { txHash?: string; source?: 'ipn' | 'nowpayments' | 'blockchain' },
+  ) {
+    return this.confirmRegistrationPayment(payment.id, gatewayPayload, {
+      gatewayId,
+      txHash: opts?.txHash,
+      source: opts?.source ?? 'ipn',
+    });
   }
 
   async handleIpn(payload: {
@@ -286,7 +478,9 @@ export class PaymentsService {
         );
 
         if (confirmed && payment.status !== 'CONFIRMED') {
-          await this.confirmPayment(payment, live as object, gatewayId);
+          await this.confirmPayment(payment, live as object, gatewayId, {
+            source: 'nowpayments',
+          });
           payment = await this.prisma.payment.findFirstOrThrow({
             where: { id: paymentId, userId },
           });

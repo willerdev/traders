@@ -151,6 +151,7 @@ model User {
   messageThreadState MessageThreadState?
   loginOtps          LoginOtp[]
   passwordResets     PasswordReset[]
+  custodyDeposits    CustodyDeposit[]
 
   @@index([status])
   @@index([role])
@@ -475,6 +476,7 @@ model Payout {
   requestedAt     DateTime      @default(now())
   processedAt     DateTime?
   notes           String?
+  gatewayPayoutId String?
 
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   tpClaim TpClaim? @relation(fields: [tpClaimId], references: [id], onDelete: SetNull)
@@ -482,6 +484,28 @@ model Payout {
   @@index([userId])
   @@index([status])
   @@map("payouts")
+}
+
+model CustodyDeposit {
+  id              String        @id @default(cuid())
+  adminId         String
+  amount          Decimal       @db.Decimal(18, 8)
+  currency        String        @default("USDT")
+  network         String
+  status          PaymentStatus @default(PENDING)
+  gatewayId       String?
+  gatewayResponse Json?
+  payAddress      String?
+  payAmount       Decimal?      @db.Decimal(18, 8)
+  confirmedAt     DateTime?
+  createdAt       DateTime      @default(now())
+
+  admin User @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@index([status])
+  @@index([status, payAddress])
+  @@map("custody_deposits")
 }
 
 model Subscription {
@@ -510,6 +534,8 @@ model Payment {
   gatewayResponse Json?
   txHash          String?
   purpose         String        @default("registration")
+  payAddress      String?
+  payAmount       Decimal?      @db.Decimal(18, 8)
   createdAt       DateTime      @default(now())
   confirmedAt     DateTime?
 
@@ -517,6 +543,7 @@ model Payment {
 
   @@index([userId])
   @@index([status])
+  @@index([status, payAddress])
   @@map("payments")
 }
 

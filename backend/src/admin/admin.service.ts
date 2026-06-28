@@ -10,6 +10,7 @@ import { PayoutService } from '../payouts/payout.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { TpClaimsService } from '../tp-claims/tp-claims.service';
 import { PromoService } from '../payments/promo.service';
+import { CustodyDepositService } from '../payments/custody-deposit.service';
 import { SignalHubService } from '../signals/signal-hub.service';
 import { AuthService } from '../auth/auth.service';
 import { MessagesService } from '../messages/messages.service';
@@ -25,6 +26,7 @@ export class AdminService {
     private analytics: AnalyticsService,
     private tpClaims: TpClaimsService,
     private promo: PromoService,
+    private custodyDeposits: CustodyDepositService,
     private signalHub: SignalHubService,
     private auth: AuthService,
     private messages: MessagesService,
@@ -349,6 +351,26 @@ export class AdminService {
     });
 
     return result;
+  }
+
+  getNowPaymentsWallet() {
+    return this.custodyDeposits.getWalletSummary();
+  }
+
+  createCustodyDeposit(adminId: string, amount: number, network: string) {
+    return this.custodyDeposits.createDeposit(adminId, amount, network);
+  }
+
+  listCustodyDeposits(limit?: number) {
+    return this.custodyDeposits.listDeposits(limit);
+  }
+
+  getCustodyDepositStatus(depositId: string) {
+    return this.custodyDeposits.getDepositStatus(depositId);
+  }
+
+  verifyNowPaymentsPayout(payoutId: string, code: string, adminId: string) {
+    return this.payoutService.verifyGatewayPayout(payoutId, code, adminId);
   }
 
   async suspendUser(userId: string, adminId: string, reason: string) {
