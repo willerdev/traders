@@ -27,7 +27,7 @@ import {
   priceReachedOneToOne,
 } from '../common/rr.util';
 import { NotificationService } from '../email/notification.service';
-import { Signal, Trade, User } from '@prisma/client';
+import { Signal, Trade, TradeDirection, User } from '@prisma/client';
 import { MetaApiService } from '../metaapi/metaapi.service';
 import { buildMetaApiTradeIdentifiers } from '../metaapi/metaapi-order.util';
 import { TradeRiskService } from '../ai/trade-risk.service';
@@ -618,53 +618,15 @@ export class SignalsService {
       trader?.metaApiAccountId,
     );
 
-    let liveTrade: Record<string, unknown> | null = null;
-    if (
-      signal.status === 'OPEN' &&
-      this.metaApi.isConfigured &&
-      trader &&
-      (signal.metaApiAccountId || linkedAccountId)
-    ) {
-      try {
-        const accountId = signal.metaApiAccountId ?? linkedAccountId!;
-        const account = await this.metaApi.getAccount(accountId);
-        const { clientId } = this.metaApi.buildIdentifiersForUser(
-          trader.displayName,
+    const liveTrade = trader
+      ? await this.resolveSetupLiveTrade(
+          signal,
           userId,
-          signal.signalId,
-          signal.symbol,
-        );
-        const live = await this.metaApi.findLiveTradeForSignal(account, {
-          positionId: signal.metaApiPositionId,
-          orderId: signal.metaApiOrderId,
-          clientId,
-          displayName: trader.displayName,
-          userId,
-          symbol: signal.symbol,
-          activated: Boolean(signal.trade?.activatedAt),
-        });
-        const tp1Reached =
-          price !== null &&
-          priceReachedOneToOne(signal.direction, oneToOnePrice, price);
-        liveTrade = {
-          ...live,
-          tp1Price: oneToOnePrice,
-          tp1Reached,
-          entryPrice:
-            live.openPrice ??
-            (signal.trade?.entryPrice != null
-              ? Number(signal.trade.entryPrice)
-              : undefined),
-          canClose:
-            live.status === 'open' ||
-            (live.status === 'pending' && Boolean(signal.metaApiOrderId)),
-        };
-      } catch (err) {
-        this.logger.warn(
-          `Live trade state failed for ${signal.signalId}: ${err instanceof Error ? err.message : err}`,
-        );
-      }
-    }
+          trader,
+          oneToOnePrice,
+          price,
+        )
+      : null;
 
     return {
       signalId: signal.signalId,
@@ -697,6 +659,122 @@ export class SignalsService {
         Boolean(linkedAccountId),
       liveTrade,
     };
+  }
+
+  /** Lightweight MetaAPI poll — live P/L only, no Hub or claim resolution. */
+  async getSetupLiveTrade(userId: string, signalId: string) {
+    const signal = await this.prisma.signal.findFirst({
+      where: { signalId, userId },
+      include: { trade: true },
+    });
+    if (!signal) throw new NotFoundException('Signal not found');
+    if (signal.status !== 'OPEN') {
+      return { signalId: signal.signalId, liveTrade: null };
+    }
+
+    const entryMin = Number(signal.entryMin);
+    const entryMax = Number(signal.entryMax);
+    const sl = Number(signal.stopLoss);
+    const oneToOnePrice = computeOneToOnePrice(
+      signal.direction,
+      entryMin,
+      entryMax,
+      sl,
+    );
+
+    const trader = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { metaApiAccountId: true, displayName: true },
+    });
+    if (!trader) throw new NotFoundException('User not found');
+
+    const liveTrade = await this.resolveSetupLiveTrade(
+      signal,
+      userId,
+      trader,
+      oneToOnePrice,
+      null,
+    );
+
+    return { signalId: signal.signalId, liveTrade };
+  }
+
+  private async resolveSetupLiveTrade(
+    signal: {
+      id: string;
+      signalId: string;
+      symbol: string;
+      direction: TradeDirection;
+      status: string;
+      metaApiAccountId: string | null;
+      metaApiOrderId: string | null;
+      metaApiPositionId: string | null;
+      metaApiExecutedAt: Date | null;
+      trade: { activatedAt: Date | null; entryPrice: unknown } | null;
+    },
+    userId: string,
+    trader: { displayName: string; metaApiAccountId: string | null },
+    oneToOnePrice: number,
+    markPrice: number | null,
+  ): Promise<Record<string, unknown> | null> {
+    const linkedAccountId = this.metaApi.resolveAccountId(
+      trader.metaApiAccountId,
+    );
+
+    if (
+      signal.status !== 'OPEN' ||
+      !this.metaApi.isConfigured ||
+      !(signal.metaApiAccountId || linkedAccountId)
+    ) {
+      return null;
+    }
+
+    try {
+      const accountId = signal.metaApiAccountId ?? linkedAccountId!;
+      const account = await this.metaApi.getAccount(accountId);
+      const { clientId } = this.metaApi.buildIdentifiersForUser(
+        trader.displayName,
+        userId,
+        signal.signalId,
+        signal.symbol,
+      );
+      const live = await this.metaApi.findLiveTradeForSignal(account, {
+        positionId: signal.metaApiPositionId,
+        orderId: signal.metaApiOrderId,
+        clientId,
+        displayName: trader.displayName,
+        userId,
+        symbol: signal.symbol,
+        activated: Boolean(signal.trade?.activatedAt),
+      });
+
+      const priceForTp1 =
+        markPrice ??
+        live.currentPrice ??
+        null;
+      const tp1Reached =
+        priceForTp1 !== null &&
+        priceReachedOneToOne(signal.direction, oneToOnePrice, priceForTp1);
+
+      return {
+        ...live,
+        tp1Price: oneToOnePrice,
+        tp1Reached,
+        entryPrice:
+          live.openPrice ??
+          (signal.trade?.entryPrice != null
+            ? Number(signal.trade.entryPrice)
+            : undefined),
+        canClose:
+          live.status === 'open' ||
+          (live.status === 'pending' && Boolean(signal.metaApiOrderId)),
+      };
+    } catch (err) {
+      this.logger.warn(
+        `Live trade state failed for ${signal.signalId}: ${err instanceof Error ? err.message : err}`,
+      );
+      return null;
+    }
   }
 
   async closeSetupTrade(userId: string, signalId: string) {

@@ -235,6 +235,10 @@ class ApiClient {
       this.request<OpenSetupsResult>("/signals/open/unresolved"),
     getResolution: (signalId: string) =>
       this.request<SetupResolution>(`/signals/${signalId}/resolution`),
+    getLiveTrade: (signalId: string) =>
+      this.request<{ signalId: string; liveTrade: SetupLiveTrade | null }>(
+        `/signals/${signalId}/live-trade`,
+      ),
     placeTrade: (signalId: string) =>
       this.request<PlaceTradeResult>(`/signals/${signalId}/place-trade`, {
         method: "POST",

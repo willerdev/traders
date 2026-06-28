@@ -19,6 +19,7 @@ import {
   Circle,
   Loader2,
   Target,
+  RefreshCw,
   TrendingUp,
   X,
   XCircle,
@@ -196,6 +197,9 @@ function PriceProgressBar({
 export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
   const [loading, setLoading] = useState(true);
   const [resolution, setResolution] = useState<SetupResolution | null>(null);
+  const [liveTrade, setLiveTrade] = useState<SetupLiveTrade | null>(null);
+  const [liveTradeRefreshing, setLiveTradeRefreshing] = useState(false);
+  const [liveTradeError, setLiveTradeError] = useState<string | null>(null);
   const [hub, setHub] = useState<HubSignalStatus | null>(null);
   const [logs, setLogs] = useState<HubLogEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -207,39 +211,59 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
 
   const isOpen = setup.status === "OPEN";
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const applyLiveTrade = useCallback((next: SetupLiveTrade | null | undefined) => {
+    const normalized =
+      next && next.status !== "none" ? next : null;
+    setLiveTrade(normalized);
+    setResolution((prev) =>
+      prev ? { ...prev, liveTrade: normalized ?? undefined } : prev,
+    );
+  }, []);
+
+  const loadDetails = useCallback(
+    async (options?: { showSpinner?: boolean }) => {
+      if (options?.showSpinner) setLoading(true);
+      setError(null);
+      try {
+        const [res, hubStatus, logRes] = await Promise.all([
+          api.signals.getResolution(setup.signalId).catch(() => null),
+          api.signals.executionStatus(setup.signalId).catch(() => null),
+          api.signals.executionLogs({ signal_id: setup.signalId, limit: 6 }).catch(() => ({
+            items: [],
+            count: 0,
+          })),
+        ]);
+        setResolution(res);
+        applyLiveTrade(res?.liveTrade ?? null);
+        setHub(hubStatus);
+        setLogs(logRes.items ?? []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not load setup details");
+      } finally {
+        if (options?.showSpinner) setLoading(false);
+      }
+    },
+    [applyLiveTrade, setup.signalId],
+  );
+
+  const refreshLiveTrade = useCallback(async () => {
+    setLiveTradeRefreshing(true);
+    setLiveTradeError(null);
     try {
-      const [res, hubStatus, logRes] = await Promise.all([
-        api.signals.getResolution(setup.signalId).catch(() => null),
-        api.signals.executionStatus(setup.signalId).catch(() => null),
-        api.signals.executionLogs({ signal_id: setup.signalId, limit: 6 }).catch(() => ({
-          items: [],
-          count: 0,
-        })),
-      ]);
-      setResolution(res);
-      setHub(hubStatus);
-      setLogs(logRes.items ?? []);
+      const { liveTrade: next } = await api.signals.getLiveTrade(setup.signalId);
+      applyLiveTrade(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load setup details");
+      setLiveTradeError(
+        err instanceof Error ? err.message : "Could not refresh live P/L",
+      );
     } finally {
-      setLoading(false);
+      setLiveTradeRefreshing(false);
     }
-  }, [setup.signalId]);
+  }, [applyLiveTrade, setup.signalId]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
-
-  useEffect(() => {
-    if (resolution?.liveTrade?.status !== "open" || !isOpen) return;
-    const timer = setInterval(() => {
-      void load();
-    }, 15000);
-    return () => clearInterval(timer);
-  }, [resolution?.liveTrade?.status, isOpen, load]);
+    void loadDetails({ showSpinner: true });
+  }, [loadDetails]);
 
   async function handlePlaceTrade() {
     if (
@@ -260,7 +284,7 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
         `${orderLabel} · ${result.risk.volume} lots (~${result.risk.riskPercent}% risk, est. loss ${result.risk.estimatedLossAtSl.toFixed(2)} ${result.risk.currency})`,
       );
       onUpdated();
-      await load();
+      await loadDetails();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Could not place trade");
     } finally {
@@ -269,7 +293,7 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
   }
 
   async function handleCloseTrade() {
-    const tp1 = resolution?.liveTrade?.tp1Price ?? resolution?.oneToOnePrice;
+    const tp1 = liveTrade?.tp1Price ?? resolution?.oneToOnePrice;
     const tp1Label = tp1 != null ? String(tp1) : "1:1 RR";
     if (
       !confirm(
@@ -287,7 +311,7 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
       if (result.status === "closed") {
         onClose();
       } else {
-        await load();
+        await loadDetails();
       }
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Could not close trade");
@@ -314,7 +338,7 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
           : `${setup.symbol} invalidated`,
       );
       onUpdated();
-      await load();
+      await loadDetails();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Invalidate failed");
     } finally {
@@ -330,7 +354,7 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
       await api.signals.claim(setup.signalId, "sl");
       setSuccess("Stop loss claimed");
       onUpdated();
-      await load();
+      await loadDetails();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Claim failed");
     } finally {
@@ -356,6 +380,10 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
 
   const steps = buildProgressSteps(setup, resolution, hub);
   const res = resolution;
+  const showLiveTradeSection =
+    isOpen &&
+    !loading &&
+    (liveTrade != null || Boolean(res?.metaApiExecuted));
 
   return (
     <>
@@ -413,8 +441,14 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
                   />
                 </div>
 
-                {res?.liveTrade && res.liveTrade.status !== "none" && (
-                  <LiveTradePanel live={res.liveTrade} direction={setup.direction} />
+                {showLiveTradeSection && (
+                  <LiveTradePanel
+                    live={liveTrade}
+                    direction={setup.direction}
+                    refreshing={liveTradeRefreshing}
+                    error={liveTradeError}
+                    onRefresh={() => void refreshLiveTrade()}
+                  />
                 )}
 
                 {setup.screenshotUrl && (
@@ -527,7 +561,7 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
                         Place trade
                       </Button>
                     )}
-                    {res?.liveTrade?.canClose && (
+                    {liveTrade?.canClose && (
                       <Button
                         variant="secondary"
                         size="sm"
@@ -543,7 +577,7 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
                         Close trade
                       </Button>
                     )}
-                    {res?.metaApiExecuted && !res?.liveTrade?.canClose && (
+                    {res?.metaApiExecuted && !liveTrade?.canClose && (
                       <span className="self-center text-xs text-success">
                         Live trade placed
                         {res.metaApiOrderId ? ` · order ${res.metaApiOrderId}` : ""}
@@ -647,7 +681,7 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
             setShowTpModal(false);
             setSuccess(msg);
             onUpdated();
-            void load();
+            void loadDetails();
           }}
           onError={(msg) => setActionError(msg)}
         />
@@ -668,10 +702,40 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 function LiveTradePanel({
   live,
   direction,
+  refreshing,
+  error,
+  onRefresh,
 }: {
-  live: SetupLiveTrade;
+  live: SetupLiveTrade | null;
   direction: string;
+  refreshing: boolean;
+  error: string | null;
+  onRefresh: () => void;
 }) {
+  if (live?.status === "pending") {
+    return (
+      <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-4 py-3">
+        <LiveTradePanelHeader refreshing={refreshing} onRefresh={onRefresh} />
+        <p className="mt-2 text-sm text-gray-300">
+          Pending fill — P/L available once the position opens.
+        </p>
+        {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+      </div>
+    );
+  }
+
+  if (!live || live.status === "none") {
+    return (
+      <div className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3">
+        <LiveTradePanelHeader refreshing={refreshing} onRefresh={onRefresh} />
+        <p className="mt-2 text-sm text-gray-400">
+          No open position with your comment tag — tap refresh after placing a trade.
+        </p>
+        {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+      </div>
+    );
+  }
+
   const currency = live.currency ?? "USD";
   const pnl =
     live.profit ??
@@ -682,32 +746,18 @@ function LiveTradePanel({
         : (live.openPrice - live.currentPrice) * (live.volume ?? 0)
       : undefined);
 
-  if (live.status === "pending") {
-    return (
-      <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-4 py-3">
-        <p className="text-xs font-medium uppercase tracking-wider text-amber-400">
-          Live order
-        </p>
-        <p className="mt-1 text-sm text-gray-300">
-          Pending fill — P/L available once the position opens.
-        </p>
-      </div>
-    );
-  }
-
   const inProfit = pnl != null && pnl > 0;
   const inLoss = pnl != null && pnl < 0;
 
   return (
     <div className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <LiveTradePanelHeader refreshing={refreshing} onRefresh={onRefresh} />
+      <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-gray-500">
-            Live P/L
-          </p>
           <p
             className={cn(
-              "mt-1 text-2xl font-semibold tabular-nums",
+              "text-2xl font-semibold tabular-nums",
+              refreshing && "opacity-60",
               inProfit && "text-success",
               inLoss && "text-danger",
               pnl != null && pnl === 0 && "text-gray-300",
@@ -748,6 +798,34 @@ function LiveTradePanel({
           </span>
         )}
       </div>
+      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+    </div>
+  );
+}
+
+function LiveTradePanelHeader({
+  refreshing,
+  onRefresh,
+}: {
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <p className="text-xs font-medium uppercase tracking-wider text-gray-500">
+        Live P/L
+      </p>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-7 gap-1 px-2 text-xs text-gray-400"
+        disabled={refreshing}
+        onClick={onRefresh}
+      >
+        <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
+        Refresh
+      </Button>
     </div>
   );
 }

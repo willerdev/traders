@@ -304,6 +304,15 @@ export class SignalsController {
     return this.signalsService.closeSetupTrade(req.user.id, signalId);
   }
 
+  @Get(':signalId/live-trade')
+  @UseGuards(JwtAuthGuard)
+  getSetupLiveTrade(
+    @Request() req: { user: { id: string } },
+    @Param('signalId') signalId: string,
+  ) {
+    return this.signalsService.getSetupLiveTrade(req.user.id, signalId);
+  }
+
   @Get(':signalId/resolution')
   @UseGuards(JwtAuthGuard)
   getSetupResolution(
