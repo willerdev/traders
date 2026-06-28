@@ -13,6 +13,22 @@ export type Tab =
 
 type NavItem = { id: Tab; label: string; icon: keyof typeof icons };
 
+export const ADMIN_TABS: Tab[] = [
+  "overview",
+  "users",
+  "messages",
+  "signals",
+  "kyc",
+  "payouts",
+  "tpClaims",
+  "promos",
+  "hub",
+];
+
+export function isAdminTab(value: string): value is Tab {
+  return (ADMIN_TABS as string[]).includes(value);
+}
+
 const NAV_ITEMS: NavItem[] = [
   { id: "overview", label: "Overview", icon: "overview" },
   { id: "users", label: "Users", icon: "users" },

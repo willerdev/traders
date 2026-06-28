@@ -28,6 +28,7 @@ import {
 import { NotificationService } from '../email/notification.service';
 import { Signal, Trade, User } from '@prisma/client';
 import { MetaApiService } from '../metaapi/metaapi.service';
+import { buildTradeOrderComment } from '../metaapi/metaapi-order.util';
 import { TradeRiskService } from '../ai/trade-risk.service';
 import { RISK_PERCENT, MAX_RISK_PER_TRADE } from '../common/constants';
 
@@ -297,9 +298,11 @@ export class SignalsService {
     const account = await this.metaApi.getAccount(accountId);
     const sl = Number(signal.stopLoss);
     const tp = Number(signal.takeProfit);
+    const entryMin = Number(signal.entryMin);
+    const entryMax = Number(signal.entryMax);
 
     const price = await this.metaApi.getSymbolPrice(account, signal.symbol);
-    const entryPrice =
+    const marketEntry =
       signal.direction === 'BUY' ? price.ask : price.bid;
 
     const riskPercent = Number(
@@ -309,29 +312,53 @@ export class SignalsService {
       user.virtualAccount?.maxRiskPerTrade ?? MAX_RISK_PER_TRADE,
     );
 
-    const sizing = await this.tradeRisk.calculatePositionSize({
+    const spec = await this.metaApi.getSymbolSpecification(
+      account,
+      signal.symbol,
+    );
+
+    const orderComment = buildTradeOrderComment(user.displayName, userId);
+    const clientId = signal.signalId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 26);
+
+    const riskInput = {
       account,
       symbol: signal.symbol,
       direction: signal.direction,
-      entryPrice,
       stopLoss: sl,
       takeProfit: tp,
       riskPercent: Math.max(riskPercent, RISK_PERCENT),
       maxRiskAmount,
+    };
+
+    let sizing = await this.tradeRisk.calculatePositionSize({
+      ...riskInput,
+      entryPrice: marketEntry,
     });
 
-    const { trade: result } = await this.metaApi.placeMarketOrder({
+    const placed = await this.metaApi.placeOrderWithFallback({
       account,
       symbol: signal.symbol,
       direction: signal.direction,
       volume: sizing.volume,
       stopLoss: sl,
       takeProfit: tp,
+      entryMin,
+      entryMax,
       price,
-      comment: `TR ${signal.signalId.slice(0, 24)}`,
-      clientId: signal.signalId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 26),
+      specDigits: spec.digits,
+      comment: orderComment,
+      clientId,
+      recalculateVolume: async (openPrice) => {
+        sizing = await this.tradeRisk.calculatePositionSize({
+          ...riskInput,
+          entryPrice: openPrice,
+        });
+        return sizing.volume;
+      },
     });
 
+    const entryPrice = placed.openPrice;
+    const result = placed.trade;
     const now = new Date();
 
     await this.prisma.$transaction([
@@ -346,15 +373,17 @@ export class SignalsService {
       }),
       this.prisma.trade.update({
         where: { signalId: signal.id },
-        data: {
-          entryPrice,
-          activatedAt: now,
-        },
+        data: placed.pending
+          ? { entryPrice }
+          : {
+              entryPrice,
+              activatedAt: now,
+            },
       }),
     ]);
 
     return {
-      status: 'placed',
+      status: placed.pending ? 'pending' : 'placed',
       signalId: signal.signalId,
       symbol: signal.symbol,
       direction: signal.direction,
@@ -362,6 +391,8 @@ export class SignalsService {
       stopLoss: sl,
       takeProfit: tp,
       quote: price,
+      orderKind: placed.orderKind,
+      pending: placed.pending,
       risk: {
         volume: sizing.volume,
         riskPercent: sizing.riskPercent,
@@ -378,6 +409,8 @@ export class SignalsService {
         orderId: result.orderId,
         positionId: result.positionId,
         message: result.message,
+        comment: orderComment,
+        orderKind: placed.orderKind,
       },
     };
   }

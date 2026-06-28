@@ -21,7 +21,7 @@ import {
   type CustodyDepositCreated,
 } from "./api";
 import { AdminImage } from "./AdminImage";
-import { Sidebar, type Tab } from "./Sidebar";
+import { Sidebar, type Tab, isAdminTab } from "./Sidebar";
 import { UserDetailModal } from "./UserDetailModal";
 
 function badgeClass(status: string) {
@@ -67,6 +67,15 @@ function depositProgressLabel(d: CustodyDepositRow) {
   return d.liveStatus || "Waiting for payment";
 }
 
+function tabFromHash(): Tab {
+  const hash = window.location.hash.replace(/^#/, "");
+  return isAdminTab(hash) ? hash : "overview";
+}
+
+function isErrorMessage(msg: string) {
+  return /fail|error|unreachable|unauthorized|forbidden|cannot get/i.test(msg);
+}
+
 export default function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
   const [email, setEmail] = useState(getAdminEmail() ?? "");
@@ -76,7 +85,7 @@ export default function App() {
   const [loginSessionId, setLoginSessionId] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>(tabFromHash);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -132,6 +141,24 @@ export default function App() {
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [banLoadingId, setBanLoadingId] = useState<string | null>(null);
   const [bulkBanLoading, setBulkBanLoading] = useState(false);
+
+  useEffect(() => {
+    const onHash = () => setTab(tabFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  useEffect(() => {
+    const next = `#${tab}`;
+    if (window.location.hash !== next) {
+      window.history.replaceState(null, "", next);
+    }
+  }, [tab]);
+
+  const changeTab = useCallback((next: Tab) => {
+    setTab(next);
+    setMessage("");
+  }, []);
 
   const refreshCustodyDeposits = useCallback(async (sync = true) => {
     const res = await api.custodyDeposits(20, sync);
@@ -655,7 +682,7 @@ export default function App() {
     <div className="app">
       <Sidebar
         tab={tab}
-        onTabChange={setTab}
+        onTabChange={changeTab}
         adminEmail={email || getAdminEmail() || "admin"}
         onRefresh={() => void refresh()}
         onLogout={logout}
@@ -663,11 +690,20 @@ export default function App() {
 
       <main className="main">
         {message && (
-          <div className={`message ${message && (message.includes("fail") || isAuthFailure(message)) ? "error" : ""}`}>
+          <div
+            className={`message${isErrorMessage(message) ? " error" : ""}`}
+          >
             {message}
           </div>
         )}
         {loading && <p className="muted">Loading…</p>}
+
+        {tab === "overview" && !loading && !overview && (
+          <div className="page-empty">
+            Could not load overview. Check that the API is running on port 4000
+            and refresh.
+          </div>
+        )}
 
         {tab === "overview" && overview && (
           <>
@@ -1726,6 +1762,13 @@ export default function App() {
 
         {tab === "hub" && (
           <>
+            <div className="page-header">
+              <h2>Hub MT5 &amp; MetaAPI</h2>
+              <p className="hint">
+                Connected broker accounts, live balance, open positions, and Signal
+                Hub execution stats.
+              </p>
+            </div>
             <h2>MetaAPI connected accounts</h2>
             <p className="hint">
               Broker MT4/MT5 accounts linked to your MetaAPI token (
@@ -1956,12 +1999,12 @@ export default function App() {
                 </tr>
               </thead>
               <tbody>
-                {!hubReport || hubReport.senders.length === 0 ? (
+                {!hubReport || (hubReport.senders ?? []).length === 0 ? (
                   <tr>
                     <td colSpan={6}>No Hub sender data (Hub may be unconfigured)</td>
                   </tr>
                 ) : (
-                  hubReport.senders.map((s, i) => (
+                  (hubReport.senders ?? []).map((s, i) => (
                     <tr key={s.sendername}>
                       <td>{s.rank ?? i + 1}</td>
                       <td>{s.sendername}</td>

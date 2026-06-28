@@ -90,13 +90,21 @@ export class AdminService {
     limit?: number;
   }) {
     if (!this.signalHub.isConfigured) {
-      throw new ServiceUnavailableException('Signal Hub is not configured');
+      return {
+        days: filters?.days ?? 90,
+        total_senders: 0,
+        returned: 0,
+        senders: [],
+      };
     }
     const report = await this.signalHub.getSenderReport(filters);
     if (!report) {
-      throw new ServiceUnavailableException(
-        'Could not fetch sender report from Signal Hub',
-      );
+      return {
+        days: filters?.days ?? 90,
+        total_senders: 0,
+        returned: 0,
+        senders: [],
+      };
     }
     return report;
   }

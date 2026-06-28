@@ -1,29 +1,78 @@
 /**
  * Deriv MT5 / API symbol codes and common display-name / shorthand aliases.
+ * Volatility standard (R_*) and 1-second (1HZ*V) indices are fully mapped.
  * Source: deriv-com/deriv-app active_symbols, Deriv academy symbol sheets.
  */
 
+/** Standard volatility levels (2s tick) — MT5 codes R_10 … R_100. */
+export const VOL_STD_LEVELS = [10, 25, 50, 75, 100] as const;
+
+/** 1-second volatility levels — MT5 codes 1HZ10V … 1HZ300V. */
+export const VOL_1S_LEVELS = [
+  10, 15, 25, 30, 50, 75, 90, 100, 150, 200, 250, 300,
+] as const;
+
+export type VolStdLevel = (typeof VOL_STD_LEVELS)[number];
+export type Vol1sLevel = (typeof VOL_1S_LEVELS)[number];
+
+export function volStdCode(level: number): string {
+  return `R_${level}`;
+}
+
+export function vol1sCode(level: number): string {
+  return `1HZ${level}V`;
+}
+
+export function volStdDisplay(level: number): string {
+  return `Volatility ${level} Index`;
+}
+
+export function vol1sDisplay(level: number): string {
+  return `Volatility ${level} (1s) Index`;
+}
+
+/** One row per volatility level with both standard and 1s where Deriv offers them. */
+export type VolatilitySymbolEntry = {
+  level: number;
+  standardCode?: string;
+  standardDisplay?: string;
+  oneSecondCode: string;
+  oneSecondDisplay: string;
+};
+
+export function buildVolatilityRegistry(): VolatilitySymbolEntry[] {
+  const levels = new Set([...VOL_STD_LEVELS, ...VOL_1S_LEVELS]);
+  return [...levels]
+    .sort((a, b) => a - b)
+    .map((level) => ({
+      level,
+      standardCode: VOL_STD_LEVELS.includes(level as VolStdLevel)
+        ? volStdCode(level)
+        : undefined,
+      standardDisplay: VOL_STD_LEVELS.includes(level as VolStdLevel)
+        ? volStdDisplay(level)
+        : undefined,
+      oneSecondCode: vol1sCode(level),
+      oneSecondDisplay: vol1sDisplay(level),
+    }));
+}
+
+export const VOLATILITY_SYMBOL_REGISTRY = buildVolatilityRegistry();
+
+function buildVolatilityDisplayNames(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const row of VOLATILITY_SYMBOL_REGISTRY) {
+    out[row.oneSecondCode] = row.oneSecondDisplay;
+    if (row.standardCode && row.standardDisplay) {
+      out[row.standardCode] = row.standardDisplay;
+    }
+  }
+  return out;
+}
+
 /** Official MT5 symbol → Deriv display name. */
 export const DERIV_MT5_DISPLAY_NAMES: Readonly<Record<string, string>> = {
-  // 1s Volatility Indices
-  '1HZ10V': 'Volatility 10 (1s) Index',
-  '1HZ15V': 'Volatility 15 (1s) Index',
-  '1HZ25V': 'Volatility 25 (1s) Index',
-  '1HZ30V': 'Volatility 30 (1s) Index',
-  '1HZ50V': 'Volatility 50 (1s) Index',
-  '1HZ75V': 'Volatility 75 (1s) Index',
-  '1HZ90V': 'Volatility 90 (1s) Index',
-  '1HZ100V': 'Volatility 100 (1s) Index',
-  '1HZ150V': 'Volatility 150 (1s) Index',
-  '1HZ200V': 'Volatility 200 (1s) Index',
-  '1HZ250V': 'Volatility 250 (1s) Index',
-  '1HZ300V': 'Volatility 300 (1s) Index',
-  // Standard Volatility Indices (2s tick)
-  R_10: 'Volatility 10 Index',
-  R_25: 'Volatility 25 Index',
-  R_50: 'Volatility 50 Index',
-  R_75: 'Volatility 75 Index',
-  R_100: 'Volatility 100 Index',
+  ...buildVolatilityDisplayNames(),
   // Crash / Boom
   BOOM300N: 'Boom 300 Index',
   BOOM500: 'Boom 500 Index',
@@ -91,9 +140,6 @@ export const DERIV_MT5_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   CRYBTCLTC: 'BTC/LTC',
 };
 
-const VOL_1S_LEVELS = [10, 15, 25, 30, 50, 75, 90, 100, 150, 200, 250, 300] as const;
-const VOL_STD_LEVELS = [10, 25, 50, 75, 100] as const;
-
 export function normalizeSymbolKey(raw: string): string {
   return raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
@@ -118,28 +164,47 @@ function buildAliasMap(): Record<string, string> {
     add(displayNameKey(display), canonical);
   }
 
-  for (const n of VOL_1S_LEVELS) {
-    const code = `1HZ${n}V`;
-    add(`HZ${n}V`, code);
-    add(`VIX${n}1S`, code);
-    add(`VIX${n}S`, code);
-    add(`VOLATILITY${n}1S`, code);
-    add(`VOLATILITY${n}1SINDEX`, code);
-    add(`VOL${n}1S`, code);
-    add(`V${n}1S`, code);
-    // Bare V75 / VOL75 → 1s series (common shorthand on Deriv MT5)
-    add(`V${n}`, code);
-    add(`VOL${n}`, code);
-    add(`VIX${n}`, code);
+  for (const row of VOLATILITY_SYMBOL_REGISTRY) {
+    const { level, oneSecondCode, standardCode } = row;
+    const n = String(level);
+
+    // —— 1-second volatility ——
+    add(oneSecondCode, oneSecondCode);
+    add(`HZ${n}V`, oneSecondCode);
+    add(`VIX${n}1S`, oneSecondCode);
+    add(`VIX${n}S`, oneSecondCode);
+    add(`VOLATILITY${n}1S`, oneSecondCode);
+    add(`VOLATILITY${n}1SINDEX`, oneSecondCode);
+    add(`VOL${n}1S`, oneSecondCode);
+    add(`V${n}1S`, oneSecondCode);
+    add(`V${n}S`, oneSecondCode);
+    add(`${n}S`, oneSecondCode);
+    add(`${n}1S`, oneSecondCode);
+    add(`V${n}1SEC`, oneSecondCode);
+    add(`VOL${n}1SEC`, oneSecondCode);
+    // Common shorthand V75 → 1s on Deriv MT5
+    add(`V${n}`, oneSecondCode);
+    add(`VOL${n}`, oneSecondCode);
+    add(`VIX${n}`, oneSecondCode);
+
+    // —— Standard volatility (2s) ——
+    if (standardCode) {
+      add(standardCode, standardCode);
+      add(`R${n}`, standardCode);
+      add(`VOLATILITY${n}`, standardCode);
+      add(`VOLATILITY${n}INDEX`, standardCode);
+      add(`V${n}INDEX`, standardCode);
+      add(`V${n}STD`, standardCode);
+      add(`VOL${n}STD`, standardCode);
+      add(`STANDARDVOLATILITY${n}`, standardCode);
+      add(`STANDARDV${n}`, standardCode);
+    }
   }
 
+  // Explicit disambiguation: "volatility 10 index" (no 1s) → standard
   for (const n of VOL_STD_LEVELS) {
-    const code = `R_${n}`;
-    add(`R${n}`, code);
-    add(`VOLATILITY${n}`, code);
-    add(`VOLATILITY${n}INDEX`, code);
-    add(`V${n}INDEX`, code);
-    add(`STANDARDVOLATILITY${n}`, code);
+    add(`VOLATILITY${n}STANDARD`, volStdCode(n));
+    add(`VOLATILITY${n}2S`, volStdCode(n));
   }
 
   // Crash / Boom shorthands
@@ -172,7 +237,6 @@ function buildAliasMap(): Record<string, string> {
   add('BULLMARKET', 'RDBULL');
   add('BULLMARKETINDEX', 'RDBULL');
 
-  // Generic MT5 / TradingView names
   add('GOLD', 'XAUUSD');
   add('XAUUSD', 'XAUUSD');
   add('SILVER', 'XAGUSD');
@@ -186,7 +250,6 @@ function buildAliasMap(): Record<string, string> {
   add('BTCUSD', 'BTCUSD');
   add('ETHUSD', 'ETHUSD');
 
-  // Strip FRX prefix aliases (some charts show EURUSD, broker uses FRXEURUSD)
   for (const canonical of Object.keys(DERIV_MT5_DISPLAY_NAMES)) {
     if (canonical.startsWith('FRX') && canonical.length > 3) {
       add(canonical.slice(3), canonical);
@@ -198,48 +261,68 @@ function buildAliasMap(): Record<string, string> {
 
 const ALIAS_TO_CANONICAL = buildAliasMap();
 
-const DISPLAY_PATTERNS: ReadonlyArray<{ re: RegExp; symbol: string }> = [
-  { re: /VOLATILITY\s*10\s*\(\s*1\s*S\s*\)/i, symbol: '1HZ10V' },
-  { re: /VOLATILITY\s*15\s*\(\s*1\s*S\s*\)/i, symbol: '1HZ15V' },
-  { re: /VOLATILITY\s*25\s*\(\s*1\s*S\s*\)/i, symbol: '1HZ25V' },
-  { re: /VOLATILITY\s*30\s*\(\s*1\s*S\s*\)/i, symbol: '1HZ30V' },
-  { re: /VOLATILITY\s*50\s*\(\s*1\s*S\s*\)/i, symbol: '1HZ50V' },
-  { re: /VOLATILITY\s*75\s*\(\s*1\s*S\s*\)/i, symbol: '1HZ75V' },
-  { re: /VOLATILITY\s*90\s*\(\s*1\s*S\s*\)/i, symbol: '1HZ90V' },
-  { re: /VOLATILITY\s*100\s*\(\s*1\s*S\s*\)/i, symbol: '1HZ100V' },
-  { re: /VOLATILITY\s*150\s*\(\s*1\s*S\s*\)/i, symbol: '1HZ150V' },
-  { re: /VOLATILITY\s*200\s*\(\s*1\s*S\s*\)/i, symbol: '1HZ200V' },
-  { re: /VOLATILITY\s*250\s*\(\s*1\s*S\s*\)/i, symbol: '1HZ250V' },
-  { re: /VOLATILITY\s*300\s*\(\s*1\s*S\s*\)/i, symbol: '1HZ300V' },
-  { re: /VOLATILITY\s*10(?!\s*\(\s*1\s*S)/i, symbol: 'R_10' },
-  { re: /VOLATILITY\s*25(?!\s*\(\s*1\s*S)/i, symbol: 'R_25' },
-  { re: /VOLATILITY\s*50(?!\s*\(\s*1\s*S)/i, symbol: 'R_50' },
-  { re: /VOLATILITY\s*75(?!\s*\(\s*1\s*S)/i, symbol: 'R_75' },
-  { re: /VOLATILITY\s*100(?!\s*\(\s*1\s*S)/i, symbol: 'R_100' },
-  { re: /BOOM\s*300/i, symbol: 'BOOM300N' },
-  { re: /BOOM\s*500/i, symbol: 'BOOM500' },
-  { re: /BOOM\s*1000/i, symbol: 'BOOM1000' },
-  { re: /CRASH\s*300/i, symbol: 'CRASH300N' },
-  { re: /CRASH\s*500/i, symbol: 'CRASH500' },
-  { re: /CRASH\s*1000/i, symbol: 'CRASH1000' },
-  { re: /STEP\s*INDEX/i, symbol: 'STPRNG' },
-  { re: /BEAR\s*MARKET/i, symbol: 'RDBEAR' },
-  { re: /BULL\s*MARKET/i, symbol: 'RDBULL' },
-];
+function buildDisplayPatterns(): ReadonlyArray<{ re: RegExp; symbol: string }> {
+  const patterns: Array<{ re: RegExp; symbol: string }> = [];
+
+  for (const n of VOL_1S_LEVELS) {
+    patterns.push({
+      re: new RegExp(`VOLATILITY\\s*${n}\\s*\\(\\s*1\\s*S\\s*\\)`, 'i'),
+      symbol: vol1sCode(n),
+    });
+    patterns.push({
+      re: new RegExp(`\\bV${n}\\s*1\\s*S\\b`, 'i'),
+      symbol: vol1sCode(n),
+    });
+    patterns.push({
+      re: new RegExp(`\\bVOL${n}\\s*1\\s*S\\b`, 'i'),
+      symbol: vol1sCode(n),
+    });
+  }
+
+  for (const n of VOL_STD_LEVELS) {
+    patterns.push({
+      re: new RegExp(`VOLATILITY\\s*${n}(?!\\s*\\(\\s*1\\s*S)(?!\\s*1\\s*S)`, 'i'),
+      symbol: volStdCode(n),
+    });
+  }
+
+  return [
+    ...patterns,
+    { re: /BOOM\s*300/i, symbol: 'BOOM300N' },
+    { re: /BOOM\s*500/i, symbol: 'BOOM500' },
+    { re: /BOOM\s*1000/i, symbol: 'BOOM1000' },
+    { re: /CRASH\s*300/i, symbol: 'CRASH300N' },
+    { re: /CRASH\s*500/i, symbol: 'CRASH500' },
+    { re: /CRASH\s*1000/i, symbol: 'CRASH1000' },
+    { re: /STEP\s*INDEX/i, symbol: 'STPRNG' },
+    { re: /BEAR\s*MARKET/i, symbol: 'RDBEAR' },
+    { re: /BULL\s*MARKET/i, symbol: 'RDBULL' },
+  ];
+}
+
+const DISPLAY_PATTERNS = buildDisplayPatterns();
 
 function has1sMarker(key: string, raw: string): boolean {
   return (
     /1S|1HZ|HZ\d+V/.test(key) ||
     /\(\s*1\s*s\s*\)/i.test(raw) ||
-    /\b1\s*sec(ond)?\b/i.test(raw)
+    /\b1\s*s(ec(ond)?)?\b/i.test(raw)
   );
 }
 
 function hasStandardVolMarker(key: string, raw: string): boolean {
   return (
     /^R_\d+$/.test(key) ||
-    (/VOLATILITY/i.test(raw) && !/\(\s*1\s*s\s*\)/i.test(raw) && !/1S/.test(key))
+    /STANDARD|2S/.test(key) ||
+    (/VOLATILITY/i.test(raw) &&
+      !/\(\s*1\s*s\s*\)/i.test(raw) &&
+      !/\b1\s*s\b/i.test(raw) &&
+      !/1S/.test(key))
   );
+}
+
+function registryRowForLevel(level: number): VolatilitySymbolEntry | undefined {
+  return VOLATILITY_SYMBOL_REGISTRY.find((r) => r.level === level);
 }
 
 /**
@@ -260,13 +343,18 @@ export function normalizeDerivSymbol(raw: string): string {
   if (jumpMatch) return `JD${jumpMatch[1]}`;
 
   const vol1s = key.match(/^VOLATILITY(\d+)1S(?:INDEX)?$/);
-  if (vol1s) return `1HZ${vol1s[1]}V`;
+  if (vol1s) return vol1sCode(Number(vol1s[1]));
 
-  const volStd = key.match(/^VOLATILITY(\d+)(?:INDEX)?$/);
-  if (volStd && !has1sMarker(key, trimmed)) return `R_${volStd[1]}`;
+  const volStd = key.match(/^VOLATILITY(\d+)(?:INDEX|STANDARD|2S)?$/);
+  if (volStd && !has1sMarker(key, trimmed)) {
+    const level = Number(volStd[1]);
+    if (VOL_STD_LEVELS.includes(level as VolStdLevel)) {
+      return volStdCode(level);
+    }
+  }
 
   const hzBare = key.match(/^HZ(\d+)V$/);
-  if (hzBare) return `1HZ${hzBare[1]}V`;
+  if (hzBare) return vol1sCode(Number(hzBare[1]));
 
   if (/^1HZ\d+V$/.test(key)) return key;
   if (/^R_\d+$/.test(key)) return key;
@@ -284,7 +372,7 @@ export function normalizeDerivSymbol(raw: string): string {
 
 /**
  * Ordered symbol codes to try when fetching live prices (MetaAPI / Signal Hub).
- * Avoids mixing 1s vs standard volatility unless input was ambiguous.
+ * Includes MT5 codes and broker display names (e.g. Volatility 10 (1s) Index).
  */
 export function getSymbolLookupVariants(raw: string): string[] {
   const trimmed = raw.trim();
@@ -301,23 +389,64 @@ export function getSymbolLookupVariants(raw: string): string[] {
   };
 
   push(canonical);
-  push(trimmed.toUpperCase());
+  push(trimmed);
 
   if (ALIAS_TO_CANONICAL[key] && ALIAS_TO_CANONICAL[key] !== canonical) {
     push(ALIAS_TO_CANONICAL[key]);
   }
 
+  const displayName = getDerivDisplayName(canonical);
+  if (displayName) push(displayName);
+
+  // If input looks like a volatility level, include both 1s + standard variants
+  const levelFromKey =
+    key.match(/^(?:V|VOL|VIX|R_?)(\d+)(?:1S|S|STD|INDEX)?$/) ??
+    key.match(/^1HZ(\d+)V$/) ??
+    key.match(/^HZ(\d+)V$/) ??
+    key.match(/^VOLATILITY(\d+)/);
+  if (levelFromKey) {
+    const level = Number(levelFromKey[1]);
+    const row = registryRowForLevel(level);
+    if (row) {
+      push(row.oneSecondCode);
+      push(row.oneSecondDisplay);
+      if (row.standardCode && row.standardDisplay) {
+        push(row.standardCode);
+        push(row.standardDisplay);
+      }
+    }
+  }
+
   const ambiguousVol = key.match(/^(?:V|VOL|VIX)(\d+)$/);
-  if (ambiguousVol && !has1sMarker(key, trimmed) && !hasStandardVolMarker(key, trimmed)) {
-    const n = ambiguousVol[1];
-    push(`1HZ${n}V`);
-    push(`R_${n}`);
+  if (
+    ambiguousVol &&
+    !has1sMarker(key, trimmed) &&
+    !hasStandardVolMarker(key, trimmed)
+  ) {
+    const level = Number(ambiguousVol[1]);
+    const row = registryRowForLevel(level);
+    if (row) {
+      push(row.oneSecondCode);
+      push(row.oneSecondDisplay);
+      if (row.standardCode) {
+        push(row.standardCode);
+        if (row.standardDisplay) push(row.standardDisplay);
+      }
+    }
   }
 
   const volOnly = key.match(/^VOLATILITY(\d+)$/);
   if (volOnly && !has1sMarker(key, trimmed)) {
-    push(`1HZ${volOnly[1]}V`);
-    push(`R_${volOnly[1]}`);
+    const level = Number(volOnly[1]);
+    const row = registryRowForLevel(level);
+    if (row) {
+      push(row.oneSecondCode);
+      push(row.oneSecondDisplay);
+      if (row.standardCode) {
+        push(row.standardCode);
+        if (row.standardDisplay) push(row.standardDisplay);
+      }
+    }
   }
 
   return variants;
@@ -326,4 +455,9 @@ export function getSymbolLookupVariants(raw: string): string[] {
 export function getDerivDisplayName(symbol: string): string | undefined {
   const canonical = normalizeDerivSymbol(symbol);
   return DERIV_MT5_DISPLAY_NAMES[canonical];
+}
+
+/** All mapped volatility pairs for admin/debug or UI pickers. */
+export function listVolatilitySymbols(): VolatilitySymbolEntry[] {
+  return VOLATILITY_SYMBOL_REGISTRY;
 }

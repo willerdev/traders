@@ -53,7 +53,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const msg =
       typeof data === "object" && data && "message" in data
         ? String((data as { message: string }).message)
-        : `Request failed (${res.status})`;
+        : res.status === 502 || res.status === 503
+          ? `API server unreachable — start the backend (port 4000) or check VITE_PROXY_TARGET`
+          : `Request failed (${res.status})`;
     throw new Error(msg);
   }
 

@@ -116,8 +116,15 @@ a {
 }
 
 .sidebar-nav-item.active {
-  background: #262626;
-  color: #fafafa;
+  background: rgba(99, 102, 241, 0.14);
+  color: #fff;
+  box-shadow: inset 3px 0 0 #6366f1;
+  font-weight: 600;
+}
+
+.sidebar-nav-item.active .sidebar-nav-icon {
+  opacity: 1;
+  color: #a5b4fc;
 }
 
 .sidebar-nav-icon {
@@ -133,10 +140,6 @@ a {
 .sidebar-nav-icon svg {
   width: 18px;
   height: 18px;
-}
-
-.sidebar-nav-item.active .sidebar-nav-icon {
-  opacity: 1;
 }
 
 .sidebar-nav-label {
@@ -254,6 +257,24 @@ a {
 .main {
   padding: 1.5rem;
   overflow-x: auto;
+  min-height: 100vh;
+  background: #0b0f14;
+}
+
+.page-header {
+  margin-bottom: 1.25rem;
+}
+
+.page-header h2 {
+  margin: 0 0 0.35rem;
+}
+
+.page-empty {
+  padding: 2rem 1rem;
+  border: 1px dashed #334155;
+  border-radius: 10px;
+  color: #94a3b8;
+  text-align: center;
 }
 
 .login {
@@ -504,6 +525,12 @@ th {
   background: #1e3a5f;
   color: #bfdbfe;
   font-size: 0.9rem;
+}
+
+.message.error {
+  background: #450a0a;
+  color: #fecaca;
+  border: 1px solid #7f1d1d;
 }
 
 .error {

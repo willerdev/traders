@@ -243,8 +243,11 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
     setActionError(null);
     try {
       const result = await api.signals.placeTrade(setup.signalId);
+      const orderLabel = result.pending
+        ? `Pending ${result.orderKind?.replace('ORDER_TYPE_', '').replace(/_/g, ' ')} @ ${result.entryPrice}`
+        : `Trade placed at ${result.entryPrice}`;
       setSuccess(
-        `Trade placed at ${result.entryPrice} · ${result.risk.volume} lots (~${result.risk.riskPercent}% risk, est. loss ${result.risk.estimatedLossAtSl.toFixed(2)} ${result.risk.currency})`,
+        `${orderLabel} · ${result.risk.volume} lots (~${result.risk.riskPercent}% risk, est. loss ${result.risk.estimatedLossAtSl.toFixed(2)} ${result.risk.currency})`,
       );
       onUpdated();
       await load();

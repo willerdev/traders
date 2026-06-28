@@ -7,7 +7,18 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { TradeDirection } from '@prisma/client';
 import { normalizeChartSymbol } from '../ai/chart-setup.util';
-import { getSymbolLookupVariants } from '../ai/deriv-symbols';
+import {
+  getDerivDisplayName,
+  getSymbolLookupVariants,
+  normalizeDerivSymbol,
+} from '../ai/deriv-symbols';
+import {
+  MetaApiOrderAction,
+  MetaApiPendingAction,
+  resolvePendingOpenPrice,
+  resolvePendingOrderType,
+  roundToSymbolDigits,
+} from './metaapi-order.util';
 
 export type MetaApiAccount = {
   id: string;
@@ -103,6 +114,14 @@ export type MetaApiTradeResult = {
   positionId?: string;
 };
 
+export type MetaApiPlacedOrder = {
+  trade: MetaApiTradeResult;
+  price: MetaApiSymbolPrice;
+  orderKind: MetaApiOrderAction;
+  openPrice: number;
+  pending: boolean;
+};
+
 @Injectable()
 export class MetaApiService {
   private readonly logger = new Logger(MetaApiService.name);
@@ -110,6 +129,10 @@ export class MetaApiService {
   private readonly token: string;
   private readonly configuredDefaultAccountId: string;
   private readonly defaultVolume: number;
+  private readonly symbolListCache = new Map<
+    string,
+    { symbols: string[]; expiresAt: number }
+  >();
 
   constructor(private config: ConfigService) {
     this.provisioningUrl =
@@ -291,6 +314,62 @@ export class MetaApiService {
     return account;
   }
 
+  async listAccountSymbols(account: MetaApiAccount): Promise<string[]> {
+    const cached = this.symbolListCache.get(account.id);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.symbols;
+    }
+
+    const base = this.clientUrl(account.region);
+    const res = await fetch(
+      `${base}/users/current/accounts/${encodeURIComponent(account.id)}/symbols`,
+      { headers: this.headers() },
+    );
+    const body = (await res.json().catch(() => null)) as unknown;
+
+    if (!res.ok || !Array.isArray(body)) {
+      return [];
+    }
+
+    const symbols = body.map((s) => String(s));
+    this.symbolListCache.set(account.id, {
+      symbols,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    });
+    return symbols;
+  }
+
+  /** Match platform symbol codes to the broker's MT5 symbol name (e.g. 1HZ10V → Volatility 10 (1s) Index). */
+  async resolveBrokerSymbol(
+    account: MetaApiAccount,
+    symbol: string,
+  ): Promise<string | null> {
+    const variants = getSymbolLookupVariants(symbol);
+    const symbols = await this.listAccountSymbols(account);
+    if (symbols.length === 0) return null;
+
+    const exact = new Set(symbols);
+    const byLower = new Map(symbols.map((s) => [s.toLowerCase(), s]));
+    for (const candidate of variants) {
+      if (exact.has(candidate)) return candidate;
+      const ci = byLower.get(candidate.toLowerCase());
+      if (ci) return ci;
+    }
+
+    const canonical = normalizeDerivSymbol(symbol);
+    const display = getDerivDisplayName(canonical)?.toLowerCase();
+    for (const brokerSymbol of symbols) {
+      if (normalizeDerivSymbol(brokerSymbol) === canonical) {
+        return brokerSymbol;
+      }
+      if (display && brokerSymbol.toLowerCase() === display) {
+        return brokerSymbol;
+      }
+    }
+
+    return null;
+  }
+
   async getSymbolPrice(
     account: MetaApiAccount,
     symbol: string,
@@ -310,6 +389,19 @@ export class MetaApiService {
       }
     }
 
+    const resolved = await this.resolveBrokerSymbol(account, symbol);
+    if (resolved && !variants.includes(resolved)) {
+      try {
+        return await this.fetchSymbolPrice(account, resolved);
+      } catch (err) {
+        if (err instanceof BadRequestException) {
+          lastError = err;
+        } else {
+          throw err;
+        }
+      }
+    }
+
     const canonical = normalizeChartSymbol(symbol);
     throw (
       lastError ??
@@ -323,7 +415,7 @@ export class MetaApiService {
   ): Promise<MetaApiSymbolPrice> {
     const base = this.clientUrl(account.region);
     const res = await fetch(
-      `${base}/users/current/accounts/${encodeURIComponent(account.id)}/symbols/${encodeURIComponent(brokerSymbol)}/current-price`,
+      `${base}/users/current/accounts/${encodeURIComponent(account.id)}/symbols/${encodeURIComponent(brokerSymbol)}/current-price?keepSubscription=true`,
       { headers: this.headers() },
     );
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -467,7 +559,12 @@ export class MetaApiService {
     account: MetaApiAccount,
     symbol: string,
   ): Promise<MetaApiSymbolSpec> {
-    const variants = getSymbolLookupVariants(symbol);
+    const variants = [...getSymbolLookupVariants(symbol)];
+    const resolved = await this.resolveBrokerSymbol(account, symbol);
+    if (resolved && !variants.includes(resolved)) {
+      variants.push(resolved);
+    }
+
     let lastError: BadRequestException | null = null;
 
     for (const brokerSymbol of variants) {
@@ -520,6 +617,58 @@ export class MetaApiService {
     };
   }
 
+  private tradeExtras(account: MetaApiAccount): Record<string, unknown> {
+    const extras: Record<string, unknown> = {};
+    if (account.manualTrades === true || account.magic === 0) {
+      extras.magic = 0;
+    } else if (account.magic != null) {
+      extras.magic = account.magic;
+    }
+    return extras;
+  }
+
+  private async submitTrade(
+    account: MetaApiAccount,
+    payload: Record<string, unknown>,
+  ): Promise<MetaApiTradeResult> {
+    const base = this.clientUrl(account.region);
+    const res = await fetch(
+      `${base}/users/current/accounts/${encodeURIComponent(account.id)}/trade`,
+      {
+        method: 'POST',
+        headers: this.headers(true),
+        body: JSON.stringify({ ...this.tradeExtras(account), ...payload }),
+      },
+    );
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+
+    if (!res.ok) {
+      this.logger.error(
+        `MetaAPI trade failed (${res.status}): ${JSON.stringify(body).slice(0, 400)}`,
+      );
+      throw new BadRequestException(
+        (body.message as string) ||
+          `MetaAPI trade rejected (${res.status})`,
+      );
+    }
+
+    const stringCode = String(body.stringCode ?? '');
+    if (stringCode && stringCode !== 'TRADE_RETCODE_DONE') {
+      throw new BadRequestException(
+        String(body.message ?? stringCode ?? 'Trade rejected by broker'),
+      );
+    }
+
+    return {
+      numericCode: Number(body.numericCode ?? 0),
+      stringCode,
+      message: String(body.message ?? 'Request completed'),
+      orderId: body.orderId != null ? String(body.orderId) : undefined,
+      positionId:
+        body.positionId != null ? String(body.positionId) : undefined,
+    };
+  }
+
   async placeMarketOrder(input: {
     account: MetaApiAccount;
     symbol: string;
@@ -548,44 +697,150 @@ export class MetaApiService {
     if (input.comment) payload.comment = input.comment.slice(0, 31);
     if (input.clientId) payload.clientId = input.clientId.slice(0, 26);
 
-    const base = this.clientUrl(account.region);
-    const res = await fetch(
-      `${base}/users/current/accounts/${encodeURIComponent(account.id)}/trade`,
-      {
-        method: 'POST',
-        headers: this.headers(true),
-        body: JSON.stringify(payload),
-      },
-    );
-    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const trade = await this.submitTrade(account, payload);
+    return { trade, price };
+  }
 
-    if (!res.ok) {
-      this.logger.error(
-        `MetaAPI trade failed (${res.status}): ${JSON.stringify(body).slice(0, 400)}`,
-      );
-      throw new BadRequestException(
-        (body.message as string) ||
-          `MetaAPI trade rejected (${res.status})`,
-      );
-    }
+  async placePendingOrder(input: {
+    account: MetaApiAccount;
+    symbol: string;
+    orderKind: MetaApiPendingAction;
+    volume: number;
+    openPrice: number;
+    stopLoss: number;
+    takeProfit: number;
+    comment?: string;
+    clientId?: string;
+    price?: MetaApiSymbolPrice;
+    brokerSymbol?: string;
+  }): Promise<{ trade: MetaApiTradeResult; price: MetaApiSymbolPrice }> {
+    const account = await this.ensureAccountReady(input.account.id);
+    const price =
+      input.price ?? (await this.getSymbolPrice(account, input.symbol));
+    const brokerSymbol =
+      input.brokerSymbol ??
+      price.symbol ??
+      (await this.resolveBrokerSymbol(account, input.symbol)) ??
+      normalizeChartSymbol(input.symbol);
 
-    const stringCode = String(body.stringCode ?? '');
-    if (stringCode && stringCode !== 'TRADE_RETCODE_DONE') {
-      throw new BadRequestException(
-        String(body.message ?? stringCode ?? 'Trade rejected by broker'),
-      );
-    }
-
-    return {
-      trade: {
-        numericCode: Number(body.numericCode ?? 0),
-        stringCode,
-        message: String(body.message ?? 'Request completed'),
-        orderId: body.orderId != null ? String(body.orderId) : undefined,
-        positionId:
-          body.positionId != null ? String(body.positionId) : undefined,
-      },
-      price,
+    const payload: Record<string, unknown> = {
+      actionType: input.orderKind,
+      symbol: brokerSymbol,
+      volume: input.volume,
+      openPrice: input.openPrice,
+      stopLoss: input.stopLoss,
+      takeProfit: input.takeProfit,
     };
+    if (input.comment) payload.comment = input.comment.slice(0, 31);
+    if (input.clientId) payload.clientId = input.clientId.slice(0, 26);
+
+    const trade = await this.submitTrade(account, payload);
+    return { trade, price };
+  }
+
+  async placeOrderWithFallback(input: {
+    account: MetaApiAccount;
+    symbol: string;
+    direction: TradeDirection;
+    volume: number;
+    stopLoss: number;
+    takeProfit: number;
+    entryMin: number;
+    entryMax: number;
+    comment?: string;
+    clientId?: string;
+    price?: MetaApiSymbolPrice;
+    specDigits?: number;
+    recalculateVolume?: (openPrice: number) => Promise<number>;
+  }): Promise<MetaApiPlacedOrder> {
+    const account = await this.ensureAccountReady(input.account.id);
+    const price =
+      input.price ?? (await this.getSymbolPrice(account, input.symbol));
+    const marketPrice =
+      input.direction === 'BUY' ? price.ask : price.bid;
+    const basePayload = {
+      stopLoss: input.stopLoss,
+      takeProfit: input.takeProfit,
+      comment: input.comment,
+      clientId: input.clientId,
+    };
+
+    try {
+      const { trade } = await this.placeMarketOrder({
+        account,
+        symbol: input.symbol,
+        direction: input.direction,
+        price,
+        volume: input.volume,
+        ...basePayload,
+      });
+      return {
+        trade,
+        price,
+        orderKind:
+          input.direction === 'BUY' ? 'ORDER_TYPE_BUY' : 'ORDER_TYPE_SELL',
+        openPrice: marketPrice,
+        pending: false,
+      };
+    } catch (marketErr) {
+      const marketMessage =
+        marketErr instanceof BadRequestException
+          ? marketErr.message
+          : 'Market order rejected';
+
+      const digits =
+        input.specDigits ??
+        (await this.getSymbolSpecification(account, price.symbol)).digits ??
+        5;
+      const openPrice = roundToSymbolDigits(
+        resolvePendingOpenPrice(
+          input.direction,
+          input.entryMin,
+          input.entryMax,
+          marketPrice,
+        ),
+        digits,
+      );
+      const orderKind = resolvePendingOrderType(
+        input.direction,
+        openPrice,
+        marketPrice,
+      );
+
+      this.logger.warn(
+        `Market order failed for ${input.symbol} (${marketMessage}) — placing ${orderKind} @ ${openPrice}`,
+      );
+
+      const pendingVolume = input.recalculateVolume
+        ? await input.recalculateVolume(openPrice)
+        : input.volume;
+
+      try {
+        const { trade } = await this.placePendingOrder({
+          account,
+          symbol: input.symbol,
+          orderKind,
+          openPrice,
+          volume: pendingVolume,
+          price,
+          ...basePayload,
+        });
+        return {
+          trade,
+          price,
+          orderKind,
+          openPrice,
+          pending: true,
+        };
+      } catch (pendingErr) {
+        const pendingMessage =
+          pendingErr instanceof BadRequestException
+            ? pendingErr.message
+            : 'Pending order rejected';
+        throw new BadRequestException(
+          `Market order failed (${marketMessage}). Pending ${orderKind} @ ${openPrice} also failed (${pendingMessage}).`,
+        );
+      }
+    }
   }
 }
