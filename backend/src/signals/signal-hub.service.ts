@@ -7,6 +7,10 @@ import { CreateSignalDto } from '../common/dto';
 import { SignalValidationService } from '../ai/signal-validation.service';
 import { normalizeChartSymbol } from '../ai/chart-setup.util';
 import { getSymbolLookupVariants } from '../ai/deriv-symbols';
+import {
+  resolveHubPendingOrderType,
+  resolvePendingOpenPrice,
+} from '../metaapi/metaapi-order.util';
 
 export type SignalHubAction =
   | 'open'
@@ -18,17 +22,17 @@ export type SignalHubAction =
   | 'close_all'
   | 'ignore';
 
-export type SignalHubOrderType = 'market' | 'limit' | 'stop';
+export type SignalHubOrderType = 'limit' | 'stop';
 
-const VALID_ORDER_TYPES: SignalHubOrderType[] = ['market', 'limit', 'stop'];
+const VALID_ORDER_TYPES: SignalHubOrderType[] = ['limit', 'stop'];
 
 function parseOrderType(raw?: string): SignalHubOrderType {
   const value = (raw || 'limit').trim().toLowerCase();
   if (VALID_ORDER_TYPES.includes(value as SignalHubOrderType)) {
     return value as SignalHubOrderType;
   }
-  if (/\bmarket\b/.test(value)) return 'market';
   if (/\bstop\b/.test(value)) return 'stop';
+  if (/\bmarket\b/.test(value)) return 'limit';
   if (/\blimit\b/.test(value)) return 'limit';
   return 'limit';
 }
@@ -53,7 +57,6 @@ export interface SignalHubPayload {
   image_mime?: string;
   lot?: number;
   ticket?: number;
-  force_entry?: boolean;
 }
 
 export interface SignalHubQuote {
@@ -297,7 +300,47 @@ export class SignalHubService {
     const raw =
       this.config.get<string>('SIGNAL_HUB_ORDER_TYPE') ||
       process.env.SIGNAL_HUB_ORDER_TYPE;
-    return parseOrderType(raw);
+    const parsed = parseOrderType(raw);
+    if (raw?.trim().toLowerCase().includes('market')) {
+      this.logger.warn(
+        'SIGNAL_HUB_ORDER_TYPE "market" is not allowed for submitted setups — using limit/stop auto-resolution',
+      );
+    }
+    return parsed;
+  }
+
+  /**
+   * Submitted setups always queue pending orders (limit or stop) at the entry zone edge.
+   * Market execution is only available via Place trade (MetaAPI) in the setup modal.
+   */
+  private resolveSubmittedOrder(
+    dto: CreateSignalDto,
+    marketPrice: number | null,
+  ): { orderType: SignalHubOrderType; entry: number } {
+    const entryMin = dto.entryMin;
+    const entryMax = dto.entryMax;
+
+    if (marketPrice != null && Number.isFinite(marketPrice)) {
+      const entry = resolvePendingOpenPrice(
+        dto.direction,
+        entryMin,
+        entryMax,
+        marketPrice,
+      );
+      return {
+        orderType: resolveHubPendingOrderType(
+          dto.direction,
+          entry,
+          marketPrice,
+        ),
+        entry,
+      };
+    }
+
+    return {
+      orderType: this.getOrderType(),
+      entry: (entryMin + entryMax) / 2,
+    };
   }
 
   /** Read at request time — Render env updates need redeploy, not app restart hacks. */
@@ -375,22 +418,24 @@ export class SignalHubService {
     displayName: string,
     userId: string,
     confidence?: number,
-    options?: { forceEntry?: boolean },
+    order?: { orderType: SignalHubOrderType; entry: number },
   ): SignalHubPayload {
+    const resolved =
+      order ??
+      this.resolveSubmittedOrder(dto, null);
     const payload: SignalHubPayload = {
       external_id: externalId,
       action: 'open',
-      order_type: options?.forceEntry ? 'market' : this.getOrderType(),
+      order_type: resolved.orderType,
       symbol: normalizeChartSymbol(dto.symbol),
       direction: this.toDirection(dto.direction),
-      entry: (dto.entryMin + dto.entryMax) / 2,
+      entry: resolved.entry,
       sl: dto.stopLoss,
       tp: dto.takeProfit,
       lot_scale: this.lotScale ?? undefined,
       sendername: this.toSenderName(displayName, userId),
       provider_name: this.providerName,
       message: dto.description.trim().slice(0, 4000),
-      force_entry: Boolean(options?.forceEntry),
     };
 
     if (this.callbackUrl?.startsWith('https://')) {
@@ -446,13 +491,15 @@ export class SignalHubService {
     }
 
     const safeDto = validation.dto;
+    const marketMid = await this.getQuoteMid(safeDto.symbol);
+    const submittedOrder = this.resolveSubmittedOrder(safeDto, marketMid);
     const payload = this.buildPayload(
       externalId,
       safeDto,
       displayName,
       userId,
       validation.confidence,
-      { forceEntry: Boolean(dto.forceEntry) },
+      submittedOrder,
     );
     const sentPrices = {
       symbol: payload.symbol,

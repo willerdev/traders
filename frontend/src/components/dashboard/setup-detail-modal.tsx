@@ -25,6 +25,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { ClaimTpModal } from "@/components/dashboard/claim-tp-modal";
+import { TradeExecutionNotice } from "@/components/trading/trade-execution-notice";
 
 export type SetupSummary = {
   signalId: string;
@@ -268,7 +269,9 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
   async function handlePlaceTrade() {
     if (
       !confirm(
-        `Place ${setup.direction} ${setup.symbol} at market now?\n\nSL: ${setup.stopLoss}\nTP: ${setup.takeProfit}`,
+        `Place ${setup.direction} ${setup.symbol} via MetaAPI?\n\n` +
+          `This goes LIVE immediately in Orders — market fill now, or a broker pending order at your entry edge. It does NOT wait for your Signal Hub limit zone.\n\n` +
+          `SL: ${setup.stopLoss}\nTP: ${setup.takeProfit}`,
       )
     ) {
       return;
@@ -321,9 +324,16 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
   }
 
   async function handleInvalidate() {
+    if (resolution?.canInvalidate === false) {
+      setActionError(
+        resolution.invalidateBlockedReason ??
+          "Cannot invalidate while an order or trade is running on this setup.",
+      );
+      return;
+    }
     if (
       !confirm(
-        `Invalidate ${setup.symbol}? This cancels the Hub order and archives the setup.`,
+        `Invalidate ${setup.symbol}? This cancels the Hub order (if any) and archives the setup.\n\nOnly do this when no live MetaAPI order or open trade exists.`,
       )
     ) {
       return;
@@ -430,6 +440,8 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
                     {error}
                   </p>
                 )}
+
+                {isOpen && <TradeExecutionNotice variant="modal" />}
 
                 <div className="grid gap-3 text-sm sm:grid-cols-2">
                   <InfoRow label="Entry" value={`${setup.entryMin} – ${setup.entryMax}`} />
@@ -636,7 +648,12 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
                       variant="ghost"
                       size="sm"
                       className="gap-1 text-amber-400"
-                      disabled={Boolean(actionLoading)}
+                      disabled={Boolean(actionLoading) || res?.canInvalidate === false}
+                      title={
+                        res?.canInvalidate === false
+                          ? res.invalidateBlockedReason
+                          : undefined
+                      }
                       onClick={() => void handleInvalidate()}
                     >
                       {actionLoading === "invalidate" ? (
@@ -646,6 +663,11 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
                       )}
                       Invalidate
                     </Button>
+                    {res?.canInvalidate === false && res.invalidateBlockedReason && (
+                      <p className="w-full text-xs text-amber-400/90">
+                        {res.invalidateBlockedReason}
+                      </p>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"

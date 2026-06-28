@@ -760,7 +760,6 @@ export interface SignalInput {
   riskRewardRatio: number;
   description: string;
   screenshotUrl: string;
-  forceEntry?: boolean;
 }
 
 export interface ArchivedSetupItem {
@@ -1090,6 +1089,8 @@ export interface SetupResolution {
   canPlaceTrade?: boolean;
   metaApiPrice?: number | null;
   liveTrade?: SetupLiveTrade | null;
+  canInvalidate?: boolean;
+  invalidateBlockedReason?: string;
 }
 
 export interface SetupLiveTrade {

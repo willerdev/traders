@@ -17,6 +17,7 @@ import {
   type ReviewPayload,
 } from "@/components/submit/submit-review";
 import { DuplicateRejectionCard } from "@/components/submit/duplicate-rejection";
+import { TradeExecutionNotice } from "@/components/trading/trade-execution-notice";
 import {
   Lock,
   AlertCircle,
@@ -149,7 +150,6 @@ export default function SubmitSignalPage() {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   const [form, setForm] = useState(EMPTY_FORM);
-  const [forceEntry, setForceEntry] = useState(false);
   const [liveQuote, setLiveQuote] = useState<{
     bid: number;
     ask: number;
@@ -390,7 +390,6 @@ export default function SubmitSignalPage() {
     setDuplicateMatch(null);
     setAiFilled(false);
     setSaveStatus("idle");
-    setForceEntry(false);
     setLiveQuote(null);
     setQuoteError(null);
     setStep("edit");
@@ -516,7 +515,6 @@ export default function SubmitSignalPage() {
       description: form.description.trim(),
       screenshotUrl,
       previewUrl: setupPreview || screenshotUrl || null,
-      forceEntry,
     };
   }
 
@@ -561,7 +559,6 @@ export default function SubmitSignalPage() {
         riskRewardRatio: review.riskRewardRatio,
         description: review.description,
         screenshotUrl: imageUrl,
-        ...(review.forceEntry ? { forceEntry: true } : {}),
       });
 
       if ("status" in result && result.status === "duplicate_signal") {
@@ -915,6 +912,7 @@ export default function SubmitSignalPage() {
               Upload your chart setup — AI vision reads the chart and auto-saves
               your progress. When ready, review everything before final submit.
             </CardDescription>
+            <TradeExecutionNotice variant="submit" className="mt-3" />
             {progress > 0 && (
               <div className="mt-3">
                 <div className="mb-1 flex justify-between text-xs text-gray-500">
@@ -1038,25 +1036,6 @@ export default function SubmitSignalPage() {
                   </div>
                 )}
               </div>
-
-              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-white/10 bg-white/[0.02] p-3">
-                <input
-                  type="checkbox"
-                  checked={forceEntry}
-                  onChange={(e) => setForceEntry(e.target.checked)}
-                  className="mt-1 h-4 w-4 rounded border-white/20 bg-white/5"
-                />
-                <div>
-                  <p className="text-sm font-medium text-white">
-                    Force market entry
-                  </p>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Skip the limit order — execute immediately at current market
-                    price when Hub processes the signal. Use when price is already
-                    in your zone.
-                  </p>
-                </div>
-              </label>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">

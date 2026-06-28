@@ -154,10 +154,6 @@ export class CreateSignalDto {
   @IsString()
   @IsNotEmpty()
   screenshotUrl: string;
-
-  @IsOptional()
-  @IsBoolean()
-  forceEntry?: boolean;
 }
 
 export class RequestPayoutDto {

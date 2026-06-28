@@ -613,13 +613,15 @@ export class SignalsService {
 
     let hubStatus: string | null = null;
     let hubOutcome: SetupOutcome | null = null;
+    let hubExecuted = false;
     if (this.signalHub.isConfigured && trader) {
       const sendername = this.signalHub.toSenderName(trader.displayName, userId);
       const hub = await this.signalHub.getByExternalId(signal.signalId, sendername);
       hubStatus = hub?.status ?? null;
+      hubExecuted = Boolean(hub?.progress?.executed);
       hubOutcome = await this.inferHubOutcome(sendername, hub);
 
-      if (!hubOutcome && hub?.progress?.executed && hubStatus === 'failed') {
+      if (!hubOutcome && hubExecuted && hubStatus === 'failed') {
         hubOutcome = 'sl';
       }
     }
@@ -646,6 +648,14 @@ export class SignalsService {
       Number(signal.riskRewardRatio) >= 1 &&
       !pendingTpClaim;
     const canClaimSl = canClaimSlBase;
+
+    const { canInvalidate, invalidateBlockedReason } =
+      this.resolveInvalidateEligibility({
+        liveTrade,
+        hubExecuted,
+        hubStatus,
+        hubRecordId: signal.hubRecordId,
+      });
 
     return {
       signalId: signal.signalId,
@@ -678,7 +688,135 @@ export class SignalsService {
         this.metaApi.isConfigured &&
         Boolean(linkedAccountId),
       liveTrade,
+      canInvalidate,
+      invalidateBlockedReason,
     };
+  }
+
+  private resolveInvalidateEligibility(input: {
+    liveTrade: Record<string, unknown> | null;
+    hubExecuted: boolean;
+    hubStatus: string | null;
+    hubRecordId: string | null;
+  }): { canInvalidate: boolean; invalidateBlockedReason?: string } {
+    const liveStatus = input.liveTrade?.status;
+
+    if (liveStatus === 'open') {
+      return {
+        canInvalidate: false,
+        invalidateBlockedReason:
+          'You have a live MetaAPI position on this setup. Close the trade first, then you can invalidate.',
+      };
+    }
+
+    if (liveStatus === 'pending') {
+      return {
+        canInvalidate: false,
+        invalidateBlockedReason:
+          'You have a pending MetaAPI order on this setup. Cancel it from Close trade first.',
+      };
+    }
+
+    if (input.hubExecuted) {
+      return {
+        canInvalidate: false,
+        invalidateBlockedReason:
+          'Signal Hub has an active trade on this setup. Wait for TP/SL or close the position before invalidating.',
+      };
+    }
+
+    if (input.hubRecordId) {
+      const status = (input.hubStatus ?? '').toLowerCase();
+      const terminal = [
+        'invalidated',
+        'failed',
+        'cancelled',
+        'canceled',
+        'closed',
+        'rejected',
+        'expired',
+        'done',
+        'not_found',
+      ];
+      if (status && !terminal.some((t) => status.includes(t))) {
+        return {
+          canInvalidate: false,
+          invalidateBlockedReason:
+            'Signal Hub still has a pending order for this setup. Wait for it to fill or cancel on Hub before invalidating.',
+        };
+      }
+    }
+
+    return { canInvalidate: true };
+  }
+
+  private async assertSetupCanInvalidate(
+    userId: string,
+    signal: {
+      id: string;
+      signalId: string;
+      symbol: string;
+      direction: TradeDirection;
+      status: string;
+      hubRecordId: string | null;
+      hubSenderName: string | null;
+      metaApiAccountId: string | null;
+      metaApiOrderId: string | null;
+      metaApiPositionId: string | null;
+      metaApiExecutedAt: Date | null;
+      entryMin: unknown;
+      entryMax: unknown;
+      stopLoss: unknown;
+      trade: { activatedAt: Date | null; entryPrice: unknown } | null;
+    },
+    user: { displayName: string; metaApiAccountId: string | null },
+  ) {
+    const entryMin = Number(signal.entryMin);
+    const entryMax = Number(signal.entryMax);
+    const sl = Number(signal.stopLoss);
+    const oneToOnePrice = computeOneToOnePrice(
+      signal.direction,
+      entryMin,
+      entryMax,
+      sl,
+    );
+
+    const liveTrade = await this.resolveSetupLiveTrade(
+      signal,
+      userId,
+      user,
+      oneToOnePrice,
+      null,
+    );
+
+    let hubExecuted = false;
+    let hubStatus: string | null = null;
+    if (this.signalHub.isConfigured) {
+      const sendername =
+        signal.hubSenderName ||
+        this.signalHub.toSenderName(user.displayName, userId);
+      const hub = await this.signalHub.getByExternalId(
+        signal.signalId,
+        sendername,
+      );
+      hubStatus = hub?.status ?? null;
+      hubExecuted = Boolean(hub?.progress?.executed);
+    }
+
+    const { canInvalidate, invalidateBlockedReason } =
+      this.resolveInvalidateEligibility({
+        liveTrade,
+        hubExecuted,
+        hubStatus,
+        hubRecordId: signal.hubRecordId,
+      });
+
+    if (!canInvalidate) {
+      throw new BadRequestException(
+        invalidateBlockedReason ??
+          'This setup has a running order or open trade and cannot be invalidated.',
+      );
+    }
   }
 
   private async fetchMetaApiMarkPrice(
@@ -1277,6 +1415,8 @@ export class SignalsService {
     if (!signal) {
       throw new NotFoundException('Open setup not found');
     }
+
+    await this.assertSetupCanInvalidate(userId, signal, user);
 
     let hub: Record<string, unknown> | null = null;
     let hubWarning: string | undefined;

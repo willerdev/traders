@@ -144,3 +144,13 @@ export function isPendingOrderAction(
 ): action is MetaApiPendingAction {
   return action !== 'ORDER_TYPE_BUY' && action !== 'ORDER_TYPE_SELL';
 }
+
+/** Signal Hub pending order type — limit (buy/sell limit) or stop (buy/sell stop). */
+export function resolveHubPendingOrderType(
+  direction: TradeDirection,
+  openPrice: number,
+  marketPrice: number,
+): 'limit' | 'stop' {
+  const pending = resolvePendingOrderType(direction, openPrice, marketPrice);
+  return pending.includes('STOP') ? 'stop' : 'limit';
+}

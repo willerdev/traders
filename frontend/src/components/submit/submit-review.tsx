@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { AlertCircle, ArrowLeft, CheckCircle2, Lock } from "lucide-react";
+import { TradeExecutionNotice } from "@/components/trading/trade-execution-notice";
 
 export type ReviewPayload = {
   symbol: string;
@@ -16,7 +17,6 @@ export type ReviewPayload = {
   description: string;
   screenshotUrl: string;
   previewUrl: string | null;
-  forceEntry?: boolean;
 };
 
 export function SubmitReviewCard({
@@ -72,14 +72,6 @@ export function SubmitReviewCard({
               <p className="text-xs text-muted">Take profit</p>
               <p className="font-medium text-foreground">{review.takeProfit}</p>
             </div>
-            {review.forceEntry && (
-              <div className="sm:col-span-2">
-                <p className="text-xs text-muted">MT5 order type</p>
-                <p className="font-medium text-amber-400">
-                  Market entry (force entry at current price)
-                </p>
-              </div>
-            )}
           </div>
 
           <div>
@@ -99,6 +91,8 @@ export function SubmitReviewCard({
             </div>
           )}
         </div>
+
+        <TradeExecutionNotice variant="submit" />
 
         <div className="flex items-start gap-2 rounded-lg border border-rank-gold/30 bg-rank-gold/5 p-3 text-xs text-muted">
           <Lock className="mt-0.5 h-4 w-4 shrink-0 text-rank-gold" />
