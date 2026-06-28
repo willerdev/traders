@@ -4,7 +4,7 @@ services:
     runtime: node
     rootDir: backend
     buildCommand: npm install && npx prisma generate && npm run build
-    startCommand: npx prisma db push && npm run start:prod
+    startCommand: npm run prisma:push && npm run start:prod
     healthCheckPath: /api/v1/leaderboard
     envVars:
       - key: NODE_ENV
