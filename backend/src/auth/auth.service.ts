@@ -8,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto, LoginDto, WalletLoginDto } from '../common/dto';
+import { assertAllowedDisplayName } from '../common/display-name.util';
 import {
   MAX_RISK_PER_TRADE,
   RISK_PERCENT,
@@ -35,11 +36,13 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(dto.password, 12);
     const emailVerifyToken = randomBytes(32).toString('hex');
 
+    const displayName = assertAllowedDisplayName(dto.displayName);
+
     const user = await this.prisma.user.create({
       data: {
         email: dto.email,
         passwordHash,
-        displayName: dto.displayName,
+        displayName,
         emailVerifyToken,
         lastLoginIp: ip,
         termsAcceptedAt: new Date(),

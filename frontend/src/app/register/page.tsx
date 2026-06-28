@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/stores/auth";
+import { validateDisplayName } from "@/lib/display-name";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -27,6 +28,11 @@ export default function RegisterPage() {
     setError("");
     if (!acceptTerms) {
       setError("You must accept the terms and risk disclosure");
+      return;
+    }
+    const nameError = validateDisplayName(displayName);
+    if (nameError) {
+      setError(nameError);
       return;
     }
     setLoading(true);
@@ -89,7 +95,11 @@ export default function RegisterPage() {
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   required
+                  maxLength={40}
                 />
+                <p className="text-xs text-gray-500">
+                  Cannot use names like admin, platform, support, or other official-sounding titles.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>

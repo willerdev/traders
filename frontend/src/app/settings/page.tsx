@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/stores/auth";
 import { useThemeStore } from "@/stores/theme";
 import { api, type UserSettings, type KycRecord } from "@/lib/api";
+import { validateDisplayName } from "@/lib/display-name";
 import { cn } from "@/lib/utils";
 import { AuthenticatedImage } from "@/components/ui/authenticated-image";
 
@@ -198,6 +199,12 @@ export default function SettingsPage() {
     setSaving(true);
     setError("");
     setMessage("");
+    const nameError = validateDisplayName(profileForm.displayName);
+    if (nameError) {
+      setError(nameError);
+      setSaving(false);
+      return;
+    }
     try {
       const updated = await api.users.updateProfile(profileForm);
       setSettings(updated);
@@ -321,10 +328,14 @@ export default function SettingsPage() {
               <Input
                 id="displayName"
                 value={profileForm.displayName}
+                maxLength={40}
                 onChange={(e) =>
                   setProfileForm({ ...profileForm, displayName: e.target.value })
                 }
               />
+              <p className="text-xs text-gray-500">
+                Reserved names (admin, platform, support, etc.) are not allowed.
+              </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">

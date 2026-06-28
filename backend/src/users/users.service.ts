@@ -10,6 +10,7 @@ import {
   SubmitKycDto,
 } from '../common/dto';
 import { currentWeekYear } from '../common/week.util';
+import { assertAllowedDisplayName } from '../common/display-name.util';
 
 @Injectable()
 export class UsersService {
@@ -127,7 +128,7 @@ export class UsersService {
   async updateProfile(userId: string, dto: UpdateProfileDto) {
     const userUpdate: { displayName?: string } = {};
     if (dto.displayName?.trim()) {
-      userUpdate.displayName = dto.displayName.trim();
+      userUpdate.displayName = assertAllowedDisplayName(dto.displayName);
     }
 
     if (Object.keys(userUpdate).length > 0) {

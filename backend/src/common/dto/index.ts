@@ -15,6 +15,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TradeDirection, KycDocumentType } from '@prisma/client';
+import { AllowedDisplayName } from '../validators/allowed-display-name.validator';
 
 export class RegisterDto {
   @IsEmail()
@@ -26,6 +27,7 @@ export class RegisterDto {
 
   @IsString()
   @IsNotEmpty()
+  @AllowedDisplayName()
   displayName: string;
 
   @IsBoolean()
@@ -180,6 +182,7 @@ export class SaveSignalDraftDto {
 export class UpdateProfileDto {
   @IsOptional()
   @IsString()
+  @AllowedDisplayName()
   displayName?: string;
 
   @IsOptional()
