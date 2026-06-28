@@ -111,8 +111,10 @@ export const api = {
   messageThreads: () =>
     request<{ items: MessageThreadSummary[] }>("/admin/messages/threads"),
 
-  getMessageThread: (userId: string) =>
-    request<MessageThreadDetail>(`/admin/messages/users/${userId}`),
+  getMessageThread: (userId: string, since?: string) => {
+    const qs = since ? `?since=${encodeURIComponent(since)}` : "";
+    return request<MessageThreadDetail>(`/admin/messages/users/${userId}${qs}`);
+  },
 
   sendMessage: (userId: string, body: string) =>
     request<DirectMessage>(`/admin/messages/users/${userId}`, {
@@ -247,6 +249,7 @@ export type DirectMessage = {
   readAt: string | null;
   createdAt: string;
   fromAdmin: boolean;
+  isAgent: boolean;
 };
 
 export type MessageThreadSummary = {
@@ -255,10 +258,13 @@ export type MessageThreadSummary = {
   email: string | null;
   status: string;
   unreadCount: number;
+  agentEnabled?: boolean;
+  escalatedAt?: string | null;
   lastMessage: {
     body: string;
     createdAt: string;
     fromAdmin: boolean;
+    isAgent?: boolean;
     senderName: string;
   };
 };
@@ -270,4 +276,6 @@ export type MessageThreadDetail = {
   status: string;
   messages: DirectMessage[];
   unreadCount: number;
+  agentEnabled?: boolean;
+  escalatedAt?: string | null;
 };

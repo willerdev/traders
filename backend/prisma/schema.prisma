@@ -133,6 +133,7 @@ model User {
   tpClaims           TpClaim[]
   directMessages     DirectMessage[] @relation("MessageThread")
   sentDirectMessages DirectMessage[] @relation("MessageSender")
+  messageThreadState MessageThreadState?
 
   @@index([status])
   @@index([role])
@@ -539,6 +540,7 @@ model DirectMessage {
   senderId   String
   senderRole UserRole
   body       String    @db.Text
+  isAgent    Boolean   @default(false) @map("is_agent")
   readAt     DateTime?
   createdAt  DateTime  @default(now())
 
@@ -548,4 +550,15 @@ model DirectMessage {
   @@index([userId, createdAt])
   @@index([userId, readAt])
   @@map("direct_messages")
+}
+
+model MessageThreadState {
+  userId       String    @id @map("user_id")
+  agentEnabled Boolean   @default(true) @map("agent_enabled")
+  escalatedAt  DateTime? @map("escalated_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("message_thread_states")
 }

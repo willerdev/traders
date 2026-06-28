@@ -341,11 +341,18 @@ class ApiClient {
   };
 
   messages = {
-    getThread: () => this.request<DirectMessageThread>("/messages"),
+    getThread: (since?: string) => {
+      const qs = since ? `?since=${encodeURIComponent(since)}` : "";
+      return this.request<DirectMessageThread>(`/messages${qs}`);
+    },
     send: (body: string) =>
-      this.request<DirectMessage>("/messages", {
+      this.request<SendMessageResult>("/messages", {
         method: "POST",
         body: JSON.stringify({ body }),
+      }),
+    requestAdmin: () =>
+      this.request<RequestAdminResult>("/messages/request-admin", {
+        method: "POST",
       }),
     unreadCount: () =>
       this.request<{ count: number }>("/messages/unread-count"),
@@ -848,12 +855,28 @@ export interface DirectMessage {
   readAt: string | null;
   createdAt: string;
   fromAdmin: boolean;
+  isAgent: boolean;
 }
 
 export interface DirectMessageThread {
   userId: string;
   messages: DirectMessage[];
   unreadCount: number;
+  agentEnabled: boolean;
+  escalatedAt: string | null;
+}
+
+export interface SendMessageResult {
+  message: DirectMessage;
+  replies?: DirectMessage[];
+  agentEnabled: boolean;
+  escalated?: boolean;
+}
+
+export interface RequestAdminResult {
+  agentEnabled: boolean;
+  escalated: boolean;
+  reply: DirectMessage;
 }
 
 export interface SetupResolution {

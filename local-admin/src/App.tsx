@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   api,
   getToken,
@@ -130,11 +130,34 @@ export default function App() {
     }
   }, []);
 
-  const loadChatThread = useCallback(async (userId: string) => {
-    setChatLoading(true);
+  const chatLastSyncRef = useRef<Record<string, string>>({});
+
+  const loadChatThread = useCallback(async (userId: string, incremental = false) => {
+    if (!incremental) setChatLoading(true);
     try {
-      const thread = await api.getMessageThread(userId);
-      setChatMessages(thread.messages ?? []);
+      const since = incremental ? chatLastSyncRef.current[userId] : undefined;
+      const thread = await api.getMessageThread(userId, since);
+      const incoming = thread.messages ?? [];
+      if (incremental && since) {
+        if (incoming.length > 0) {
+          setChatMessages((prev) => {
+            const byId = new Map(prev.map((m) => [m.id, m]));
+            for (const m of incoming) byId.set(m.id, m);
+            return [...byId.values()].sort(
+              (a, b) =>
+                new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+            );
+          });
+          chatLastSyncRef.current[userId] = incoming[incoming.length - 1].createdAt;
+        }
+      } else {
+        setChatMessages(incoming);
+        if (incoming.length) {
+          chatLastSyncRef.current[userId] = incoming[incoming.length - 1].createdAt;
+        } else {
+          delete chatLastSyncRef.current[userId];
+        }
+      }
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Could not load chat");
     } finally {
@@ -146,7 +169,10 @@ export default function App() {
     if (!authed) return;
     if (tab === "messages" && activeChatUserId) {
       void loadChatThread(activeChatUserId);
-      const timer = setInterval(() => void loadChatThread(activeChatUserId), 12000);
+      const timer = setInterval(
+        () => void loadChatThread(activeChatUserId, true),
+        4000,
+      );
       return () => clearInterval(timer);
     }
     return undefined;
@@ -155,7 +181,10 @@ export default function App() {
   useEffect(() => {
     if (!chatModalUser) return;
     void loadChatThread(chatModalUser.id);
-    const timer = setInterval(() => void loadChatThread(chatModalUser.id), 12000);
+    const timer = setInterval(
+      () => void loadChatThread(chatModalUser.id, true),
+      4000,
+    );
     return () => clearInterval(timer);
   }, [chatModalUser, loadChatThread]);
 
@@ -457,7 +486,13 @@ export default function App() {
                         )}
                       </div>
                       <span className="muted">{t.email ?? "—"}</span>
-                      <span className="chat-preview">{t.lastMessage.body}</span>
+                      {!t.agentEnabled && (
+                        <span className="chat-escalated">Needs admin</span>
+                      )}
+                      <span className="chat-preview">
+                        {t.lastMessage.isAgent ? "Agent: " : ""}
+                        {t.lastMessage.body}
+                      </span>
                     </button>
                   ))
                 )}
@@ -482,10 +517,19 @@ export default function App() {
                         chatMessages.map((msg) => (
                           <div
                             key={msg.id}
-                            className={`chat-bubble ${msg.fromAdmin ? "out" : "in"}`}
+                            className={`chat-bubble ${
+                              msg.fromAdmin
+                                ? msg.isAgent
+                                  ? "agent"
+                                  : "out"
+                                : "in"
+                            }`}
                           >
                             {!msg.fromAdmin && (
                               <span className="chat-sender">{msg.senderName}</span>
+                            )}
+                            {msg.isAgent && (
+                              <span className="chat-sender">Agent</span>
                             )}
                             <p>{msg.body}</p>
                             <time>{fmtDate(msg.createdAt)}</time>
@@ -1049,11 +1093,14 @@ export default function App() {
                 chatMessages.map((msg) => (
                   <div
                     key={msg.id}
-                    className={`chat-bubble ${msg.fromAdmin ? "out" : "in"}`}
+                    className={`chat-bubble ${
+                      msg.fromAdmin ? (msg.isAgent ? "agent" : "out") : "in"
+                    }`}
                   >
                     {!msg.fromAdmin && (
                       <span className="chat-sender">{msg.senderName}</span>
                     )}
+                    {msg.isAgent && <span className="chat-sender">Agent</span>}
                     <p>{msg.body}</p>
                     <time>{fmtDate(msg.createdAt)}</time>
                   </div>

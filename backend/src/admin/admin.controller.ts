@@ -209,8 +209,11 @@ export class AdminController {
   }
 
   @Get('messages/users/:userId')
-  getMessageThread(@Param('userId') userId: string) {
-    return this.adminService.getMessageThread(userId);
+  getMessageThread(
+    @Param('userId') userId: string,
+    @Query('since') since?: string,
+  ) {
+    return this.adminService.getMessageThread(userId, since);
   }
 
   @Post('messages/users/:userId')

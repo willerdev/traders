@@ -98,8 +98,8 @@ export class AdminService {
     return this.messages.listAdminThreads();
   }
 
-  getMessageThread(userId: string) {
-    return this.messages.getAdminThread(userId);
+  getMessageThread(userId: string, since?: string) {
+    return this.messages.getAdminThread(userId, since);
   }
 
   sendMessageToUser(adminId: string, userId: string, dto: SendMessageDto) {

@@ -465,6 +465,16 @@ th {
   text-overflow: ellipsis;
 }
 
+.chat-escalated {
+  display: inline-block;
+  margin-top: 0.2rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #fbbf24;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 .chat-panel {
   border: 1px solid #1e2936;
   border-radius: 10px;
@@ -517,6 +527,17 @@ th {
   align-self: flex-end;
   background: #1e3a5f;
   border-bottom-right-radius: 4px;
+}
+
+.chat-bubble.agent {
+  align-self: flex-start;
+  background: #172554;
+  border: 1px solid #3b82f640;
+  border-bottom-left-radius: 4px;
+}
+
+.chat-bubble.agent .chat-sender {
+  color: #93c5fd;
 }
 
 .chat-bubble p {
