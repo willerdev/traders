@@ -6,10 +6,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DashboardStats } from "@/components/dashboard/stats-cards";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuthStore, useDashboardStore } from "@/stores/auth";
-import { Send, ArrowRight } from "lucide-react";
+import { Send } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
@@ -17,6 +16,7 @@ import { ArchivedSetupsCard } from "@/components/dashboard/archived-setups";
 import { HubExecutionsCard } from "@/components/dashboard/hub-executions";
 import { Mt5PositionsPanel } from "@/components/dashboard/open-positions";
 import { UnresolvedSetupsCard } from "@/components/dashboard/unresolved-setups";
+import { RecentSignalsCard } from "@/components/dashboard/recent-signals-card";
 import { PayoutRewardTiersCard } from "@/components/dashboard/payout-reward-tiers";
 import { RegistrationCheckout } from "@/components/payments/registration-checkout";
 import { RISK_PERCENT, MAX_RISK_PER_TRADE } from "@/lib/platform-rules";
@@ -144,54 +144,10 @@ export default function DashboardPage() {
         <ArchivedSetupsCard />
         <HubExecutionsCard />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Signals</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {data.recentSignals.length === 0 ? (
-              <div className="py-8 text-center">
-                <p className="text-gray-500">No signals submitted yet</p>
-                <Link href="/submit" className="mt-4 inline-block">
-                  <Button variant="secondary" size="sm" className="gap-2">
-                    Submit your first signal
-                    <ArrowRight className="h-3 w-3" />
-                  </Button>
-                </Link>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {data.recentSignals.map((signal) => (
-                  <div
-                    key={signal.id}
-                    className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] p-3"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-white">
-                          {signal.symbol}
-                        </span>
-                        <Badge
-                          variant={
-                            signal.direction === "BUY" ? "success" : "danger"
-                          }
-                        >
-                          {signal.direction}
-                        </Badge>
-                      </div>
-                      <p className="mt-1 text-xs text-gray-500">
-                        Entry: {Number(signal.entryMin)} – {Number(signal.entryMax)}
-                        {" · "}
-                        {new Date(signal.submittedAt).toLocaleString()}
-                      </p>
-                    </div>
-                    <Badge variant="secondary">{signal.status}</Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <RecentSignalsCard
+          signals={data.recentSignals}
+          onRefresh={() => fetchDashboard()}
+        />
 
         <Card>
           <CardHeader>
