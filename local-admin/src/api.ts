@@ -8,6 +8,15 @@ export function setToken(t: string | null) {
   else localStorage.removeItem("admin_token");
 }
 
+export function getAdminEmail() {
+  return localStorage.getItem("admin_email");
+}
+
+export function setAdminEmail(email: string | null) {
+  if (email) localStorage.setItem("admin_email", email);
+  else localStorage.removeItem("admin_email");
+}
+
 export function getToken() {
   return token;
 }
@@ -41,9 +50,33 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export const api = {
   login: (email: string, password: string) =>
+    request<{
+      requiresOtp: true;
+      loginSessionId: string;
+      email: string;
+      message: string;
+      expiresIn: number;
+    }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+
+  verifyLoginOtp: (loginSessionId: string, code: string) =>
     request<{ accessToken: string; user: { role: string; email: string } }>(
-      "/auth/login",
-      { method: "POST", body: JSON.stringify({ email, password }) },
+      "/auth/login/verify-otp",
+      {
+        method: "POST",
+        body: JSON.stringify({ loginSessionId, code }),
+      },
+    ),
+
+  resendLoginOtp: (loginSessionId: string) =>
+    request<{ loginSessionId: string; message: string }>(
+      "/auth/login/resend-otp",
+      {
+        method: "POST",
+        body: JSON.stringify({ loginSessionId }),
+      },
     ),
 
   overview: () => request<Record<string, unknown>>("/admin/overview"),
@@ -185,6 +218,7 @@ export type PayoutRow = {
   status: string;
   traderShare: string;
   walletAddress?: string;
+  payoutMethod?: string;
   requestedAt: string;
   user: {
     displayName: string;

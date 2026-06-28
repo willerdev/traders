@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { api } from "@/lib/api";
+import { api, type LoginStartResponse } from "@/lib/api";
 
 interface User {
   id: string;
@@ -15,11 +15,26 @@ interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
   hasHydrated: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  startLogin: (email: string, password: string) => Promise<LoginStartResponse>;
+  verifyLoginOtp: (loginSessionId: string, code: string) => Promise<void>;
+  resendLoginOtp: (loginSessionId: string) => Promise<{ loginSessionId: string }>;
   register: (email: string, password: string, displayName: string, acceptTerms?: boolean) => Promise<void>;
   logout: () => void;
   setAuth: (token: string, user: User) => void;
   setHasHydrated: (value: boolean) => void;
+}
+
+function applyAuth(
+  set: (partial: Partial<AuthState>) => void,
+  accessToken: string,
+  user: Record<string, unknown>,
+) {
+  api.setToken(accessToken);
+  set({
+    token: accessToken,
+    user: user as unknown as User,
+    isAuthenticated: true,
+  });
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -30,14 +45,19 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       hasHydrated: false,
 
-      login: async (email, password) => {
+      startLogin: async (email, password) => {
         const res = await api.auth.login({ email, password });
-        api.setToken(res.accessToken);
-        set({
-          token: res.accessToken,
-          user: res.user as unknown as User,
-          isAuthenticated: true,
-        });
+        return res;
+      },
+
+      verifyLoginOtp: async (loginSessionId, code) => {
+        const res = await api.auth.verifyLoginOtp({ loginSessionId, code });
+        applyAuth(set, res.accessToken, res.user);
+      },
+
+      resendLoginOtp: async (loginSessionId) => {
+        const res = await api.auth.resendLoginOtp({ loginSessionId });
+        return { loginSessionId: res.loginSessionId };
       },
 
       register: async (email, password, displayName, acceptTerms = true) => {

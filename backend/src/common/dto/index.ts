@@ -14,12 +14,15 @@ import {
   IsArray,
   ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
-import { TradeDirection, KycDocumentType } from '@prisma/client';
+import { Type, Transform } from 'class-transformer';
+import { TradeDirection, KycDocumentType, PayoutMethod } from '@prisma/client';
 import { AllowedDisplayName } from '../validators/allowed-display-name.validator';
 
 export class RegisterDto {
   @IsEmail()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
   email: string;
 
   @IsString()
@@ -38,10 +41,55 @@ export class RegisterDto {
 
 export class LoginDto {
   @IsEmail()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
   email: string;
 
   @IsString()
   password: string;
+}
+
+export class VerifyLoginOtpDto {
+  @IsString()
+  @IsNotEmpty()
+  loginSessionId: string;
+
+  @IsString()
+  @MinLength(6)
+  @MaxLength(6)
+  code: string;
+}
+
+export class ResendLoginOtpDto {
+  @IsString()
+  @IsNotEmpty()
+  loginSessionId: string;
+}
+
+export class UpdatePaymentDetailsDto {
+  @IsEnum(PayoutMethod)
+  payoutMethod: PayoutMethod;
+
+  @ValidateIf((o: UpdatePaymentDetailsDto) => o.payoutMethod === 'TRC20')
+  @IsString()
+  @IsNotEmpty()
+  trc20Address?: string;
+
+  @ValidateIf((o: UpdatePaymentDetailsDto) => o.payoutMethod === 'MOBILE_MONEY')
+  @IsString()
+  @IsNotEmpty()
+  mobileMoneyProvider?: string;
+
+  @ValidateIf((o: UpdatePaymentDetailsDto) => o.payoutMethod === 'MOBILE_MONEY')
+  @IsString()
+  @MinLength(8)
+  mobileMoneyNumber?: string;
+
+  @ValidateIf((o: UpdatePaymentDetailsDto) => o.payoutMethod === 'MOBILE_MONEY')
+  @IsOptional()
+  @IsString()
+  mobileMoneyAccountName?: string;
 }
 
 export class WalletLoginDto {
@@ -95,9 +143,9 @@ export class RequestPayoutDto {
   @IsNotEmpty()
   payoutId: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  walletAddress: string;
+  walletAddress?: string;
 }
 
 export class CreatePaymentDto {

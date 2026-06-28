@@ -8,6 +8,7 @@ import { NowPaymentsService } from '../payments/nowpayments.service';
 import { ConfigService } from '@nestjs/config';
 import { ComplianceService } from '../compliance/compliance.service';
 import { NotificationService } from '../email/notification.service';
+import { resolvePayoutDestination } from '../common/payout.util';
 
 @Injectable()
 export class PayoutService {
@@ -82,13 +83,21 @@ export class PayoutService {
     return payouts;
   }
 
-  async requestPayout(userId: string, payoutId: string, walletAddress: string) {
+  async requestPayout(
+    userId: string,
+    payoutId: string,
+    walletAddress?: string,
+  ) {
     await this.compliance.requireKycForPayout(userId);
 
-    const trimmed = walletAddress.trim();
-    if (trimmed.length < 10) {
-      throw new BadRequestException('Valid wallet address is required');
-    }
+    const profile = await this.prisma.userProfile.findUnique({
+      where: { userId },
+    });
+
+    const { destination, method } = resolvePayoutDestination(
+      profile,
+      walletAddress,
+    );
 
     const payout = await this.prisma.payout.findFirst({
       where: { id: payoutId, userId },
@@ -101,7 +110,8 @@ export class PayoutService {
     return this.prisma.payout.update({
       where: { id: payoutId },
       data: {
-        walletAddress: trimmed,
+        walletAddress: destination,
+        payoutMethod: method,
         requestedAt: new Date(),
         status: 'PENDING',
       },
@@ -114,12 +124,13 @@ export class PayoutService {
     });
     if (!payout) throw new NotFoundException('Payout not found');
     if (!payout.walletAddress) {
-      throw new Error('Trader wallet address required');
+      throw new Error('Trader payout destination required');
     }
 
     let gatewayResponse: object | undefined;
+    const isMobileMoney = payout.payoutMethod === 'MOBILE_MONEY';
 
-    if (this.nowPayments.isConfigured) {
+    if (!isMobileMoney && this.nowPayments.isConfigured) {
       try {
         const currency = this.nowPayments.mapNetworkToCurrency(network);
         gatewayResponse = await this.nowPayments.createPayout({
@@ -144,7 +155,9 @@ export class PayoutService {
       data: {
         status: 'APPROVED',
         processedAt: new Date(),
-        notes: `Approved by admin ${adminId}${gatewayResponse ? ' — sent via NOWPayments' : ''}`,
+        notes: isMobileMoney
+          ? `Approved by admin ${adminId} — mobile money (manual transfer)`
+          : `Approved by admin ${adminId}${gatewayResponse ? ' — sent via NOWPayments' : ''}`,
       },
     });
 
@@ -154,7 +167,9 @@ export class PayoutService {
         amount: -Number(payout.traderShare),
         type: 'PAYOUT',
         referenceId: payoutId,
-        description: `Crypto payout to ${payout.walletAddress.slice(0, 8)}...`,
+        description: isMobileMoney
+          ? `Mobile money payout — ${payout.walletAddress.slice(0, 24)}…`
+          : `Crypto payout to ${payout.walletAddress.slice(0, 8)}...`,
       },
     });
 

@@ -8,9 +8,11 @@ import {
   UpdateProfileDto,
   UpdateAddressDto,
   SubmitKycDto,
+  UpdatePaymentDetailsDto,
 } from '../common/dto';
 import { currentWeekYear } from '../common/week.util';
 import { assertAllowedDisplayName } from '../common/display-name.util';
+import { isValidTrc20Address } from '../common/payout.util';
 
 @Injectable()
 export class UsersService {
@@ -178,6 +180,65 @@ export class UsersService {
         postalCode: dto.postalCode?.trim() || null,
       },
     });
+
+    return this.getSettings(userId);
+  }
+
+  async updatePaymentDetails(userId: string, dto: UpdatePaymentDetailsDto) {
+    if (dto.payoutMethod === 'TRC20') {
+      const address = dto.trc20Address?.trim();
+      if (!address || !isValidTrc20Address(address)) {
+        throw new BadRequestException(
+          'Enter a valid USDT TRC20 address (starts with T, 34 characters)',
+        );
+      }
+
+      await this.prisma.userProfile.upsert({
+        where: { userId },
+        create: {
+          userId,
+          payoutMethod: 'TRC20',
+          trc20Address: address,
+          mobileMoneyProvider: null,
+          mobileMoneyNumber: null,
+          mobileMoneyAccountName: null,
+        },
+        update: {
+          payoutMethod: 'TRC20',
+          trc20Address: address,
+          mobileMoneyProvider: null,
+          mobileMoneyNumber: null,
+          mobileMoneyAccountName: null,
+        },
+      });
+    } else {
+      const provider = dto.mobileMoneyProvider?.trim();
+      const number = dto.mobileMoneyNumber?.trim();
+      if (!provider || !number || number.length < 8) {
+        throw new BadRequestException(
+          'Mobile money provider and phone number are required',
+        );
+      }
+
+      await this.prisma.userProfile.upsert({
+        where: { userId },
+        create: {
+          userId,
+          payoutMethod: 'MOBILE_MONEY',
+          trc20Address: null,
+          mobileMoneyProvider: provider,
+          mobileMoneyNumber: number,
+          mobileMoneyAccountName: dto.mobileMoneyAccountName?.trim() || null,
+        },
+        update: {
+          payoutMethod: 'MOBILE_MONEY',
+          trc20Address: null,
+          mobileMoneyProvider: provider,
+          mobileMoneyNumber: number,
+          mobileMoneyAccountName: dto.mobileMoneyAccountName?.trim() || null,
+        },
+      });
+    }
 
     return this.getSettings(userId);
   }

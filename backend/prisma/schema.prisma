@@ -7,6 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum PayoutMethod {
+  TRC20
+  MOBILE_MONEY
+}
+
 enum UserRole {
   TRADER
   MODERATOR
@@ -134,6 +139,7 @@ model User {
   directMessages     DirectMessage[] @relation("MessageThread")
   sentDirectMessages DirectMessage[] @relation("MessageSender")
   messageThreadState MessageThreadState?
+  loginOtps          LoginOtp[]
 
   @@index([status])
   @@index([role])
@@ -141,24 +147,45 @@ model User {
 }
 
 model UserProfile {
-  id           String    @id @default(cuid())
-  userId       String    @unique
-  firstName    String?
-  lastName     String?
-  phone        String?
-  dateOfBirth  DateTime?
-  country      String?
-  state        String?
-  city         String?
-  addressLine1 String?
-  addressLine2 String?
-  postalCode   String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id                     String         @id @default(cuid())
+  userId                 String         @unique
+  firstName              String?
+  lastName               String?
+  phone                  String?
+  dateOfBirth            DateTime?
+  country                String?
+  state                  String?
+  city                   String?
+  addressLine1           String?
+  addressLine2           String?
+  postalCode             String?
+  payoutMethod           PayoutMethod?
+  trc20Address           String?
+  mobileMoneyProvider    String?
+  mobileMoneyNumber      String?
+  mobileMoneyAccountName String?
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("user_profiles")
+}
+
+model LoginOtp {
+  id        String    @id @default(cuid())
+  userId    String
+  email     String
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int       @default(0)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("login_otps")
 }
 
 model KycVerification {
@@ -408,6 +435,7 @@ model Payout {
   platformShare   Decimal      @db.Decimal(12, 2)
   traderPercent   Decimal      @default(40) @db.Decimal(5, 2)
   status          PayoutStatus @default(PENDING)
+  payoutMethod    PayoutMethod?
   weekNumber      Int
   year            Int
   walletAddress   String?

@@ -1,6 +1,12 @@
 import { Controller, Post, Body, Get, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { RegisterDto, LoginDto, WalletLoginDto } from '../common/dto';
+import {
+  RegisterDto,
+  LoginDto,
+  WalletLoginDto,
+  VerifyLoginOtpDto,
+  ResendLoginOtpDto,
+} from '../common/dto';
 import { AuthRateLimitGuard } from './auth-rate-limit.guard';
 import type { Request } from 'express';
 
@@ -18,6 +24,18 @@ export class AuthController {
   @UseGuards(AuthRateLimitGuard)
   login(@Body() dto: LoginDto, @Req() req: Request) {
     return this.authService.login(dto, req.ip);
+  }
+
+  @Post('login/verify-otp')
+  @UseGuards(AuthRateLimitGuard)
+  verifyLoginOtp(@Body() dto: VerifyLoginOtpDto) {
+    return this.authService.verifyLoginOtp(dto);
+  }
+
+  @Post('login/resend-otp')
+  @UseGuards(AuthRateLimitGuard)
+  resendLoginOtp(@Body() dto: ResendLoginOtpDto) {
+    return this.authService.resendLoginOtp(dto);
   }
 
   @Post('wallet')

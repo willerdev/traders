@@ -3,6 +3,8 @@ import {
   api,
   getToken,
   setToken,
+  getAdminEmail,
+  setAdminEmail,
   type KycRow,
   type PayoutRow,
   type SignalRow,
@@ -14,29 +16,7 @@ import {
   type DirectMessage,
 } from "./api";
 import { AdminImage } from "./AdminImage";
-
-type Tab =
-  | "overview"
-  | "users"
-  | "messages"
-  | "signals"
-  | "kyc"
-  | "payouts"
-  | "tpClaims"
-  | "promos"
-  | "hub";
-
-const TABS: { id: Tab; label: string }[] = [
-  { id: "overview", label: "1. Overview" },
-  { id: "users", label: "2. Users" },
-  { id: "messages", label: "3. Messages" },
-  { id: "signals", label: "4. Setups" },
-  { id: "kyc", label: "5. KYC" },
-  { id: "payouts", label: "6. Payouts" },
-  { id: "tpClaims", label: "7. TP Claims" },
-  { id: "promos", label: "8. Promo codes" },
-  { id: "hub", label: "9. Hub MT5 report" },
-];
+import { Sidebar, type Tab } from "./Sidebar";
 
 function badgeClass(status: string) {
   return `badge ${status.toLowerCase()}`;
@@ -57,9 +37,13 @@ function needsPaymentReview(u: UserRow) {
 
 export default function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(getAdminEmail() ?? "");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [loginStep, setLoginStep] = useState<"credentials" | "otp">("credentials");
+  const [loginSessionId, setLoginSessionId] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
   const [tab, setTab] = useState<Tab>("overview");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -224,21 +208,35 @@ export default function App() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoginError("");
+    setLoginLoading(true);
     try {
-      const res = await api.login(email, password);
+      if (loginStep === "credentials") {
+        const res = await api.login(email, password);
+        setLoginSessionId(res.loginSessionId);
+        setLoginStep("otp");
+        setOtpCode("");
+        return;
+      }
+
+      const res = await api.verifyLoginOtp(loginSessionId, otpCode.trim());
       if (res.user.role !== "ADMIN") {
         setLoginError("This account is not an admin.");
         return;
       }
       setToken(res.accessToken);
+      setAdminEmail(res.user.email);
+      setEmail(res.user.email);
       setAuthed(true);
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setLoginLoading(false);
     }
   }
 
   function logout() {
     setToken(null);
+    setAdminEmail(null);
     setAuthed(false);
   }
 
@@ -301,24 +299,63 @@ export default function App() {
         <h1>TraderRank Local Admin</h1>
         <p className="muted">Runs on your machine only — not on thetradeguard.com</p>
         <form onSubmit={(e) => void handleLogin(e)}>
-          <label htmlFor="email">Admin email</label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-          <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
+          {loginStep === "credentials" ? (
+            <>
+              <label htmlFor="email">Admin email</label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+              <label htmlFor="password">Password</label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </>
+          ) : (
+            <>
+              <p className="muted" style={{ marginBottom: "1rem" }}>
+                Enter the 6-digit code sent to {email}
+              </p>
+              <label htmlFor="otp">Sign-in code</label>
+              <input
+                id="otp"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                maxLength={6}
+                required
+              />
+            </>
+          )}
           {loginError && <p className="message error">{loginError}</p>}
-          <button type="submit">Sign in</button>
+          <button type="submit" disabled={loginLoading}>
+            {loginLoading
+              ? "Please wait..."
+              : loginStep === "credentials"
+                ? "Send code"
+                : "Verify & sign in"}
+          </button>
+          {loginStep === "otp" && (
+            <button
+              type="button"
+              style={{ marginTop: "0.5rem", width: "100%" }}
+              onClick={() => {
+                setLoginStep("credentials");
+                setOtpCode("");
+                setLoginError("");
+              }}
+            >
+              Back
+            </button>
+          )}
         </form>
       </div>
     );
@@ -326,29 +363,13 @@ export default function App() {
 
   return (
     <div className="app">
-      <aside className="sidebar">
-        <h1>Local Admin</h1>
-        <nav>
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              className={tab === t.id ? "active" : ""}
-              onClick={() => setTab(t.id)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
-        <div style={{ marginTop: "1.5rem", padding: "0 0.5rem" }}>
-          <button type="button" onClick={() => void refresh()}>
-            Refresh
-          </button>
-          <button type="button" onClick={logout} style={{ marginTop: "0.5rem" }}>
-            Log out
-          </button>
-        </div>
-      </aside>
+      <Sidebar
+        tab={tab}
+        onTabChange={setTab}
+        adminEmail={email || getAdminEmail() || "admin"}
+        onRefresh={() => void refresh()}
+        onLogout={logout}
+      />
 
       <main className="main">
         {message && (
@@ -684,7 +705,8 @@ export default function App() {
                 <tr>
                   <th>Trader</th>
                   <th>Amount</th>
-                  <th>Wallet</th>
+                  <th>Method</th>
+                  <th>Destination</th>
                   <th>KYC</th>
                   <th>Status</th>
                   <th>Requested</th>
@@ -696,6 +718,7 @@ export default function App() {
                   <tr key={p.id}>
                     <td>{p.user.displayName}</td>
                     <td>{fmtMoney(p.traderShare)}</td>
+                    <td>{p.payoutMethod === "MOBILE_MONEY" ? "Mobile money" : p.payoutMethod === "TRC20" ? "TRC20" : "—"}</td>
                     <td className="muted">{p.walletAddress || "—"}</td>
                     <td>{p.user.kyc?.status ?? "NONE"}</td>
                     <td>

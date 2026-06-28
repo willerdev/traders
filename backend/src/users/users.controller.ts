@@ -12,6 +12,7 @@ import {
   UpdateProfileDto,
   UpdateAddressDto,
   SubmitKycDto,
+  UpdatePaymentDetailsDto,
 } from '../common/dto';
 import { JwtAuthGuard } from '../auth/guards';
 
@@ -49,6 +50,14 @@ export class UsersController {
     @Body() dto: UpdateAddressDto,
   ) {
     return this.usersService.updateAddress(req.user.id, dto);
+  }
+
+  @Patch('payment-details')
+  updatePaymentDetails(
+    @Request() req: { user: { id: string } },
+    @Body() dto: UpdatePaymentDetailsDto,
+  ) {
+    return this.usersService.updatePaymentDetails(req.user.id, dto);
   }
 
   @Get('kyc')

@@ -17,7 +17,7 @@ export class NotificationService {
       select: { email: true, displayName: true },
     });
     if (!user?.email?.trim()) return null;
-    return { email: user.email.trim(), name: user.displayName };
+    return { email: user.email.trim().toLowerCase(), name: user.displayName };
   }
 
   private dispatch(task: Promise<boolean>, label: string) {
@@ -25,6 +25,27 @@ export class NotificationService {
       this.logger.warn(
         `${label} email failed: ${err instanceof Error ? err.message : err}`,
       );
+    });
+  }
+
+  loginOtp(email: string, code: string) {
+    this.dispatch(this.sendLoginOtp(email, code), 'Login OTP');
+  }
+
+  private async sendLoginOtp(email: string, code: string) {
+    const to = email.trim().toLowerCase();
+    const html = this.email.layout(
+      'Your sign-in code',
+      `<p>Use this code to finish signing in to TraderRank Pro:</p>
+      <p style="font-size:32px;font-weight:700;letter-spacing:0.35em;color:#ffffff;margin:16px 0;">${code}</p>
+      <p style="color:#94a3b8;font-size:14px;">This code expires in 10 minutes. If you did not try to sign in, you can ignore this email.</p>`,
+    );
+
+    return this.email.send({
+      to,
+      subject: `${code} is your TraderRank Pro sign-in code`,
+      html,
+      text: `Your sign-in code is ${code}. It expires in 10 minutes.`,
     });
   }
 

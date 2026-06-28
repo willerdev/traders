@@ -80,7 +80,7 @@ export class EmailService {
       return false;
     }
 
-    const to = params.to.trim();
+    const to = params.to.trim().toLowerCase();
     if (!to || !to.includes('@')) {
       this.logger.warn(`Invalid email recipient: ${to}`);
       return false;

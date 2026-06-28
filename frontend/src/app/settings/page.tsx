@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   Clock,
   XCircle,
+  Wallet,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -149,6 +150,15 @@ export default function SettingsPage() {
     selfieUrl: "",
   });
 
+  const [paymentForm, setPaymentForm] = useState({
+    payoutMethod: "TRC20" as "TRC20" | "MOBILE_MONEY",
+    trc20Address: "",
+    mobileMoneyProvider: "",
+    mobileMoneyNumber: "",
+    mobileMoneyAccountName: "",
+  });
+  const [paymentSaving, setPaymentSaving] = useState(false);
+
   useEffect(() => {
     if (!isAuthenticated) {
       router.replace("/login");
@@ -188,6 +198,13 @@ export default function SettingsPage() {
           selfieUrl: data.kyc.selfieUrl ?? "",
         });
       }
+      setPaymentForm({
+        payoutMethod: data.profile?.payoutMethod ?? "TRC20",
+        trc20Address: data.profile?.trc20Address ?? "",
+        mobileMoneyProvider: data.profile?.mobileMoneyProvider ?? "",
+        mobileMoneyNumber: data.profile?.mobileMoneyNumber ?? "",
+        mobileMoneyAccountName: data.profile?.mobileMoneyAccountName ?? "",
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load settings");
     } finally {
@@ -237,6 +254,34 @@ export default function SettingsPage() {
       setError(err instanceof Error ? err.message : "Failed to save address");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function savePaymentDetails() {
+    setPaymentSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const payload =
+        paymentForm.payoutMethod === "TRC20"
+          ? {
+              payoutMethod: "TRC20" as const,
+              trc20Address: paymentForm.trc20Address.trim(),
+            }
+          : {
+              payoutMethod: "MOBILE_MONEY" as const,
+              mobileMoneyProvider: paymentForm.mobileMoneyProvider.trim(),
+              mobileMoneyNumber: paymentForm.mobileMoneyNumber.trim(),
+              mobileMoneyAccountName:
+                paymentForm.mobileMoneyAccountName.trim() || undefined,
+            };
+      const updated = await api.users.updatePaymentDetails(payload);
+      setSettings(updated);
+      setMessage("Payout details saved");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save payout details");
+    } finally {
+      setPaymentSaving(false);
     }
   }
 
@@ -462,6 +507,107 @@ export default function SettingsPage() {
             </div>
             <Button onClick={() => void saveAddress()} disabled={saving}>
               {saving ? "Saving..." : "Save address"}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Payout details */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Wallet className="h-5 w-5 text-primary" />
+              <CardTitle>Payout details</CardTitle>
+            </div>
+            <CardDescription>
+              Choose how you receive weekly payouts — USDT on TRC20 or mobile money.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  ["TRC20", "USDT (TRC20)"],
+                  ["MOBILE_MONEY", "Mobile money"],
+                ] as const
+              ).map(([value, label]) => (
+                <Button
+                  key={value}
+                  type="button"
+                  size="sm"
+                  variant={paymentForm.payoutMethod === value ? "default" : "secondary"}
+                  onClick={() =>
+                    setPaymentForm({ ...paymentForm, payoutMethod: value })
+                  }
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+
+            {paymentForm.payoutMethod === "TRC20" ? (
+              <div className="space-y-2">
+                <Label htmlFor="trc20">USDT TRC20 wallet address</Label>
+                <Input
+                  id="trc20"
+                  placeholder="T..."
+                  value={paymentForm.trc20Address}
+                  onChange={(e) =>
+                    setPaymentForm({ ...paymentForm, trc20Address: e.target.value })
+                  }
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-gray-500">
+                  Tron network address — 34 characters starting with T.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="mmProvider">Provider</Label>
+                  <Input
+                    id="mmProvider"
+                    placeholder="e.g. MTN, M-Pesa, Airtel Money"
+                    value={paymentForm.mobileMoneyProvider}
+                    onChange={(e) =>
+                      setPaymentForm({
+                        ...paymentForm,
+                        mobileMoneyProvider: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="mmNumber">Mobile money number</Label>
+                  <Input
+                    id="mmNumber"
+                    placeholder="+256..."
+                    value={paymentForm.mobileMoneyNumber}
+                    onChange={(e) =>
+                      setPaymentForm({
+                        ...paymentForm,
+                        mobileMoneyNumber: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="mmName">Account name (optional)</Label>
+                  <Input
+                    id="mmName"
+                    value={paymentForm.mobileMoneyAccountName}
+                    onChange={(e) =>
+                      setPaymentForm({
+                        ...paymentForm,
+                        mobileMoneyAccountName: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              </>
+            )}
+
+            <Button onClick={() => void savePaymentDetails()} disabled={paymentSaving}>
+              {paymentSaving ? "Saving..." : "Save payout details"}
             </Button>
           </CardContent>
         </Card>

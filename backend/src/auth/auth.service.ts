@@ -3,30 +3,45 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
-import { RegisterDto, LoginDto, WalletLoginDto } from '../common/dto';
+import {
+  RegisterDto,
+  LoginDto,
+  WalletLoginDto,
+  VerifyLoginOtpDto,
+  ResendLoginOtpDto,
+} from '../common/dto';
 import { assertAllowedDisplayName } from '../common/display-name.util';
 import {
   MAX_RISK_PER_TRADE,
   RISK_PERCENT,
   STARTING_BALANCE,
 } from '../common/constants';
-import { randomBytes } from 'crypto';
+import { randomBytes, randomInt } from 'crypto';
 import { verifyMessage } from 'viem';
+import { NotificationService } from '../email/notification.service';
+
+const OTP_TTL_MS = 10 * 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 
 @Injectable()
 export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private notifications: NotificationService,
   ) {}
 
   async register(dto: RegisterDto, ip?: string) {
-    const existing = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+    const email = dto.email.trim().toLowerCase();
+    const existing = await this.prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
     });
 
     if (existing) {
@@ -40,7 +55,7 @@ export class AuthService {
 
     const user = await this.prisma.user.create({
       data: {
-        email: dto.email,
+        email,
         passwordHash,
         displayName,
         emailVerifyToken,
@@ -58,8 +73,9 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, ip?: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+    const email = dto.email.trim().toLowerCase();
+    const user = await this.prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
     });
 
     if (!user || !user.passwordHash) {
@@ -71,12 +87,138 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    if (user.status === 'BANNED' || user.status === 'SUSPENDED') {
+      throw new UnauthorizedException('Account is not allowed to sign in');
+    }
+
+    await this.prisma.loginOtp.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    const code = String(randomInt(100000, 999999));
+    const codeHash = await bcrypt.hash(code, 10);
+
+    const session = await this.prisma.loginOtp.create({
+      data: {
+        userId: user.id,
+        email,
+        codeHash,
+        expiresAt: new Date(Date.now() + OTP_TTL_MS),
+      },
+    });
+
+    this.notifications.loginOtp(email, code);
+
+    if (ip) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginIp: ip },
+      });
+    }
+
+    return {
+      requiresOtp: true as const,
+      loginSessionId: session.id,
+      email,
+      message: 'Check your email for a 6-digit sign-in code',
+      expiresIn: OTP_TTL_MS / 1000,
+    };
+  }
+
+  async verifyLoginOtp(dto: VerifyLoginOtpDto) {
+    const session = await this.prisma.loginOtp.findUnique({
+      where: { id: dto.loginSessionId },
+    });
+
+    if (!session || session.usedAt) {
+      throw new UnauthorizedException('Invalid or expired sign-in session');
+    }
+
+    if (session.expiresAt.getTime() < Date.now()) {
+      throw new BadRequestException('Sign-in code expired — sign in again');
+    }
+
+    if (session.attempts >= OTP_MAX_ATTEMPTS) {
+      throw new HttpException(
+        'Too many attempts — sign in again',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    const code = dto.code.trim();
+    const valid = await bcrypt.compare(code, session.codeHash);
+    if (!valid) {
+      await this.prisma.loginOtp.update({
+        where: { id: session.id },
+        data: { attempts: { increment: 1 } },
+      });
+      throw new UnauthorizedException('Invalid sign-in code');
+    }
+
+    await this.prisma.loginOtp.update({
+      where: { id: session.id },
+      data: { usedAt: new Date() },
+    });
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: session.userId },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { lastLoginIp: ip },
+      data: { emailVerified: true },
     });
 
     return this.generateToken(user);
+  }
+
+  async resendLoginOtp(dto: ResendLoginOtpDto) {
+    const session = await this.prisma.loginOtp.findUnique({
+      where: { id: dto.loginSessionId },
+    });
+
+    if (!session || session.usedAt) {
+      throw new UnauthorizedException('Invalid or expired sign-in session');
+    }
+
+    if (session.expiresAt.getTime() < Date.now()) {
+      throw new BadRequestException('Sign-in session expired — sign in again');
+    }
+
+    const elapsed = Date.now() - session.createdAt.getTime();
+    if (elapsed < OTP_RESEND_COOLDOWN_MS) {
+      const waitSec = Math.ceil((OTP_RESEND_COOLDOWN_MS - elapsed) / 1000);
+      throw new HttpException(
+        `Wait ${waitSec}s before requesting another code`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    const code = String(randomInt(100000, 999999));
+    const codeHash = await bcrypt.hash(code, 10);
+
+    const refreshed = await this.prisma.loginOtp.update({
+      where: { id: session.id },
+      data: {
+        codeHash,
+        attempts: 0,
+        expiresAt: new Date(Date.now() + OTP_TTL_MS),
+        createdAt: new Date(),
+      },
+    });
+
+    this.notifications.loginOtp(session.email, code);
+
+    return {
+      loginSessionId: refreshed.id,
+      message: 'A new sign-in code was sent to your email',
+      expiresIn: OTP_TTL_MS / 1000,
+    };
   }
 
   async walletLogin(dto: WalletLoginDto, ip?: string) {

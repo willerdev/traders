@@ -10,29 +10,50 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthStore } from "@/stores/auth";
-import { api, PayoutRecord } from "@/lib/api";
+import { api, PayoutRecord, UserSettings } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
-import { Wallet, Info, ShieldAlert, Loader2 } from "lucide-react";
+import { Wallet, Info, ShieldAlert, Loader2, Settings2 } from "lucide-react";
+
+function payoutDestinationLabel(settings: UserSettings | null) {
+  const profile = settings?.profile;
+  if (!profile?.payoutMethod) return null;
+  if (profile.payoutMethod === "TRC20" && profile.trc20Address) {
+    return `TRC20: ${profile.trc20Address}`;
+  }
+  if (profile.payoutMethod === "MOBILE_MONEY" && profile.mobileMoneyNumber) {
+    const provider = profile.mobileMoneyProvider ?? "Mobile money";
+    return `${provider}: ${profile.mobileMoneyNumber}`;
+  }
+  return null;
+}
 
 function PayoutRequestForm({
   payout,
   disabled,
+  settings,
   onSubmitted,
 }: {
   payout: PayoutRecord;
   disabled: boolean;
+  settings: UserSettings | null;
   onSubmitted: () => void;
 }) {
+  const savedDestination = payoutDestinationLabel(settings);
+  const hasSavedDetails = Boolean(savedDestination);
   const [wallet, setWallet] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const method = settings?.profile?.payoutMethod;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      await api.payouts.request(payout.id, wallet.trim());
+      await api.payouts.request(
+        payout.id,
+        hasSavedDetails ? undefined : wallet.trim() || undefined,
+      );
       onSubmitted();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Request failed");
@@ -41,15 +62,51 @@ function PayoutRequestForm({
     }
   }
 
+  if (hasSavedDetails) {
+    return (
+      <div className="mt-3 space-y-3 border-t border-white/5 pt-3">
+        <p className="text-xs text-gray-400">
+          Payout will be sent to your saved{" "}
+          {method === "MOBILE_MONEY" ? "mobile money" : "TRC20"} details:
+        </p>
+        <p className="truncate font-mono text-xs text-gray-300">{savedDestination}</p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            disabled={disabled || loading}
+            onClick={() => void handleSubmit({ preventDefault: () => {} } as React.FormEvent)}
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Request payout"}
+          </Button>
+          <Link href="/settings">
+            <Button type="button" size="sm" variant="secondary">
+              <Settings2 className="mr-1 h-3.5 w-3.5" />
+              Edit details
+            </Button>
+          </Link>
+        </div>
+        {error && <p className="text-xs text-danger">{error}</p>}
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit} className="mt-3 space-y-2 border-t border-white/5 pt-3">
+      <p className="text-xs text-amber-400/90">
+        Add payout details in{" "}
+        <Link href="/settings" className="underline">
+          Settings
+        </Link>{" "}
+        for faster requests, or enter a one-time destination below.
+      </p>
       <Label htmlFor={`wallet-${payout.id}`} className="text-xs text-gray-400">
-        USDT wallet address (TRC20 / BEP20)
+        USDT TRC20 address or mobile money (Provider: number)
       </Label>
       <div className="flex flex-col gap-2 sm:flex-row">
         <Input
           id={`wallet-${payout.id}`}
-          placeholder="Your crypto wallet address"
+          placeholder="T... or MTN: +256..."
           value={wallet}
           onChange={(e) => setWallet(e.target.value)}
           disabled={disabled || loading}
@@ -68,6 +125,7 @@ export default function PayoutsPage() {
   const router = useRouter();
   const { isAuthenticated } = useAuthStore();
   const [payouts, setPayouts] = useState<PayoutRecord[]>([]);
+  const [settings, setSettings] = useState<UserSettings | null>(null);
   const [kycStatus, setKycStatus] = useState<string>("NOT_STARTED");
   const [loading, setLoading] = useState(true);
 
@@ -75,9 +133,10 @@ export default function PayoutsPage() {
     return Promise.all([
       api.payouts.history().catch(() => [] as PayoutRecord[]),
       api.users.settings().catch(() => null),
-    ]).then(([history, settings]) => {
+    ]).then(([history, userSettings]) => {
       setPayouts(history);
-      setKycStatus(settings?.kyc?.status ?? "NOT_STARTED");
+      setSettings(userSettings);
+      setKycStatus(userSettings?.kyc?.status ?? "NOT_STARTED");
     });
   }
 
@@ -144,7 +203,7 @@ export default function PayoutsPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-lg">Ready to request</CardTitle>
               <CardDescription>
-                Submit your USDT wallet address for pending weekly payouts
+                Use your saved payout details or enter a destination for pending weekly payouts
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -167,6 +226,7 @@ export default function PayoutsPage() {
                   <PayoutRequestForm
                     payout={payout}
                     disabled={!kycApproved}
+                    settings={settings}
                     onSubmitted={() => reload()}
                   />
                 </div>
@@ -219,6 +279,11 @@ export default function PayoutsPage() {
                         <p className="mt-1 text-xs text-gray-500">
                           Virtual profit: {formatCurrency(Number(payout.virtualProfit))}
                         </p>
+                        {payout.payoutMethod && (
+                          <p className="mt-1 text-xs text-gray-500">
+                            Method: {payout.payoutMethod === "MOBILE_MONEY" ? "Mobile money" : "TRC20"}
+                          </p>
+                        )}
                         {payout.walletAddress && (
                           <p className="mt-1 truncate font-mono text-xs text-gray-600">
                             {payout.walletAddress}
@@ -242,6 +307,7 @@ export default function PayoutsPage() {
                         <PayoutRequestForm
                           payout={payout}
                           disabled={false}
+                          settings={settings}
                           onSubmitted={() => reload()}
                         />
                       )}

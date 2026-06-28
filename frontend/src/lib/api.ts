@@ -82,8 +82,18 @@ class ApiClient {
     register: (data: { email: string; password: string; displayName: string; acceptTerms: boolean }) =>
       this.request("/auth/register", { method: "POST", body: JSON.stringify(data) }),
     login: (data: { email: string; password: string }) =>
-      this.request<{ accessToken: string; user: Record<string, unknown> }>(
+      this.request<LoginStartResponse>(
         "/auth/login",
+        { method: "POST", body: JSON.stringify(data) },
+      ),
+    verifyLoginOtp: (data: { loginSessionId: string; code: string }) =>
+      this.request<{ accessToken: string; user: Record<string, unknown> }>(
+        "/auth/login/verify-otp",
+        { method: "POST", body: JSON.stringify(data) },
+      ),
+    resendLoginOtp: (data: { loginSessionId: string }) =>
+      this.request<{ loginSessionId: string; message: string; expiresIn: number }>(
+        "/auth/login/resend-otp",
         { method: "POST", body: JSON.stringify(data) },
       ),
     walletLogin: (data: { walletAddress: string; signature: string; message: string }) =>
@@ -104,6 +114,11 @@ class ApiClient {
       }),
     updateAddress: (data: UpdateAddressInput) =>
       this.request<UserSettings>("/users/address", {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    updatePaymentDetails: (data: UpdatePaymentDetailsInput) =>
+      this.request<UserSettings>("/users/payment-details", {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
@@ -460,10 +475,14 @@ class ApiClient {
 
   payouts = {
     history: () => this.request<PayoutRecord[]>("/payouts"),
-    request: (payoutId: string, walletAddress: string) =>
+    request: (payoutId: string, walletAddress?: string) =>
       this.request("/payouts/request", {
         method: "POST",
-        body: JSON.stringify({ payoutId, walletAddress }),
+        body: JSON.stringify(
+          walletAddress?.trim()
+            ? { payoutId, walletAddress: walletAddress.trim() }
+            : { payoutId },
+        ),
       }),
   };
 
@@ -483,12 +502,21 @@ class ApiClient {
   };
 }
 
+export interface LoginStartResponse {
+  requiresOtp: true;
+  loginSessionId: string;
+  email: string;
+  message: string;
+  expiresIn: number;
+}
+
 export interface PayoutRecord {
   id: string;
   virtualProfit: number;
   traderShare: number;
   platformShare: number;
   status: string;
+  payoutMethod?: "TRC20" | "MOBILE_MONEY" | null;
   weekNumber: number;
   year: number;
   walletAddress?: string | null;
@@ -689,6 +717,11 @@ export interface UserProfileRecord {
   addressLine1: string | null;
   addressLine2: string | null;
   postalCode: string | null;
+  payoutMethod?: "TRC20" | "MOBILE_MONEY" | null;
+  trc20Address?: string | null;
+  mobileMoneyProvider?: string | null;
+  mobileMoneyNumber?: string | null;
+  mobileMoneyAccountName?: string | null;
 }
 
 export interface KycRecord {
@@ -719,6 +752,14 @@ export interface UpdateAddressInput {
   addressLine1?: string;
   addressLine2?: string;
   postalCode?: string;
+}
+
+export interface UpdatePaymentDetailsInput {
+  payoutMethod: "TRC20" | "MOBILE_MONEY";
+  trc20Address?: string;
+  mobileMoneyProvider?: string;
+  mobileMoneyNumber?: string;
+  mobileMoneyAccountName?: string;
 }
 
 export interface SubmitKycInput {
