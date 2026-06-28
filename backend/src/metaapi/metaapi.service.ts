@@ -677,6 +677,25 @@ export class MetaApiService {
     digits?: number,
   ): Record<string, unknown> {
     const out: Record<string, unknown> = { ...payload };
+    const actionType = String(out.actionType ?? '');
+
+    const supportsStops = [
+      'ORDER_TYPE_BUY',
+      'ORDER_TYPE_SELL',
+      'ORDER_TYPE_BUY_LIMIT',
+      'ORDER_TYPE_SELL_LIMIT',
+      'ORDER_TYPE_BUY_STOP',
+      'ORDER_TYPE_SELL_STOP',
+      'ORDER_TYPE_BUY_STOP_LIMIT',
+      'ORDER_TYPE_SELL_STOP_LIMIT',
+      'POSITION_MODIFY',
+      'ORDER_MODIFY',
+    ].includes(actionType);
+
+    if (!supportsStops) {
+      return out;
+    }
+
     const d =
       digits != null && Number.isFinite(digits) && digits >= 0 ? digits : 5;
 
@@ -690,8 +709,12 @@ export class MetaApiService {
       out.volume = Number((out.volume as number).toFixed(8));
     }
 
-    out.stopLossUnits = 'ABSOLUTE_PRICE';
-    out.takeProfitUnits = 'ABSOLUTE_PRICE';
+    if (out.stopLoss != null) {
+      out.stopLossUnits = 'ABSOLUTE_PRICE';
+    }
+    if (out.takeProfit != null) {
+      out.takeProfitUnits = 'ABSOLUTE_PRICE';
+    }
     if (out.openPrice != null) {
       out.openPriceUnits = 'ABSOLUTE_PRICE';
     }
