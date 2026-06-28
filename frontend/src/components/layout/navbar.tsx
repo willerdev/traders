@@ -68,7 +68,10 @@ function SidebarNav({
             title={item.label}
             onClick={onNavigate}
             className={cn(
-              "flex items-center rounded-lg py-2.5 pl-[0.85rem] pr-3 text-sm font-medium transition-colors",
+              "flex items-center rounded-lg py-2.5 text-sm font-medium transition-colors",
+              "justify-center px-0",
+              "group-hover/sidebar:justify-start group-hover/sidebar:pl-[0.85rem] group-hover/sidebar:pr-3",
+              "group-focus-within/sidebar:justify-start group-focus-within/sidebar:pl-[0.85rem] group-focus-within/sidebar:pr-3",
               active
                 ? "bg-primary/10 text-primary"
                 : "text-muted hover:bg-foreground/5 hover:text-foreground",
@@ -107,10 +110,15 @@ function Sidebar({ pathname }: { pathname: string }) {
     >
       <Link
         href="/dashboard"
-        className="flex h-16 shrink-0 items-center border-b border-[var(--color-border)] px-4"
+        className={cn(
+          "flex h-16 shrink-0 items-center border-b border-[var(--color-border)]",
+          "justify-center px-0",
+          "group-hover/sidebar:justify-start group-hover/sidebar:px-4",
+          "group-focus-within/sidebar:justify-start group-focus-within/sidebar:px-4",
+        )}
         title="TraderRank Pro"
       >
-        <Logo className="text-sm whitespace-nowrap" />
+        <Logo sidebar />
       </Link>
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden py-3">
@@ -121,7 +129,12 @@ function Sidebar({ pathname }: { pathname: string }) {
         <Link
           href="/settings"
           title="Settings"
-          className="flex w-full items-center rounded-lg py-2.5 pl-[0.85rem] pr-3 text-sm font-medium text-muted transition-colors hover:bg-foreground/5 hover:text-foreground"
+          className={cn(
+            "flex w-full items-center rounded-lg py-2.5 text-sm font-medium text-muted transition-colors hover:bg-foreground/5 hover:text-foreground",
+            "justify-center px-0",
+            "group-hover/sidebar:justify-start group-hover/sidebar:pl-[0.85rem] group-hover/sidebar:pr-3",
+            "group-focus-within/sidebar:justify-start group-focus-within/sidebar:pl-[0.85rem] group-focus-within/sidebar:pr-3",
+          )}
         >
           <Settings className="h-5 w-5 shrink-0" />
           <span
@@ -139,7 +152,12 @@ function Sidebar({ pathname }: { pathname: string }) {
           type="button"
           onClick={logout}
           title="Logout"
-          className="flex w-full items-center rounded-lg py-2.5 pl-[0.85rem] pr-3 text-sm font-medium text-muted transition-colors hover:bg-foreground/5 hover:text-foreground"
+          className={cn(
+            "flex w-full items-center rounded-lg py-2.5 text-sm font-medium text-muted transition-colors hover:bg-foreground/5 hover:text-foreground",
+            "justify-center px-0",
+            "group-hover/sidebar:justify-start group-hover/sidebar:pl-[0.85rem] group-hover/sidebar:pr-3",
+            "group-focus-within/sidebar:justify-start group-focus-within/sidebar:pl-[0.85rem] group-focus-within/sidebar:pr-3",
+          )}
         >
           <LogOut className="h-5 w-5 shrink-0" />
           <span
