@@ -1051,6 +1051,25 @@ export class MetaApiService {
     });
   }
 
+  async modifyPositionStops(
+    account: MetaApiAccount,
+    input: {
+      positionId: string;
+      stopLoss?: number;
+      takeProfit?: number;
+      specDigits?: number;
+    },
+  ): Promise<MetaApiTradeResult> {
+    const ready = await this.ensureAccountReady(account.id);
+    const payload: Record<string, unknown> = {
+      actionType: 'POSITION_MODIFY',
+      positionId: input.positionId,
+    };
+    if (input.stopLoss != null) payload.stopLoss = input.stopLoss;
+    if (input.takeProfit != null) payload.takeProfit = input.takeProfit;
+    return this.submitTrade(ready, payload, { digits: input.specDigits });
+  }
+
   async cancelPendingOrder(
     account: MetaApiAccount,
     orderId: string,

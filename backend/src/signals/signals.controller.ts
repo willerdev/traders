@@ -229,6 +229,12 @@ export class SignalsController {
     return this.signalsService.getOpenSignalsWithResolution(req.user.id);
   }
 
+  @Get('claimable/tps')
+  @UseGuards(JwtAuthGuard)
+  listClaimableTps(@Request() req: { user: { id: string } }) {
+    return this.signalsService.listClaimableTpSetups(req.user.id);
+  }
+
   @Post('invalidate/:signalId')
   @UseGuards(JwtAuthGuard)
   invalidateSetup(
@@ -302,6 +308,15 @@ export class SignalsController {
     @Param('signalId') signalId: string,
   ) {
     return this.signalsService.closeSetupTrade(req.user.id, signalId);
+  }
+
+  @Post(':signalId/set-breakeven')
+  @UseGuards(JwtAuthGuard)
+  setBreakeven(
+    @Request() req: { user: { id: string } },
+    @Param('signalId') signalId: string,
+  ) {
+    return this.signalsService.setBreakeven(req.user.id, signalId);
   }
 
   @Get(':signalId/live-trade')

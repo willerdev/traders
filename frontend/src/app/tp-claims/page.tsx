@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth";
-import { api, type TpClaimRecord, type UserSettings } from "@/lib/api";
+import { api, type ClaimableTpSetup, type TpClaimRecord, type UserSettings } from "@/lib/api";
 import { cn, formatCurrency } from "@/lib/utils";
 import {
   CheckCircle2,
@@ -49,24 +49,34 @@ export default function TpClaimsPage() {
   const router = useRouter();
   const { isAuthenticated } = useAuthStore();
   const [claims, setClaims] = useState<TpClaimRecord[]>([]);
+  const [claimable, setClaimable] = useState<ClaimableTpSetup[]>([]);
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [resubmitModal, setResubmitModal] = useState<{
     claimId: string;
     signalId: string;
     symbol: string;
+  } | null>(null);
+  const [claimModal, setClaimModal] = useState<{
+    signalId: string;
+    symbol: string;
+    claimType: "full" | "rr_1_1";
+    oneToOnePrice?: number;
   } | null>(null);
 
   const load = async () => {
     setLoading(true);
     setError("");
     try {
-      const [list, userSettings] = await Promise.all([
+      const [list, claimableResult, userSettings] = await Promise.all([
         api.tpClaims.list(),
+        api.signals.claimableTps().catch(() => ({ items: [], count: 0 })),
         api.users.settings().catch(() => null),
       ]);
       setClaims(list);
+      setClaimable(claimableResult.items);
       setSettings(userSettings);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load TP claims");
@@ -92,7 +102,8 @@ export default function TpClaimsPage() {
           <div>
             <h1 className="text-2xl font-bold text-white">TP Claims</h1>
             <p className="mt-1 text-sm text-gray-400">
-              Track take-profit claims and request USDT payout after approval
+              Claim take profit when price hits TP1 or full TP — submit evidence here.
+              KYC and payout are only needed after admin approval if you want USDT.
             </p>
           </div>
           <Button variant="secondary" size="sm" onClick={() => void load()} disabled={loading}>
@@ -100,6 +111,96 @@ export default function TpClaimsPage() {
             Refresh
           </Button>
         </div>
+
+        {success && (
+          <p className="mb-6 rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm text-success">
+            {success}
+          </p>
+        )}
+
+        {claimable.length > 0 && (
+          <Card className="mb-6 border-success/30 bg-success/5">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Target className="h-5 w-5 text-success" />
+                Ready to claim
+              </CardTitle>
+              <CardDescription>
+                {claimable.length} setup{claimable.length !== 1 ? "s" : ""} reached TP1 or
+                full TP — upload before/after screenshots to claim (no payout required yet).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {claimable.map((setup) => (
+                <div
+                  key={setup.signalId}
+                  className="flex flex-col gap-3 rounded-lg border border-white/10 bg-white/[0.02] p-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-white">{setup.symbol}</span>
+                      <Badge variant={setup.direction === "BUY" ? "success" : "danger"}>
+                        {setup.direction}
+                      </Badge>
+                      {setup.canClaimTp1R1 && (
+                        <Badge variant="secondary">TP1 (1:1) reached</Badge>
+                      )}
+                      {setup.canClaimFullTp && (
+                        <Badge variant="success">Full TP reached</Badge>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Entry {setup.entryMin} – {setup.entryMax}
+                      {setup.oneToOnePrice != null && setup.canClaimTp1R1
+                        ? ` · TP1 ${setup.oneToOnePrice}`
+                        : ""}
+                      {setup.currentPrice != null ? ` · Now ${setup.currentPrice}` : ""}
+                    </p>
+                    {setup.canClaimTp1R1 && (
+                      <p className="mt-1 text-xs text-success/90">
+                        Breakeven is set automatically when TP1 hits on live trades.
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {setup.canClaimTp1R1 && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="border-success/40 text-success"
+                        onClick={() =>
+                          setClaimModal({
+                            signalId: setup.signalId,
+                            symbol: setup.symbol,
+                            claimType: "rr_1_1",
+                            oneToOnePrice: setup.oneToOnePrice,
+                          })
+                        }
+                      >
+                        Claim 1:1 RR
+                      </Button>
+                    )}
+                    {setup.canClaimFullTp && (
+                      <Button
+                        size="sm"
+                        variant="success"
+                        onClick={() =>
+                          setClaimModal({
+                            signalId: setup.signalId,
+                            symbol: setup.symbol,
+                            claimType: "full",
+                          })
+                        }
+                      >
+                        Claim full TP
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         {!kycApproved && readyForPayout.length > 0 && (
           <Card className="mb-6 border-rank-gold/30 bg-rank-gold/5">
@@ -157,7 +258,7 @@ export default function TpClaimsPage() {
           <p className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
             {error}
           </p>
-        ) : claims.length === 0 ? (
+        ) : claims.length === 0 && claimable.length === 0 ? (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -165,8 +266,9 @@ export default function TpClaimsPage() {
                 No TP claims yet
               </CardTitle>
               <CardDescription>
-                When you claim take profit from the dashboard, your before/after
-                screenshots appear here until an admin approves or rejects them.
+                When price hits TP1 (1:1 RR) or full take profit on an open setup, it
+                appears here so you can submit before/after screenshots. You will also
+                get an email when TP1 is reached.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -317,6 +419,22 @@ export default function TpClaimsPage() {
           </div>
         )}
       </motion.div>
+
+      {claimModal && (
+        <ClaimTpModal
+          signalId={claimModal.signalId}
+          symbol={claimModal.symbol}
+          claimType={claimModal.claimType}
+          oneToOnePrice={claimModal.oneToOnePrice}
+          onClose={() => setClaimModal(null)}
+          onSubmitted={(msg) => {
+            setClaimModal(null);
+            setSuccess(msg);
+            void load();
+          }}
+          onError={(msg) => setError(msg)}
+        />
+      )}
 
       {resubmitModal && (
         <ClaimTpModal

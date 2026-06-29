@@ -147,6 +147,7 @@ model User {
   profile            UserProfile?
   kyc                KycVerification?
   tpClaims           TpClaim[]
+  platformNotifications PlatformNotification[]
   directMessages     DirectMessage[] @relation("MessageThread")
   sentDirectMessages DirectMessage[] @relation("MessageSender")
   messageThreadState MessageThreadState?
@@ -351,6 +352,10 @@ model Trade {
   pnl          Decimal?       @db.Decimal(12, 2)
   isWin        Boolean?
   activatedAt  DateTime?
+  tp1NotifiedAt DateTime?
+  tp1BreakevenAt DateTime?
+  breakevenPending Boolean @default(false)
+  breakevenRetryCount Int @default(0)
   closedAt     DateTime?
   createdAt    DateTime       @default(now())
 
@@ -627,6 +632,24 @@ model AuditLog {
   @@index([adminId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+model PlatformNotification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String    @db.Text
+  linkUrl   String?
+  signalId  String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+  @@map("platform_notifications")
 }
 
 model DirectMessage {

@@ -14,6 +14,7 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
+  Shield,
   Ban,
   CheckCircle2,
   Circle,
@@ -323,6 +324,30 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
     }
   }
 
+  async function handleSetBreakeven() {
+    if (
+      !confirm(
+        "Move stop loss to breakeven (entry)?\n\nIf the broker rejects it at the current price, we will retry automatically up to 10 times.",
+      )
+    ) {
+      return;
+    }
+    setActionLoading("breakeven");
+    setActionError(null);
+    try {
+      const result = await api.signals.setBreakeven(setup.signalId);
+      setSuccess(result.message);
+      onUpdated();
+      await loadDetails();
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Could not set breakeven",
+      );
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   async function handleInvalidate() {
     if (resolution?.canInvalidate === false) {
       setActionError(
@@ -442,6 +467,33 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
                 )}
 
                 {isOpen && <TradeExecutionNotice variant="modal" />}
+
+                {res?.breakevenSet && (
+                  <p className="rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
+                    Stop loss is at breakeven
+                    {res.breakevenRetryCount
+                      ? ` (set after ${res.breakevenRetryCount} attempt(s))`
+                      : ""}
+                    .
+                  </p>
+                )}
+
+                {res?.breakevenPending && !res.breakevenSet && (
+                  <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                    Setting breakeven… attempt {res.breakevenRetryCount ?? 0}/10.
+                    We retry each minute until the broker accepts it.
+                  </p>
+                )}
+
+                {res?.tp1Reached && !res.breakevenSet && !res.breakevenPending && (
+                  <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                    TP1 (1:1 RR) reached — claim on{" "}
+                    <Link href="/tp-claims" className="underline">
+                      TP Claims
+                    </Link>
+                    .
+                  </p>
+                )}
 
                 <div className="grid gap-3 text-sm sm:grid-cols-2">
                   <InfoRow label="Entry" value={`${setup.entryMin} – ${setup.entryMax}`} />
@@ -587,6 +639,22 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
                           <XCircle className="h-3.5 w-3.5" />
                         )}
                         Close trade
+                      </Button>
+                    )}
+                    {res?.canSetBreakeven && !res.breakevenSet && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="gap-1 border-sky-500/40 text-sky-300"
+                        disabled={actionLoading === "breakeven"}
+                        onClick={() => void handleSetBreakeven()}
+                      >
+                        {actionLoading === "breakeven" ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Shield className="h-3.5 w-3.5" />
+                        )}
+                        Set breakeven
                       </Button>
                     )}
                     {res?.metaApiExecuted && !liveTrade?.canClose && (

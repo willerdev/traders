@@ -17,6 +17,7 @@ import { AdminModule } from './admin/admin.module';
 import { MessagesModule } from './messages/messages.module';
 import { EmailModule } from './email/email.module';
 import { PlatformModule } from './platform/platform.module';
+import { PlatformNotificationsModule } from './platform-notifications/platform-notifications.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { PlatformModule } from './platform/platform.module';
     AdminModule,
     MessagesModule,
     PlatformModule,
+    PlatformNotificationsModule,
   ],
 })
 export class AppModule {}

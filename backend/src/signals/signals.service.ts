@@ -7,6 +7,7 @@ import {
   UnauthorizedException,
   Logger,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
 import { CreateSignalDto, ClaimSetupDto, TradeOutcomeWebhookDto, TradeLifecycleItemDto, TradeLifecycleWebhookDto, HubActionDto } from '../common/dto';
@@ -22,16 +23,18 @@ import { WalletService } from '../trades/wallet.service';
 import { TpClaimsService } from '../tp-claims/tp-claims.service';
 import {
   computeOneToOnePrice,
+  computeEntryMid,
   classifyManualCloseOutcome,
   isOneToOneClaimValidForSetup,
   priceReachedOneToOne,
 } from '../common/rr.util';
 import { NotificationService } from '../email/notification.service';
+import { PlatformNotificationsService } from '../platform-notifications/platform-notifications.service';
 import { Signal, Trade, TradeDirection, User } from '@prisma/client';
 import { MetaApiService } from '../metaapi/metaapi.service';
 import { buildMetaApiTradeIdentifiers } from '../metaapi/metaapi-order.util';
 import { TradeRiskService } from '../ai/trade-risk.service';
-import { RISK_PERCENT, MAX_RISK_PER_TRADE } from '../common/constants';
+import { RISK_PERCENT, MAX_RISK_PER_TRADE, MAX_BREAKEVEN_RETRIES } from '../common/constants';
 
 @Injectable()
 export class SignalsService {
@@ -46,6 +49,7 @@ export class SignalsService {
     private wallet: WalletService,
     private tpClaims: TpClaimsService,
     private notifications: NotificationService,
+    private platformNotifications: PlatformNotificationsService,
     private metaApi: MetaApiService,
     private tradeRisk: TradeRiskService,
   ) {}
@@ -539,6 +543,456 @@ export class SignalsService {
     };
   }
 
+  async listClaimableTpSetups(userId: string) {
+    const open = await this.prisma.signal.findMany({
+      where: { userId, status: 'OPEN' },
+      include: { trade: true },
+      orderBy: { submittedAt: 'desc' },
+    });
+
+    const items = await Promise.all(
+      open.map(async (signal) => {
+        const resolution = await this.getSetupResolution(userId, signal.signalId);
+        return {
+          signalId: signal.signalId,
+          symbol: signal.symbol,
+          direction: signal.direction,
+          entryMin: Number(signal.entryMin),
+          entryMax: Number(signal.entryMax),
+          stopLoss: Number(signal.stopLoss),
+          takeProfit: Number(signal.takeProfit),
+          submittedAt: signal.submittedAt.toISOString(),
+          oneToOnePrice: resolution.oneToOnePrice,
+          currentPrice: resolution.currentPrice ?? resolution.metaApiPrice ?? null,
+          canClaimFullTp: Boolean(resolution.canClaimTp),
+          canClaimTp1R1: Boolean(resolution.canClaimTp1R1),
+          claimable: Boolean(resolution.canClaimTp || resolution.canClaimTp1R1),
+        };
+      }),
+    );
+
+    const claimable = items.filter((i) => i.claimable);
+
+    return {
+      items: claimable,
+      count: claimable.length,
+    };
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async handleTp1Reached() {
+    const candidates = await this.prisma.signal.findMany({
+      where: {
+        status: 'OPEN',
+        trade: {
+          is: {
+            tp1NotifiedAt: null,
+          },
+        },
+      },
+      include: {
+        trade: true,
+        user: {
+          select: { displayName: true, metaApiAccountId: true },
+        },
+      },
+    });
+
+    if (candidates.length === 0) return;
+
+    for (const signal of candidates) {
+        if (!signal.trade || !signal.user) continue;
+
+        try {
+          const resolution = await this.getSetupResolution(
+            signal.userId,
+            signal.signalId,
+          );
+
+          if (!('tp1Reached' in resolution) || !resolution.tp1Reached) continue;
+
+          const trade = signal.trade;
+          let breakevenApplied = Boolean(trade.tp1BreakevenAt);
+          if (!trade.tp1BreakevenAt) {
+            await this.prisma.trade.update({
+              where: { id: trade.id },
+              data: { breakevenPending: true },
+            });
+            const beResult = await this.recordBreakevenAttempt(
+              signal.userId,
+              { ...signal, trade },
+              signal.user,
+            );
+            breakevenApplied = beResult.applied;
+          }
+
+          const oneToOnePrice = Number(resolution.oneToOnePrice);
+          const breakevenPrice =
+            trade.entryPrice != null
+              ? Number(trade.entryPrice)
+              : computeEntryMid(
+                  Number(signal.entryMin),
+                  Number(signal.entryMax),
+                );
+
+          await this.prisma.trade.update({
+            where: { id: trade.id },
+            data: { tp1NotifiedAt: new Date() },
+          });
+
+        const title = `TP1 reached on ${signal.symbol}`;
+        const body = breakevenApplied
+          ? `Price hit TP1 (1:1 RR at ${oneToOnePrice}). Stop loss was moved to breakeven (${breakevenPrice}). Submit your 1:1 RR claim on TP Claims — no payout or KYC required to claim.`
+          : `Price hit TP1 (1:1 RR at ${oneToOnePrice}). Submit your 1:1 RR claim on TP Claims — no payout or KYC required to claim.`;
+
+        await this.platformNotifications.create({
+          userId: signal.userId,
+          type: 'TP1_REACHED',
+          title,
+          body,
+          linkUrl: '/tp-claims',
+          signalId: signal.signalId,
+        });
+
+        this.notifications.tp1ClaimAvailable(signal.userId, {
+          symbol: signal.symbol,
+          signalId: signal.signalId,
+          oneToOnePrice,
+          breakevenApplied,
+          breakevenPrice: breakevenApplied ? breakevenPrice : undefined,
+        });
+      } catch (err) {
+        this.logger.warn(
+          `TP1 handling skipped for ${signal.signalId}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async retryPendingBreakeven() {
+    const pending = await this.prisma.signal.findMany({
+      where: {
+        status: 'OPEN',
+        trade: {
+          is: {
+            tp1BreakevenAt: null,
+            breakevenPending: true,
+            breakevenRetryCount: { lt: MAX_BREAKEVEN_RETRIES },
+          },
+        },
+      },
+      include: {
+        trade: true,
+        user: {
+          select: { displayName: true, metaApiAccountId: true },
+        },
+      },
+    });
+
+    for (const signal of pending) {
+      if (!signal.trade || !signal.user) continue;
+      try {
+        const result = await this.recordBreakevenAttempt(
+          signal.userId,
+          { ...signal, trade: signal.trade },
+          signal.user,
+        );
+        if (result.applied) {
+          await this.platformNotifications.create({
+            userId: signal.userId,
+            type: 'BREAKEVEN_SET',
+            title: `Breakeven set on ${signal.symbol}`,
+            body: `Stop loss moved to ${result.breakevenPrice} after ${result.retriesUsed} attempt(s).`,
+            linkUrl: '/dashboard',
+            signalId: signal.signalId,
+          });
+        } else if (result.retriesRemaining <= 0) {
+          await this.platformNotifications.create({
+            userId: signal.userId,
+            type: 'BREAKEVEN_FAILED',
+            title: `Breakeven not set on ${signal.symbol}`,
+            body: `Could not move stop to breakeven after ${MAX_BREAKEVEN_RETRIES} attempts — broker may reject until price allows it. Try again from the setup or use Set breakeven when conditions improve.`,
+            linkUrl: '/dashboard',
+            signalId: signal.signalId,
+          });
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Breakeven retry skipped for ${signal.signalId}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+  }
+
+  async setBreakeven(userId: string, signalId: string) {
+    await this.compliance.requireActiveTrader(userId);
+
+    const signal = await this.prisma.signal.findFirst({
+      where: { signalId, userId, status: 'OPEN' },
+      include: { trade: true },
+    });
+    if (!signal?.trade) {
+      throw new NotFoundException('Open setup not found');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { displayName: true, metaApiAccountId: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    if (signal.trade.tp1BreakevenAt) {
+      return {
+        status: 'already_set' as const,
+        applied: true,
+        breakevenPrice: Number(signal.trade.stopLoss),
+        retriesUsed: signal.trade.breakevenRetryCount,
+        retriesRemaining: 0,
+        message: 'Breakeven is already set on this setup.',
+      };
+    }
+
+    if (signal.trade.breakevenRetryCount >= MAX_BREAKEVEN_RETRIES) {
+      await this.prisma.trade.update({
+        where: { id: signal.trade.id },
+        data: { breakevenRetryCount: 0 },
+      });
+      signal.trade.breakevenRetryCount = 0;
+    }
+
+    const resolution = await this.getSetupResolution(userId, signalId);
+    const liveTrade = resolution.liveTrade as { status?: string } | null | undefined;
+    const canSet =
+      liveTrade?.status === 'open' ||
+      Boolean(signal.trade.activatedAt) ||
+      Boolean(signal.metaApiExecutedAt) ||
+      Boolean(signal.hubRecordId);
+
+    if (!canSet) {
+      throw new BadRequestException(
+        'No live trade found for this setup — breakeven can only be set while a position is open.',
+      );
+    }
+
+    await this.prisma.trade.update({
+      where: { id: signal.trade.id },
+      data: { breakevenPending: true },
+    });
+
+    const result = await this.recordBreakevenAttempt(
+      userId,
+      { ...signal, trade: signal.trade },
+      user,
+    );
+
+    if (result.applied) {
+      return {
+        status: 'set' as const,
+        applied: true,
+        breakevenPrice: result.breakevenPrice,
+        retriesUsed: result.retriesUsed,
+        retriesRemaining: result.retriesRemaining,
+        message: `Stop loss moved to breakeven (${result.breakevenPrice}).`,
+      };
+    }
+
+    return {
+      status: 'pending' as const,
+      applied: false,
+      breakevenPrice: result.breakevenPrice,
+      retriesUsed: result.retriesUsed,
+      retriesRemaining: result.retriesRemaining,
+      message:
+        result.retriesRemaining > 0
+          ? `Broker did not accept breakeven yet — retrying automatically (${result.retriesUsed}/${MAX_BREAKEVEN_RETRIES} attempts used).`
+          : `Could not set breakeven after ${MAX_BREAKEVEN_RETRIES} attempts.`,
+    };
+  }
+
+  private async recordBreakevenAttempt(
+    userId: string,
+    signal: {
+      id: string;
+      signalId: string;
+      symbol: string;
+      direction: TradeDirection;
+      entryMin: unknown;
+      entryMax: unknown;
+      takeProfit: unknown;
+      hubRecordId: string | null;
+      hubSenderName: string | null;
+      metaApiAccountId: string | null;
+      metaApiOrderId: string | null;
+      metaApiPositionId: string | null;
+      trade: {
+        id: string;
+        entryPrice: unknown;
+        activatedAt: Date | null;
+        breakevenRetryCount: number;
+      };
+    },
+    user: { displayName: string; metaApiAccountId: string | null },
+  ): Promise<{
+    applied: boolean;
+    breakevenPrice: number;
+    retriesUsed: number;
+    retriesRemaining: number;
+  }> {
+    const attempt = await this.applyBreakevenOnSetup(userId, signal, user);
+
+    if (attempt.applied) {
+      await this.prisma.trade.update({
+        where: { id: signal.trade.id },
+        data: {
+          breakevenPending: false,
+        },
+      });
+      const retriesUsed = signal.trade.breakevenRetryCount;
+      return {
+        applied: true,
+        breakevenPrice: attempt.breakevenPrice,
+        retriesUsed,
+        retriesRemaining: Math.max(0, MAX_BREAKEVEN_RETRIES - retriesUsed),
+      };
+    }
+
+    const updated = await this.prisma.trade.update({
+      where: { id: signal.trade.id },
+      data: {
+        breakevenRetryCount: { increment: 1 },
+        breakevenPending:
+          signal.trade.breakevenRetryCount + 1 < MAX_BREAKEVEN_RETRIES,
+      },
+    });
+
+    const retriesUsed = updated.breakevenRetryCount;
+    return {
+      applied: false,
+      breakevenPrice: attempt.breakevenPrice,
+      retriesUsed,
+      retriesRemaining: Math.max(0, MAX_BREAKEVEN_RETRIES - retriesUsed),
+    };
+  }
+
+  private async applyBreakevenOnSetup(
+    userId: string,
+    signal: {
+      id: string;
+      signalId: string;
+      symbol: string;
+      direction: TradeDirection;
+      entryMin: unknown;
+      entryMax: unknown;
+      takeProfit: unknown;
+      hubRecordId: string | null;
+      hubSenderName: string | null;
+      metaApiAccountId: string | null;
+      metaApiOrderId: string | null;
+      metaApiPositionId: string | null;
+      trade: {
+        id: string;
+        entryPrice: unknown;
+        activatedAt: Date | null;
+      };
+    },
+    user: { displayName: string; metaApiAccountId: string | null },
+  ): Promise<{ applied: boolean; breakevenPrice: number }> {
+    const breakevenPrice =
+      signal.trade.entryPrice != null
+        ? Number(signal.trade.entryPrice)
+        : computeEntryMid(Number(signal.entryMin), Number(signal.entryMax));
+
+    let hubOk = false;
+    let metaOk = false;
+
+    if (this.signalHub.isConfigured && signal.hubRecordId) {
+      const sendername =
+        signal.hubSenderName ||
+        this.signalHub.toSenderName(user.displayName, userId);
+      const { hub, error } = await this.signalHub.sendHubAction(sendername, {
+        action: 'breakeven',
+        external_id: signal.signalId,
+        symbol: signal.symbol,
+      });
+      hubOk = Boolean(hub);
+      if (error) {
+        this.logger.warn(
+          `Hub breakeven failed for ${signal.signalId}: ${error}`,
+        );
+      }
+    }
+
+    const accountId = this.metaApi.resolveAccountId(
+      signal.metaApiAccountId ?? user.metaApiAccountId,
+    );
+    if (this.metaApi.isConfigured && accountId) {
+      try {
+        const account = await this.metaApi.ensureAccountReady(accountId);
+        const { clientId } = this.metaApi.buildIdentifiersForUser(
+          user.displayName,
+          userId,
+          signal.signalId,
+          signal.symbol,
+        );
+        const live = await this.metaApi.findLiveTradeForSignal(account, {
+          positionId: signal.metaApiPositionId,
+          orderId: signal.metaApiOrderId,
+          clientId,
+          displayName: user.displayName,
+          userId,
+          symbol: signal.symbol,
+          activated: Boolean(signal.trade.activatedAt),
+        });
+
+        if (live.status === 'open' && live.positionId) {
+          const positions = await this.metaApi.findUserOpenPositions(
+            account,
+            user.displayName,
+            userId,
+          );
+          const position = positions.find((p) => p.id === live.positionId);
+          await this.metaApi.modifyPositionStops(account, {
+            positionId: live.positionId,
+            stopLoss: breakevenPrice,
+            takeProfit:
+              position?.takeProfit != null
+                ? position.takeProfit
+                : Number(signal.takeProfit),
+          });
+          metaOk = true;
+        }
+      } catch (err) {
+        this.logger.warn(
+          `MetaAPI breakeven failed for ${signal.signalId}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+
+    const applied = hubOk || metaOk;
+    if (applied) {
+      await this.prisma.$transaction([
+        this.prisma.signal.update({
+          where: { id: signal.id },
+          data: { stopLoss: breakevenPrice },
+        }),
+        this.prisma.trade.update({
+          where: { id: signal.trade.id },
+          data: {
+            stopLoss: breakevenPrice,
+            tp1BreakevenAt: new Date(),
+            breakevenPending: false,
+          },
+        }),
+      ]);
+      this.logger.log(
+        `TP1 breakeven set for ${signal.signalId} @ ${breakevenPrice} (hub=${hubOk}, meta=${metaOk})`,
+      );
+    }
+
+    return { applied, breakevenPrice };
+  }
+
   async getSetupResolution(userId: string, signalId: string) {
     const signal = await this.prisma.signal.findFirst({
       where: { signalId, userId },
@@ -632,22 +1086,45 @@ export class SignalsService {
       priceOutcome === 'sl' || (priceOutcome === null && hubOutcome === 'sl');
 
     const pendingTpClaim = await this.tpClaims.hasPendingClaim(signal.id);
+    const existingFullTpClaim = await this.prisma.tpClaim.findFirst({
+      where: {
+        signalId: signal.id,
+        claimType: 'FULL_TP',
+        status: { not: 'REJECTED' },
+      },
+    });
+    const existingRr1Claim = await this.prisma.tpClaim.findFirst({
+      where: {
+        signalId: signal.id,
+        claimType: 'RR_1_TO_1',
+        status: { not: 'REJECTED' },
+      },
+    });
     const activated =
       Boolean(signal.trade?.activatedAt) ||
       liveTrade?.status === 'open' ||
       liveTrade?.status === 'pending';
     const hitRr1 =
-      price !== null &&
-      priceReachedOneToOne(signal.direction, oneToOnePrice, price);
-    const canClaimTp = canClaimTpBase && !pendingTpClaim;
+      (price !== null &&
+        priceReachedOneToOne(signal.direction, oneToOnePrice, price)) ||
+      Boolean(liveTrade?.tp1Reached);
+    const canClaimTp =
+      canClaimTpBase && !pendingTpClaim && !existingFullTpClaim;
     const canClaimTp1R1 =
       !canClaimTpBase &&
       hitRr1 &&
       rr1Valid &&
       activated &&
       Number(signal.riskRewardRatio) >= 1 &&
-      !pendingTpClaim;
+      !pendingTpClaim &&
+      !existingRr1Claim;
     const canClaimSl = canClaimSlBase;
+    const tp1Reached =
+      !canClaimTpBase &&
+      hitRr1 &&
+      rr1Valid &&
+      activated &&
+      Number(signal.riskRewardRatio) >= 1;
 
     const { canInvalidate, invalidateBlockedReason } =
       this.resolveInvalidateEligibility({
@@ -679,6 +1156,18 @@ export class SignalsService {
       canClaimTp,
       canClaimTp1R1,
       canClaimSl,
+      tp1Reached,
+      breakevenSet: Boolean(signal.trade?.tp1BreakevenAt),
+      breakevenPending: Boolean(signal.trade?.breakevenPending),
+      breakevenRetryCount: signal.trade?.breakevenRetryCount ?? 0,
+      canSetBreakeven:
+        Boolean(signal.trade) &&
+        !signal.trade?.tp1BreakevenAt &&
+        (signal.trade?.breakevenRetryCount ?? 0) < MAX_BREAKEVEN_RETRIES &&
+        (activated ||
+          liveTrade?.status === 'open' ||
+          Boolean(signal.metaApiExecutedAt) ||
+          Boolean(signal.hubRecordId)),
       metaApiExecuted: Boolean(signal.metaApiExecutedAt),
       metaApiOrderId: signal.metaApiOrderId,
       metaApiPositionId: signal.metaApiPositionId,

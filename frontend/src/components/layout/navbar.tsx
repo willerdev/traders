@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/layout/logo";
+import { PlatformNotificationsBell } from "@/components/layout/platform-notifications-bell";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", shortLabel: "Home", icon: LayoutDashboard },
@@ -126,6 +127,8 @@ function Sidebar({ pathname }: { pathname: string }) {
       <div className="flex-1 overflow-y-auto overflow-x-hidden py-3">
         <SidebarNav pathname={pathname} />
       </div>
+
+      <PlatformNotificationsBell />
 
       <div className="border-t border-[var(--color-border)] p-2">
         <Link

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { SignalsService } from './signals.service';
 import { SignalsController } from './signals.controller';
 import { DuplicateDetectionService } from './duplicate-detection.service';
@@ -8,14 +8,18 @@ import { AiModule } from '../ai/ai.module';
 import { TradesModule } from '../trades/trades.module';
 import { TpClaimsModule } from '../tp-claims/tp-claims.module';
 import { MetaApiModule } from '../metaapi/metaapi.module';
+import { EmailModule } from '../email/email.module';
+import { PlatformNotificationsModule } from '../platform-notifications/platform-notifications.module';
 
 @Module({
   imports: [
     AiModule,
     TradesModule,
-    TpClaimsModule,
+    forwardRef(() => TpClaimsModule),
     SignalHubModule,
     MetaApiModule,
+    EmailModule,
+    PlatformNotificationsModule,
   ],
   controllers: [SignalsController],
   providers: [

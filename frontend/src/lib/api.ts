@@ -233,6 +233,8 @@ class ApiClient {
     list: () => this.request<SignalRecord[]>("/signals"),
     openUnresolved: () =>
       this.request<OpenSetupsResult>("/signals/open/unresolved"),
+    claimableTps: () =>
+      this.request<ClaimableTpsResult>("/signals/claimable/tps"),
     getResolution: (signalId: string) =>
       this.request<SetupResolution>(`/signals/${signalId}/resolution`),
     getLiveTrade: (signalId: string) =>
@@ -245,6 +247,10 @@ class ApiClient {
       }),
     closeTrade: (signalId: string) =>
       this.request<CloseSetupTradeResult>(`/signals/${signalId}/close-trade`, {
+        method: "POST",
+      }),
+    setBreakeven: (signalId: string) =>
+      this.request<SetBreakevenResult>(`/signals/${signalId}/set-breakeven`, {
         method: "POST",
       }),
     metaApiAccounts: () =>
@@ -560,6 +566,21 @@ class ApiClient {
             ? { payoutId, walletAddress: walletAddress.trim() }
             : { payoutId },
         ),
+      }),
+  };
+
+  notifications = {
+    list: (limit?: number) =>
+      this.request<PlatformNotificationsResult>(
+        `/notifications${limit ? `?limit=${limit}` : ""}`,
+      ),
+    markRead: (id: string) =>
+      this.request<{ ok: boolean }>(`/notifications/${id}/read`, {
+        method: "PATCH",
+      }),
+    markAllRead: () =>
+      this.request<{ ok: boolean }>("/notifications/read-all", {
+        method: "PATCH",
       }),
   };
 
@@ -1091,6 +1112,11 @@ export interface SetupResolution {
   liveTrade?: SetupLiveTrade | null;
   canInvalidate?: boolean;
   invalidateBlockedReason?: string;
+  tp1Reached?: boolean;
+  breakevenSet?: boolean;
+  breakevenPending?: boolean;
+  breakevenRetryCount?: number;
+  canSetBreakeven?: boolean;
 }
 
 export interface SetupLiveTrade {
@@ -1122,6 +1148,15 @@ export interface CloseSetupTradeResult {
   tp1Price?: number;
   pointsAwarded?: number;
   message?: string;
+}
+
+export interface SetBreakevenResult {
+  status: "set" | "pending" | "already_set" | "exhausted";
+  applied: boolean;
+  breakevenPrice?: number;
+  retriesUsed: number;
+  retriesRemaining: number;
+  message: string;
 }
 
 export interface MetaApiAccountRow {
@@ -1193,6 +1228,43 @@ export interface OpenSetupsResult {
   items: OpenSetupItem[];
   count: number;
   claimableCount: number;
+}
+
+export interface ClaimableTpSetup {
+  signalId: string;
+  symbol: string;
+  direction: string;
+  entryMin: number;
+  entryMax: number;
+  stopLoss: number;
+  takeProfit: number;
+  submittedAt: string;
+  oneToOnePrice?: number;
+  currentPrice?: number | null;
+  canClaimFullTp: boolean;
+  canClaimTp1R1: boolean;
+  claimable: boolean;
+}
+
+export interface ClaimableTpsResult {
+  items: ClaimableTpSetup[];
+  count: number;
+}
+
+export interface PlatformNotification {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  linkUrl?: string | null;
+  signalId?: string | null;
+  readAt?: string | null;
+  createdAt: string;
+}
+
+export interface PlatformNotificationsResult {
+  unreadCount: number;
+  items: PlatformNotification[];
 }
 
 export interface ClaimSetupResult {

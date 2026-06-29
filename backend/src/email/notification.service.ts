@@ -110,6 +110,54 @@ export class NotificationService {
     this.dispatch(this.sendTpClaimRejected(userId, data), 'TP claim rejected');
   }
 
+  tp1ClaimAvailable(
+    userId: string,
+    data: {
+      symbol: string;
+      signalId: string;
+      oneToOnePrice: number;
+      breakevenApplied?: boolean;
+      breakevenPrice?: number;
+    },
+  ) {
+    this.dispatch(this.sendTp1ClaimAvailable(userId, data), 'TP1 claim available');
+  }
+
+  private async sendTp1ClaimAvailable(
+    userId: string,
+    data: {
+      symbol: string;
+      signalId: string;
+      oneToOnePrice: number;
+      breakevenApplied?: boolean;
+      breakevenPrice?: number;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+
+    const beLine = data.breakevenApplied
+      ? `<p>Your stop loss was moved to <strong>breakeven (${data.breakevenPrice})</strong> automatically.</p>`
+      : '';
+
+    const html = this.email.layout(
+      'TP1 reached — breakeven set',
+      `<p>Hi ${user.name},</p>
+      <p>Price reached <strong>TP1 (1:1 RR)</strong> on your <strong>${this.escape(data.symbol)}</strong> setup.</p>
+      <p>TP1 level: <strong>${data.oneToOnePrice}</strong></p>
+      ${beLine}
+      <p>You can submit a <strong>1:1 RR claim</strong> with before/after chart screenshots on the TP Claims page. This records your win for scoring — <strong>no KYC or payout request is required</strong> to claim.</p>
+      ${this.email.button(`${this.email.frontendUrl}/tp-claims`, 'Claim 1:1 RR')}`,
+    );
+
+    return this.email.send({
+      to: user.email,
+      subject: `TP1 reached on ${data.symbol} — breakeven set, claim your 1:1 RR`,
+      html,
+      text: `TP1 reached on ${data.symbol} at ${data.oneToOnePrice}.${data.breakevenApplied ? ` Breakeven set at ${data.breakevenPrice}.` : ''} Claim at ${this.email.frontendUrl}/tp-claims`,
+    });
+  }
+
   private async sendTpClaimRejected(
     userId: string,
     data: { symbol: string; reason: string },
