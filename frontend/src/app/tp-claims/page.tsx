@@ -432,7 +432,6 @@ export default function TpClaimsPage() {
             setSuccess(msg);
             void load();
           }}
-          onError={(msg) => setError(msg)}
         />
       )}
 
@@ -442,11 +441,11 @@ export default function TpClaimsPage() {
           signalId={resubmitModal.signalId}
           symbol={resubmitModal.symbol}
           onClose={() => setResubmitModal(null)}
-          onSubmitted={() => {
+          onSubmitted={(msg) => {
             setResubmitModal(null);
+            setSuccess(msg || "TP claim resubmitted for review.");
             void load();
           }}
-          onError={(msg) => setError(msg)}
         />
       )}
     </div>

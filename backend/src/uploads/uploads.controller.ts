@@ -103,7 +103,7 @@ export class UploadsController {
       process.env.API_PUBLIC_URL || `http://localhost:${process.env.PORT || 4000}`;
 
     return {
-      url: `${baseUrl}/uploads/setups/${file.filename}`,
+      url: `${baseUrl}/api/v1/uploads/setups/${file.filename}`,
       filename: file.filename,
       size: file.size,
       uploadedBy: req.user.id,

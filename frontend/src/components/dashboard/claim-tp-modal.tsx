@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -15,7 +15,7 @@ type Props = {
   oneToOnePrice?: number;
   onClose: () => void;
   onSubmitted: (message: string) => void;
-  onError: (message: string) => void;
+  onError?: (message: string) => void;
 };
 
 export function ClaimTpModal({
@@ -32,66 +32,128 @@ export function ClaimTpModal({
   const [afterFile, setAfterFile] = useState<File | null>(null);
   const [beforePreview, setBeforePreview] = useState<string | null>(null);
   const [afterPreview, setAfterPreview] = useState<string | null>(null);
+  const [uploadedBeforeUrl, setUploadedBeforeUrl] = useState<string | null>(null);
+  const [uploadedAfterUrl, setUploadedAfterUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const beforePreviewRef = useRef<string | null>(null);
+  const afterPreviewRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (beforePreviewRef.current?.startsWith("blob:")) {
+        URL.revokeObjectURL(beforePreviewRef.current);
+      }
+      if (afterPreviewRef.current?.startsWith("blob:")) {
+        URL.revokeObjectURL(afterPreviewRef.current);
+      }
+    };
+  }, []);
+
+  function setBeforePreviewSafe(url: string | null) {
+    if (beforePreviewRef.current?.startsWith("blob:")) {
+      URL.revokeObjectURL(beforePreviewRef.current);
+    }
+    beforePreviewRef.current = url;
+    setBeforePreview(url);
+  }
+
+  function setAfterPreviewSafe(url: string | null) {
+    if (afterPreviewRef.current?.startsWith("blob:")) {
+      URL.revokeObjectURL(afterPreviewRef.current);
+    }
+    afterPreviewRef.current = url;
+    setAfterPreview(url);
+  }
+
+  function reportError(message: string) {
+    setSubmitError(message);
+    onError?.(message);
+  }
 
   function pickFile(
     file: File | undefined,
     setFile: (f: File | null) => void,
     setPreview: (u: string | null) => void,
+    clearUploaded: () => void,
   ) {
     if (!file) return;
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      onError("Only JPEG, PNG, and WebP images are allowed");
+      reportError("Only JPEG, PNG, and WebP images are allowed");
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      onError("Each image must be under 5MB");
+      reportError("Each image must be under 5MB");
       return;
     }
+    setSubmitError(null);
     setFile(file);
+    clearUploaded();
     setPreview(URL.createObjectURL(file));
   }
 
-  async function handleSubmit() {
+  async function ensureUploadedUrls(): Promise<{
+    beforeUrl: string;
+    afterUrl: string;
+  } | null> {
     if (!beforeFile || !afterFile) {
-      onError("Upload both before and after chart screenshots");
-      return;
+      reportError("Upload both before and after chart screenshots");
+      return null;
     }
 
-    setLoading(true);
-    try {
+    let beforeUrl = uploadedBeforeUrl;
+    let afterUrl = uploadedAfterUrl;
+
+    if (!beforeUrl || !afterUrl) {
       const [beforeUpload, afterUpload] = await Promise.all([
         api.uploads.setup(beforeFile),
         api.uploads.setup(afterFile),
       ]);
+      beforeUrl = beforeUpload.url;
+      afterUrl = afterUpload.url;
+      setUploadedBeforeUrl(beforeUrl);
+      setUploadedAfterUrl(afterUrl);
+    }
+
+    return { beforeUrl, afterUrl };
+  }
+
+  async function handleSubmit() {
+    setSubmitError(null);
+    setLoading(true);
+    try {
+      const urls = await ensureUploadedUrls();
+      if (!urls) return;
 
       const result = claimId
         ? await api.tpClaims.resubmit(claimId, {
-            beforeScreenshotUrl: beforeUpload.url,
-            afterScreenshotUrl: afterUpload.url,
+            beforeScreenshotUrl: urls.beforeUrl,
+            afterScreenshotUrl: urls.afterUrl,
           })
         : await api.signals.claim(signalId, "tp", {
-            beforeScreenshotUrl: beforeUpload.url,
-            afterScreenshotUrl: afterUpload.url,
+            beforeScreenshotUrl: urls.beforeUrl,
+            afterScreenshotUrl: urls.afterUrl,
             ...(claimType === "rr_1_1" ? { tpClaimType: "rr_1_1" as const } : {}),
           });
 
-      if (result.status === "pending_review") {
-        onSubmitted(
-          result.message ??
-            "TP claim submitted for admin review. Track status on TP Claims.",
-        );
-        onClose();
-      } else {
-        onSubmitted("TP claim submitted.");
-        onClose();
-      }
+      const message =
+        result.message ??
+        (result.status === "pending_review"
+          ? "TP claim submitted for admin review. Track status on TP Claims."
+          : "TP claim submitted.");
+
+      onSubmitted(message);
+      onClose();
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Could not submit TP claim");
+      const message =
+        err instanceof Error ? err.message : "Could not submit TP claim";
+      reportError(message);
     } finally {
       setLoading(false);
     }
   }
+
+  const canSubmit = Boolean(beforeFile && afterFile) && !loading;
 
   return (
     <div className="modal-overlay fixed inset-0 z-[110] flex items-center justify-center p-4">
@@ -120,25 +182,48 @@ export function ClaimTpModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1 text-muted hover:bg-white/5 hover:text-foreground"
+            disabled={loading}
+            className="rounded-lg p-1 text-muted hover:bg-white/5 hover:text-foreground disabled:opacity-50"
             aria-label="Close"
           >
             <X className="h-5 w-5" />
           </button>
         </CardHeader>
         <CardContent className="space-y-4">
+          {submitError && (
+            <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+              {submitError}
+            </p>
+          )}
+
+          {uploadedBeforeUrl && uploadedAfterUrl && !loading && (
+            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              Screenshots uploaded — tap Submit for review again if the claim did not go through.
+            </p>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2">
             <UploadSlot
               id="before-chart"
               label="Before (entry / open)"
               preview={beforePreview}
-              onPick={(f) => pickFile(f, setBeforeFile, setBeforePreview)}
+              disabled={loading}
+              onPick={(f) =>
+                pickFile(f, setBeforeFile, setBeforePreviewSafe, () =>
+                  setUploadedBeforeUrl(null),
+                )
+              }
             />
             <UploadSlot
               id="after-chart"
               label={claimType === "rr_1_1" ? "After (1:1 hit)" : "After (TP hit)"}
               preview={afterPreview}
-              onPick={(f) => pickFile(f, setAfterFile, setAfterPreview)}
+              disabled={loading}
+              onPick={(f) =>
+                pickFile(f, setAfterFile, setAfterPreviewSafe, () =>
+                  setUploadedAfterUrl(null),
+                )
+              }
             />
           </div>
 
@@ -146,12 +231,12 @@ export function ClaimTpModal({
             <Button variant="secondary" onClick={onClose} disabled={loading}>
               Cancel
             </Button>
-            <Button
-              onClick={() => void handleSubmit()}
-              disabled={loading || !beforeFile || !afterFile}
-            >
+            <Button onClick={() => void handleSubmit()} disabled={!canSubmit}>
               {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <>
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  Submitting…
+                </>
               ) : claimId ? (
                 "Resubmit for review"
               ) : (
@@ -169,11 +254,13 @@ function UploadSlot({
   id,
   label,
   preview,
+  disabled,
   onPick,
 }: {
   id: string;
   label: string;
   preview: string | null;
+  disabled?: boolean;
   onPick: (file: File | undefined) => void;
 }) {
   return (
@@ -181,7 +268,8 @@ function UploadSlot({
       <Label htmlFor={id}>{label}</Label>
       <label
         htmlFor={id}
-        className="flex min-h-[120px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-white/15 bg-white/[0.02] p-3 text-center text-xs text-muted hover:border-primary/40"
+        className="flex min-h-[120px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-white/15 bg-white/[0.02] p-3 text-center text-xs text-muted hover:border-primary/40 data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50"
+        data-disabled={disabled ? "true" : "false"}
       >
         {preview ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -201,7 +289,11 @@ function UploadSlot({
           type="file"
           accept="image/jpeg,image/png,image/webp"
           className="sr-only"
-          onChange={(e) => onPick(e.target.files?.[0])}
+          disabled={disabled}
+          onChange={(e) => {
+            onPick(e.target.files?.[0]);
+            e.target.value = "";
+          }}
         />
       </label>
     </div>

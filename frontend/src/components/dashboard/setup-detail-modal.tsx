@@ -836,7 +836,6 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
             onUpdated();
             void loadDetails();
           }}
-          onError={(msg) => setActionError(msg)}
         />
       )}
     </>

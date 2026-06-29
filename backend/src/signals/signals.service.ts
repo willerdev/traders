@@ -1967,19 +1967,6 @@ export class SignalsService {
           ),
         );
 
-      let metaApiNote: string | undefined;
-      if (usesMetaApi && user) {
-        const metaResult = await this.verifyMetaApiTpClaim(
-          userId,
-          signal,
-          user,
-          { fullTp: !isRr1Claim },
-        );
-        if (metaResult.metaApiClosed) {
-          metaApiNote = 'Broker position closed at take profit';
-        }
-      }
-
       const claimResult = await this.tpClaims.createPendingClaim(
         userId,
         signal,
@@ -1988,6 +1975,31 @@ export class SignalsService {
         dto.afterScreenshotUrl.trim(),
         isRr1Claim ? 'RR_1_TO_1' : 'FULL_TP',
       );
+
+      let metaApiNote: string | undefined;
+      if (usesMetaApi && user && !isRr1Claim) {
+        try {
+          const closeResult = await this.metaApi.closeSignalTradeIfOpen({
+            accountId: this.metaApi.resolveAccountId(
+              signal.metaApiAccountId ?? user.metaApiAccountId,
+            )!,
+            displayName: user.displayName,
+            userId,
+            signalId: signal.signalId,
+            symbol: signal.symbol,
+            metaApiPositionId: signal.metaApiPositionId,
+            metaApiOrderId: signal.metaApiOrderId,
+            tradeActivated: Boolean(signal.trade?.activatedAt),
+          });
+          if (closeResult.action === 'closed') {
+            metaApiNote = 'Broker position closed at take profit';
+          }
+        } catch (err) {
+          this.logger.warn(
+            `Broker close skipped for TP claim ${signal.signalId}: ${err instanceof Error ? err.message : err}`,
+          );
+        }
+      }
 
       return {
         ...claimResult,
