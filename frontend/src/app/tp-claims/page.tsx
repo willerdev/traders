@@ -156,9 +156,17 @@ export default function TpClaimsPage() {
                         : ""}
                       {setup.currentPrice != null ? ` · Now ${setup.currentPrice}` : ""}
                     </p>
-                    {setup.canClaimTp1R1 && (
+                    {setup.executionLabel && (
+                      <p className="mt-1 text-xs text-gray-500">{setup.executionLabel}</p>
+                    )}
+                    {setup.canClaimTp1R1 && setup.breakevenSet && (
                       <p className="mt-1 text-xs text-success/90">
-                        Breakeven is set automatically when TP1 hits on live trades.
+                        TP1 or partial close with breakeven set — ready to claim 1:1 RR.
+                      </p>
+                    )}
+                    {setup.tp1ClaimBlockedReason && !setup.canClaimTp1R1 && (
+                      <p className="mt-1 text-xs text-amber-300/90">
+                        {setup.tp1ClaimBlockedReason}
                       </p>
                     )}
                   </div>

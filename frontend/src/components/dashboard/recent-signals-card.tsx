@@ -13,6 +13,20 @@ import {
   type SetupSummary,
 } from "@/components/dashboard/setup-detail-modal";
 
+function statusBadgeVariant(status: string): "success" | "danger" | "secondary" {
+  if (status === "WON") return "success";
+  if (status === "LOST") return "danger";
+  return "secondary";
+}
+
+function statusLabel(status: string): string {
+  if (status === "WON") return "Win";
+  if (status === "LOST") return "Loss";
+  if (status === "ARCHIVED") return "Even / closed";
+  if (status === "OPEN") return "Open";
+  return status.replace(/_/g, " ");
+}
+
 type Props = {
   signals: SignalRecord[];
   onRefresh: () => void;
@@ -82,7 +96,9 @@ export function RecentSignalsCard({ signals, onRefresh }: Props) {
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <Badge variant="secondary">{signal.status}</Badge>
+                    <Badge variant={statusBadgeVariant(signal.status)}>
+                      {statusLabel(signal.status)}
+                    </Badge>
                     <ChevronRight className="h-4 w-4 text-gray-600" />
                   </div>
                 </button>

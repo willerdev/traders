@@ -356,6 +356,9 @@ model Trade {
   tp1BreakevenAt DateTime?
   breakevenPending Boolean @default(false)
   breakevenRetryCount Int @default(0)
+  partialClosedAt DateTime?
+  partialCloseVolume Decimal? @db.Decimal(18, 8)
+  partialCloseProfit Decimal? @db.Decimal(12, 2)
   closedAt     DateTime?
   createdAt    DateTime       @default(now())
 

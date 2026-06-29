@@ -30,6 +30,10 @@ import {
 } from "lucide-react";
 import { ClaimTpModal } from "@/components/dashboard/claim-tp-modal";
 import { TradeExecutionNotice } from "@/components/trading/trade-execution-notice";
+import {
+  SetupExecutionBadge,
+  tradeProgressLabel,
+} from "@/components/dashboard/setup-execution-badge";
 
 export type SetupSummary = {
   signalId: string;
@@ -82,9 +86,10 @@ function buildProgressSteps(
   hub: HubSignalStatus | null,
 ): { label: string; detail: string; state: StepState }[] {
   const status = setup.status;
+  const phase = resolution?.executionPhase;
   const hubStatus = (hub?.status ?? resolution?.hubStatus ?? "").toLowerCase();
   const executed = hub?.progress?.executed ?? false;
-  const activated = resolution?.activated ?? false;
+  const activated = resolution?.activated ?? resolution?.tradeOpened ?? false;
   const terminal = ["WON", "LOST", "ARCHIVED", "CANCELLED", "REJECTED_DUPLICATE"];
 
   const submitted: StepState = "done";
@@ -95,17 +100,59 @@ function buildProgressSteps(
   else if (hub) hubState = "current";
 
   let tradeState: StepState = "pending";
-  if (activated) tradeState = "done";
+  if (
+    phase === "running" ||
+    phase === "partial" ||
+    phase === "claimable" ||
+    activated
+  ) {
+    tradeState = "done";
+  } else if (phase === "limit_active") tradeState = "current";
   else if (hubState === "done") tradeState = "current";
-  else if (status === "OPEN" && hubState === "current") tradeState = "pending";
 
   let outcomeState: StepState = "pending";
-  if (status === "WON") outcomeState = "done";
-  else if (status === "LOST" || status === "ARCHIVED" || status === "CANCELLED")
-    outcomeState = status === "LOST" ? "done" : "error";
+  if (status === "WON" || phase === "closed_win") outcomeState = "done";
+  else if (status === "LOST" || phase === "closed_loss") outcomeState = "done";
+  else if (status === "ARCHIVED" || phase === "closed_neutral") outcomeState = "done";
+  else if (status === "CANCELLED" || terminal.includes(status)) outcomeState = "error";
   else if (resolution?.canClaimTp || resolution?.canClaimTp1R1 || resolution?.canClaimSl || resolution?.pendingTpClaim)
     outcomeState = "current";
-  else if (terminal.includes(status)) outcomeState = "error";
+  else if (phase === "partial") outcomeState = "current";
+
+  const tradeDetail =
+    resolution?.executionLabel ??
+    (phase === "limit_active"
+      ? "Limit or stop order waiting for price"
+      : phase === "running"
+        ? "Position is open on the broker"
+        : phase === "partial"
+          ? "Part of the position was closed"
+          : activated
+            ? "Price entered your zone — trade is live"
+            : "Waiting for entry fill");
+
+  const outcomeDetail =
+    resolution?.executionLabel && phase?.startsWith("closed")
+      ? resolution.executionLabel
+      : resolution?.tradeProgressOutcome
+        ? `${tradeProgressLabel(resolution.tradeProgressOutcome)} recorded`
+        : status === "WON"
+          ? "Take profit recorded"
+          : status === "LOST"
+            ? "Stop loss recorded"
+            : resolution?.pendingTpClaim
+              ? "TP claim pending admin review"
+              : resolution?.canClaimTp
+                ? "Full TP reached — you can claim"
+                : resolution?.canClaimTp1R1
+                  ? "TP1 hit + breakeven — claim 1:1 RR with proof"
+                  : resolution?.tp1Reached && resolution?.tp1ClaimBlockedReason
+                    ? resolution.tp1ClaimBlockedReason
+                    : resolution?.canClaimSl
+                      ? "SL level reached — you can claim"
+                      : resolution?.currentPrice != null
+                        ? `Market ${resolution.currentPrice}`
+                        : "Awaiting TP or SL";
 
   return [
     {
@@ -119,30 +166,13 @@ function buildProgressSteps(
       state: hubState,
     },
     {
-      label: "Trade active",
-      detail: activated
-        ? "Price entered your zone — trade is live"
-        : "Waiting for entry fill",
+      label: "Trade status",
+      detail: tradeDetail,
       state: tradeState,
     },
     {
       label: "Outcome",
-      detail:
-        status === "WON"
-          ? "Take profit recorded"
-          : status === "LOST"
-            ? "Stop loss recorded"
-            : resolution?.pendingTpClaim
-              ? "TP claim pending admin review"
-              : resolution?.canClaimTp
-                ? "TP level reached — you can claim"
-                : resolution?.canClaimTp1R1
-                ? "1:1 RR reached — you can claim with proof"
-                : resolution?.canClaimSl
-                  ? "SL level reached — you can claim"
-                  : resolution?.currentPrice != null
-                    ? `Market ${resolution.currentPrice}`
-                    : "Awaiting TP or SL",
+      detail: outcomeDetail,
       state: outcomeState,
     },
   ];
@@ -493,6 +523,12 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
                   {setup.direction}
                 </Badge>
                 <Badge variant="secondary">{setup.status}</Badge>
+                {res?.executionPhase && (
+                  <SetupExecutionBadge
+                    phase={res.executionPhase}
+                    label={res.executionLabel}
+                  />
+                )}
               </div>
               <CardDescription className="mt-1 font-mono text-xs">
                 {setup.signalId}
@@ -521,6 +557,28 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
                   </p>
                 )}
 
+                {res?.executionLabel && (
+                  <div className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3">
+                    <p className="text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Trade progress
+                    </p>
+                    <p className="mt-1 text-sm text-white">{res.executionLabel}</p>
+                    {res.partialClosed && isOpen && (
+                      <p className="mt-1 text-xs text-amber-300/90">
+                        Partial close recorded — remainder may still be open.
+                      </p>
+                    )}
+                    {res.tradeProgressOutcome && (
+                      <p className="mt-1 text-xs text-gray-400">
+                        Result: {tradeProgressLabel(res.tradeProgressOutcome)}
+                        {res.exitPrice != null ? ` · exit ${res.exitPrice}` : ""}
+                        {res.pnl != null ? ` · P/L ${res.pnl}` : ""}
+                        {res.pointsAwarded ? ` · ${res.pointsAwarded} pts` : ""}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {isOpen && !tradeRunning && <TradeExecutionNotice variant="modal" />}
 
                 {res?.breakevenSet && (
@@ -540,13 +598,10 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
                   </p>
                 )}
 
-                {res?.tp1Reached && !res.breakevenSet && !res.breakevenPending && (
+                {res?.tp1Reached && !res.canClaimTp1R1 && !res.pendingTpClaim && (
                   <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-                    TP1 (1:1 RR) reached — claim on{" "}
-                    <Link href="/tp-claims" className="underline">
-                      TP Claims
-                    </Link>
-                    .
+                    {res.tp1ClaimBlockedReason ??
+                      "TP1 (1:1 RR) reached — breakeven must be set before you can claim on TP Claims."}
                   </p>
                 )}
 

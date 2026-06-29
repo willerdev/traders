@@ -20,6 +20,7 @@ import {
   SetupDetailModal,
   type SetupSummary,
 } from "@/components/dashboard/setup-detail-modal";
+import { SetupExecutionBadge } from "@/components/dashboard/setup-execution-badge";
 
 type Props = {
   onClaimed?: () => void;
@@ -204,6 +205,12 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
                         >
                           {setup.direction}
                         </Badge>
+                        {res.executionPhase && (
+                          <SetupExecutionBadge
+                            phase={res.executionPhase}
+                            label={res.executionLabel}
+                          />
+                        )}
                         {res.canClaimTp && (
                           <Badge variant="success">Claim TP</Badge>
                         )}

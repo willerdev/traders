@@ -34,6 +34,11 @@ import { Signal, Trade, TradeDirection, User } from '@prisma/client';
 import { MetaApiService } from '../metaapi/metaapi.service';
 import { buildMetaApiTradeIdentifiers } from '../metaapi/metaapi-order.util';
 import { TradeRiskService } from '../ai/trade-risk.service';
+import {
+  resolveSetupExecutionPhase,
+  resolveTradeProgressOutcome,
+  resolveTp1ClaimBlockedReason,
+} from '../common/setup-execution.util';
 import { RISK_PERCENT, MAX_RISK_PER_TRADE, MAX_BREAKEVEN_RETRIES } from '../common/constants';
 
 @Injectable()
@@ -567,6 +572,10 @@ export class SignalsService {
           canClaimFullTp: Boolean(resolution.canClaimTp),
           canClaimTp1R1: Boolean(resolution.canClaimTp1R1),
           claimable: Boolean(resolution.canClaimTp || resolution.canClaimTp1R1),
+          executionPhase: resolution.executionPhase,
+          executionLabel: resolution.executionLabel,
+          breakevenSet: Boolean(resolution.breakevenSet),
+          tp1ClaimBlockedReason: resolution.tp1ClaimBlockedReason,
         };
       }),
     );
@@ -1214,14 +1223,6 @@ export class SignalsService {
       include: { trade: true },
     });
     if (!signal) throw new NotFoundException('Signal not found');
-    if (signal.status !== 'OPEN') {
-      return {
-        signalId: signal.signalId,
-        status: signal.status,
-        claimable: false,
-        reason: 'Setup is already resolved',
-      };
-    }
 
     const tp = Number(signal.takeProfit);
     const sl = Number(signal.stopLoss);
@@ -1233,6 +1234,56 @@ export class SignalsService {
       entryMax,
       sl,
     );
+    const tradeProgressOutcome = resolveTradeProgressOutcome(
+      signal,
+      signal.trade,
+    );
+
+    if (signal.status !== 'OPEN') {
+      const { phase, label } = resolveSetupExecutionPhase({
+        signalStatus: signal.status,
+        hubExecuted: false,
+        activated: Boolean(signal.trade?.activatedAt),
+        partialClosed: Boolean(signal.trade?.partialClosedAt),
+        tradeClosedAt: signal.trade?.closedAt,
+        canClaimTp: false,
+        canClaimTp1R1: false,
+        canClaimSl: false,
+        pendingTpClaim: false,
+        tradeProgressOutcome,
+      });
+
+      return {
+        signalId: signal.signalId,
+        symbol: signal.symbol,
+        direction: signal.direction,
+        status: signal.status,
+        takeProfit: tp,
+        stopLoss: sl,
+        entryMin,
+        entryMax,
+        oneToOnePrice,
+        riskRewardRatio: Number(signal.riskRewardRatio),
+        claimable: false,
+        canClaimTp: false,
+        canClaimTp1R1: false,
+        canClaimSl: false,
+        tradeOpened: Boolean(signal.trade?.activatedAt),
+        partialClosed: Boolean(signal.trade?.partialClosedAt),
+        executionPhase: phase,
+        executionLabel: label,
+        tradeProgressOutcome,
+        resolvedAt: signal.resolvedAt?.toISOString() ?? null,
+        exitPrice:
+          signal.trade?.exitPrice != null
+            ? Number(signal.trade.exitPrice)
+            : null,
+        pnl: signal.pnl != null ? Number(signal.pnl) : null,
+        pointsAwarded: signal.pointsAwarded,
+        reason: 'Setup is already resolved',
+      };
+    }
+
     const rr1Valid = isOneToOneClaimValidForSetup(
       signal.direction,
       oneToOnePrice,
@@ -1319,15 +1370,19 @@ export class SignalsService {
       Boolean(signal.trade?.activatedAt) ||
       liveTrade?.status === 'open' ||
       liveTrade?.status === 'pending';
+    const partialClosed = Boolean(signal.trade?.partialClosedAt);
+    const breakevenSet = Boolean(signal.trade?.tp1BreakevenAt);
     const hitRr1 =
       (price !== null &&
         priceReachedOneToOne(signal.direction, oneToOnePrice, price)) ||
       Boolean(liveTrade?.tp1Reached);
+    const tp1Eligible =
+      (hitRr1 || partialClosed) && breakevenSet;
     const canClaimTp =
       canClaimTpBase && !pendingTpClaim && !existingFullTpClaim;
     const canClaimTp1R1 =
       !canClaimTpBase &&
-      hitRr1 &&
+      tp1Eligible &&
       rr1Valid &&
       activated &&
       Number(signal.riskRewardRatio) >= 1 &&
@@ -1336,10 +1391,21 @@ export class SignalsService {
     const canClaimSl = canClaimSlBase;
     const tp1Reached =
       !canClaimTpBase &&
-      hitRr1 &&
+      (hitRr1 || partialClosed) &&
       rr1Valid &&
       activated &&
       Number(signal.riskRewardRatio) >= 1;
+    const tp1ClaimBlockedReason = resolveTp1ClaimBlockedReason({
+      hitRr1,
+      partialClosed,
+      breakevenSet,
+      breakevenPending: Boolean(signal.trade?.breakevenPending),
+      rr1Valid,
+      activated,
+      canClaimTpBase,
+      pendingTpClaim,
+      existingRr1Claim: Boolean(existingRr1Claim),
+    });
 
     const { canInvalidate, invalidateBlockedReason } =
       this.resolveInvalidateEligibility({
@@ -1348,6 +1414,23 @@ export class SignalsService {
         hubStatus,
         hubRecordId: signal.hubRecordId,
       });
+
+    const { phase, label } = resolveSetupExecutionPhase({
+      signalStatus: signal.status,
+      hubRecordId: signal.hubRecordId,
+      hubStatus,
+      hubExecuted,
+      liveTradeStatus:
+        typeof liveTrade?.status === 'string' ? liveTrade.status : undefined,
+      activated,
+      partialClosed,
+      tradeClosedAt: signal.trade?.closedAt,
+      canClaimTp,
+      canClaimTp1R1,
+      canClaimSl,
+      pendingTpClaim,
+      tradeProgressOutcome,
+    });
 
     return {
       signalId: signal.signalId,
@@ -1361,6 +1444,11 @@ export class SignalsService {
       oneToOnePrice,
       riskRewardRatio: Number(signal.riskRewardRatio),
       activated,
+      tradeOpened: activated,
+      partialClosed,
+      executionPhase: phase,
+      executionLabel: label,
+      tradeProgressOutcome,
       currentPrice: price,
       metaApiPrice,
       priceOutcome,
@@ -1372,7 +1460,8 @@ export class SignalsService {
       canClaimTp1R1,
       canClaimSl,
       tp1Reached,
-      breakevenSet: Boolean(signal.trade?.tp1BreakevenAt),
+      tp1ClaimBlockedReason,
+      breakevenSet,
       breakevenPending: Boolean(signal.trade?.breakevenPending),
       breakevenRetryCount: signal.trade?.breakevenRetryCount ?? 0,
       canSetBreakeven:
@@ -1924,7 +2013,9 @@ export class SignalsService {
     if (isRr1Claim) {
       if (!('canClaimTp1R1' in resolution) || !resolution.canClaimTp1R1) {
         throw new BadRequestException(
-          '1:1 RR level has not been reached yet, or this setup is not eligible for a 1:1 claim.',
+          ('tp1ClaimBlockedReason' in resolution &&
+            resolution.tp1ClaimBlockedReason) ||
+            '1:1 RR claim is not available yet — TP1 or partial close with breakeven is required.',
         );
       }
     } else if (outcome === 'tp' && !resolution.canClaimTp) {
@@ -2459,6 +2550,22 @@ export class SignalsService {
     item: TradeLifecycleItemDto,
     sender: string,
   ) {
+    if (signal.trade) {
+      await this.prisma.trade.update({
+        where: { id: signal.trade.id },
+        data: {
+          partialClosedAt: new Date(),
+          ...(item.volume != null
+            ? { partialCloseVolume: item.volume }
+            : {}),
+          ...(item.profit != null
+            ? { partialCloseProfit: item.profit }
+            : {}),
+          activatedAt: signal.trade.activatedAt ?? new Date(),
+        },
+      });
+    }
+
     this.notifications.tradePartialClose(signal.userId, {
       symbol: signal.symbol,
       signalId: signal.signalId,

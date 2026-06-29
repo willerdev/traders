@@ -1090,6 +1090,19 @@ export interface RequestAdminResult {
   reply: DirectMessage;
 }
 
+export type SetupExecutionPhase =
+  | "not_opened"
+  | "limit_active"
+  | "running"
+  | "partial"
+  | "claimable"
+  | "closed_win"
+  | "closed_loss"
+  | "closed_neutral"
+  | "closed";
+
+export type TradeProgressOutcome = "win" | "loss" | "neutral";
+
 export interface SetupResolution {
   signalId: string;
   symbol?: string;
@@ -1102,6 +1115,16 @@ export interface SetupResolution {
   oneToOnePrice?: number;
   riskRewardRatio?: number;
   activated?: boolean;
+  tradeOpened?: boolean;
+  partialClosed?: boolean;
+  executionPhase?: SetupExecutionPhase;
+  executionLabel?: string;
+  tradeProgressOutcome?: TradeProgressOutcome | null;
+  resolvedAt?: string | null;
+  exitPrice?: number | null;
+  pnl?: number | null;
+  pointsAwarded?: number;
+  tp1ClaimBlockedReason?: string;
   currentPrice?: number | null;
   priceOutcome?: "tp" | "sl" | null;
   hubStatus?: string | null;
@@ -1269,6 +1292,10 @@ export interface ClaimableTpSetup {
   canClaimFullTp: boolean;
   canClaimTp1R1: boolean;
   claimable: boolean;
+  executionPhase?: SetupExecutionPhase;
+  executionLabel?: string;
+  breakevenSet?: boolean;
+  tp1ClaimBlockedReason?: string;
 }
 
 export interface ClaimableTpsResult {
