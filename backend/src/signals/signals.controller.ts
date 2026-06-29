@@ -18,6 +18,7 @@ import {
   CreateSignalDto,
   SaveSignalDraftDto,
   ClaimSetupDto,
+  UpdateSetupStopsDto,
   InvalidateSetupDto,
   TradeOutcomeWebhookDto,
   TradeLifecycleWebhookDto,
@@ -317,6 +318,16 @@ export class SignalsController {
     @Param('signalId') signalId: string,
   ) {
     return this.signalsService.setBreakeven(req.user.id, signalId);
+  }
+
+  @Post(':signalId/update-stops')
+  @UseGuards(JwtAuthGuard)
+  updateSetupStops(
+    @Request() req: { user: { id: string } },
+    @Param('signalId') signalId: string,
+    @Body() dto: UpdateSetupStopsDto,
+  ) {
+    return this.signalsService.updateSetupStops(req.user.id, signalId, dto);
   }
 
   @Get(':signalId/live-trade')

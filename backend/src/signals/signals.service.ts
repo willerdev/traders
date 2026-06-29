@@ -10,7 +10,7 @@ import {
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
-import { CreateSignalDto, ClaimSetupDto, TradeOutcomeWebhookDto, TradeLifecycleItemDto, TradeLifecycleWebhookDto, HubActionDto } from '../common/dto';
+import { CreateSignalDto, ClaimSetupDto, TradeOutcomeWebhookDto, TradeLifecycleItemDto, TradeLifecycleWebhookDto, HubActionDto, UpdateSetupStopsDto } from '../common/dto';
 import { createHash } from 'crypto';
 import { ComplianceService } from '../compliance/compliance.service';
 import { ForwardSignalResult, SignalHubService } from './signal-hub.service';
@@ -810,6 +810,221 @@ export class SignalsService {
     };
   }
 
+  async updateSetupStops(
+    userId: string,
+    signalId: string,
+    dto: UpdateSetupStopsDto,
+  ) {
+    await this.compliance.requireActiveTrader(userId);
+
+    if (dto.stopLoss === undefined && dto.takeProfit === undefined) {
+      throw new BadRequestException('Provide stopLoss and/or takeProfit to update');
+    }
+
+    const signal = await this.prisma.signal.findFirst({
+      where: { signalId, userId, status: 'OPEN' },
+      include: { trade: true },
+    });
+    if (!signal?.trade) {
+      throw new NotFoundException('Open setup not found');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { displayName: true, metaApiAccountId: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const entryMin = Number(signal.entryMin);
+    const entryMax = Number(signal.entryMax);
+    const nextSl =
+      dto.stopLoss !== undefined ? dto.stopLoss : Number(signal.stopLoss);
+    const nextTp =
+      dto.takeProfit !== undefined ? dto.takeProfit : Number(signal.takeProfit);
+
+    this.validateLiveStopLevels(
+      signal.direction,
+      entryMin,
+      entryMax,
+      nextSl,
+      nextTp,
+    );
+
+    const resolution = await this.getSetupResolution(userId, signalId);
+    if (!resolution.canAdjustStops) {
+      throw new BadRequestException(
+        'Stop levels can only be adjusted while a live order or open position exists for this setup.',
+      );
+    }
+
+    const live = resolution.liveTrade as {
+      status?: string;
+      positionId?: string;
+      orderId?: string;
+      stopLoss?: number;
+      takeProfit?: number;
+    } | null;
+
+    let metaApplied = false;
+    let hubApplied = false;
+
+    const accountId = this.metaApi.resolveAccountId(
+      signal.metaApiAccountId ?? user.metaApiAccountId,
+    );
+
+    if (this.metaApi.isConfigured && accountId && live) {
+      try {
+        const account = await this.metaApi.ensureAccountReady(accountId);
+        if (live.status === 'open' && live.positionId) {
+          await this.metaApi.modifyPositionStops(account, {
+            positionId: live.positionId,
+            ...(dto.stopLoss !== undefined ? { stopLoss: nextSl } : {}),
+            ...(dto.takeProfit !== undefined ? { takeProfit: nextTp } : {}),
+          });
+          metaApplied = true;
+        } else if (live.status === 'pending' && live.orderId) {
+          await this.metaApi.modifyPendingOrderStops(account, {
+            orderId: live.orderId,
+            ...(dto.stopLoss !== undefined ? { stopLoss: nextSl } : {}),
+            ...(dto.takeProfit !== undefined ? { takeProfit: nextTp } : {}),
+          });
+          metaApplied = true;
+        }
+      } catch (err) {
+        this.logger.warn(
+          `MetaAPI stop update failed for ${signal.signalId}: ${err instanceof Error ? err.message : err}`,
+        );
+        if (!signal.hubRecordId) {
+          throw new BadRequestException(
+            err instanceof BadRequestException
+              ? err.message
+              : `MetaAPI could not update stops: ${err instanceof Error ? err.message : 'broker rejected'}`,
+          );
+        }
+      }
+    }
+
+    if (this.signalHub.isConfigured && signal.hubRecordId) {
+      const sendername =
+        signal.hubSenderName ||
+        this.signalHub.toSenderName(user.displayName, userId);
+      const { hub, error } = await this.signalHub.sendHubAction(sendername, {
+        action: 'modify',
+        external_id: signal.signalId,
+        symbol: signal.symbol,
+        sl: nextSl,
+        tp: nextTp,
+      });
+      if (hub) hubApplied = true;
+      if (error && !metaApplied) {
+        throw new BadRequestException(
+          `Could not update stops on broker: ${error}`,
+        );
+      }
+    }
+
+    if (!metaApplied && !hubApplied) {
+      throw new BadRequestException(
+        'No broker connection available to update stop levels for this setup.',
+      );
+    }
+
+    const rr = this.computeRiskRewardForSetup(
+      signal.direction,
+      entryMin,
+      entryMax,
+      nextSl,
+      nextTp,
+    );
+
+    const slChanged =
+      dto.stopLoss !== undefined &&
+      Math.abs(nextSl - Number(signal.stopLoss)) > 1e-9;
+
+    await this.prisma.$transaction([
+      this.prisma.signal.update({
+        where: { id: signal.id },
+        data: {
+          stopLoss: nextSl,
+          takeProfit: nextTp,
+          riskRewardRatio: rr,
+        },
+      }),
+      this.prisma.trade.update({
+        where: { id: signal.trade.id },
+        data: {
+          stopLoss: nextSl,
+          takeProfit: nextTp,
+          ...(slChanged ? { tp1BreakevenAt: null, breakevenPending: false } : {}),
+        },
+      }),
+    ]);
+
+    return {
+      status: 'updated',
+      signalId: signal.signalId,
+      stopLoss: nextSl,
+      takeProfit: nextTp,
+      riskRewardRatio: rr,
+      metaApiUpdated: metaApplied,
+      hubUpdated: hubApplied,
+      brokerStopLoss: live?.stopLoss ?? null,
+      brokerTakeProfit: live?.takeProfit ?? null,
+      message: `Stop levels updated to SL ${nextSl}, TP ${nextTp}${metaApplied ? ' on MetaAPI' : ''}${hubApplied ? ' on Signal Hub' : ''}.`,
+    };
+  }
+
+  private validateLiveStopLevels(
+    direction: TradeDirection,
+    entryMin: number,
+    entryMax: number,
+    stopLoss: number,
+    takeProfit: number,
+  ) {
+    if (!Number.isFinite(stopLoss) || !Number.isFinite(takeProfit)) {
+      throw new BadRequestException('Stop loss and take profit must be valid numbers');
+    }
+
+    if (direction === 'BUY') {
+      if (stopLoss >= entryMin) {
+        throw new BadRequestException(
+          'For BUY setups, stop loss must be below the entry range',
+        );
+      }
+      if (takeProfit <= entryMax) {
+        throw new BadRequestException(
+          'For BUY setups, take profit must be above the entry range',
+        );
+      }
+    } else {
+      if (stopLoss <= entryMax) {
+        throw new BadRequestException(
+          'For SELL setups, stop loss must be above the entry range',
+        );
+      }
+      if (takeProfit >= entryMin) {
+        throw new BadRequestException(
+          'For SELL setups, take profit must be below the entry range',
+        );
+      }
+    }
+  }
+
+  private computeRiskRewardForSetup(
+    direction: TradeDirection,
+    entryMin: number,
+    entryMax: number,
+    stopLoss: number,
+    takeProfit: number,
+  ): number {
+    void direction;
+    const mid = computeEntryMid(entryMin, entryMax);
+    const risk = Math.abs(mid - stopLoss);
+    const reward = Math.abs(takeProfit - mid);
+    if (risk <= 0) return 0;
+    return Math.round((reward / risk) * 100) / 100;
+  }
+
   private async recordBreakevenAttempt(
     userId: string,
     signal: {
@@ -1166,6 +1381,14 @@ export class SignalsService {
         (signal.trade?.breakevenRetryCount ?? 0) < MAX_BREAKEVEN_RETRIES &&
         (activated ||
           liveTrade?.status === 'open' ||
+          Boolean(signal.metaApiExecutedAt) ||
+          Boolean(signal.hubRecordId)),
+      canAdjustStops:
+        signal.status === 'OPEN' &&
+        Boolean(signal.trade) &&
+        (liveTrade?.status === 'open' ||
+          liveTrade?.status === 'pending' ||
+          Boolean(signal.trade?.activatedAt) ||
           Boolean(signal.metaApiExecutedAt) ||
           Boolean(signal.hubRecordId)),
       metaApiExecuted: Boolean(signal.metaApiExecutedAt),

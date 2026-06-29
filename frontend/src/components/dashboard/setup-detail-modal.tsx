@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   api,
@@ -14,6 +16,7 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
+  Pencil,
   Shield,
   Ban,
   CheckCircle2,
@@ -210,6 +213,8 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
   const [showTpModal, setShowTpModal] = useState(false);
   const [tpClaimType, setTpClaimType] = useState<"full" | "rr_1_1">("full");
   const [success, setSuccess] = useState<string | null>(null);
+  const [editStopLoss, setEditStopLoss] = useState(String(setup.stopLoss));
+  const [editTakeProfit, setEditTakeProfit] = useState(String(setup.takeProfit));
 
   const isOpen = setup.status === "OPEN";
 
@@ -266,6 +271,13 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
   useEffect(() => {
     void loadDetails({ showSpinner: true });
   }, [loadDetails]);
+
+  useEffect(() => {
+    const sl = resolution?.stopLoss ?? setup.stopLoss;
+    const tp = resolution?.takeProfit ?? setup.takeProfit;
+    setEditStopLoss(String(sl));
+    setEditTakeProfit(String(tp));
+  }, [resolution?.stopLoss, resolution?.takeProfit, setup.stopLoss, setup.takeProfit]);
 
   async function handlePlaceTrade() {
     if (
@@ -342,6 +354,32 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
     } catch (err) {
       setActionError(
         err instanceof Error ? err.message : "Could not set breakeven",
+      );
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleUpdateStops() {
+    const sl = parseFloat(editStopLoss);
+    const tp = parseFloat(editTakeProfit);
+    if (!Number.isFinite(sl) || !Number.isFinite(tp)) {
+      setActionError("Enter valid stop loss and take profit prices");
+      return;
+    }
+    setActionLoading("stops");
+    setActionError(null);
+    try {
+      const result = await api.signals.updateStops(setup.signalId, {
+        stopLoss: sl,
+        takeProfit: tp,
+      });
+      setSuccess(result.message);
+      onUpdated();
+      await loadDetails();
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Could not update stop levels",
       );
     } finally {
       setActionLoading(null);
@@ -497,13 +535,35 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
 
                 <div className="grid gap-3 text-sm sm:grid-cols-2">
                   <InfoRow label="Entry" value={`${setup.entryMin} – ${setup.entryMax}`} />
-                  <InfoRow label="Take profit" value={String(setup.takeProfit)} />
-                  <InfoRow label="Stop loss" value={String(setup.stopLoss)} />
+                  <InfoRow
+                    label="Take profit"
+                    value={String(res?.takeProfit ?? setup.takeProfit)}
+                  />
+                  <InfoRow
+                    label="Stop loss"
+                    value={String(res?.stopLoss ?? setup.stopLoss)}
+                  />
                   <InfoRow
                     label="Submitted"
                     value={new Date(setup.submittedAt).toLocaleString()}
                   />
                 </div>
+
+                {isOpen && res?.canAdjustStops && (
+                  <AdjustStopsPanel
+                    direction={setup.direction}
+                    editStopLoss={editStopLoss}
+                    editTakeProfit={editTakeProfit}
+                    onStopLossChange={setEditStopLoss}
+                    onTakeProfitChange={setEditTakeProfit}
+                    brokerStopLoss={liveTrade?.stopLoss}
+                    brokerTakeProfit={liveTrade?.takeProfit}
+                    platformStopLoss={res?.stopLoss ?? setup.stopLoss}
+                    platformTakeProfit={res?.takeProfit ?? setup.takeProfit}
+                    loading={actionLoading === "stops"}
+                    onSave={() => void handleUpdateStops()}
+                  />
+                )}
 
                 {showLiveTradeSection && (
                   <LiveTradePanel
@@ -789,6 +849,105 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function AdjustStopsPanel({
+  direction,
+  editStopLoss,
+  editTakeProfit,
+  onStopLossChange,
+  onTakeProfitChange,
+  brokerStopLoss,
+  brokerTakeProfit,
+  platformStopLoss,
+  platformTakeProfit,
+  loading,
+  onSave,
+}: {
+  direction: string;
+  editStopLoss: string;
+  editTakeProfit: string;
+  onStopLossChange: (v: string) => void;
+  onTakeProfitChange: (v: string) => void;
+  brokerStopLoss?: number;
+  brokerTakeProfit?: number;
+  platformStopLoss: number;
+  platformTakeProfit: number;
+  loading: boolean;
+  onSave: () => void;
+}) {
+  const slMismatch =
+    brokerStopLoss != null &&
+    Math.abs(brokerStopLoss - platformStopLoss) > 1e-6;
+  const tpMismatch =
+    brokerTakeProfit != null &&
+    Math.abs(brokerTakeProfit - platformTakeProfit) > 1e-6;
+
+  return (
+    <div className="rounded-lg border border-sky-500/25 bg-sky-500/5 p-4">
+      <div className="mb-3 flex items-start gap-2">
+        <Pencil className="mt-0.5 h-4 w-4 shrink-0 text-sky-400" />
+        <div>
+          <p className="text-sm font-medium text-sky-200">Adjust stop levels</p>
+          <p className="mt-0.5 text-xs text-gray-400">
+            Sync your platform SL/TP with the broker when they differ. Updates MetaAPI
+            and Signal Hub for this setup.
+          </p>
+        </div>
+      </div>
+
+      {(slMismatch || tpMismatch) && (
+        <p className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          Broker mismatch detected
+          {slMismatch ? ` · SL on broker: ${brokerStopLoss}` : ""}
+          {tpMismatch ? ` · TP on broker: ${brokerTakeProfit}` : ""}
+        </p>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="edit-sl" className="text-xs text-gray-400">
+            Stop loss ({direction === "BUY" ? "below entry" : "above entry"})
+          </Label>
+          <Input
+            id="edit-sl"
+            type="number"
+            step="any"
+            value={editStopLoss}
+            onChange={(e) => onStopLossChange(e.target.value)}
+            className="border-white/10 bg-white/[0.03]"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="edit-tp" className="text-xs text-gray-400">
+            Take profit
+          </Label>
+          <Input
+            id="edit-tp"
+            type="number"
+            step="any"
+            value={editTakeProfit}
+            onChange={(e) => onTakeProfitChange(e.target.value)}
+            className="border-white/10 bg-white/[0.03]"
+          />
+        </div>
+      </div>
+
+      <Button
+        size="sm"
+        className="mt-3 gap-1.5"
+        disabled={loading}
+        onClick={onSave}
+      >
+        {loading ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Pencil className="h-3.5 w-3.5" />
+        )}
+        Save &amp; update broker
+      </Button>
+    </div>
+  );
+}
+
 function LiveTradePanel({
   live,
   direction,
@@ -809,6 +968,13 @@ function LiveTradePanel({
         <p className="mt-2 text-sm text-gray-300">
           Pending fill — P/L available once the position opens.
         </p>
+        {(live.stopLoss != null || live.takeProfit != null) && (
+          <p className="mt-2 text-xs text-gray-500">
+            {live.stopLoss != null && <>Broker SL {live.stopLoss}</>}
+            {live.stopLoss != null && live.takeProfit != null && " · "}
+            {live.takeProfit != null && <>Broker TP {live.takeProfit}</>}
+          </p>
+        )}
         {error && <p className="mt-2 text-xs text-danger">{error}</p>}
       </div>
     );
@@ -863,6 +1029,8 @@ function LiveTradePanel({
           {live.volume != null && <p>{live.volume} lots</p>}
           {live.openPrice != null && <p>Entry {live.openPrice}</p>}
           {live.currentPrice != null && <p>Mark {live.currentPrice}</p>}
+          {live.stopLoss != null && <p>Broker SL {live.stopLoss}</p>}
+          {live.takeProfit != null && <p>Broker TP {live.takeProfit}</p>}
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs">

@@ -139,6 +139,8 @@ export type MetaApiLiveTradeState = {
   currency?: string;
   symbol?: string;
   comment?: string;
+  stopLoss?: number;
+  takeProfit?: number;
 };
 
 @Injectable()
@@ -997,6 +999,8 @@ export class MetaApiService {
       currency: info?.currency ?? account.baseCurrency,
       symbol: position.symbol,
       comment: position.comment,
+      stopLoss: position.stopLoss,
+      takeProfit: position.takeProfit,
     });
 
     if (lookup.positionId) {
@@ -1064,6 +1068,25 @@ export class MetaApiService {
     const payload: Record<string, unknown> = {
       actionType: 'POSITION_MODIFY',
       positionId: input.positionId,
+    };
+    if (input.stopLoss != null) payload.stopLoss = input.stopLoss;
+    if (input.takeProfit != null) payload.takeProfit = input.takeProfit;
+    return this.submitTrade(ready, payload, { digits: input.specDigits });
+  }
+
+  async modifyPendingOrderStops(
+    account: MetaApiAccount,
+    input: {
+      orderId: string;
+      stopLoss?: number;
+      takeProfit?: number;
+      specDigits?: number;
+    },
+  ): Promise<MetaApiTradeResult> {
+    const ready = await this.ensureAccountReady(account.id);
+    const payload: Record<string, unknown> = {
+      actionType: 'ORDER_MODIFY',
+      orderId: input.orderId,
     };
     if (input.stopLoss != null) payload.stopLoss = input.stopLoss;
     if (input.takeProfit != null) payload.takeProfit = input.takeProfit;

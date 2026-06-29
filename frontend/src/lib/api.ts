@@ -253,6 +253,14 @@ class ApiClient {
       this.request<SetBreakevenResult>(`/signals/${signalId}/set-breakeven`, {
         method: "POST",
       }),
+    updateStops: (
+      signalId: string,
+      stops: { stopLoss?: number; takeProfit?: number },
+    ) =>
+      this.request<UpdateSetupStopsResult>(`/signals/${signalId}/update-stops`, {
+        method: "POST",
+        body: JSON.stringify(stops),
+      }),
     metaApiAccounts: () =>
       this.request<MetaApiAccountsResult>("/signals/metaapi/accounts"),
     claim: (
@@ -1117,6 +1125,7 @@ export interface SetupResolution {
   breakevenPending?: boolean;
   breakevenRetryCount?: number;
   canSetBreakeven?: boolean;
+  canAdjustStops?: boolean;
 }
 
 export interface SetupLiveTrade {
@@ -1133,6 +1142,8 @@ export interface SetupLiveTrade {
   currency?: string;
   symbol?: string;
   comment?: string;
+  stopLoss?: number;
+  takeProfit?: number;
   tp1Price?: number;
   tp1Reached?: boolean;
   entryPrice?: number;
@@ -1156,6 +1167,19 @@ export interface SetBreakevenResult {
   breakevenPrice?: number;
   retriesUsed: number;
   retriesRemaining: number;
+  message: string;
+}
+
+export interface UpdateSetupStopsResult {
+  status: string;
+  signalId: string;
+  stopLoss: number;
+  takeProfit: number;
+  riskRewardRatio: number;
+  metaApiUpdated: boolean;
+  hubUpdated: boolean;
+  brokerStopLoss?: number | null;
+  brokerTakeProfit?: number | null;
   message: string;
 }
 

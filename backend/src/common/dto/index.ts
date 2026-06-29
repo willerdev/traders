@@ -587,6 +587,16 @@ export class InvalidateSetupDto {
   reason?: string;
 }
 
+export class UpdateSetupStopsDto {
+  @IsOptional()
+  @IsNumber()
+  stopLoss?: number;
+
+  @IsOptional()
+  @IsNumber()
+  takeProfit?: number;
+}
+
 export class SendMessageDto {
   @IsString()
   @IsNotEmpty()
