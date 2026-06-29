@@ -505,4 +505,64 @@ export class NotificationService {
       text: `Partial close on ${data.symbol}${data.profit != null ? ` P/L ${data.profit}` : ''}`,
     });
   }
+
+  hubOrderPlaced(
+    userId: string,
+    data: {
+      symbol: string;
+      signalId: string;
+      direction: string;
+      orderType: string;
+      entry: number;
+      entryMin: number;
+      entryMax: number;
+      stopLoss: number;
+      takeProfit: number;
+    },
+  ) {
+    this.dispatch(this.sendHubOrderPlaced(userId, data), 'Hub order placed');
+  }
+
+  private async sendHubOrderPlaced(
+    userId: string,
+    data: {
+      symbol: string;
+      signalId: string;
+      direction: string;
+      orderType: string;
+      entry: number;
+      entryMin: number;
+      entryMax: number;
+      stopLoss: number;
+      takeProfit: number;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+
+    const orderLabel =
+      data.orderType.toLowerCase() === 'stop' ? 'Stop order' : 'Limit order';
+
+    const html = this.email.layout(
+      `${orderLabel} placed`,
+      `<p>Hi ${user.name},</p>
+      <p>Your <strong>${this.escape(data.symbol)}</strong> setup has a pending ${this.escape(orderLabel.toLowerCase())} on MT5.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">Direction</td><td style="padding:6px 0;"><strong>${this.escape(data.direction)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Order type</td><td style="padding:6px 0;"><strong>${this.escape(data.orderType)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Entry price</td><td style="padding:6px 0;"><strong>${data.entry}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Entry zone</td><td style="padding:6px 0;"><strong>${data.entryMin} – ${data.entryMax}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Stop loss</td><td style="padding:6px 0;"><strong>${data.stopLoss}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Take profit</td><td style="padding:6px 0;"><strong>${data.takeProfit}</strong></td></tr>
+      </table>
+      ${this.email.button(`${this.email.frontendUrl}/dashboard`, 'View dashboard')}`,
+    );
+
+    return this.email.send({
+      to: user.email,
+      subject: `${orderLabel} placed — ${data.symbol}`,
+      html,
+      text: `${orderLabel} for ${data.symbol}: ${data.direction} ${data.orderType} @ ${data.entry}, zone ${data.entryMin}-${data.entryMax}, SL ${data.stopLoss}, TP ${data.takeProfit}.`,
+    });
+  }
 }

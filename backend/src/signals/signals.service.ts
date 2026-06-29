@@ -38,6 +38,7 @@ import {
   resolveSetupExecutionPhase,
   resolveTradeProgressOutcome,
   resolveTp1ClaimBlockedReason,
+  isHubLimitPending,
 } from '../common/setup-execution.util';
 import { RISK_PERCENT, MAX_RISK_PER_TRADE, MAX_BREAKEVEN_RETRIES } from '../common/constants';
 
@@ -203,6 +204,10 @@ export class SignalsService {
       forwardResult,
     );
 
+    if (forwardResult.forwarded) {
+      await this.maybeNotifyHubOrderPlaced(signal, userId, forwardResult);
+    }
+
     return this.buildForwardResponse(
       signal.signalId,
       signal.submittedAt,
@@ -253,6 +258,10 @@ export class SignalsService {
       userId,
       forwardResult,
     );
+
+    if (forwardResult.forwarded) {
+      await this.maybeNotifyHubOrderPlaced(signal, userId, forwardResult);
+    }
 
     return this.buildForwardResponse(
       signal.signalId,
@@ -446,6 +455,259 @@ export class SignalsService {
     });
   }
 
+  private signalToCreateDto(signal: {
+    symbol: string;
+    direction: TradeDirection;
+    entryMin: unknown;
+    entryMax: unknown;
+    stopLoss: unknown;
+    takeProfit: unknown;
+    riskRewardRatio: unknown;
+    description: string;
+    screenshotUrl: string;
+  }): CreateSignalDto {
+    return {
+      symbol: signal.symbol,
+      direction: signal.direction,
+      entryMin: Number(signal.entryMin),
+      entryMax: Number(signal.entryMax),
+      stopLoss: Number(signal.stopLoss),
+      takeProfit: Number(signal.takeProfit),
+      riskRewardRatio: Number(signal.riskRewardRatio),
+      description: signal.description,
+      screenshotUrl: signal.screenshotUrl,
+    };
+  }
+
+  private orderDetailsFromForward(forwardResult: ForwardSignalResult): {
+    orderType: string;
+    entry: number;
+  } | null {
+    const sent = forwardResult.validation.sentPrices;
+    if (!sent?.entry) return null;
+    const orderType =
+      (forwardResult.hub?.payload?.order_type as string | undefined) || 'limit';
+    return { orderType, entry: sent.entry };
+  }
+
+  private orderDetailsFromHubPayload(
+    payload: Record<string, unknown> | undefined,
+    fallback: { entryMin: number; entryMax: number; direction: TradeDirection },
+  ): { orderType: string; entry: number } {
+    const entry = Number(payload?.entry);
+    const orderType = String(payload?.order_type || 'limit');
+    if (Number.isFinite(entry)) {
+      return { orderType, entry };
+    }
+    const edge =
+      fallback.direction === 'BUY' ? fallback.entryMin : fallback.entryMax;
+    return { orderType, entry: edge };
+  }
+
+  private async maybeNotifyHubOrderPlaced(
+    signal: {
+      id: string;
+      signalId: string;
+      symbol: string;
+      direction: TradeDirection;
+      entryMin: unknown;
+      entryMax: unknown;
+      stopLoss: unknown;
+      takeProfit: unknown;
+      hubOrderNotifiedAt: Date | null;
+    },
+    userId: string,
+    forwardResult: ForwardSignalResult,
+  ) {
+    const order = this.orderDetailsFromForward(forwardResult);
+    if (!order) return;
+    await this.notifyHubOrderPlaced(signal, userId, order);
+  }
+
+  private async notifyHubOrderPlaced(
+    signal: {
+      id: string;
+      signalId: string;
+      symbol: string;
+      direction: TradeDirection;
+      entryMin: unknown;
+      entryMax: unknown;
+      stopLoss: unknown;
+      takeProfit: unknown;
+      hubOrderNotifiedAt: Date | null;
+    },
+    userId: string,
+    order: { orderType: string; entry: number },
+  ) {
+    if (signal.hubOrderNotifiedAt) return;
+
+    await this.prisma.signal.update({
+      where: { id: signal.id },
+      data: { hubOrderNotifiedAt: new Date() },
+    });
+
+    const entryMin = Number(signal.entryMin);
+    const entryMax = Number(signal.entryMax);
+    const sl = Number(signal.stopLoss);
+    const tp = Number(signal.takeProfit);
+    const orderLabel =
+      order.orderType.toLowerCase() === 'stop' ? 'Stop' : 'Limit';
+    const title = `${orderLabel} order placed — ${signal.symbol}`;
+    const body = `${signal.direction} ${signal.symbol}: ${order.orderType} @ ${order.entry}, entry zone ${entryMin}–${entryMax}, SL ${sl}, TP ${tp}.`;
+
+    await this.platformNotifications.create({
+      userId,
+      type: 'HUB_ORDER_PLACED',
+      title,
+      body,
+      linkUrl: '/dashboard',
+      signalId: signal.signalId,
+    });
+
+    this.notifications.hubOrderPlaced(userId, {
+      symbol: signal.symbol,
+      signalId: signal.signalId,
+      direction: signal.direction,
+      orderType: order.orderType,
+      entry: order.entry,
+      entryMin,
+      entryMax,
+      stopLoss: sl,
+      takeProfit: tp,
+    });
+  }
+
+  private async evaluateActiveSetupHubOrder(input: {
+    signal: {
+      id: string;
+      signalId: string;
+      status: string;
+      hubRecordId: string | null;
+      hubSenderName: string | null;
+      symbol: string;
+      direction: TradeDirection;
+      entryMin: unknown;
+      entryMax: unknown;
+      stopLoss: unknown;
+      metaApiAccountId: string | null;
+      metaApiOrderId: string | null;
+      metaApiPositionId: string | null;
+      metaApiExecutedAt: Date | null;
+      trade: {
+        activatedAt: Date | null;
+        closedAt: Date | null;
+        entryPrice: unknown;
+      } | null;
+    };
+    userId: string;
+    user: { displayName: string; metaApiAccountId: string | null };
+  }): Promise<
+    | { action: 'skip'; reason: string }
+    | { action: 'has_order'; order: { orderType: string; entry: number } }
+    | { action: 'place' }
+  > {
+    const { signal, userId, user } = input;
+
+    if (signal.status !== 'OPEN') {
+      return { action: 'skip', reason: 'signal_not_open' };
+    }
+    if (signal.trade?.closedAt) {
+      return { action: 'skip', reason: 'trade_closed' };
+    }
+
+    const entryMin = Number(signal.entryMin);
+    const entryMax = Number(signal.entryMax);
+    const sl = Number(signal.stopLoss);
+    const oneToOnePrice = computeOneToOnePrice(
+      signal.direction,
+      entryMin,
+      entryMax,
+      sl,
+    );
+
+    const liveTrade = await this.resolveSetupLiveTrade(
+      signal,
+      userId,
+      user,
+      oneToOnePrice,
+      null,
+    );
+    const liveStatus =
+      typeof liveTrade?.status === 'string' ? liveTrade.status : undefined;
+
+    if (liveStatus === 'open') {
+      return { action: 'skip', reason: 'position_open' };
+    }
+    if (liveStatus === 'pending') {
+      const order = this.orderDetailsFromHubPayload(undefined, {
+        entryMin,
+        entryMax,
+        direction: signal.direction,
+      });
+      return { action: 'has_order', order };
+    }
+
+    if (!this.signalHub.isConfigured) {
+      return { action: 'skip', reason: 'hub_not_configured' };
+    }
+
+    const sendername =
+      signal.hubSenderName ||
+      this.signalHub.toSenderName(user.displayName, userId);
+    const hub = await this.signalHub.getByExternalId(signal.signalId, sendername);
+    const hubStatus = hub?.status ?? null;
+    const hubExecuted = Boolean(hub?.progress?.executed);
+
+    if (hubExecuted) {
+      return { action: 'skip', reason: 'hub_executed' };
+    }
+
+    if (signal.hubRecordId && !hub) {
+      return { action: 'place' };
+    }
+
+    if (
+      isHubLimitPending(signal.hubRecordId, hubExecuted, hubStatus) ||
+      (hub?.id && !hubExecuted && hubStatus)
+    ) {
+      const status = (hubStatus ?? '').toLowerCase();
+      const terminal = [
+        'invalidated',
+        'failed',
+        'cancelled',
+        'canceled',
+        'closed',
+        'rejected',
+        'expired',
+        'done',
+        'not_found',
+      ];
+      if (!status || !terminal.some((t) => status.includes(t))) {
+        const order = this.orderDetailsFromHubPayload(
+          hub?.payload as Record<string, unknown> | undefined,
+          { entryMin, entryMax, direction: signal.direction },
+        );
+        return { action: 'has_order', order };
+      }
+    }
+
+    if (!signal.hubRecordId) {
+      return { action: 'place' };
+    }
+
+    const status = (hubStatus ?? '').toLowerCase();
+    if (
+      status &&
+      ['invalidated', 'failed', 'cancelled', 'canceled', 'rejected', 'expired'].some(
+        (t) => status.includes(t),
+      )
+    ) {
+      return { action: 'place' };
+    }
+
+    return { action: 'skip', reason: 'unknown_hub_state' };
+  }
+
   private buildForwardResponse(
     signalId: string,
     submittedAt: Date,
@@ -588,36 +850,45 @@ export class SignalsService {
     };
   }
 
-  /** Retry Hub forward for setups saved without a hub record (e.g. AI rejected at submit). */
+  /** Scan OPEN setups: ensure Hub limit/stop exists; skip closed trades; notify on placement. */
   @Cron('*/5 * * * *')
-  async retryOrphanHubForwards() {
+  async syncActiveSetupHubOrders() {
     if (!this.signalHub.isConfigured) return;
 
-    const orphans = await this.prisma.signal.findMany({
+    const candidates = await this.prisma.signal.findMany({
       where: {
         status: 'OPEN',
-        hubRecordId: null,
+        trade: { is: { closedAt: null } },
         submittedAt: { lte: new Date(Date.now() - 2 * 60 * 1000) },
       },
-      include: { user: { select: { displayName: true } } },
-      take: 20,
+      include: {
+        trade: true,
+        user: { select: { displayName: true, metaApiAccountId: true } },
+      },
+      take: 40,
       orderBy: { submittedAt: 'asc' },
     });
 
-    for (const signal of orphans) {
-      if (!signal.user) continue;
+    for (const signal of candidates) {
+      if (!signal.user || !signal.trade) continue;
+
       try {
-        const dto: CreateSignalDto = {
-          symbol: signal.symbol,
-          direction: signal.direction,
-          entryMin: Number(signal.entryMin),
-          entryMax: Number(signal.entryMax),
-          stopLoss: Number(signal.stopLoss),
-          takeProfit: Number(signal.takeProfit),
-          riskRewardRatio: Number(signal.riskRewardRatio),
-          description: signal.description,
-          screenshotUrl: signal.screenshotUrl,
-        };
+        const evaluation = await this.evaluateActiveSetupHubOrder({
+          signal,
+          userId: signal.userId,
+          user: signal.user,
+        });
+
+        if (evaluation.action === 'skip') continue;
+
+        if (evaluation.action === 'has_order') {
+          if (!signal.hubOrderNotifiedAt) {
+            await this.notifyHubOrderPlaced(signal, signal.userId, evaluation.order);
+          }
+          continue;
+        }
+
+        const dto = this.signalToCreateDto(signal);
         const forwardResult = await this.signalHub.forwardSignal(
           signal.signalId,
           dto,
@@ -630,18 +901,18 @@ export class SignalsService {
           signal.userId,
           forwardResult,
         );
+
         if (forwardResult.forwarded) {
-          this.logger.log(
-            `Hub retry succeeded for orphan setup ${signal.signalId}`,
-          );
+          this.logger.log(`Hub sync placed limit/stop for ${signal.signalId}`);
+          await this.maybeNotifyHubOrderPlaced(signal, signal.userId, forwardResult);
         } else {
           this.logger.warn(
-            `Hub retry still failed for ${signal.signalId}: ${forwardResult.hubError}`,
+            `Hub sync could not place order for ${signal.signalId}: ${forwardResult.hubError}`,
           );
         }
       } catch (err) {
         this.logger.warn(
-          `Hub retry error for ${signal.signalId}: ${err instanceof Error ? err.message : err}`,
+          `Hub sync error for ${signal.signalId}: ${err instanceof Error ? err.message : err}`,
         );
       }
     }

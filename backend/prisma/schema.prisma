@@ -298,6 +298,7 @@ model Signal {
   pointsAwarded   Int            @default(0)
   hubSenderName   String?
   hubRecordId     String?
+  hubOrderNotifiedAt DateTime?
   metaApiAccountId String?
   metaApiOrderId   String?
   metaApiPositionId String?
