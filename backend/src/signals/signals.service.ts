@@ -588,6 +588,65 @@ export class SignalsService {
     };
   }
 
+  /** Retry Hub forward for setups saved without a hub record (e.g. AI rejected at submit). */
+  @Cron('*/5 * * * *')
+  async retryOrphanHubForwards() {
+    if (!this.signalHub.isConfigured) return;
+
+    const orphans = await this.prisma.signal.findMany({
+      where: {
+        status: 'OPEN',
+        hubRecordId: null,
+        submittedAt: { lte: new Date(Date.now() - 2 * 60 * 1000) },
+      },
+      include: { user: { select: { displayName: true } } },
+      take: 20,
+      orderBy: { submittedAt: 'asc' },
+    });
+
+    for (const signal of orphans) {
+      if (!signal.user) continue;
+      try {
+        const dto: CreateSignalDto = {
+          symbol: signal.symbol,
+          direction: signal.direction,
+          entryMin: Number(signal.entryMin),
+          entryMax: Number(signal.entryMax),
+          stopLoss: Number(signal.stopLoss),
+          takeProfit: Number(signal.takeProfit),
+          riskRewardRatio: Number(signal.riskRewardRatio),
+          description: signal.description,
+          screenshotUrl: signal.screenshotUrl,
+        };
+        const forwardResult = await this.signalHub.forwardSignal(
+          signal.signalId,
+          dto,
+          signal.user.displayName,
+          signal.userId,
+        );
+        await this.persistHubForward(
+          signal.id,
+          signal.user.displayName,
+          signal.userId,
+          forwardResult,
+        );
+        if (forwardResult.forwarded) {
+          this.logger.log(
+            `Hub retry succeeded for orphan setup ${signal.signalId}`,
+          );
+        } else {
+          this.logger.warn(
+            `Hub retry still failed for ${signal.signalId}: ${forwardResult.hubError}`,
+          );
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Hub retry error for ${signal.signalId}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+  }
+
   @Cron(CronExpression.EVERY_MINUTE)
   async handleTp1Reached() {
     const candidates = await this.prisma.signal.findMany({

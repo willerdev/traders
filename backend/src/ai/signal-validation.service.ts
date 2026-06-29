@@ -340,6 +340,26 @@ export class SignalValidationService {
         };
       }
 
+      // Structural rules pass on the trader's original prices — forward anyway.
+      // AI often mis-corrects symbols/prices; Hub + MT5 still get limit/stop at entry.
+      if (!result.approved && ruleIssues.length === 0) {
+        this.logger.warn(
+          `Forwarding ${dto.symbol} despite AI rejection — original setup passes rule check: ${result.rejectReason}`,
+        );
+        return {
+          approved: true,
+          adjusted: false,
+          dto,
+          issues: [
+            ...result.issues,
+            result.rejectReason
+              ? `AI caution (forwarded): ${result.rejectReason}`
+              : 'AI rejected but structural rules passed — forwarded',
+          ],
+          confidence: result.confidence ?? 65,
+        };
+      }
+
       if (result.adjusted) {
         this.logger.log(
           `DeepSeek adjusted signal ${dto.symbol}: ${result.issues.join(', ') || 'minor corrections'}`,

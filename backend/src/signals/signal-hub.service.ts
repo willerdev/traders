@@ -337,9 +337,11 @@ export class SignalHubService {
       };
     }
 
+    // No live quote — still place at entry zone edge (not midpoint) as pending limit.
+    const entry = dto.direction === 'BUY' ? entryMin : entryMax;
     return {
-      orderType: this.getOrderType(),
-      entry: (entryMin + entryMax) / 2,
+      orderType: 'limit',
+      entry,
     };
   }
 
