@@ -1399,6 +1399,12 @@ export class SignalsService {
         !signal.metaApiExecutedAt &&
         this.metaApi.isConfigured &&
         Boolean(linkedAccountId),
+      canCloseTrade:
+        liveTrade?.status === 'open' ||
+        liveTrade?.status === 'pending' ||
+        ((Boolean(signal.metaApiExecutedAt) || hubExecuted) &&
+          this.metaApi.isConfigured &&
+          Boolean(linkedAccountId)),
       liveTrade,
       canInvalidate,
       invalidateBlockedReason,
@@ -1734,9 +1740,7 @@ export class SignalsService {
           (signal.trade?.entryPrice != null
             ? Number(signal.trade.entryPrice)
             : undefined),
-        canClose:
-          live.status === 'open' ||
-          (live.status === 'pending' && Boolean(signal.metaApiOrderId)),
+        canClose: live.status === 'open' || live.status === 'pending',
       };
     } catch (err) {
       this.logger.warn(

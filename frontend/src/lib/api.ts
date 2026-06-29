@@ -1116,6 +1116,7 @@ export interface SetupResolution {
   metaApiOrderId?: string | null;
   metaApiPositionId?: string | null;
   canPlaceTrade?: boolean;
+  canCloseTrade?: boolean;
   metaApiPrice?: number | null;
   liveTrade?: SetupLiveTrade | null;
   canInvalidate?: boolean;

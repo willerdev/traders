@@ -464,6 +464,12 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
   const steps = buildProgressSteps(setup, resolution, hub);
   const res = resolution;
   const tradeRunning = isSetupTradeRunning(res, liveTrade);
+  const canCloseTrade =
+    Boolean(res?.canCloseTrade) ||
+    liveTrade?.status === "open" ||
+    liveTrade?.status === "pending" ||
+    res?.liveTrade?.status === "open" ||
+    res?.liveTrade?.status === "pending";
   const showLiveTradeSection =
     isOpen &&
     !loading &&
@@ -696,7 +702,7 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
                         Place trade
                       </Button>
                     )}
-                    {liveTrade?.canClose && (
+                    {canCloseTrade && (
                       <Button
                         variant="secondary"
                         size="sm"
@@ -728,7 +734,7 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
                         Set breakeven
                       </Button>
                     )}
-                    {tradeRunning && !liveTrade?.canClose && (
+                    {tradeRunning && !canCloseTrade && (
                       <span className="self-center text-xs text-success">
                         Live trade active
                         {res?.metaApiOrderId ? ` · order ${res.metaApiOrderId}` : ""}
