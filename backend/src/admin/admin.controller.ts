@@ -74,11 +74,18 @@ export class AdminController {
   listSignals(
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @Query('status') status?: string,
   ) {
     return this.adminService.listSignals(
       limit ? Number(limit) : 50,
       offset ? Number(offset) : 0,
+      status,
     );
+  }
+
+  @Post('signals/:signalId/set-limit')
+  setSetupLimit(@Param('signalId') signalId: string) {
+    return this.adminService.setSetupLimit(signalId);
   }
 
   @Get('payouts')

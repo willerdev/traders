@@ -228,59 +228,24 @@ export class PayoutService {
       where: { id: payoutId },
     });
     if (!payout) throw new NotFoundException('Payout not found');
-    if (!payout.walletAddress) {
-      throw new Error('Trader payout destination required');
+    if (payout.status !== 'PENDING') {
+      return {
+        payout,
+        verificationRequired: false,
+        alreadyProcessed: true,
+      };
     }
 
-    let gatewayResponse: object | undefined;
-    let gatewayPayoutId: string | undefined;
-    let verificationRequired = false;
     const isMobileMoney = payout.payoutMethod === 'MOBILE_MONEY';
-
-    if (!isMobileMoney && this.nowPayments.isConfigured) {
-      try {
-        const balances = await this.nowPayments.getBalance();
-        const available = this.nowPayments.sumUsdtBalance(balances);
-        const needed = Number(payout.traderShare);
-        if (available < needed) {
-          throw new BadRequestException(
-            `Insufficient NOWPayments custody balance ($${available.toFixed(2)} available, $${needed.toFixed(2)} required). Top up via Admin → Payouts → Fund custody.`,
-          );
-        }
-
-        const currency = this.nowPayments.mapNetworkToCurrency(network);
-        const created = await this.nowPayments.createPayout({
-          address: payout.walletAddress,
-          amount: needed,
-          currency,
-          ipnCallbackUrl: this.ipnUrl(),
-        });
-        gatewayResponse = created;
-        gatewayPayoutId = String(created.id);
-        verificationRequired = true;
-      } catch (err) {
-        if (err instanceof BadRequestException) throw err;
-        await this.prisma.payout.update({
-          where: { id: payoutId },
-          data: {
-            notes: `Payout API error: ${err instanceof Error ? err.message : 'unknown'}`,
-          },
-        });
-        throw err;
-      }
-    }
 
     const updated = await this.prisma.payout.update({
       where: { id: payoutId },
       data: {
-        status: 'APPROVED',
+        status: 'PAID',
         processedAt: new Date(),
-        gatewayPayoutId,
         notes: isMobileMoney
-          ? `Approved by admin ${adminId} — mobile money (manual transfer)`
-          : verificationRequired
-            ? `Approved by admin ${adminId} — NOWPayments payout ${gatewayPayoutId} created (enter email 2FA to release funds)`
-            : `Approved by admin ${adminId}${gatewayResponse ? ' — sent via NOWPayments' : ''}`,
+          ? `Confirmed by admin ${adminId} — mobile money (manual transfer)`
+          : `Confirmed by admin ${adminId} — crypto (manual external payment)`,
       },
     });
 
@@ -291,8 +256,8 @@ export class PayoutService {
         type: 'PAYOUT',
         referenceId: payoutId,
         description: isMobileMoney
-          ? `Mobile money payout — ${payout.walletAddress.slice(0, 24)}…`
-          : `Crypto payout to ${payout.walletAddress.slice(0, 8)}...`,
+          ? `Mobile money payout — ${(payout.walletAddress ?? '').slice(0, 24)}…`
+          : `Crypto payout to ${(payout.walletAddress ?? '').slice(0, 8)}...`,
       },
     });
 
@@ -307,9 +272,7 @@ export class PayoutService {
 
     return {
       payout: updated,
-      gatewayResponse,
-      verificationRequired,
-      gatewayPayoutId,
+      verificationRequired: false,
     };
   }
 

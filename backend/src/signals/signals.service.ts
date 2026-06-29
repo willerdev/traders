@@ -32,7 +32,12 @@ import { NotificationService } from '../email/notification.service';
 import { PlatformNotificationsService } from '../platform-notifications/platform-notifications.service';
 import { Signal, Trade, TradeDirection, User } from '@prisma/client';
 import { MetaApiService } from '../metaapi/metaapi.service';
-import { buildMetaApiTradeIdentifiers } from '../metaapi/metaapi-order.util';
+import {
+  buildMetaApiTradeIdentifiers,
+  resolvePendingOpenPrice,
+  resolvePendingOrderType,
+  roundToSymbolDigits,
+} from '../metaapi/metaapi-order.util';
 import { TradeRiskService } from '../ai/trade-risk.service';
 import {
   resolveSetupExecutionPhase,
@@ -190,19 +195,16 @@ export class SignalsService {
       },
     });
 
-    const forwardResult = await this.signalHub.forwardSignal(
-      signal.signalId,
-      dto,
-      user.displayName,
-      userId,
-    );
+    const trade = await this.prisma.trade.findUnique({
+      where: { signalId: signal.id },
+    });
 
-    await this.persistHubForward(
-      signal.id,
-      user.displayName,
+    const forwardResult = await this.queueSetupLimitExecution({
+      signal: { ...signal, trade },
+      user,
       userId,
-      forwardResult,
-    );
+      dto,
+    });
 
     if (forwardResult.forwarded) {
       await this.maybeNotifyHubOrderPlaced(signal, userId, forwardResult);
@@ -224,13 +226,17 @@ export class SignalsService {
 
     const signal = await this.prisma.signal.findFirst({
       where: { signalId, userId },
+      include: { trade: true },
     });
     if (!signal) throw new NotFoundException('Signal not found');
     if (signal.status === 'REJECTED_DUPLICATE') {
       throw new BadRequestException('Cannot resend a rejected duplicate signal');
     }
 
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { virtualAccount: true },
+    });
     if (!user) throw new NotFoundException('User not found');
 
     const dto: CreateSignalDto = {
@@ -245,19 +251,12 @@ export class SignalsService {
       screenshotUrl: signal.screenshotUrl,
     };
 
-    const forwardResult = await this.signalHub.forwardSignal(
-      signal.signalId,
+    const forwardResult = await this.queueSetupLimitExecution({
+      signal,
+      user,
+      userId,
       dto,
-      user.displayName,
-      userId,
-    );
-
-    await this.persistHubForward(
-      signal.id,
-      user.displayName,
-      userId,
-      forwardResult,
-    );
+    });
 
     if (forwardResult.forwarded) {
       await this.maybeNotifyHubOrderPlaced(signal, userId, forwardResult);
@@ -708,6 +707,381 @@ export class SignalsService {
     return { action: 'skip', reason: 'unknown_hub_state' };
   }
 
+  private isActiveTraderUser(user: {
+    status: string;
+    registrationPaid: boolean;
+  }): boolean {
+    return user.status === 'ACTIVE' && user.registrationPaid;
+  }
+
+  private resolveMetaApiLimitOrderDetails(
+    signal: {
+      direction: TradeDirection;
+      entryMin: unknown;
+      entryMax: unknown;
+    },
+    marketPrice?: number | null,
+  ): { orderType: string; entry: number } {
+    const entryMin = Number(signal.entryMin);
+    const entryMax = Number(signal.entryMax);
+    const edge = signal.direction === 'BUY' ? entryMin : entryMax;
+    if (marketPrice == null || !Number.isFinite(marketPrice)) {
+      return { orderType: 'limit', entry: edge };
+    }
+    const openPrice = resolvePendingOpenPrice(
+      signal.direction,
+      entryMin,
+      entryMax,
+      marketPrice,
+    );
+    const orderKind = resolvePendingOrderType(
+      signal.direction,
+      openPrice,
+      marketPrice,
+    );
+    return {
+      orderType: orderKind.includes('STOP') ? 'stop' : 'limit',
+      entry: openPrice,
+    };
+  }
+
+  private metaApiLimitCovered(
+    result:
+      | { status: 'placed'; orderType: string; entry: number }
+      | { status: 'has_order'; orderType: string; entry: number }
+      | { status: 'skipped'; reason: string }
+      | { status: 'unavailable' },
+  ): boolean {
+    return result.status === 'placed' || result.status === 'has_order';
+  }
+
+  /** MetaAPI first when configured (user account or platform default), Hub as fallback. */
+  private async queueSetupLimitExecution(input: {
+    signal: {
+      id: string;
+      signalId: string;
+      symbol: string;
+      direction: TradeDirection;
+      status: string;
+      hubRecordId: string | null;
+      hubSenderName: string | null;
+      hubOrderNotifiedAt: Date | null;
+      entryMin: unknown;
+      entryMax: unknown;
+      stopLoss: unknown;
+      takeProfit: unknown;
+      riskRewardRatio: unknown;
+      description: string;
+      screenshotUrl: string;
+      metaApiAccountId: string | null;
+      metaApiOrderId: string | null;
+      metaApiPositionId: string | null;
+      metaApiExecutedAt: Date | null;
+      trade: Trade | null;
+    };
+    user: {
+      displayName: string;
+      metaApiAccountId: string | null;
+      virtualAccount?: {
+        riskPercent: unknown;
+        maxRiskPerTrade: unknown;
+      } | null;
+    };
+    userId: string;
+    dto: CreateSignalDto;
+  }): Promise<ForwardSignalResult> {
+    const { signal, user, userId, dto } = input;
+
+    if (this.metaApi.isConfigured) {
+      const metaResult = await this.ensureMetaApiPendingLimitForSetup(
+        signal,
+        user,
+        userId,
+      );
+      if (this.metaApiLimitCovered(metaResult)) {
+        const order =
+          metaResult.status === 'placed' || metaResult.status === 'has_order'
+            ? { orderType: metaResult.orderType, entry: metaResult.entry }
+            : null;
+        return {
+          hub: null,
+          forwarded: true,
+          validation: {
+            approved: true,
+            adjusted: false,
+            issues: ['Limit queued via MetaAPI'],
+            sentPrices: order
+              ? {
+                  symbol: dto.symbol,
+                  direction: dto.direction.toLowerCase(),
+                  entry: order.entry,
+                  sl: dto.stopLoss,
+                  tp: dto.takeProfit,
+                }
+              : undefined,
+          },
+        };
+      }
+    }
+
+    if (!this.signalHub.isConfigured) {
+      return {
+        hub: null,
+        forwarded: false,
+        hubError: 'Neither MetaAPI nor Signal Hub could queue this setup',
+        validation: {
+          approved: true,
+          adjusted: false,
+          issues: [],
+        },
+      };
+    }
+
+    const forwardResult = await this.signalHub.forwardSignal(
+      signal.signalId,
+      dto,
+      user.displayName,
+      userId,
+    );
+    await this.persistHubForward(signal.id, user.displayName, userId, forwardResult);
+    return forwardResult;
+  }
+
+  private async syncHubLimitForSignal(
+    signal: {
+      id: string;
+      signalId: string;
+      symbol: string;
+      direction: TradeDirection;
+      status: string;
+      hubRecordId: string | null;
+      hubSenderName: string | null;
+      hubOrderNotifiedAt: Date | null;
+      entryMin: unknown;
+      entryMax: unknown;
+      stopLoss: unknown;
+      takeProfit: unknown;
+      riskRewardRatio: unknown;
+      description: string;
+      screenshotUrl: string;
+      metaApiAccountId: string | null;
+      metaApiOrderId: string | null;
+      metaApiPositionId: string | null;
+      metaApiExecutedAt: Date | null;
+      trade: {
+        activatedAt: Date | null;
+        closedAt: Date | null;
+        entryPrice: unknown;
+      } | null;
+    },
+    userId: string,
+    user: { displayName: string; metaApiAccountId: string | null },
+  ) {
+    const evaluation = await this.evaluateActiveSetupHubOrder({
+      signal,
+      userId,
+      user,
+    });
+
+    if (evaluation.action === 'skip') return;
+
+    if (evaluation.action === 'has_order') {
+      if (!signal.hubOrderNotifiedAt) {
+        await this.notifyHubOrderPlaced(signal, userId, evaluation.order);
+      }
+      return;
+    }
+
+    const dto = this.signalToCreateDto(signal);
+    const forwardResult = await this.signalHub.forwardSignal(
+      signal.signalId,
+      dto,
+      user.displayName,
+      userId,
+    );
+    await this.persistHubForward(
+      signal.id,
+      user.displayName,
+      userId,
+      forwardResult,
+    );
+
+    if (forwardResult.forwarded) {
+      this.logger.log(`Hub sync placed limit/stop for ${signal.signalId}`);
+      await this.maybeNotifyHubOrderPlaced(signal, userId, forwardResult);
+    } else {
+      this.logger.warn(
+        `Hub sync could not place order for ${signal.signalId}: ${forwardResult.hubError}`,
+      );
+    }
+  }
+
+  /** Place pending limit/stop on MetaAPI (user-linked or platform default account). */
+  private async ensureMetaApiPendingLimitForSetup(
+    signal: {
+      id: string;
+      signalId: string;
+      symbol: string;
+      direction: TradeDirection;
+      status: string;
+      entryMin: unknown;
+      entryMax: unknown;
+      stopLoss: unknown;
+      takeProfit: unknown;
+      hubOrderNotifiedAt: Date | null;
+      metaApiAccountId: string | null;
+      metaApiOrderId: string | null;
+      metaApiPositionId: string | null;
+      metaApiExecutedAt: Date | null;
+      trade: Trade | null;
+    },
+    user: {
+      displayName: string;
+      metaApiAccountId: string | null;
+      virtualAccount?: {
+        riskPercent: unknown;
+        maxRiskPerTrade: unknown;
+      } | null;
+    },
+    userId: string,
+  ): Promise<
+    | { status: 'placed'; orderType: string; entry: number }
+    | { status: 'has_order'; orderType: string; entry: number }
+    | { status: 'skipped'; reason: string }
+    | { status: 'unavailable' }
+  > {
+    if (!this.metaApi.isConfigured) return { status: 'unavailable' };
+    if (!signal.trade) return { status: 'skipped', reason: 'no_trade' };
+
+    const accountId = this.metaApi.resolveAccountId(
+      signal.metaApiAccountId ?? user.metaApiAccountId,
+    );
+    if (!accountId) return { status: 'unavailable' };
+
+    const entryMin = Number(signal.entryMin);
+    const entryMax = Number(signal.entryMax);
+    const sl = Number(signal.stopLoss);
+    const tp = Number(signal.takeProfit);
+    const oneToOnePrice = computeOneToOnePrice(
+      signal.direction,
+      entryMin,
+      entryMax,
+      sl,
+    );
+
+    const liveTrade = await this.resolveSetupLiveTrade(
+      signal,
+      userId,
+      user,
+      oneToOnePrice,
+      null,
+    );
+    const liveStatus =
+      typeof liveTrade?.status === 'string' ? liveTrade.status : undefined;
+
+    let marketPrice: number | null = null;
+    try {
+      const account = await this.metaApi.getAccount(accountId);
+      const price = await this.metaApi.getSymbolPrice(account, signal.symbol);
+      marketPrice = signal.direction === 'BUY' ? price.ask : price.bid;
+    } catch {
+      marketPrice = null;
+    }
+
+    if (liveStatus === 'open' || liveStatus === 'pending') {
+      const order = this.resolveMetaApiLimitOrderDetails(signal, marketPrice);
+      return { status: 'has_order', ...order };
+    }
+
+    const account = await this.metaApi.getAccount(accountId);
+    const price = await this.metaApi.getSymbolPrice(account, signal.symbol);
+    marketPrice = signal.direction === 'BUY' ? price.ask : price.bid;
+    const spec = await this.metaApi.getSymbolSpecification(account, signal.symbol);
+    const digits = spec.digits ?? 5;
+    const openPrice = roundToSymbolDigits(
+      resolvePendingOpenPrice(
+        signal.direction,
+        entryMin,
+        entryMax,
+        marketPrice,
+      ),
+      digits,
+    );
+    const orderKind = resolvePendingOrderType(
+      signal.direction,
+      openPrice,
+      marketPrice,
+    );
+
+    const riskPercent = Number(
+      user.virtualAccount?.riskPercent ?? RISK_PERCENT,
+    );
+    const maxRiskAmount = Number(
+      user.virtualAccount?.maxRiskPerTrade ?? MAX_RISK_PER_TRADE,
+    );
+    const { comment, clientId } = buildMetaApiTradeIdentifiers({
+      displayName: user.displayName,
+      userId,
+      signalId: signal.signalId,
+      symbol: signal.symbol,
+    });
+    const sizing = await this.tradeRisk.calculatePositionSize({
+      account,
+      symbol: signal.symbol,
+      direction: signal.direction,
+      stopLoss: sl,
+      takeProfit: tp,
+      riskPercent: Math.max(riskPercent, RISK_PERCENT),
+      maxRiskAmount,
+      entryPrice: openPrice,
+    });
+
+    const { trade } = await this.metaApi.placePendingOrder({
+      account,
+      symbol: signal.symbol,
+      orderKind,
+      openPrice,
+      volume: sizing.volume,
+      stopLoss: sl,
+      takeProfit: tp,
+      comment,
+      clientId,
+      price,
+      specDigits: digits,
+    });
+
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.signal.update({
+        where: { id: signal.id },
+        data: {
+          metaApiAccountId: account.id,
+          metaApiOrderId: trade.orderId ?? null,
+          metaApiPositionId: trade.positionId ?? trade.orderId ?? null,
+          metaApiExecutedAt: now,
+        },
+      }),
+      this.prisma.trade.update({
+        where: { signalId: signal.id },
+        data: { entryPrice: openPrice },
+      }),
+    ]);
+
+    const orderType = orderKind.includes('STOP') ? 'stop' : 'limit';
+    if (!signal.hubOrderNotifiedAt) {
+      await this.notifyHubOrderPlaced(signal, userId, {
+        orderType,
+        entry: openPrice,
+      });
+    }
+
+    this.logger.log(
+      `MetaAPI sync placed ${orderType} for ${signal.signalId} @ ${openPrice}`,
+    );
+
+    return { status: 'placed', orderType, entry: openPrice };
+  }
+
   private buildForwardResponse(
     signalId: string,
     submittedAt: Date,
@@ -850,69 +1224,230 @@ export class SignalsService {
     };
   }
 
-  /** Scan OPEN setups: ensure Hub limit/stop exists; skip closed trades; notify on placement. */
-  @Cron('*/5 * * * *')
-  async syncActiveSetupHubOrders() {
-    if (!this.signalHub.isConfigured) return;
+  /** Admin: manually queue limit/stop for a submitted OPEN setup (MetaAPI first, Hub fallback). */
+  async adminSetSetupLimit(signalId: string) {
+    const signal = await this.prisma.signal.findFirst({
+      where: { signalId },
+      include: {
+        trade: true,
+        user: {
+          select: {
+            displayName: true,
+            metaApiAccountId: true,
+            status: true,
+            registrationPaid: true,
+            virtualAccount: {
+              select: { riskPercent: true, maxRiskPerTrade: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!signal) throw new NotFoundException('Setup not found');
+    if (!signal.user || !signal.trade) {
+      throw new BadRequestException('Setup has no trader or trade record');
+    }
+    if (signal.status !== 'OPEN') {
+      throw new BadRequestException(
+        `Only OPEN setups can receive limits (current: ${signal.status})`,
+      );
+    }
+    if (signal.trade.closedAt) {
+      throw new BadRequestException('This trade is already closed');
+    }
+    if (signal.trade.activatedAt) {
+      throw new BadRequestException(
+        'This setup already has a running trade — cannot place a new limit',
+      );
+    }
+
+    const metaEnabled = this.metaApi.isConfigured;
+    const hubEnabled = this.signalHub.isConfigured;
+    if (!metaEnabled && !hubEnabled) {
+      throw new ServiceUnavailableException(
+        'Neither MetaAPI nor Signal Hub is configured',
+      );
+    }
+
+    if (metaEnabled) {
+      const metaResult = await this.ensureMetaApiPendingLimitForSetup(
+        signal,
+        signal.user,
+        signal.userId,
+      );
+      if (metaResult.status === 'placed') {
+        return {
+          ok: true,
+          signalId,
+          channel: 'metaapi' as const,
+          outcome: 'placed' as const,
+          orderType: metaResult.orderType,
+          entry: metaResult.entry,
+          message: `MetaAPI ${metaResult.orderType} placed @ ${metaResult.entry}`,
+        };
+      }
+      if (metaResult.status === 'has_order') {
+        return {
+          ok: true,
+          signalId,
+          channel: 'metaapi' as const,
+          outcome: 'already_active' as const,
+          orderType: metaResult.orderType,
+          entry: metaResult.entry,
+          message:
+            'MetaAPI already has a pending or open order for this setup',
+        };
+      }
+    }
+
+    if (hubEnabled) {
+      const evaluation = await this.evaluateActiveSetupHubOrder({
+        signal,
+        userId: signal.userId,
+        user: signal.user,
+      });
+
+      if (evaluation.action === 'has_order') {
+        return {
+          ok: true,
+          signalId,
+          channel: 'hub' as const,
+          outcome: 'already_active' as const,
+          orderType: evaluation.order.orderType,
+          entry: evaluation.order.entry,
+          message: 'Signal Hub already has a pending order for this setup',
+        };
+      }
+
+      if (evaluation.action === 'skip') {
+        return {
+          ok: false,
+          signalId,
+          channel: null,
+          outcome: 'failed' as const,
+          message: evaluation.reason,
+        };
+      }
+
+      const dto = this.signalToCreateDto(signal);
+      const forwardResult = await this.signalHub.forwardSignal(
+        signal.signalId,
+        dto,
+        signal.user.displayName,
+        signal.userId,
+      );
+      await this.persistHubForward(
+        signal.id,
+        signal.user.displayName,
+        signal.userId,
+        forwardResult,
+      );
+
+      if (forwardResult.forwarded) {
+        const order = this.orderDetailsFromForward(forwardResult);
+        if (order) {
+          await this.notifyHubOrderPlaced(signal, signal.userId, order);
+        }
+        return {
+          ok: true,
+          signalId,
+          channel: 'hub' as const,
+          outcome: 'placed' as const,
+          orderType: order?.orderType,
+          entry: order?.entry,
+          message: 'Limit queued on Signal Hub',
+        };
+      }
+
+      return {
+        ok: false,
+        signalId,
+        channel: 'hub' as const,
+        outcome: 'failed' as const,
+        message:
+          forwardResult.hubError || 'Signal Hub did not accept this setup',
+      };
+    }
+
+    return {
+      ok: false,
+      signalId,
+      channel: null,
+      outcome: 'failed' as const,
+      message: 'MetaAPI could not place a limit and Signal Hub is not configured',
+    };
+  }
+
+  /**
+   * Every minute: ensure OPEN setups have pending limits — MetaAPI first, Hub fallback.
+   */
+  @Cron(CronExpression.EVERY_MINUTE)
+  async syncActiveSetupExecutionOrders() {
+    const hubEnabled = this.signalHub.isConfigured;
+    const metaEnabled = this.metaApi.isConfigured;
+    if (!hubEnabled && !metaEnabled) return;
 
     const candidates = await this.prisma.signal.findMany({
       where: {
         status: 'OPEN',
         trade: { is: { closedAt: null } },
-        submittedAt: { lte: new Date(Date.now() - 2 * 60 * 1000) },
+        submittedAt: { lte: new Date(Date.now() - 45 * 1000) },
+        user: { status: 'ACTIVE', registrationPaid: true },
       },
       include: {
         trade: true,
-        user: { select: { displayName: true, metaApiAccountId: true } },
+        user: {
+          select: {
+            displayName: true,
+            metaApiAccountId: true,
+            status: true,
+            registrationPaid: true,
+            virtualAccount: {
+              select: { riskPercent: true, maxRiskPerTrade: true },
+            },
+          },
+        },
       },
-      take: 40,
+      take: 50,
       orderBy: { submittedAt: 'asc' },
     });
 
     for (const signal of candidates) {
       if (!signal.user || !signal.trade) continue;
+      if (!this.isActiveTraderUser(signal.user)) continue;
 
       try {
-        const evaluation = await this.evaluateActiveSetupHubOrder({
-          signal,
-          userId: signal.userId,
-          user: signal.user,
-        });
+        let coveredByMetaApi = false;
 
-        if (evaluation.action === 'skip') continue;
-
-        if (evaluation.action === 'has_order') {
-          if (!signal.hubOrderNotifiedAt) {
-            await this.notifyHubOrderPlaced(signal, signal.userId, evaluation.order);
+        if (metaEnabled) {
+          const metaResult = await this.ensureMetaApiPendingLimitForSetup(
+            signal,
+            signal.user,
+            signal.userId,
+          );
+          coveredByMetaApi = this.metaApiLimitCovered(metaResult);
+          if (
+            metaResult.status === 'has_order' &&
+            !signal.hubOrderNotifiedAt
+          ) {
+            await this.notifyHubOrderPlaced(signal, signal.userId, {
+              orderType: metaResult.orderType,
+              entry: metaResult.entry,
+            });
           }
-          continue;
         }
 
-        const dto = this.signalToCreateDto(signal);
-        const forwardResult = await this.signalHub.forwardSignal(
-          signal.signalId,
-          dto,
-          signal.user.displayName,
-          signal.userId,
-        );
-        await this.persistHubForward(
-          signal.id,
-          signal.user.displayName,
-          signal.userId,
-          forwardResult,
-        );
-
-        if (forwardResult.forwarded) {
-          this.logger.log(`Hub sync placed limit/stop for ${signal.signalId}`);
-          await this.maybeNotifyHubOrderPlaced(signal, signal.userId, forwardResult);
-        } else {
-          this.logger.warn(
-            `Hub sync could not place order for ${signal.signalId}: ${forwardResult.hubError}`,
+        if (hubEnabled && !coveredByMetaApi) {
+          await this.syncHubLimitForSignal(
+            signal,
+            signal.userId,
+            signal.user,
           );
         }
       } catch (err) {
         this.logger.warn(
-          `Hub sync error for ${signal.signalId}: ${err instanceof Error ? err.message : err}`,
+          `Execution sync error for ${signal.signalId}: ${err instanceof Error ? err.message : err}`,
         );
       }
     }

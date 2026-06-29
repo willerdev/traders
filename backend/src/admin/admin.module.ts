@@ -6,6 +6,7 @@ import { AnalyticsModule } from '../analytics/analytics.module';
 import { TpClaimsModule } from '../tp-claims/tp-claims.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { SignalHubModule } from '../signals/signal-hub.module';
+import { SignalsModule } from '../signals/signals.module';
 import { AuthModule } from '../auth/auth.module';
 import { MessagesModule } from '../messages/messages.module';
 import { UploadsModule } from '../uploads/uploads.module';
@@ -18,6 +19,7 @@ import { MetaApiModule } from '../metaapi/metaapi.module';
     TpClaimsModule,
     PaymentsModule,
     SignalHubModule,
+    SignalsModule,
     MetaApiModule,
     AuthModule,
     MessagesModule,

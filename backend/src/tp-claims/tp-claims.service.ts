@@ -41,6 +41,19 @@ export class TpClaimsService {
       throw new BadRequestException('Setup has no associated trade record');
     }
 
+    const alreadyApproved = await this.prisma.tpClaim.findFirst({
+      where: {
+        signalId: signal.id,
+        status: 'APPROVED',
+      },
+      select: { id: true },
+    });
+    if (alreadyApproved) {
+      throw new BadRequestException(
+        'A TP claim for this setup was already approved. You cannot claim this setup again.',
+      );
+    }
+
     const existing = await this.prisma.tpClaim.findFirst({
       where: { signalId: signal.id, status: 'PENDING_REVIEW' },
     });
@@ -259,6 +272,20 @@ export class TpClaimsService {
     }
     if (!claim.signal.trade) {
       throw new BadRequestException('Setup has no trade record');
+    }
+
+    const existingApprovedForSetup = await this.prisma.tpClaim.findFirst({
+      where: {
+        signalId: claim.signalId,
+        status: 'APPROVED',
+        id: { not: claim.id },
+      },
+      select: { id: true, payout: { select: { id: true } } },
+    });
+    if (existingApprovedForSetup) {
+      throw new BadRequestException(
+        'This setup already has an approved TP claim and cannot be approved again.',
+      );
     }
 
     if (

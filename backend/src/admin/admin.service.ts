@@ -13,6 +13,7 @@ import { PromoService } from '../payments/promo.service';
 import { CustodyDepositService } from '../payments/custody-deposit.service';
 import { MetaApiService } from '../metaapi/metaapi.service';
 import { SignalHubService } from '../signals/signal-hub.service';
+import { SignalsService } from '../signals/signals.service';
 import { AuthService } from '../auth/auth.service';
 import { MessagesService } from '../messages/messages.service';
 import { NotificationService } from '../email/notification.service';
@@ -30,6 +31,7 @@ export class AdminService {
     private custodyDeposits: CustodyDepositService,
     private metaApi: MetaApiService,
     private signalHub: SignalHubService,
+    private signals: SignalsService,
     private auth: AuthService,
     private messages: MessagesService,
     private notifications: NotificationService,
@@ -38,24 +40,27 @@ export class AdminService {
   async getOverview() {
     const analytics = await this.analytics.getAdminDashboard();
 
-    const [pendingKyc, pendingPayoutsList, pendingTpClaims] = await Promise.all([
-      this.prisma.kycVerification.count({ where: { status: 'PENDING' } }),
-      this.prisma.payout.findMany({
-        where: { status: 'PENDING' },
-        orderBy: { requestedAt: 'desc' },
-        take: 20,
-        include: {
-          user: { select: { displayName: true, email: true } },
-        },
-      }),
-      this.tpClaims.listPendingForAdmin(),
-    ]);
+    const [pendingKyc, pendingPayoutsList, pendingTpClaims, pendingOpenSetups] =
+      await Promise.all([
+        this.prisma.kycVerification.count({ where: { status: 'PENDING' } }),
+        this.prisma.payout.findMany({
+          where: { status: 'PENDING' },
+          orderBy: { requestedAt: 'desc' },
+          take: 20,
+          include: {
+            user: { select: { displayName: true, email: true } },
+          },
+        }),
+        this.tpClaims.listPendingForAdmin(),
+        this.prisma.signal.count({ where: { status: 'OPEN' } }),
+      ]);
 
     return {
       ...analytics,
       pendingKycCount: pendingKyc,
       pendingPayoutsList,
       pendingTpClaimsCount: pendingTpClaims.length,
+      pendingOpenSetupsCount: pendingOpenSetups,
     };
   }
 
@@ -415,23 +420,53 @@ export class AdminService {
     };
   }
 
-  async listSignals(limit = 50, offset = 0) {
+  async listSignals(limit = 50, offset = 0, status?: string) {
     const take = Math.min(Math.max(limit, 1), 100);
     const skip = Math.max(offset, 0);
+    const where = status?.trim() ? { status: status.trim() as never } : {};
 
     const [items, count] = await Promise.all([
       this.prisma.signal.findMany({
+        where,
         take,
         skip,
         orderBy: { submittedAt: 'desc' },
         include: {
           user: { select: { id: true, displayName: true, email: true } },
+          trade: {
+            select: {
+              activatedAt: true,
+              closedAt: true,
+              isWin: true,
+            },
+          },
         },
       }),
-      this.prisma.signal.count(),
+      this.prisma.signal.count({ where }),
     ]);
 
-    return { items, count, limit: take, offset: skip };
+    return {
+      items: items.map((signal) => ({
+        ...signal,
+        entryMin: signal.entryMin.toString(),
+        entryMax: signal.entryMax.toString(),
+        stopLoss: signal.stopLoss.toString(),
+        takeProfit: signal.takeProfit.toString(),
+        riskRewardRatio: signal.riskRewardRatio.toString(),
+        hubQueued: Boolean(signal.hubRecordId),
+        metaApiQueued: Boolean(
+          signal.metaApiOrderId || signal.metaApiExecutedAt,
+        ),
+      })),
+      count,
+      limit: take,
+      offset: skip,
+      status: status?.trim() || null,
+    };
+  }
+
+  setSetupLimit(signalId: string) {
+    return this.signals.adminSetSetupLimit(signalId);
   }
 
   async listPayouts(status?: string, limit = 50, offset = 0) {

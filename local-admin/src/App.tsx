@@ -72,6 +72,26 @@ function tabFromHash(): Tab {
   return isAdminTab(hash) ? hash : "overview";
 }
 
+function setupCanSetLimit(signal: SignalRow) {
+  if (signal.status !== "OPEN") return false;
+  if (signal.trade?.closedAt || signal.trade?.activatedAt) return false;
+  return true;
+}
+
+function setupNeedsLimit(signal: SignalRow) {
+  return (
+    setupCanSetLimit(signal) && !signal.hubQueued && !signal.metaApiQueued
+  );
+}
+
+function setupProgressLabel(signal: SignalRow) {
+  if (signal.status !== "OPEN") return signal.status.replace(/_/g, " ");
+  if (signal.trade?.closedAt) return "Closed";
+  if (signal.trade?.activatedAt) return "Running";
+  if (signal.hubQueued || signal.metaApiQueued) return "Limit queued";
+  return "Submitted — limit not set";
+}
+
 function isErrorMessage(msg: string) {
   return /fail|error|unreachable|unauthorized|forbidden|cannot get/i.test(msg);
 }
@@ -94,6 +114,8 @@ export default function App() {
   const [userCount, setUserCount] = useState(0);
   const [signals, setSignals] = useState<SignalRow[]>([]);
   const [signalCount, setSignalCount] = useState(0);
+  const [setupFilter, setSetupFilter] = useState<"pending" | "all">("pending");
+  const [setLimitLoadingId, setSetLimitLoadingId] = useState<string | null>(null);
   const [kycQueue, setKycQueue] = useState<KycRow[]>([]);
   const [payouts, setPayouts] = useState<PayoutRow[]>([]);
   const [npWallet, setNpWallet] = useState<NowPaymentsWalletSummary | null>(null);
@@ -110,6 +132,8 @@ export default function App() {
   const [verifyPayoutId, setVerifyPayoutId] = useState<string | null>(null);
   const [verifyCode, setVerifyCode] = useState("");
   const [verifyLoading, setVerifyLoading] = useState(false);
+  const [approvePayoutModal, setApprovePayoutModal] = useState<PayoutRow | null>(null);
+  const [approvePayoutLoading, setApprovePayoutLoading] = useState(false);
   const [tpClaims, setTpClaims] = useState<TpClaimRow[]>([]);
   const [promoCodes, setPromoCodes] = useState<PromoCodeRow[]>([]);
   const [hubReport, setHubReport] = useState<HubSenderReport | null>(null);
@@ -210,7 +234,7 @@ export default function App() {
           setActiveChatUserId(res.items[0].userId);
         }
       } else if (active === "signals") {
-        const res = await api.signals();
+        const res = await api.signals(0, setupFilter === "pending" ? "OPEN" : undefined);
         setSignals(res.items);
         setSignalCount(res.count);
       } else if (active === "kyc") {
@@ -219,7 +243,7 @@ export default function App() {
         const [payoutsRes, walletRes, depositsRes] = await Promise.allSettled([
           api.payouts(),
           api.nowPaymentsWallet(),
-          api.custodyDeposits(20, true),
+          api.custodyDeposits(20, false),
         ]);
 
         if (payoutsRes.status === "fulfilled") {
@@ -301,7 +325,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [suspiciousOnly, selectedMetaApiAccountId, loadMetaApiTerminal]);
+  }, [suspiciousOnly, selectedMetaApiAccountId, loadMetaApiTerminal, setupFilter]);
 
   useEffect(() => {
     if (tab !== "payouts" || !authed) return;
@@ -610,6 +634,44 @@ export default function App() {
     }
   }
 
+  function openApprovePayoutModal(payout: PayoutRow) {
+    setMessage("");
+    setApprovePayoutModal(payout);
+  }
+
+  function closeApprovePayoutModal(force = false) {
+    if (!force && approvePayoutLoading) return;
+    setApprovePayoutModal(null);
+  }
+
+  async function confirmApprovePayout() {
+    if (!approvePayoutModal) return;
+    const payout = approvePayoutModal;
+    setApprovePayoutLoading(true);
+    setMessage("");
+    try {
+      const res = await api.approvePayout(payout.id);
+      setPayouts((rows) =>
+        rows.map((row) =>
+          row.id === payout.id
+            ? { ...row, status: "PAID", processedAt: new Date().toISOString() }
+            : row,
+        ),
+      );
+      closeApprovePayoutModal(true);
+      setMessage(
+        res.alreadyProcessed
+          ? "Payout was already confirmed."
+          : "Payout confirmed.",
+      );
+      void api.payouts().then((r) => setPayouts(r.items)).catch(() => {});
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Payout confirmation failed");
+    } finally {
+      setApprovePayoutLoading(false);
+    }
+  }
+
   if (!authed) {
     return (
       <div className="login">
@@ -738,6 +800,12 @@ export default function App() {
               <div className="card">
                 <div className="label">TP claims pending</div>
                 <div className="value">{String(overview.pendingTpClaimsCount ?? "—")}</div>
+              </div>
+              <div className="card">
+                <div className="label">Open setups pending</div>
+                <div className="value">
+                  {String(overview.pendingOpenSetupsCount ?? "—")}
+                </div>
               </div>
               <div className="card">
                 <div className="label">Today signups</div>
@@ -1002,41 +1070,107 @@ export default function App() {
 
         {tab === "signals" && (
           <>
-            <div className="toolbar">
-              <h2>Setups shared ({signalCount})</h2>
+            <div className="toolbar toolbar-wrap">
+              <h2>
+                {setupFilter === "pending"
+                  ? `Pending setups (${signalCount})`
+                  : `All setups (${signalCount})`}
+              </h2>
+              <div className="toolbar-actions">
+                <button
+                  type="button"
+                  className={setupFilter === "pending" ? "primary" : "secondary"}
+                  onClick={() => setSetupFilter("pending")}
+                >
+                  Pending (OPEN)
+                </button>
+                <button
+                  type="button"
+                  className={setupFilter === "all" ? "primary" : "secondary"}
+                  onClick={() => setSetupFilter("all")}
+                >
+                  All statuses
+                </button>
+              </div>
             </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Trader</th>
-                  <th>Symbol</th>
-                  <th>Dir</th>
-                  <th>Entry</th>
-                  <th>SL / TP</th>
-                  <th>Status</th>
-                  <th>Submitted</th>
-                </tr>
-              </thead>
-              <tbody>
+            {signals.length === 0 ? (
+              <p className="muted">
+                {setupFilter === "pending"
+                  ? "No open setups awaiting resolution."
+                  : "No setups submitted yet."}
+              </p>
+            ) : (
+              <div className="kyc-grid">
                 {signals.map((s) => (
-                  <tr key={s.signalId}>
-                    <td>{s.user.displayName}</td>
-                    <td>{s.symbol}</td>
-                    <td>{s.direction}</td>
-                    <td>
-                      {s.entryMin} – {s.entryMax}
-                    </td>
-                    <td>
-                      {s.stopLoss} / {s.takeProfit}
-                    </td>
-                    <td>
+                  <div key={s.signalId} className="kyc-card">
+                    <p>
+                      <strong>{s.user.displayName}</strong> — {s.user.email}
+                    </p>
+                    <p className="muted">
+                      {s.symbol} {s.direction} · Entry {s.entryMin} – {s.entryMax} · SL{" "}
+                      {s.stopLoss} · TP {s.takeProfit}
+                    </p>
+                    <p className="muted">
+                      Submitted {fmtDate(s.submittedAt)} ·{" "}
                       <span className={badgeClass(s.status)}>{s.status}</span>
-                    </td>
-                    <td>{fmtDate(s.submittedAt)}</td>
-                  </tr>
+                      {" · "}
+                      {setupProgressLabel(s)}
+                    </p>
+                    {s.description && (
+                      <p className="muted" style={{ fontSize: "0.85rem" }}>
+                        {s.description.slice(0, 200)}
+                        {s.description.length > 200 ? "…" : ""}
+                      </p>
+                    )}
+                    {s.screenshotUrl && (
+                      <div style={{ margin: "0.5rem 0" }}>
+                        <AdminImage src={s.screenshotUrl} alt="Setup chart" />
+                      </div>
+                    )}
+                    <div className="row-actions">
+                      {s.user.id && (
+                        <button
+                          type="button"
+                          onClick={() => setUserDetailId(s.user.id!)}
+                        >
+                          View trader
+                        </button>
+                      )}
+                      <span className="muted" style={{ fontSize: "0.8rem" }}>
+                        {s.hubQueued ? "Hub queued" : "Hub not queued"}
+                        {" · "}
+                        {s.metaApiQueued ? "MetaAPI queued" : "MetaAPI not queued"}
+                      </span>
+                      {setupCanSetLimit(s) && (
+                        <button
+                          type="button"
+                          className="primary"
+                          disabled={setLimitLoadingId === s.signalId}
+                          onClick={() => {
+                            setSetLimitLoadingId(s.signalId);
+                            setMessage("");
+                            void api
+                              .setSetupLimit(s.signalId)
+                              .then((res) => {
+                                setMessage(res.message);
+                                return loadTab("signals");
+                              })
+                              .catch((err: Error) => setMessage(err.message))
+                              .finally(() => setSetLimitLoadingId(null));
+                          }}
+                        >
+                          {setLimitLoadingId === s.signalId
+                            ? "Setting limit…"
+                            : setupNeedsLimit(s)
+                              ? "Set limit"
+                              : "Retry set limit"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            )}
           </>
         )}
 
@@ -1137,13 +1271,6 @@ export default function App() {
                   {!npWallet.configured && (
                     <p className="muted">{npWallet.message}</p>
                   )}
-                  {npWallet.configured &&
-                    npWallet.usdtBalance < npWallet.pendingCryptoPayoutTotal && (
-                      <p style={{ color: "var(--danger, #c0392b)" }}>
-                        Balance is below pending payout total — fund custody before
-                        approving crypto payouts.
-                      </p>
-                    )}
                 </>
               ) : (
                 <p className="muted">Loading wallet…</p>
@@ -1441,27 +1568,7 @@ export default function App() {
                           <button
                             type="button"
                             className="primary"
-                            disabled={
-                              p.user.kyc?.status !== "APPROVED" || !p.walletAddress
-                            }
-                            onClick={() => {
-                              setMessage("");
-                              void api
-                                .approvePayout(p.id)
-                                .then((res) => {
-                                  if (res.verificationRequired) {
-                                    setVerifyPayoutId(p.id);
-                                    setVerifyCode("");
-                                    setMessage(
-                                      "Payout created on NOWPayments — enter the 2FA code from your NOWPayments email to release funds.",
-                                    );
-                                  } else {
-                                    setMessage("Payout approved.");
-                                  }
-                                  return loadTab("payouts");
-                                })
-                                .catch((err: Error) => setMessage(err.message));
-                            }}
+                            onClick={() => openApprovePayoutModal(p)}
                           >
                             Approve
                           </button>
@@ -2097,6 +2204,96 @@ export default function App() {
                 onClick={() => void approveRegistrationPayment()}
               >
                 {paymentActionLoading ? "Working…" : "Approve payment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {approvePayoutModal && (
+        <div
+          className="modal-overlay"
+          role="presentation"
+          onClick={closeApprovePayoutModal}
+        >
+          <div
+            className="modal"
+            role="dialog"
+            aria-labelledby="approve-payout-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="approve-payout-modal-title">Confirm payout</h3>
+            <p>
+              <strong>{approvePayoutModal.user.displayName}</strong>
+              <br />
+              <span className="muted">{approvePayoutModal.user.email}</span>
+            </p>
+            <dl className="modal-meta">
+              <div>
+                <dt>Amount</dt>
+                <dd>{fmtMoney(approvePayoutModal.traderShare)}</dd>
+              </div>
+              <div>
+                <dt>Method</dt>
+                <dd>
+                  {approvePayoutModal.payoutMethod === "MOBILE_MONEY"
+                    ? "Mobile money"
+                    : approvePayoutModal.payoutMethod === "TRC20"
+                      ? "TRC20"
+                      : "Not set"}
+                </dd>
+              </div>
+              <div>
+                <dt>Wallet / destination</dt>
+                <dd style={{ wordBreak: "break-all" }}>
+                  {approvePayoutModal.walletAddress || "Not set"}
+                </dd>
+              </div>
+              <div>
+                <dt>KYC</dt>
+                <dd>{approvePayoutModal.user.kyc?.status ?? "NONE"}</dd>
+              </div>
+              <div>
+                <dt>Requested</dt>
+                <dd>{fmtDate(approvePayoutModal.requestedAt)}</dd>
+              </div>
+              <div>
+                <dt>Details</dt>
+                <dd>{approvePayoutModal.notes || "—"}</dd>
+              </div>
+            </dl>
+            {(approvePayoutModal.user.kyc?.status !== "APPROVED" ||
+              !approvePayoutModal.walletAddress) && (
+              <p className="muted">
+                Cannot approve yet:
+                {approvePayoutModal.user.kyc?.status !== "APPROVED"
+                  ? " KYC is not approved."
+                  : ""}
+                {!approvePayoutModal.walletAddress
+                  ? " Payout destination is missing."
+                  : ""}
+              </p>
+            )}
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="secondary"
+                disabled={approvePayoutLoading}
+                onClick={closeApprovePayoutModal}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={
+                  approvePayoutLoading ||
+                  approvePayoutModal.user.kyc?.status !== "APPROVED" ||
+                  !approvePayoutModal.walletAddress
+                }
+                onClick={() => void confirmApprovePayout()}
+              >
+                {approvePayoutLoading ? "Confirming…" : "Confirm payout"}
               </button>
             </div>
           </div>

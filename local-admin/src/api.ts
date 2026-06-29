@@ -105,10 +105,14 @@ export const api = {
 
   getUser: (userId: string) =>
     request<AdminUserDetail>(`/admin/users/${userId}`),
-  signals: (offset = 0) =>
+  signals: (offset = 0, status?: string) =>
     request<{ items: SignalRow[]; count: number }>(
-      `/admin/signals?limit=50&offset=${offset}`,
+      `/admin/signals?limit=50&offset=${offset}${status ? `&status=${encodeURIComponent(status)}` : ""}`,
     ),
+  setSetupLimit: (signalId: string) =>
+    request<SetSetupLimitResult>(`/admin/signals/${encodeURIComponent(signalId)}/set-limit`, {
+      method: "POST",
+    }),
   kycPending: () => request<KycRow[]>("/admin/kyc/pending"),
   payouts: (status?: string) =>
     request<{ items: PayoutRow[]; count: number }>(
@@ -419,8 +423,29 @@ export type SignalRow = {
   entryMax: string;
   stopLoss: string;
   takeProfit: string;
+  riskRewardRatio?: string;
+  description?: string;
+  screenshotUrl?: string;
+  hubRecordId?: string | null;
+  hubQueued?: boolean;
+  metaApiQueued?: boolean;
   submittedAt: string;
-  user: { displayName: string; email: string };
+  user: { id?: string; displayName: string; email: string };
+  trade?: {
+    activatedAt: string | null;
+    closedAt: string | null;
+    isWin: boolean | null;
+  } | null;
+};
+
+export type SetSetupLimitResult = {
+  ok: boolean;
+  signalId: string;
+  channel: "metaapi" | "hub" | null;
+  outcome: "placed" | "already_active" | "failed";
+  orderType?: string;
+  entry?: number;
+  message: string;
 };
 
 export type KycRow = {
@@ -451,8 +476,10 @@ export type PayoutRow = {
 
 export type ApprovePayoutResponse = {
   verificationRequired?: boolean;
+  alreadyProcessed?: boolean;
   gatewayPayoutId?: string;
   message?: string;
+  payout?: { status: string };
 };
 
 export type NowPaymentsWalletSummary = {
