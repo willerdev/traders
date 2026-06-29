@@ -149,6 +149,7 @@ export class MetaApiService {
   private readonly provisioningUrl: string;
   private readonly token: string;
   private readonly configuredDefaultAccountId: string;
+  private readonly configuredCopyAccountId: string;
   private readonly defaultVolume: number;
   private readonly symbolListCache = new Map<
     string,
@@ -162,6 +163,8 @@ export class MetaApiService {
     this.token = this.config.get<string>('METAAPI_TOKEN')?.trim() || '';
     this.configuredDefaultAccountId =
       this.config.get<string>('METAAPI_DEFAULT_ACCOUNT_ID')?.trim() || '';
+    this.configuredCopyAccountId =
+      this.config.get<string>('METAAPI_COPY_ACCOUNT_ID')?.trim() || '';
     const vol = Number(this.config.get<string>('METAAPI_TRADE_VOLUME') || '0.01');
     this.defaultVolume = Number.isFinite(vol) && vol > 0 ? vol : 0.01;
   }
@@ -172,6 +175,14 @@ export class MetaApiService {
 
   getConfiguredDefaultAccountId(): string | null {
     return this.configuredDefaultAccountId || null;
+  }
+
+  getConfiguredCopyAccountId(): string | null {
+    return this.configuredCopyAccountId || null;
+  }
+
+  resolveCopyAccountId(): string | null {
+    return this.configuredCopyAccountId || null;
   }
 
   private headers(contentType = false) {

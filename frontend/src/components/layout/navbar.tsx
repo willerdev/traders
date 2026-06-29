@@ -11,6 +11,7 @@ import {
   LogOut,
   ClipboardCheck,
   MessageCircle,
+  LineChart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth";
@@ -20,6 +21,7 @@ import { PlatformNotificationsBell } from "@/components/layout/platform-notifica
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", shortLabel: "Home", icon: LayoutDashboard },
+  { href: "/mt5", label: "MT5 Copy", shortLabel: "MT5", icon: LineChart },
   { href: "/submit", label: "Submit Signal", shortLabel: "Submit", icon: Send },
   { href: "/leaderboard", label: "Leaderboard", shortLabel: "Ranks", icon: Trophy },
   { href: "/tp-claims", label: "TP Claims", shortLabel: "Claims", icon: ClipboardCheck },

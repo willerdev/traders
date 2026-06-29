@@ -293,6 +293,12 @@ export class SignalsController {
     return this.signalsService.listMetaApiAccountsForUser();
   }
 
+  @Get('metaapi/copy-dashboard')
+  @UseGuards(JwtAuthGuard)
+  getCopyTradingDashboard() {
+    return this.signalsService.getCopyTradingDashboard();
+  }
+
   @Post(':signalId/place-trade')
   @UseGuards(JwtAuthGuard)
   placeTrade(

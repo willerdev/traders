@@ -10,6 +10,8 @@ import { TpClaimsModule } from '../tp-claims/tp-claims.module';
 import { MetaApiModule } from '../metaapi/metaapi.module';
 import { EmailModule } from '../email/email.module';
 import { PlatformNotificationsModule } from '../platform-notifications/platform-notifications.module';
+import { CopyTradingModule } from '../copy-trading/copy-trading.module';
+import { LeaderboardModule } from '../leaderboard/leaderboard.module';
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { PlatformNotificationsModule } from '../platform-notifications/platform-
     MetaApiModule,
     EmailModule,
     PlatformNotificationsModule,
+    CopyTradingModule,
+    LeaderboardModule,
   ],
   controllers: [SignalsController],
   providers: [

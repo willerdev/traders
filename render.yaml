@@ -44,6 +44,8 @@ services:
         sync: false
       - key: METAAPI_DEFAULT_ACCOUNT_ID
         sync: false
+      - key: METAAPI_COPY_ACCOUNT_ID
+        sync: false
       - key: METAAPI_TRADE_VOLUME
         value: "0.01"
       - key: TRADE_OUTCOME_WEBHOOK_SECRET

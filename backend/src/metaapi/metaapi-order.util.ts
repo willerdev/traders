@@ -62,6 +62,29 @@ export function buildMetaApiTradeIdentifiers(input: {
   return { comment, clientId };
 }
 
+/** Copy-pool order identifiers — prefixed so they are distinct on the copy account. */
+export function buildCopyTradeIdentifiers(input: {
+  sourceDisplayName: string;
+  sourceUserId: string;
+  signalId: string;
+  symbol: string;
+}): { comment: string; clientId: string } {
+  const base = buildMetaApiTradeIdentifiers({
+    displayName: `C_${input.sourceDisplayName}`,
+    userId: input.sourceUserId,
+    signalId: input.signalId,
+    symbol: input.symbol,
+  });
+  const clientId = `CPY_${base.clientId}`.slice(0, METAAPI_COMMENT_CLIENTID_BUDGET);
+  const commentBudget = METAAPI_COMMENT_CLIENTID_BUDGET - clientId.length;
+  const comment = buildTradeOrderComment(
+    `C_${input.sourceDisplayName}`,
+    input.sourceUserId,
+    commentBudget,
+  );
+  return { comment, clientId };
+}
+
 /** Normalized MT5 comment prefix for a trader (used to match open positions). */
 export function normalizeTraderCommentName(
   displayName: string,

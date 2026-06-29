@@ -263,6 +263,8 @@ class ApiClient {
       }),
     metaApiAccounts: () =>
       this.request<MetaApiAccountsResult>("/signals/metaapi/accounts"),
+    copyDashboard: () =>
+      this.request<CopyTradingDashboard>("/signals/metaapi/copy-dashboard"),
     claim: (
       signalId: string,
       outcome: "tp" | "sl",
@@ -1224,6 +1226,79 @@ export interface MetaApiAccountsResult {
   configured: boolean;
   count: number;
   items: MetaApiAccountRow[];
+}
+
+export interface CopyTradingLeader {
+  rank: number;
+  userId: string;
+  displayName: string;
+  score: number;
+  tier: string;
+  winRate: number;
+  profit: number;
+}
+
+export interface CopyTradeJournalEntry {
+  id: string;
+  signalId: string;
+  sourceRank: number;
+  sourceName: string;
+  symbol: string;
+  direction: string;
+  volume: number | null;
+  entryPrice: number | null;
+  stopLoss: number;
+  takeProfit: number;
+  status: string;
+  profit: number | null;
+  notes: string | null;
+  executedAt: string | null;
+  closedAt: string | null;
+  createdAt: string;
+}
+
+export interface CopyTradingDashboard {
+  configured: boolean;
+  copyAccountId: string | null;
+  message?: string;
+  riskPercent?: number;
+  leaders: CopyTradingLeader[];
+  terminal: {
+    configured: boolean;
+    accountId: string | null;
+    information: {
+      balance: number;
+      equity: number;
+      currency: string;
+      margin: number;
+      freeMargin: number;
+      leverage: number;
+      tradeAllowed: boolean;
+    } | null;
+    positions: Array<{
+      id: string;
+      symbol: string;
+      type: string;
+      volume: number;
+      openPrice: number;
+      currentPrice: number;
+      stopLoss?: number;
+      takeProfit?: number;
+      profit: number;
+      unrealizedProfit: number;
+      swap: number;
+      commission: number;
+      comment?: string;
+    }>;
+    error?: string;
+  } | null;
+  journal: CopyTradeJournalEntry[];
+  stats: {
+    openCount: number;
+    closedCount: number;
+    totalRealizedProfit: number;
+    floatingProfit: number;
+  };
 }
 
 export interface PlaceTradeResult {

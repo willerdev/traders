@@ -114,6 +114,14 @@ enum TpClaimType {
   RR_1_TO_1
 }
 
+enum CopyTradeStatus {
+  PENDING
+  OPEN
+  CLOSED
+  FAILED
+  SKIPPED
+}
+
 model User {
   id                String     @id @default(cuid())
   email             String?    @unique
@@ -154,6 +162,7 @@ model User {
   loginOtps          LoginOtp[]
   passwordResets     PasswordReset[]
   custodyDeposits    CustodyDeposit[]
+  copyTradesSource   CopyTrade[] @relation("CopyTradeSource")
 
   @@index([status])
   @@index([role])
@@ -308,6 +317,7 @@ model Signal {
   trade      Trade?
   tradeScore TradeScore?
   tpClaims   TpClaim[]
+  copyTrade  CopyTrade?
 
   @@index([userId])
   @@index([symbol, direction])
@@ -683,4 +693,35 @@ model MessageThreadState {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("message_thread_states")
+}
+
+model CopyTrade {
+  id                String          @id @default(cuid())
+  signalId          String          @unique
+  sourceUserId      String
+  sourceRank        Int
+  copyAccountId     String
+  symbol            String
+  direction         TradeDirection
+  volume            Decimal?        @db.Decimal(18, 8)
+  entryPrice        Decimal?        @db.Decimal(18, 8)
+  stopLoss          Decimal         @db.Decimal(18, 8)
+  takeProfit        Decimal         @db.Decimal(18, 8)
+  metaApiOrderId    String?
+  metaApiPositionId String?
+  status            CopyTradeStatus @default(PENDING)
+  profit            Decimal?        @db.Decimal(12, 2)
+  notes             String?
+  executedAt        DateTime?
+  closedAt          DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  signal     Signal @relation(fields: [signalId], references: [id], onDelete: Cascade)
+  sourceUser User   @relation("CopyTradeSource", fields: [sourceUserId], references: [id], onDelete: Cascade)
+
+  @@index([sourceUserId])
+  @@index([copyAccountId])
+  @@index([status])
+  @@map("copy_trades")
 }

@@ -46,6 +46,7 @@ import {
   isHubLimitPending,
 } from '../common/setup-execution.util';
 import { RISK_PERCENT, MAX_RISK_PER_TRADE, MAX_BREAKEVEN_RETRIES } from '../common/constants';
+import { CopyTradingService } from '../copy-trading/copy-trading.service';
 
 @Injectable()
 export class SignalsService {
@@ -63,7 +64,53 @@ export class SignalsService {
     private platformNotifications: PlatformNotificationsService,
     private metaApi: MetaApiService,
     private tradeRisk: TradeRiskService,
+    private copyTrading: CopyTradingService,
   ) {}
+
+  private async mirrorToCopyPool(input: {
+    signal: {
+      id: string;
+      signalId: string;
+      symbol: string;
+      direction: TradeDirection;
+      entryMin: unknown;
+      entryMax: unknown;
+      stopLoss: unknown;
+      takeProfit: unknown;
+    };
+    user: { id: string; displayName: string };
+    openPrice: number;
+    pending: boolean;
+    orderKind?: string;
+  }) {
+    try {
+      await this.copyTrading.maybeMirrorTrade({
+        signalDbId: input.signal.id,
+        signalPublicId: input.signal.signalId,
+        sourceUserId: input.user.id,
+        sourceDisplayName: input.user.displayName,
+        symbol: input.signal.symbol,
+        direction: input.signal.direction,
+        entryMin: Number(input.signal.entryMin),
+        entryMax: Number(input.signal.entryMax),
+        stopLoss: Number(input.signal.stopLoss),
+        takeProfit: Number(input.signal.takeProfit),
+        openPrice: input.openPrice,
+        pending: input.pending,
+        orderKind: input.orderKind,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Copy mirror failed for ${input.signal.signalId}: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    }
+  }
+
+  getCopyTradingDashboard() {
+    return this.copyTrading.getCopyDashboard();
+  }
 
   private validateEntryRange(dto: CreateSignalDto) {
     if (dto.entryMin >= dto.entryMax) {
@@ -403,6 +450,14 @@ export class SignalsService {
             },
       }),
     ]);
+
+    await this.mirrorToCopyPool({
+      signal,
+      user,
+      openPrice: entryPrice,
+      pending: placed.pending,
+      orderKind: placed.orderKind,
+    });
 
     return {
       status: placed.pending ? 'pending' : 'placed',
@@ -1078,6 +1133,14 @@ export class SignalsService {
     this.logger.log(
       `MetaAPI sync placed ${orderType} for ${signal.signalId} @ ${openPrice}`,
     );
+
+    await this.mirrorToCopyPool({
+      signal,
+      user: { id: userId, displayName: user.displayName },
+      openPrice,
+      pending: true,
+      orderKind,
+    });
 
     return { status: 'placed', orderType, entry: openPrice };
   }
