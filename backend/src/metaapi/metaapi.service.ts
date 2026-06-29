@@ -320,7 +320,7 @@ export class MetaApiService {
       await new Promise((r) => setTimeout(r, 2000));
     }
     throw new ServiceUnavailableException(
-      'MetaAPI account is not connected yet — wait a moment and try again',
+      'Trading account is not connected yet — wait a moment and try again',
     );
   }
 
@@ -670,7 +670,7 @@ export class MetaApiService {
         .join('; ');
     }
     return String(
-      body.message ?? `MetaAPI trade rejected (${status})`,
+      body.message ?? `Broker rejected the trade (${status})`,
     );
   }
 

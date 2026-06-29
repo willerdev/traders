@@ -839,7 +839,7 @@ export default function SettingsPage() {
               <CardTitle>Live trading account</CardTitle>
             </div>
             <CardDescription>
-              Link your MetaAPI MT4/MT5 account to place trades from submitted
+              Link your MT4/MT5 trading account to place trades from submitted
               setups at market price with your SL and TP.
             </CardDescription>
           </CardHeader>
@@ -850,17 +850,8 @@ export default function SettingsPage() {
               </p>
             ) : metaApiAccounts.length === 0 ? (
               <p className="text-sm text-muted">
-                No deployed MetaAPI accounts found. Add and deploy an account at{" "}
-                <a
-                  href="https://app.metaapi.cloud/accounts"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-primary underline"
-                >
-                  MetaAPI
-                </a>
-                , or ask an admin to set{" "}
-                <code className="text-xs">METAAPI_DEFAULT_ACCOUNT_ID</code>.
+                No connected trading accounts found. Contact your administrator
+                to link a broker account.
               </p>
             ) : (
               <>

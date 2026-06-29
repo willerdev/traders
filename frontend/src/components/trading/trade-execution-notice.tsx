@@ -58,7 +58,7 @@ export function TradeExecutionNotice({
               zone — trade opens only when price reaches that level. No market orders.
             </li>
             <li>
-              <strong>Place trade (MetaAPI):</strong> the only way to go live immediately
+              <strong>Place trade:</strong> the only way to go live immediately
               — market now or broker pending at entry. SL/TP sent to the broker directly.
             </li>
           </ul>

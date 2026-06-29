@@ -269,7 +269,7 @@ export class SignalsService {
 
     if (!this.metaApi.isConfigured) {
       throw new ServiceUnavailableException(
-        'Live trading is not configured on the server (METAAPI_TOKEN missing)',
+        'Live trading is not configured on the server',
       );
     }
 
@@ -284,7 +284,7 @@ export class SignalsService {
       );
     }
     if (signal.metaApiExecutedAt) {
-      throw new BadRequestException('This setup was already placed on MetaAPI');
+      throw new BadRequestException('This setup already has a live trade placed');
     }
 
     const user = await this.prisma.user.findUnique({
@@ -296,7 +296,7 @@ export class SignalsService {
     const accountId = this.metaApi.resolveAccountId(user.metaApiAccountId);
     if (!accountId) {
       throw new BadRequestException(
-        'No MetaAPI trading account linked — choose one in Settings → Trading account',
+        'No trading account linked — choose one in Settings → Live trading account',
       );
     }
 
@@ -898,7 +898,7 @@ export class SignalsService {
           throw new BadRequestException(
             err instanceof BadRequestException
               ? err.message
-              : `MetaAPI could not update stops: ${err instanceof Error ? err.message : 'broker rejected'}`,
+              : `Broker could not update stops: ${err instanceof Error ? err.message : 'broker rejected'}`,
           );
         }
       }
@@ -970,7 +970,7 @@ export class SignalsService {
       hubUpdated: hubApplied,
       brokerStopLoss: live?.stopLoss ?? null,
       brokerTakeProfit: live?.takeProfit ?? null,
-      message: `Stop levels updated to SL ${nextSl}, TP ${nextTp}${metaApplied ? ' on MetaAPI' : ''}${hubApplied ? ' on Signal Hub' : ''}.`,
+      message: `Stop levels updated to SL ${nextSl}, TP ${nextTp}${metaApplied ? ' on broker' : ''}${hubApplied ? ' on Signal Hub' : ''}.`,
     };
   }
 
@@ -1417,7 +1417,7 @@ export class SignalsService {
       return {
         canInvalidate: false,
         invalidateBlockedReason:
-          'You have a live MetaAPI position on this setup. Close the trade first, then you can invalidate.',
+          'You have a live position on this setup. Close the trade first, then you can invalidate.',
       };
     }
 
@@ -1425,7 +1425,7 @@ export class SignalsService {
       return {
         canInvalidate: false,
         invalidateBlockedReason:
-          'You have a pending MetaAPI order on this setup. Cancel it from Close trade first.',
+          'You have a pending order on this setup. Cancel it with Close trade first.',
       };
     }
 
@@ -1592,7 +1592,7 @@ export class SignalsService {
         signal.direction === 'BUY' ? mark >= tp : mark <= tp;
       if (!tpReached) {
         throw new BadRequestException(
-          `MetaAPI price (${mark}) has not reached take profit (${tp}) yet`,
+          `Live price (${mark}) has not reached take profit (${tp}) yet`,
         );
       }
 
@@ -1623,7 +1623,7 @@ export class SignalsService {
     );
     if (!rr1Reached) {
       throw new BadRequestException(
-        `MetaAPI price (${mark}) has not reached 1:1 RR (${oneToOne}) yet`,
+        `Live price (${mark}) has not reached 1:1 RR (${oneToOne}) yet`,
       );
     }
 
@@ -1766,7 +1766,7 @@ export class SignalsService {
       signal.metaApiAccountId ?? user.metaApiAccountId,
     );
     if (!accountId) {
-      throw new BadRequestException('No MetaAPI account linked');
+      throw new BadRequestException('No trading account linked');
     }
 
     const account = await this.metaApi.ensureAccountReady(accountId);
@@ -1822,7 +1822,7 @@ export class SignalsService {
     }
 
     if (!live.positionId) {
-      throw new BadRequestException('Could not resolve MetaAPI position id');
+      throw new BadRequestException('Could not resolve broker position id');
     }
 
     const quote = await this.metaApi.getSymbolPrice(account, signal.symbol);
@@ -1976,7 +1976,7 @@ export class SignalsService {
           { fullTp: !isRr1Claim },
         );
         if (metaResult.metaApiClosed) {
-          metaApiNote = 'MetaAPI position closed at take profit';
+          metaApiNote = 'Broker position closed at take profit';
         }
       }
 

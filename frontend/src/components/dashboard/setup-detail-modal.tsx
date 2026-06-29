@@ -66,6 +66,16 @@ function hubStageLabel(hub: HubSignalStatus | null) {
   return msg ? `${stage} — ${msg}` : stage;
 }
 
+function isSetupTradeRunning(
+  res: SetupResolution | null | undefined,
+  liveTrade: SetupLiveTrade | null,
+): boolean {
+  if (liveTrade?.status === "open" || liveTrade?.status === "pending") return true;
+  if (res?.metaApiExecuted) return true;
+  if (res?.activated) return true;
+  return false;
+}
+
 function buildProgressSteps(
   setup: SetupSummary,
   resolution: SetupResolution | null,
@@ -282,7 +292,7 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
   async function handlePlaceTrade() {
     if (
       !confirm(
-        `Place ${setup.direction} ${setup.symbol} via MetaAPI?\n\n` +
+        `Place ${setup.direction} ${setup.symbol} now?\n\n` +
           `This goes LIVE immediately in Orders — market fill now, or a broker pending order at your entry edge. It does NOT wait for your Signal Hub limit zone.\n\n` +
           `SL: ${setup.stopLoss}\nTP: ${setup.takeProfit}`,
       )
@@ -396,7 +406,7 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
     }
     if (
       !confirm(
-        `Invalidate ${setup.symbol}? This cancels the Hub order (if any) and archives the setup.\n\nOnly do this when no live MetaAPI order or open trade exists.`,
+        `Invalidate ${setup.symbol}? This cancels the Hub order (if any) and archives the setup.\n\nOnly do this when no live order or open trade exists on this setup.`,
       )
     ) {
       return;
@@ -453,6 +463,7 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
 
   const steps = buildProgressSteps(setup, resolution, hub);
   const res = resolution;
+  const tradeRunning = isSetupTradeRunning(res, liveTrade);
   const showLiveTradeSection =
     isOpen &&
     !loading &&
@@ -504,7 +515,7 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
                   </p>
                 )}
 
-                {isOpen && <TradeExecutionNotice variant="modal" />}
+                {isOpen && !tradeRunning && <TradeExecutionNotice variant="modal" />}
 
                 {res?.breakevenSet && (
                   <p className="rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
@@ -670,7 +681,7 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
 
                 {isOpen && (
                   <div className="flex flex-wrap gap-2 border-t border-white/5 pt-4">
-                    {res?.canPlaceTrade && !res.metaApiExecuted && (
+                    {res?.canPlaceTrade && !tradeRunning && (
                       <Button
                         size="sm"
                         disabled={actionLoading === "place"}
@@ -717,10 +728,10 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
                         Set breakeven
                       </Button>
                     )}
-                    {res?.metaApiExecuted && !liveTrade?.canClose && (
+                    {tradeRunning && !liveTrade?.canClose && (
                       <span className="self-center text-xs text-success">
-                        Live trade placed
-                        {res.metaApiOrderId ? ` · order ${res.metaApiOrderId}` : ""}
+                        Live trade active
+                        {res?.metaApiOrderId ? ` · order ${res.metaApiOrderId}` : ""}
                       </span>
                     )}
                     {res?.canClaimTp && !res.pendingTpClaim && (
@@ -772,29 +783,21 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
                         )}
                       </Button>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="gap-1 text-amber-400"
-                      disabled={Boolean(actionLoading) || res?.canInvalidate === false}
-                      title={
-                        res?.canInvalidate === false
-                          ? res.invalidateBlockedReason
-                          : undefined
-                      }
-                      onClick={() => void handleInvalidate()}
-                    >
-                      {actionLoading === "invalidate" ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Ban className="h-3.5 w-3.5" />
-                      )}
-                      Invalidate
-                    </Button>
-                    {res?.canInvalidate === false && res.invalidateBlockedReason && (
-                      <p className="w-full text-xs text-amber-400/90">
-                        {res.invalidateBlockedReason}
-                      </p>
+                    {res?.canInvalidate !== false && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1 text-amber-400"
+                        disabled={Boolean(actionLoading)}
+                        onClick={() => void handleInvalidate()}
+                      >
+                        {actionLoading === "invalidate" ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Ban className="h-3.5 w-3.5" />
+                        )}
+                        Invalidate
+                      </Button>
                     )}
                     <Button
                       variant="ghost"
@@ -888,8 +891,8 @@ function AdjustStopsPanel({
         <div>
           <p className="text-sm font-medium text-sky-200">Adjust stop levels</p>
           <p className="mt-0.5 text-xs text-gray-400">
-            Sync your platform SL/TP with the broker when they differ. Updates MetaAPI
-            and Signal Hub for this setup.
+            Sync your platform SL/TP with the broker when they differ. Updates your
+            broker and Signal Hub for this setup.
           </p>
         </div>
       </div>
