@@ -113,6 +113,13 @@ export const api = {
     request<SetSetupLimitResult>(`/admin/signals/${encodeURIComponent(signalId)}/set-limit`, {
       method: "POST",
     }),
+  approveTp1ClaimEmail: (signalId: string) =>
+    request<ApproveTp1ClaimEmailResult>(
+      `/admin/signals/${encodeURIComponent(signalId)}/approve-tp1-claim-email`,
+      {
+        method: "POST",
+      },
+    ),
   kycPending: () => request<KycRow[]>("/admin/kyc/pending"),
   payouts: (status?: string) =>
     request<{ items: PayoutRow[]; count: number }>(
@@ -429,6 +436,7 @@ export type SignalRow = {
   hubRecordId?: string | null;
   hubQueued?: boolean;
   metaApiQueued?: boolean;
+  tp1ClaimNoticeApprovedAt?: string | null;
   submittedAt: string;
   user: { id?: string; displayName: string; email: string };
   trade?: {
@@ -445,6 +453,13 @@ export type SetSetupLimitResult = {
   outcome: "placed" | "already_active" | "failed";
   orderType?: string;
   entry?: number;
+  message: string;
+};
+
+export type ApproveTp1ClaimEmailResult = {
+  ok: boolean;
+  signalId: string;
+  approvedAt: string;
   message: string;
 };
 

@@ -186,6 +186,16 @@ export class CreatePaymentDto {
   promoCode?: string;
 }
 
+export class CreateSetupPlanPaymentDto {
+  @IsString()
+  @IsNotEmpty()
+  network: string;
+
+  @IsString()
+  @IsIn(['PREMIUM', 'PRO'])
+  plan: 'PREMIUM' | 'PRO';
+}
+
 export class ApplyPromoDto {
   @IsString()
   @IsNotEmpty()

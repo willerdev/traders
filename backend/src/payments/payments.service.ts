@@ -12,10 +12,15 @@ import { PromoService } from './promo.service';
 import { BlockchainScannerService } from './blockchain-scanner.service';
 import { REGISTRATION_FEE_USDT } from '../common/constants';
 import { NotificationService } from '../email/notification.service';
+import { SubscriptionPlan } from '@prisma/client';
 
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
+  private readonly setupPlanPrice: Record<'PREMIUM' | 'PRO', number> = {
+    PREMIUM: 5,
+    PRO: 15,
+  };
 
   constructor(
     private prisma: PrismaService,
@@ -178,6 +183,132 @@ export class PaymentsService {
     };
   }
 
+  private setupPlanPurpose(plan: 'PREMIUM' | 'PRO') {
+    return `setup_plan_${plan.toLowerCase()}`;
+  }
+
+  private purposeToSetupPlan(
+    purpose: string | null | undefined,
+  ): 'PREMIUM' | 'PRO' | null {
+    if (purpose === 'setup_plan_premium') return 'PREMIUM';
+    if (purpose === 'setup_plan_pro') return 'PRO';
+    return null;
+  }
+
+  private async activateSetupPlanSubscription(
+    userId: string,
+    plan: 'PREMIUM' | 'PRO',
+  ) {
+    const existing = await this.prisma.subscription.findFirst({
+      where: { userId, isActive: true },
+      orderBy: { expiresAt: 'desc' },
+    });
+
+    const now = new Date();
+    const base =
+      existing?.expiresAt && existing.expiresAt > now ? existing.expiresAt : now;
+    const nextExpiry = new Date(base.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    if (existing) {
+      await this.prisma.subscription.update({
+        where: { id: existing.id },
+        data: {
+          plan,
+          startsAt: existing.startsAt ?? now,
+          expiresAt: nextExpiry,
+          isActive: true,
+        },
+      });
+      return;
+    }
+
+    await this.prisma.subscription.create({
+      data: {
+        userId,
+        plan,
+        startsAt: now,
+        expiresAt: nextExpiry,
+        isActive: true,
+      },
+    });
+  }
+
+  async createSetupPlanPayment(
+    userId: string,
+    network: string,
+    plan: 'PREMIUM' | 'PRO',
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (!user.registrationPaid) {
+      throw new BadRequestException(
+        'Complete registration payment before buying setup plan',
+      );
+    }
+
+    const amount = this.setupPlanPrice[plan];
+    const purpose = this.setupPlanPurpose(plan);
+    const payment = await this.prisma.payment.create({
+      data: {
+        userId,
+        amount,
+        currency: 'USDT',
+        network,
+        purpose,
+        gatewayId: `pending_${Date.now()}`,
+      },
+    });
+
+    if (!this.nowPayments.isConfigured) {
+      return {
+        paymentId: payment.id,
+        amount,
+        currency: 'USDT',
+        network,
+        purpose,
+        plan,
+        message: 'NOWPayments not configured — set NOWPAYMENTS_API_KEY',
+      };
+    }
+
+    const npPayment = await this.nowPayments.createPayment({
+      amount,
+      orderId: payment.id,
+      network,
+      description:
+        plan === 'PRO'
+          ? 'TraderRank setup plan — unlimited submissions'
+          : 'TraderRank setup plan — +3 submissions/day',
+      ipnCallbackUrl: this.ipnUrl(),
+    });
+
+    await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        gatewayId: String(npPayment.payment_id),
+        gatewayResponse: npPayment as object,
+        payAddress: npPayment.pay_address,
+        payAmount: npPayment.pay_amount,
+      },
+    });
+
+    return {
+      paymentId: payment.id,
+      amount,
+      currency: 'USDT',
+      network,
+      purpose,
+      plan,
+      payCurrency: npPayment.pay_currency,
+      payAmount: npPayment.pay_amount,
+      payAddress: npPayment.pay_address,
+      gatewayPaymentId: npPayment.payment_id,
+      liveStatus: npPayment.payment_status,
+      gateway: 'NOWPayments',
+      orderId: payment.id,
+    };
+  }
+
   async validatePromoCode(code: string) {
     const fee = await this.registrationFee();
     const validation = await this.promo.validate(code, fee);
@@ -276,6 +407,56 @@ export class PaymentsService {
     );
 
     return { status: 'confirmed', paymentId: payment.id };
+  }
+
+  async confirmSetupPlanPayment(
+    paymentId: string,
+    gatewayPayload: object,
+    opts?: {
+      gatewayId?: string;
+      txHash?: string;
+      source?: 'ipn' | 'nowpayments' | 'blockchain' | 'manual';
+    },
+  ) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+    });
+    if (!payment) throw new NotFoundException('Payment not found');
+
+    const plan = this.purposeToSetupPlan(payment.purpose);
+    if (!plan) {
+      throw new BadRequestException('Payment is not a setup plan purchase');
+    }
+
+    if (payment.status === 'CONFIRMED') {
+      return { alreadyConfirmed: true, paymentId: payment.id, plan };
+    }
+
+    await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: 'CONFIRMED',
+        gatewayId: opts?.gatewayId ?? payment.gatewayId ?? undefined,
+        gatewayResponse: {
+          ...(payment.gatewayResponse &&
+          typeof payment.gatewayResponse === 'object'
+            ? (payment.gatewayResponse as object)
+            : {}),
+          ...gatewayPayload,
+          confirmationSource: opts?.source ?? 'nowpayments',
+        },
+        txHash: opts?.txHash ?? undefined,
+        confirmedAt: new Date(),
+      },
+    });
+
+    await this.activateSetupPlanSubscription(payment.userId, plan);
+
+    this.logger.log(
+      `Setup plan ${plan} payment ${paymentId} confirmed via ${opts?.source ?? 'nowpayments'}`,
+    );
+
+    return { status: 'confirmed', paymentId: payment.id, plan };
   }
 
   async syncAllPendingRegistrationPayments() {
@@ -395,11 +576,20 @@ export class PaymentsService {
   }
 
   private async confirmPayment(
-    payment: { id: string; userId: string; status: string },
+    payment: { id: string; userId: string; status: string; purpose?: string },
     gatewayPayload: object,
     gatewayId?: string,
     opts?: { txHash?: string; source?: 'ipn' | 'nowpayments' | 'blockchain' },
   ) {
+    const setupPlan = this.purposeToSetupPlan(payment.purpose);
+    if (setupPlan) {
+      return this.confirmSetupPlanPayment(payment.id, gatewayPayload, {
+        gatewayId,
+        txHash: opts?.txHash,
+        source: opts?.source ?? 'ipn',
+      });
+    }
+
     return this.confirmRegistrationPayment(payment.id, gatewayPayload, {
       gatewayId,
       txHash: opts?.txHash,
@@ -541,5 +731,44 @@ export class PaymentsService {
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
+  }
+
+  async getSetupPlanStatus(userId: string) {
+    const now = new Date();
+    const active = await this.prisma.subscription.findFirst({
+      where: {
+        userId,
+        isActive: true,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      orderBy: { expiresAt: 'desc' },
+    });
+
+    const plan: SubscriptionPlan = active?.plan ?? 'FREE';
+    const dailyLimit =
+      plan === 'PRO' ? null : plan === 'PREMIUM' ? 5 : 2;
+
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const submittedToday = await this.prisma.signal.count({
+      where: {
+        userId,
+        submittedAt: { gte: startOfDay, lt: now },
+        status: { not: 'REJECTED_DUPLICATE' },
+      },
+    });
+
+    return {
+      plan,
+      dailyLimit,
+      submittedToday,
+      remainingToday:
+        dailyLimit == null ? null : Math.max(0, dailyLimit - submittedToday),
+      isUnlimited: plan === 'PRO',
+      subscriptionActive: Boolean(active),
+      subscriptionExpiresAt: active?.expiresAt?.toISOString() ?? null,
+      renewPricesUsdt: { PREMIUM: 5, PRO: 15 },
+    };
   }
 }

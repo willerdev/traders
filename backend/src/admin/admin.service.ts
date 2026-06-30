@@ -457,6 +457,7 @@ export class AdminService {
         metaApiQueued: Boolean(
           signal.metaApiOrderId || signal.metaApiExecutedAt,
         ),
+        tp1ClaimEmailApproved: Boolean(signal.tp1ClaimNoticeApprovedAt),
       })),
       count,
       limit: take,
@@ -467,6 +468,30 @@ export class AdminService {
 
   setSetupLimit(signalId: string) {
     return this.signals.adminSetSetupLimit(signalId);
+  }
+
+  async approveTp1ClaimEmail(signalId: string, adminId: string) {
+    const signal = await this.prisma.signal.findUnique({
+      where: { signalId },
+      select: { id: true, signalId: true, tp1ClaimNoticeApprovedAt: true },
+    });
+    if (!signal) throw new NotFoundException('Signal not found');
+
+    if (!signal.tp1ClaimNoticeApprovedAt) {
+      await this.prisma.signal.update({
+        where: { id: signal.id },
+        data: { tp1ClaimNoticeApprovedAt: new Date() },
+      });
+    }
+
+    await this.logAction(adminId, 'TP1_CLAIM_EMAIL_APPROVED', signalId, {});
+    return {
+      ok: true,
+      signalId: signal.signalId,
+      approvedAt: new Date().toISOString(),
+      message:
+        'TP1 claim availability email approved. Trader will be notified on the next sync cycle if TP1 is reached.',
+    };
   }
 
   async listPayouts(status?: string, limit = 50, offset = 0) {

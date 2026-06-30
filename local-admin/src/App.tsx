@@ -116,6 +116,7 @@ export default function App() {
   const [signalCount, setSignalCount] = useState(0);
   const [setupFilter, setSetupFilter] = useState<"pending" | "all">("pending");
   const [setLimitLoadingId, setSetLimitLoadingId] = useState<string | null>(null);
+  const [tp1ApproveLoadingId, setTp1ApproveLoadingId] = useState<string | null>(null);
   const [kycQueue, setKycQueue] = useState<KycRow[]>([]);
   const [payouts, setPayouts] = useState<PayoutRow[]>([]);
   const [npWallet, setNpWallet] = useState<NowPaymentsWalletSummary | null>(null);
@@ -1164,6 +1165,28 @@ export default function App() {
                             : setupNeedsLimit(s)
                               ? "Set limit"
                               : "Retry set limit"}
+                        </button>
+                      )}
+                      {!s.tp1ClaimNoticeApprovedAt && (
+                        <button
+                          type="button"
+                          disabled={tp1ApproveLoadingId === s.signalId}
+                          onClick={() => {
+                            setTp1ApproveLoadingId(s.signalId);
+                            setMessage("");
+                            void api
+                              .approveTp1ClaimEmail(s.signalId)
+                              .then((res) => {
+                                setMessage(res.message);
+                                return loadTab("signals");
+                              })
+                              .catch((err: Error) => setMessage(err.message))
+                              .finally(() => setTp1ApproveLoadingId(null));
+                          }}
+                        >
+                          {tp1ApproveLoadingId === s.signalId
+                            ? "Approving TP1 email…"
+                            : "Approve TP1 email"}
                         </button>
                       )}
                     </div>

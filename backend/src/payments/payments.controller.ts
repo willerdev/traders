@@ -14,7 +14,11 @@ import {
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request as ExpressRequest } from 'express';
 import { PaymentsService } from './payments.service';
-import { CreatePaymentDto, ApplyPromoDto } from '../common/dto';
+import {
+  CreatePaymentDto,
+  ApplyPromoDto,
+  CreateSetupPlanPaymentDto,
+} from '../common/dto';
 import { JwtAuthGuard } from '../auth/guards';
 import { NowPaymentsService } from './nowpayments.service';
 import { CustodyDepositService } from './custody-deposit.service';
@@ -38,6 +42,25 @@ export class PaymentsController {
       dto.network,
       dto.promoCode,
     );
+  }
+
+  @Post('setup-plan')
+  @UseGuards(JwtAuthGuard)
+  createSetupPlanPayment(
+    @Request() req: { user: { id: string } },
+    @Body() dto: CreateSetupPlanPaymentDto,
+  ) {
+    return this.paymentsService.createSetupPlanPayment(
+      req.user.id,
+      dto.network,
+      dto.plan,
+    );
+  }
+
+  @Get('setup-plan/status')
+  @UseGuards(JwtAuthGuard)
+  getSetupPlanStatus(@Request() req: { user: { id: string } }) {
+    return this.paymentsService.getSetupPlanStatus(req.user.id);
   }
 
   @Post('apply-promo')

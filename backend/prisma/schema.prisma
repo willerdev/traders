@@ -308,6 +308,7 @@ model Signal {
   hubSenderName   String?
   hubRecordId     String?
   hubOrderNotifiedAt DateTime?
+  tp1ClaimNoticeApprovedAt DateTime?
   metaApiAccountId String?
   metaApiOrderId   String?
   metaApiPositionId String?

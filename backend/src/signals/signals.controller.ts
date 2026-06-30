@@ -224,6 +224,12 @@ export class SignalsController {
     return this.signalsService.getUserSignals(req.user.id);
   }
 
+  @Get('setup-quota')
+  @UseGuards(JwtAuthGuard)
+  getSetupQuota(@Request() req: { user: { id: string } }) {
+    return this.signalsService.getSetupQuota(req.user.id);
+  }
+
   @Get('open/unresolved')
   @UseGuards(JwtAuthGuard)
   listOpenSetups(@Request() req: { user: { id: string } }) {

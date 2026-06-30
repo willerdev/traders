@@ -30,7 +30,7 @@ import {
 } from '../common/rr.util';
 import { NotificationService } from '../email/notification.service';
 import { PlatformNotificationsService } from '../platform-notifications/platform-notifications.service';
-import { Signal, Trade, TradeDirection, User } from '@prisma/client';
+import { Signal, SubscriptionPlan, Trade, TradeDirection, User } from '@prisma/client';
 import { MetaApiService } from '../metaapi/metaapi.service';
 import {
   buildMetaApiTradeIdentifiers,
@@ -147,11 +147,78 @@ export class SignalsService {
     void mid;
   }
 
+  private dailyLimitForPlan(plan: SubscriptionPlan): number | null {
+    if (plan === 'PRO') return null;
+    if (plan === 'PREMIUM') return 5;
+    return 2;
+  }
+
+  async getSetupQuota(userId: string) {
+    const now = new Date();
+    let activeSubscription = await this.prisma.subscription.findFirst({
+      where: {
+        userId,
+        isActive: true,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      orderBy: { expiresAt: 'desc' },
+    });
+
+    if (!activeSubscription) {
+      activeSubscription = await this.prisma.subscription.create({
+        data: {
+          userId,
+          plan: 'FREE',
+          isActive: true,
+          startsAt: now,
+          expiresAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+        },
+      });
+    }
+
+    const plan: SubscriptionPlan = activeSubscription?.plan ?? 'FREE';
+    const dailyLimit = this.dailyLimitForPlan(plan);
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const submittedToday = await this.prisma.signal.count({
+      where: {
+        userId,
+        submittedAt: { gte: startOfDay, lt: now },
+        status: { not: 'REJECTED_DUPLICATE' },
+      },
+    });
+
+    return {
+      plan,
+      dailyLimit,
+      submittedToday,
+      remainingToday:
+        dailyLimit == null ? null : Math.max(0, dailyLimit - submittedToday),
+      canSubmit: dailyLimit == null ? true : submittedToday < dailyLimit,
+      subscriptionActive: true,
+      subscriptionExpiresAt: activeSubscription?.expiresAt?.toISOString() ?? null,
+      pricing: {
+        PREMIUM: { priceUsdt: 5, dailyLimit: 5 },
+        PRO: { priceUsdt: 15, dailyLimit: null },
+      },
+    };
+  }
+
+  private async enforceSetupQuota(userId: string) {
+    const quota = await this.getSetupQuota(userId);
+    if (!quota.canSubmit) {
+      throw new ForbiddenException(
+        `Daily setup limit reached (${quota.submittedToday}/${quota.dailyLimit}). Upgrade to PREMIUM ($5 for +3/day) or PRO ($15 unlimited/day).`,
+      );
+    }
+  }
+
   async submit(userId: string, dto: CreateSignalDto) {
     dto = { ...dto, symbol: normalizeChartSymbol(dto.symbol) };
     this.validateEntryRange(dto);
 
     await this.compliance.requireActiveTrader(userId);
+    await this.enforceSetupQuota(userId);
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -1521,6 +1588,7 @@ export class SignalsService {
     const candidates = await this.prisma.signal.findMany({
       where: {
         status: 'OPEN',
+        tp1ClaimNoticeApprovedAt: { not: null },
         trade: {
           is: {
             tp1NotifiedAt: null,

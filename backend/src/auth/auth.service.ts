@@ -439,6 +439,26 @@ export class AuthService {
       });
     }
 
+    const activeSubscription = await this.prisma.subscription.findFirst({
+      where: {
+        userId,
+        isActive: true,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+    });
+
+    if (!activeSubscription) {
+      await this.prisma.subscription.create({
+        data: {
+          userId,
+          plan: 'FREE',
+          isActive: true,
+          startsAt: new Date(),
+          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        },
+      });
+    }
+
     await this.prisma.user.update({
       where: { id: userId },
       data: { status: 'ACTIVE' },
