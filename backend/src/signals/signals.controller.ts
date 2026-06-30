@@ -24,7 +24,8 @@ import {
   TradeLifecycleWebhookDto,
   HubActionDto,
 } from '../common/dto';
-import { JwtAuthGuard } from '../auth/guards';
+import { JwtAuthGuard, RolesGuard } from '../auth/guards';
+import { Roles } from '../auth/decorators/roles.decorator';
 
 @Controller('signals')
 export class SignalsController {
@@ -300,7 +301,8 @@ export class SignalsController {
   }
 
   @Get('metaapi/copy-dashboard')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   getCopyTradingDashboard() {
     return this.signalsService.getCopyTradingDashboard();
   }

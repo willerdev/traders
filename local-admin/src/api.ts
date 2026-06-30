@@ -98,6 +98,7 @@ export const api = {
     ),
 
   overview: () => request<Record<string, unknown>>("/admin/overview"),
+  paymentForecast: () => request<PaymentForecast>("/admin/payment-forecast"),
   users: (offset = 0, suspiciousOnly = false) =>
     request<{ items: UserRow[]; count: number; suspiciousOnly?: boolean }>(
       `/admin/users?limit=50&offset=${offset}${suspiciousOnly ? "&suspicious=true" : ""}`,
@@ -296,6 +297,67 @@ export const api = {
       `/admin/hub/metaapi/terminal${q}`,
     );
   },
+
+  metaApiCopyDashboard: () =>
+    request<CopyTradingDashboard>("/admin/hub/metaapi/copy-dashboard"),
+};
+
+export type PaymentForecast = {
+  projection: {
+    totalTraders: number;
+    paidRegistrationCount: number;
+    unpaidRegistrationCount: number;
+    registrationFeeUsdt: number;
+    projectedRegistrationRevenueUsdt: number;
+    activeSetupPlans: { premium: number; pro: number };
+    setupRenewalsDue30d: {
+      premium: number;
+      pro: number;
+      total: number;
+      amountUsdt: number;
+    };
+    projectedNextSetupRenewalRevenueUsdt: number;
+    projectedCombinedNextRevenueUsdt: number;
+  };
+  scenarios: Array<{
+    conversionPercent: number;
+    unpaidConverting: number;
+    registrationRevenueUsdt: number;
+    setupRenewalRevenueUsdt: number;
+    totalRevenueUsdt: number;
+  }>;
+  revenueCollected: {
+    totalUsdt: number;
+    byPurpose: Record<string, { count: number; totalUsdt: number }>;
+  };
+  paidUsers: Array<{
+    id: string;
+    displayName: string;
+    email: string | null;
+    status: string;
+    joinedAt: string;
+    registrationPayment: {
+      amount: number;
+      confirmedAt: string | null;
+      network: string;
+    } | null;
+  }>;
+  unpaidUsers: Array<{
+    id: string;
+    displayName: string;
+    email: string | null;
+    status: string;
+    joinedAt: string;
+    owedUsdt: number;
+  }>;
+  setupPlanSubscribers: Array<{
+    userId: string;
+    displayName: string;
+    email: string | null;
+    plan: string;
+    renewsAt: string | null;
+    renewalAmountUsdt: number;
+  }>;
 };
 
 export type EmailAssessment = {
@@ -686,6 +748,51 @@ export type MetaApiPositionRow = {
   time: string;
   comment?: string;
   clientId?: string;
+};
+
+export type CopyTradingLeader = {
+  rank: number;
+  userId: string;
+  displayName: string;
+  score: number;
+  tier: string;
+  winRate: number;
+  profit: number;
+};
+
+export type CopyTradeJournalEntry = {
+  id: string;
+  signalId: string;
+  sourceRank: number;
+  sourceName: string;
+  symbol: string;
+  direction: string;
+  volume: number | null;
+  entryPrice: number | null;
+  stopLoss: number;
+  takeProfit: number;
+  status: string;
+  profit: number | null;
+  notes: string | null;
+  executedAt: string | null;
+  closedAt: string | null;
+  createdAt: string;
+};
+
+export type CopyTradingDashboard = {
+  configured: boolean;
+  copyAccountId: string | null;
+  message?: string;
+  riskPercent?: number;
+  leaders: CopyTradingLeader[];
+  terminal: MetaApiTerminalState | null;
+  journal: CopyTradeJournalEntry[];
+  stats: {
+    openCount: number;
+    closedCount: number;
+    totalRealizedProfit: number;
+    floatingProfit: number;
+  };
 };
 
 export type DirectMessage = {

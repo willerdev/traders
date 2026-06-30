@@ -30,6 +30,11 @@ export class AdminController {
     return this.adminService.getOverview();
   }
 
+  @Get('payment-forecast')
+  getPaymentForecast() {
+    return this.adminService.getPaymentForecast();
+  }
+
   @Get('kyc/pending')
   listPendingKyc() {
     return this.adminService.listPendingKyc();
@@ -256,6 +261,11 @@ export class AdminController {
     @Request() req: { user: { id: string } },
   ) {
     return this.adminService.deactivatePromoCode(req.user.id, code);
+  }
+
+  @Get('hub/metaapi/copy-dashboard')
+  getCopyTradingDashboard() {
+    return this.adminService.getCopyTradingDashboard();
   }
 
   @Get('hub/metaapi/terminal')

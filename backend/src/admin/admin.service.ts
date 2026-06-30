@@ -37,10 +37,89 @@ export class AdminService {
     private notifications: NotificationService,
   ) {}
 
+  private async getPaymentProjection() {
+    const now = new Date();
+    const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    const [
+      totalTraders,
+      paidRegistrationCount,
+      platformConfig,
+      activePremiumPlans,
+      activeProPlans,
+      renewalsDuePremium,
+      renewalsDuePro,
+    ] = await Promise.all([
+      this.prisma.user.count({ where: { role: { not: 'ADMIN' } } }),
+      this.prisma.user.count({
+        where: { role: { not: 'ADMIN' }, registrationPaid: true },
+      }),
+      this.prisma.platformConfig.findUnique({ where: { id: 'default' } }),
+      this.prisma.subscription.count({
+        where: {
+          isActive: true,
+          plan: 'PREMIUM',
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+      }),
+      this.prisma.subscription.count({
+        where: {
+          isActive: true,
+          plan: 'PRO',
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+      }),
+      this.prisma.subscription.count({
+        where: {
+          isActive: true,
+          plan: 'PREMIUM',
+          expiresAt: { gt: now, lte: in30Days },
+        },
+      }),
+      this.prisma.subscription.count({
+        where: {
+          isActive: true,
+          plan: 'PRO',
+          expiresAt: { gt: now, lte: in30Days },
+        },
+      }),
+    ]);
+
+    const registrationFeeUsdt = Number(platformConfig?.registrationFeeUsdt ?? 5);
+    const unpaidRegistrationCount = Math.max(totalTraders - paidRegistrationCount, 0);
+    const projectedRegistrationRevenueUsdt =
+      unpaidRegistrationCount * registrationFeeUsdt;
+    const projectedNextSetupRenewalRevenueUsdt =
+      activePremiumPlans * 5 + activeProPlans * 15;
+    const setupRenewalsDue30dAmountUsdt =
+      renewalsDuePremium * 5 + renewalsDuePro * 15;
+
+    return {
+      totalTraders,
+      paidRegistrationCount,
+      unpaidRegistrationCount,
+      registrationFeeUsdt,
+      projectedRegistrationRevenueUsdt,
+      activeSetupPlans: {
+        premium: activePremiumPlans,
+        pro: activeProPlans,
+      },
+      setupRenewalsDue30d: {
+        premium: renewalsDuePremium,
+        pro: renewalsDuePro,
+        total: renewalsDuePremium + renewalsDuePro,
+        amountUsdt: setupRenewalsDue30dAmountUsdt,
+      },
+      projectedNextSetupRenewalRevenueUsdt,
+      projectedCombinedNextRevenueUsdt:
+        projectedRegistrationRevenueUsdt + projectedNextSetupRenewalRevenueUsdt,
+    };
+  }
+
   async getOverview() {
     const analytics = await this.analytics.getAdminDashboard();
 
-    const [pendingKyc, pendingPayoutsList, pendingTpClaims, pendingOpenSetups] =
+    const [pendingKyc, pendingPayoutsList, pendingTpClaims, pendingOpenSetups, paymentProjection] =
       await Promise.all([
         this.prisma.kycVerification.count({ where: { status: 'PENDING' } }),
         this.prisma.payout.findMany({
@@ -53,6 +132,7 @@ export class AdminService {
         }),
         this.tpClaims.listPendingForAdmin(),
         this.prisma.signal.count({ where: { status: 'OPEN' } }),
+        this.getPaymentProjection(),
       ]);
 
     return {
@@ -61,6 +141,144 @@ export class AdminService {
       pendingPayoutsList,
       pendingTpClaimsCount: pendingTpClaims.length,
       pendingOpenSetupsCount: pendingOpenSetups,
+      paymentProjection,
+    };
+  }
+
+  async getPaymentForecast() {
+    const now = new Date();
+    const projection = await this.getPaymentProjection();
+
+    const [
+      confirmedPayments,
+      paidUsers,
+      unpaidUsers,
+      setupSubscribers,
+    ] = await Promise.all([
+      this.prisma.payment.findMany({
+        where: { status: 'CONFIRMED' },
+        select: { purpose: true, amount: true },
+      }),
+      this.prisma.user.findMany({
+        where: { role: { not: 'ADMIN' }, registrationPaid: true },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+        select: {
+          id: true,
+          displayName: true,
+          email: true,
+          status: true,
+          createdAt: true,
+          payments: {
+            where: { purpose: 'registration', status: 'CONFIRMED' },
+            orderBy: { confirmedAt: 'desc' },
+            take: 1,
+            select: {
+              amount: true,
+              confirmedAt: true,
+              network: true,
+            },
+          },
+        },
+      }),
+      this.prisma.user.findMany({
+        where: { role: { not: 'ADMIN' }, registrationPaid: false },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+        select: {
+          id: true,
+          displayName: true,
+          email: true,
+          status: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.subscription.findMany({
+        where: {
+          isActive: true,
+          plan: { in: ['PREMIUM', 'PRO'] },
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+        orderBy: { expiresAt: 'asc' },
+        take: 100,
+        include: {
+          user: { select: { id: true, displayName: true, email: true } },
+        },
+      }),
+    ]);
+
+    const revenueByPurpose: Record<string, { count: number; totalUsdt: number }> =
+      {};
+    for (const payment of confirmedPayments) {
+      const key = payment.purpose || 'other';
+      const bucket = revenueByPurpose[key] ?? { count: 0, totalUsdt: 0 };
+      bucket.count += 1;
+      bucket.totalUsdt += Number(payment.amount);
+      revenueByPurpose[key] = bucket;
+    }
+
+    const setupRenewalBase = projection.projectedNextSetupRenewalRevenueUsdt;
+    const scenarios = [25, 50, 75, 100].map((conversionPercent) => {
+      const unpaidConverting = Math.round(
+        (projection.unpaidRegistrationCount * conversionPercent) / 100,
+      );
+      const registrationRevenueUsdt =
+        unpaidConverting * projection.registrationFeeUsdt;
+      return {
+        conversionPercent,
+        unpaidConverting,
+        registrationRevenueUsdt,
+        setupRenewalRevenueUsdt: setupRenewalBase,
+        totalRevenueUsdt: registrationRevenueUsdt + setupRenewalBase,
+      };
+    });
+
+    const setupPlanPrice: Record<string, number> = {
+      PREMIUM: 5,
+      PRO: 15,
+    };
+
+    return {
+      projection,
+      scenarios,
+      revenueCollected: {
+        totalUsdt: confirmedPayments.reduce(
+          (sum, p) => sum + Number(p.amount),
+          0,
+        ),
+        byPurpose: revenueByPurpose,
+      },
+      paidUsers: paidUsers.map((user) => ({
+        id: user.id,
+        displayName: user.displayName,
+        email: user.email,
+        status: user.status,
+        joinedAt: user.createdAt.toISOString(),
+        registrationPayment: user.payments[0]
+          ? {
+              amount: Number(user.payments[0].amount),
+              confirmedAt:
+                user.payments[0].confirmedAt?.toISOString() ?? null,
+              network: user.payments[0].network,
+            }
+          : null,
+      })),
+      unpaidUsers: unpaidUsers.map((user) => ({
+        id: user.id,
+        displayName: user.displayName,
+        email: user.email,
+        status: user.status,
+        joinedAt: user.createdAt.toISOString(),
+        owedUsdt: projection.registrationFeeUsdt,
+      })),
+      setupPlanSubscribers: setupSubscribers.map((sub) => ({
+        userId: sub.userId,
+        displayName: sub.user.displayName,
+        email: sub.user.email,
+        plan: sub.plan,
+        renewsAt: sub.expiresAt?.toISOString() ?? null,
+        renewalAmountUsdt: setupPlanPrice[sub.plan] ?? 0,
+      })),
     };
   }
 
@@ -457,7 +675,8 @@ export class AdminService {
         metaApiQueued: Boolean(
           signal.metaApiOrderId || signal.metaApiExecutedAt,
         ),
-        tp1ClaimEmailApproved: Boolean(signal.tp1ClaimNoticeApprovedAt),
+        tp1ClaimNoticeApprovedAt:
+          signal.tp1ClaimNoticeApprovedAt?.toISOString() ?? null,
       })),
       count,
       limit: take,
@@ -597,6 +816,10 @@ export class AdminService {
 
   getMetaApiAccount(accountId: string) {
     return this.metaApi.getAccount(accountId);
+  }
+
+  getCopyTradingDashboard() {
+    return this.signals.getCopyTradingDashboard();
   }
 
   getMetaApiTerminal(accountId?: string) {

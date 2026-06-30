@@ -126,6 +126,8 @@ export default function SubmitSignalPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formCardRef = useRef<HTMLDivElement>(null);
   const skipAutoSave = useRef(false);
+  const saveGenerationRef = useRef(0);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -162,6 +164,7 @@ export default function SubmitSignalPage() {
   const [step, setStep] = useState<"edit" | "review">("edit");
   const [review, setReview] = useState<ReviewPayload | null>(null);
   const [resumingDraftId, setResumingDraftId] = useState<string | null>(null);
+  const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
   const [accountReady, setAccountReady] = useState<boolean | null>(null);
 
   const progress = calcProgress(form, screenshotUrl);
@@ -266,15 +269,39 @@ export default function SubmitSignalPage() {
     return payload;
   }, [form, screenshotUrl, aiFilled]);
 
+  const cancelPendingAutoSave = useCallback(() => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    saveGenerationRef.current += 1;
+  }, []);
+
+  const pauseAutoSave = useCallback((ms = 2000) => {
+    skipAutoSave.current = true;
+    cancelPendingAutoSave();
+    window.setTimeout(() => {
+      skipAutoSave.current = false;
+    }, ms);
+  }, [cancelPendingAutoSave]);
+
   const saveDraftNow = useCallback(async () => {
     if (skipAutoSave.current) return;
     const payload = buildDraftPayload();
     if (calcProgress(form, screenshotUrl) === 0) return;
 
+    const generation = saveGenerationRef.current;
+    const activeDraftId = draftId;
     setSaveStatus("saving");
     try {
-      if (draftId) {
-        const updated = await api.signals.updateDraft(draftId, payload);
+      if (activeDraftId) {
+        const updated = await api.signals.updateDraft(activeDraftId, payload);
+        if (
+          skipAutoSave.current ||
+          generation !== saveGenerationRef.current
+        ) {
+          return;
+        }
         setDrafts((prev) =>
           prev.map((d) => (d.id === updated.id ? updated : d)).sort(
             (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
@@ -282,21 +309,40 @@ export default function SubmitSignalPage() {
         );
       } else {
         const created = await api.signals.createDraft(payload);
+        if (
+          skipAutoSave.current ||
+          generation !== saveGenerationRef.current
+        ) {
+          return;
+        }
         setDraftId(created.id);
         setDrafts((prev) => [created, ...prev.filter((d) => d.id !== created.id)]);
       }
       setSaveStatus("saved");
-    } catch {
+    } catch (err) {
+      if (generation !== saveGenerationRef.current) return;
+      const message = err instanceof Error ? err.message : "";
+      if (activeDraftId && /not found/i.test(message)) {
+        setDraftId(null);
+        setDrafts((prev) => prev.filter((d) => d.id !== activeDraftId));
+        setSaveStatus("idle");
+        return;
+      }
       setSaveStatus("error");
     }
   }, [buildDraftPayload, draftId, form, screenshotUrl]);
 
   useEffect(() => {
     if (!isAuthenticated || success || step === "review") return;
-    const timer = setTimeout(() => {
+    autoSaveTimerRef.current = setTimeout(() => {
       void saveDraftNow();
     }, 1500);
-    return () => clearTimeout(timer);
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+    };
   }, [form, screenshotUrl, aiFilled, isAuthenticated, success, step, saveDraftNow]);
 
   const entryMin = parseFloat(form.entryMin);
@@ -381,8 +427,7 @@ export default function SubmitSignalPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  function resetForm() {
-    skipAutoSave.current = true;
+  function clearFormState() {
     setDraftId(null);
     setForm(EMPTY_FORM);
     clearSetup();
@@ -394,9 +439,11 @@ export default function SubmitSignalPage() {
     setQuoteError(null);
     setStep("edit");
     setReview(null);
-    setTimeout(() => {
-      skipAutoSave.current = false;
-    }, 0);
+  }
+
+  function resetForm() {
+    pauseAutoSave();
+    clearFormState();
   }
 
   function applyDraftToForm(draft: SignalDraft) {
@@ -423,7 +470,7 @@ export default function SubmitSignalPage() {
   }
 
   async function resumeDraft(draft: SignalDraft) {
-    skipAutoSave.current = true;
+    pauseAutoSave(1500);
     setResumingDraftId(draft.id);
     setError("");
     try {
@@ -433,22 +480,54 @@ export default function SubmitSignalPage() {
       applyDraftToForm(draft);
     } finally {
       setResumingDraftId(null);
-      setTimeout(() => {
-        skipAutoSave.current = false;
-      }, 1500);
     }
     requestAnimationFrame(() => {
       formCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }
 
+  async function discardCurrentProgress() {
+    const idToDelete = draftId;
+    pauseAutoSave();
+    clearFormState();
+    if (!idToDelete) return;
+
+    setDeletingDraftId(idToDelete);
+    try {
+      await api.signals.deleteDraft(idToDelete);
+      setDrafts((prev) => prev.filter((d) => d.id !== idToDelete));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete saved progress");
+      void loadDrafts();
+    } finally {
+      setDeletingDraftId(null);
+    }
+  }
+
   async function handleDeleteDraft(id: string) {
+    pauseAutoSave();
+    setDeletingDraftId(id);
+    setError("");
+    const wasActive = draftId === id;
+    if (wasActive) clearFormState();
+
     try {
       await api.signals.deleteDraft(id);
       setDrafts((prev) => prev.filter((d) => d.id !== id));
-      if (draftId === id) resetForm();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not delete draft");
+      void loadDrafts();
+      if (wasActive) {
+        try {
+          const full = await api.signals.getDraft(id);
+          pauseAutoSave(1500);
+          applyDraftToForm(full);
+        } catch {
+          /* draft is gone */
+        }
+      }
+    } finally {
+      setDeletingDraftId(null);
     }
   }
 
@@ -569,8 +648,10 @@ export default function SubmitSignalPage() {
       } else if ("signalId" in result) {
         if (draftId) {
           try {
+            pauseAutoSave();
             await api.signals.deleteDraft(draftId);
             setDrafts((prev) => prev.filter((d) => d.id !== draftId));
+            setDraftId(null);
           } catch {
             /* submitted successfully anyway */
           }
@@ -858,9 +939,14 @@ export default function SubmitSignalPage() {
                       size="sm"
                       variant="secondary"
                       className="text-danger"
+                      disabled={deletingDraftId !== null}
                       onClick={() => void handleDeleteDraft(draft.id)}
                     >
-                      <Trash2 className="h-3 w-3" />
+                      {deletingDraftId === draft.id ? (
+                        "Deleting…"
+                      ) : (
+                        <Trash2 className="h-3 w-3" />
+                      )}
                     </Button>
                   </div>
                 </div>
@@ -915,9 +1001,19 @@ export default function SubmitSignalPage() {
             <TradeExecutionNotice variant="submit" className="mt-3" />
             {progress > 0 && (
               <div className="mt-3">
-                <div className="mb-1 flex justify-between text-xs text-gray-500">
+                <div className="mb-1 flex items-center justify-between text-xs text-gray-500">
                   <span>Progress</span>
-                  <span>{progress}%</span>
+                  <div className="flex items-center gap-3">
+                    <span>{progress}%</span>
+                    <button
+                      type="button"
+                      className="text-danger hover:underline disabled:opacity-50"
+                      disabled={deletingDraftId !== null}
+                      onClick={() => void discardCurrentProgress()}
+                    >
+                      {deletingDraftId !== null ? "Deleting…" : "Discard progress"}
+                    </button>
+                  </div>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-white/10">
                   <div

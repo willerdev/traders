@@ -21,14 +21,28 @@ import { PlatformNotificationsBell } from "@/components/layout/platform-notifica
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", shortLabel: "Home", icon: LayoutDashboard },
-  { href: "/mt5", label: "MT5 Copy", shortLabel: "MT5", icon: LineChart },
+  {
+    href: "/mt5",
+    label: "MT5 Copy",
+    shortLabel: "MT5",
+    icon: LineChart,
+    adminOnly: true,
+  },
   { href: "/submit", label: "Submit Signal", shortLabel: "Submit", icon: Send },
   { href: "/leaderboard", label: "Leaderboard", shortLabel: "Ranks", icon: Trophy },
   { href: "/tp-claims", label: "TP Claims", shortLabel: "Claims", icon: ClipboardCheck },
   { href: "/messages", label: "Messages", shortLabel: "Chat", icon: MessageCircle },
   { href: "/payouts", label: "Payouts", shortLabel: "Payouts", icon: Wallet },
   { href: "/settings", label: "Settings", shortLabel: "Account", icon: Settings },
-];
+] as const;
+
+type NavItem = (typeof navItems)[number];
+
+function visibleNavItems(role?: string | null): NavItem[] {
+  return navItems.filter(
+    (item) => !("adminOnly" in item && item.adminOnly) || role === "ADMIN",
+  );
+}
 
 function PublicHeader() {
   return (
@@ -56,14 +70,16 @@ function SidebarNav({
   pathname,
   onNavigate,
   className,
+  items,
 }: {
   pathname: string;
   onNavigate?: () => void;
   className?: string;
+  items: NavItem[];
 }) {
   return (
     <nav className={cn("flex flex-col gap-1 p-2", className)}>
-      {navItems.map((item) => {
+      {items.map((item) => {
         const Icon = item.icon;
         const active = pathname === item.href;
         return (
@@ -101,7 +117,8 @@ function SidebarNav({
 }
 
 function Sidebar({ pathname }: { pathname: string }) {
-  const { logout } = useAuthStore();
+  const { logout, user } = useAuthStore();
+  const items = visibleNavItems(user?.role);
 
   return (
     <aside
@@ -127,7 +144,7 @@ function Sidebar({ pathname }: { pathname: string }) {
       </Link>
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden py-3">
-        <SidebarNav pathname={pathname} />
+        <SidebarNav pathname={pathname} items={items} />
       </div>
 
       <PlatformNotificationsBell />
@@ -201,14 +218,20 @@ function MobileHeader() {
   );
 }
 
-function MobileBottomNav({ pathname }: { pathname: string }) {
+function MobileBottomNav({
+  pathname,
+  items,
+}: {
+  pathname: string;
+  items: NavItem[];
+}) {
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 z-50 border-t border-[var(--color-border)] bg-[var(--color-surface)] backdrop-blur-xl md:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
       <div className="mx-auto flex h-16 max-w-lg items-stretch justify-around px-2">
-        {navItems.map((item) => {
+        {items.map((item) => {
           const Icon = item.icon;
           const active = pathname === item.href;
           return (
@@ -242,7 +265,8 @@ function MobileBottomNav({ pathname }: { pathname: string }) {
 
 export function Navbar() {
   const pathname = usePathname();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user, hasHydrated } = useAuthStore();
+  const items = visibleNavItems(hasHydrated ? user?.role : null);
 
   if (!isAuthenticated) {
     return <PublicHeader />;
@@ -252,7 +276,7 @@ export function Navbar() {
     <>
       <Sidebar pathname={pathname} />
       <MobileHeader />
-      <MobileBottomNav pathname={pathname} />
+      <MobileBottomNav pathname={pathname} items={items} />
     </>
   );
 }

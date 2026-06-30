@@ -37,6 +37,8 @@ function statusBadge(status: string) {
 export default function Mt5Page() {
   const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const hasHydrated = useAuthStore((s) => s.hasHydrated);
+  const userRole = useAuthStore((s) => s.user?.role);
   const [data, setData] = useState<CopyTradingDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -57,12 +59,29 @@ export default function Mt5Page() {
   }, []);
 
   useEffect(() => {
+    if (!hasHydrated) return;
     if (!isAuthenticated) {
       router.replace("/login");
       return;
     }
+    if (userRole !== "ADMIN") {
+      router.replace("/dashboard");
+      return;
+    }
     void load();
-  }, [isAuthenticated, router, load]);
+  }, [hasHydrated, isAuthenticated, userRole, router, load]);
+
+  if (!hasHydrated || (isAuthenticated && userRole !== "ADMIN")) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return null;
+  }
 
   if (loading && !data) {
     return (

@@ -19,6 +19,8 @@ import {
   type NowPaymentsWalletSummary,
   type CustodyDepositRow,
   type CustodyDepositCreated,
+  type PaymentForecast,
+  type CopyTradingDashboard,
 } from "./api";
 import { AdminImage } from "./AdminImage";
 import { Sidebar, type Tab, isAdminTab } from "./Sidebar";
@@ -92,9 +94,33 @@ function setupProgressLabel(signal: SignalRow) {
   return "Submitted — limit not set";
 }
 
+function purposeLabel(purpose: string) {
+  if (purpose === "registration") return "Registration";
+  if (purpose === "setup_plan_premium") return "Setup plan — Premium";
+  if (purpose === "setup_plan_pro") return "Setup plan — Pro";
+  return purpose.replace(/_/g, " ");
+}
+
 function isErrorMessage(msg: string) {
   return /fail|error|unreachable|unauthorized|forbidden|cannot get/i.test(msg);
 }
+
+type PaymentProjectionOverview = {
+  totalTraders: number;
+  paidRegistrationCount: number;
+  unpaidRegistrationCount: number;
+  registrationFeeUsdt: number;
+  projectedRegistrationRevenueUsdt: number;
+  activeSetupPlans?: { premium: number; pro: number };
+  setupRenewalsDue30d?: {
+    premium: number;
+    pro: number;
+    total: number;
+    amountUsdt: number;
+  };
+  projectedNextSetupRenewalRevenueUsdt?: number;
+  projectedCombinedNextRevenueUsdt?: number;
+};
 
 export default function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
@@ -110,6 +136,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
 
   const [overview, setOverview] = useState<Record<string, unknown> | null>(null);
+  const [paymentForecast, setPaymentForecast] = useState<PaymentForecast | null>(null);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [userCount, setUserCount] = useState(0);
   const [signals, setSignals] = useState<SignalRow[]>([]);
@@ -144,6 +171,7 @@ export default function App() {
   const [metaApiTerminal, setMetaApiTerminal] =
     useState<MetaApiTerminalState | null>(null);
   const [metaApiTerminalLoading, setMetaApiTerminalLoading] = useState(false);
+  const [copyDashboard, setCopyDashboard] = useState<CopyTradingDashboard | null>(null);
   const [selectedMetaApiAccountId, setSelectedMetaApiAccountId] = useState<
     string | null
   >(null);
@@ -223,6 +251,8 @@ export default function App() {
     try {
       if (active === "overview") {
         setOverview(await api.overview());
+      } else if (active === "paymentForecast") {
+        setPaymentForecast(await api.paymentForecast());
       } else if (active === "users") {
         const res = await api.users(0, suspiciousOnly);
         setUsers(res.items);
@@ -286,6 +316,8 @@ export default function App() {
         setTpClaims(await api.tpClaimsPending());
       } else if (active === "promos") {
         setPromoCodes(await api.promoCodes());
+      } else if (active === "mt5Copy") {
+        setCopyDashboard(await api.metaApiCopyDashboard());
       } else if (active === "hub") {
         setMetaApiLoadError(null);
         const [reportResult, accountsResult] = await Promise.allSettled([
@@ -741,6 +773,9 @@ export default function App() {
     );
   }
 
+  const paymentProjection = (overview?.paymentProjection ??
+    null) as PaymentProjectionOverview | null;
+
   return (
     <div className="app">
       <Sidebar
@@ -812,11 +847,314 @@ export default function App() {
                 <div className="label">Today signups</div>
                 <div className="value">{String(overview.todayRegistrations ?? "—")}</div>
               </div>
+              <div className="card">
+                <div className="label">People paid</div>
+                <div className="value">
+                  {paymentProjection
+                    ? `${paymentProjection.paidRegistrationCount}/${paymentProjection.totalTraders}`
+                    : "—"}
+                </div>
+              </div>
+              <div className="card">
+                <div className="label">Unpaid users</div>
+                <div className="value">
+                  {paymentProjection
+                    ? String(paymentProjection.unpaidRegistrationCount)
+                    : "—"}
+                </div>
+              </div>
+              <div className="card">
+                <div className="label">If unpaid users pay now</div>
+                <div className="value">
+                  {paymentProjection
+                    ? fmtMoney(paymentProjection.projectedRegistrationRevenueUsdt)
+                    : "—"}
+                </div>
+              </div>
+              <div className="card">
+                <div className="label">Setup renewals next cycle</div>
+                <div className="value">
+                  {paymentProjection
+                    ? fmtMoney(
+                        paymentProjection.projectedNextSetupRenewalRevenueUsdt ?? 0,
+                      )
+                    : "—"}
+                </div>
+              </div>
+              <div className="card">
+                <div className="label">Projected next total</div>
+                <div className="value">
+                  {paymentProjection
+                    ? fmtMoney(paymentProjection.projectedCombinedNextRevenueUsdt ?? 0)
+                    : "—"}
+                </div>
+              </div>
             </div>
+            {paymentProjection && (
+              <p className="muted">
+                Setup plans active now: PREMIUM{" "}
+                {paymentProjection.activeSetupPlans?.premium ?? 0}, PRO{" "}
+                {paymentProjection.activeSetupPlans?.pro ?? 0}. Renewals due in 30
+                days: {paymentProjection.setupRenewalsDue30d?.total ?? 0} (
+                {fmtMoney(paymentProjection.setupRenewalsDue30d?.amountUsdt ?? 0)}).
+              </p>
+            )}
             <p className="muted">
               Use the sidebar tabs to review users, setups, KYC, and payouts step by step.
             </p>
           </>
+        )}
+
+        {tab === "paymentForecast" && paymentForecast && (
+          <>
+            <div className="toolbar">
+              <h2>Payment forecast</h2>
+            </div>
+            <div className="cards">
+              <div className="card">
+                <div className="label">Total traders</div>
+                <div className="value">
+                  {paymentForecast.projection.totalTraders}
+                </div>
+              </div>
+              <div className="card">
+                <div className="label">Paid registration</div>
+                <div className="value">
+                  {paymentForecast.projection.paidRegistrationCount}
+                </div>
+              </div>
+              <div className="card">
+                <div className="label">Unpaid registration</div>
+                <div className="value">
+                  {paymentForecast.projection.unpaidRegistrationCount}
+                </div>
+              </div>
+              <div className="card">
+                <div className="label">Revenue collected</div>
+                <div className="value">
+                  {fmtMoney(paymentForecast.revenueCollected.totalUsdt)}
+                </div>
+              </div>
+              <div className="card">
+                <div className="label">If all unpaid pay</div>
+                <div className="value">
+                  {fmtMoney(paymentForecast.projection.projectedRegistrationRevenueUsdt)}
+                </div>
+              </div>
+              <div className="card">
+                <div className="label">Setup renewals (next cycle)</div>
+                <div className="value">
+                  {fmtMoney(paymentForecast.projection.projectedNextSetupRenewalRevenueUsdt)}
+                </div>
+              </div>
+            </div>
+
+            <h3 style={{ marginTop: "1.5rem" }}>Conversion scenarios</h3>
+            <p className="muted" style={{ marginBottom: "0.75rem" }}>
+              Projected revenue if a share of unpaid users pay registration (
+              {fmtMoney(paymentForecast.projection.registrationFeeUsdt)} each), plus
+              setup plan renewals at full retention.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Conversion</th>
+                  <th>Unpaid converting</th>
+                  <th>Registration</th>
+                  <th>Setup renewals</th>
+                  <th>Total projected</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paymentForecast.scenarios.map((row) => (
+                  <tr key={row.conversionPercent}>
+                    <td>{row.conversionPercent}%</td>
+                    <td>{row.unpaidConverting}</td>
+                    <td>{fmtMoney(row.registrationRevenueUsdt)}</td>
+                    <td>{fmtMoney(row.setupRenewalRevenueUsdt)}</td>
+                    <td>
+                      <strong>{fmtMoney(row.totalRevenueUsdt)}</strong>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <h3 style={{ marginTop: "1.5rem" }}>Revenue by type</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Payments</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(paymentForecast.revenueCollected.byPurpose).length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="muted">
+                      No confirmed payments yet
+                    </td>
+                  </tr>
+                ) : (
+                  Object.entries(paymentForecast.revenueCollected.byPurpose).map(
+                    ([purpose, stats]) => (
+                      <tr key={purpose}>
+                        <td>{purposeLabel(purpose)}</td>
+                        <td>{stats.count}</td>
+                        <td>{fmtMoney(stats.totalUsdt)}</td>
+                      </tr>
+                    ),
+                  )
+                )}
+              </tbody>
+            </table>
+
+            <h3 style={{ marginTop: "1.5rem" }}>
+              Paid users ({paymentForecast.paidUsers.length})
+            </h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Status</th>
+                  <th>Paid</th>
+                  <th>Joined</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paymentForecast.paidUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="muted">
+                      No paid registrations yet
+                    </td>
+                  </tr>
+                ) : (
+                  paymentForecast.paidUsers.map((user) => (
+                    <tr key={user.id}>
+                      <td>
+                        <button
+                          type="button"
+                          className="link-button"
+                          onClick={() => setUserDetailId(user.id)}
+                        >
+                          {user.displayName}
+                        </button>
+                      </td>
+                      <td>{user.email ?? "—"}</td>
+                      <td>
+                        <span className={badgeClass(user.status)}>{user.status}</span>
+                      </td>
+                      <td>
+                        {user.registrationPayment
+                          ? `${fmtMoney(user.registrationPayment.amount)} · ${user.registrationPayment.network}`
+                          : "Marked paid"}
+                      </td>
+                      <td>{fmtDate(user.joinedAt)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+
+            <h3 style={{ marginTop: "1.5rem" }}>
+              Unpaid users ({paymentForecast.unpaidUsers.length})
+            </h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Status</th>
+                  <th>Owed</th>
+                  <th>Joined</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paymentForecast.unpaidUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="muted">
+                      Everyone has paid registration
+                    </td>
+                  </tr>
+                ) : (
+                  paymentForecast.unpaidUsers.map((user) => (
+                    <tr key={user.id}>
+                      <td>
+                        <button
+                          type="button"
+                          className="link-button"
+                          onClick={() => setUserDetailId(user.id)}
+                        >
+                          {user.displayName}
+                        </button>
+                      </td>
+                      <td>{user.email ?? "—"}</td>
+                      <td>
+                        <span className={badgeClass(user.status)}>{user.status}</span>
+                      </td>
+                      <td>{fmtMoney(user.owedUsdt)}</td>
+                      <td>{fmtDate(user.joinedAt)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+
+            <h3 style={{ marginTop: "1.5rem" }}>
+              Setup plan subscribers ({paymentForecast.setupPlanSubscribers.length})
+            </h3>
+            <p className="muted" style={{ marginBottom: "0.75rem" }}>
+              Renewals due in 30 days:{" "}
+              {paymentForecast.projection.setupRenewalsDue30d.total} (
+              {fmtMoney(paymentForecast.projection.setupRenewalsDue30d.amountUsdt)})
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Plan</th>
+                  <th>Renews</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paymentForecast.setupPlanSubscribers.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="muted">
+                      No active Premium or Pro setup plans
+                    </td>
+                  </tr>
+                ) : (
+                  paymentForecast.setupPlanSubscribers.map((sub) => (
+                    <tr key={`${sub.userId}-${sub.plan}`}>
+                      <td>
+                        <button
+                          type="button"
+                          className="link-button"
+                          onClick={() => setUserDetailId(sub.userId)}
+                        >
+                          {sub.displayName}
+                        </button>
+                      </td>
+                      <td>{sub.email ?? "—"}</td>
+                      <td>{sub.plan}</td>
+                      <td>{sub.renewsAt ? fmtDate(sub.renewsAt) : "—"}</td>
+                      <td>{fmtMoney(sub.renewalAmountUsdt)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </>
+        )}
+
+        {tab === "paymentForecast" && !loading && !paymentForecast && (
+          <div className="page-empty">
+            Could not load payment forecast. Check that the API is running and refresh.
+          </div>
         )}
 
         {tab === "users" && (
@@ -1890,6 +2228,178 @@ export default function App() {
           </>
         )}
 
+        {tab === "mt5Copy" && (
+          <>
+            <div className="toolbar toolbar-wrap">
+              <div>
+                <h2>MT5 Copy Pool</h2>
+                <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                  Second MetaAPI account mirroring top 3 weekly traders at{" "}
+                  {copyDashboard?.riskPercent ?? 5}% risk per trade.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => void loadTab("mt5Copy")}
+              >
+                Refresh
+              </button>
+            </div>
+
+            {!copyDashboard ? (
+              <p className="muted">Loading copy pool…</p>
+            ) : !copyDashboard.configured ? (
+              <div className="kyc-card">
+                <p>{copyDashboard.message ?? "Copy account not configured."}</p>
+                <p className="muted" style={{ marginTop: "0.5rem" }}>
+                  Set <code>METAAPI_COPY_ACCOUNT_ID</code> on traders-api and redeploy.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="cards">
+                  <div className="card">
+                    <div className="label">Balance</div>
+                    <div className="value">
+                      {fmtMoney(copyDashboard.terminal?.information?.balance ?? 0)}{" "}
+                      {copyDashboard.terminal?.information?.currency ?? "USD"}
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="label">Equity</div>
+                    <div className="value">
+                      {fmtMoney(copyDashboard.terminal?.information?.equity ?? 0)}
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="label">Floating P/L</div>
+                    <div className="value">
+                      {fmtMoney(copyDashboard.stats.floatingProfit)}
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="label">Realized P/L</div>
+                    <div className="value">
+                      {fmtMoney(copyDashboard.stats.totalRealizedProfit)}
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="label">Open copies</div>
+                    <div className="value">{copyDashboard.stats.openCount}</div>
+                  </div>
+                  <div className="card">
+                    <div className="label">Copy account</div>
+                    <div className="value" style={{ fontSize: "0.75rem" }}>
+                      {copyDashboard.copyAccountId ?? "—"}
+                    </div>
+                  </div>
+                </div>
+
+                <h3 style={{ marginTop: "1.5rem" }}>Top 3 traders copied</h3>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Rank</th>
+                      <th>Trader</th>
+                      <th>Tier</th>
+                      <th>Score</th>
+                      <th>Win rate</th>
+                      <th>Profit</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {copyDashboard.leaders.length === 0 ? (
+                      <tr>
+                        <td colSpan={6}>No leaderboard data this week</td>
+                      </tr>
+                    ) : (
+                      copyDashboard.leaders.map((leader) => (
+                        <tr key={leader.userId}>
+                          <td>#{leader.rank}</td>
+                          <td>{leader.displayName}</td>
+                          <td>{leader.tier}</td>
+                          <td>{leader.score}</td>
+                          <td>{(leader.winRate * 100).toFixed(1)}%</td>
+                          <td>{fmtMoney(leader.profit)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+
+                <h3 style={{ marginTop: "1.5rem" }}>Live positions</h3>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Symbol</th>
+                      <th>Side</th>
+                      <th>Volume</th>
+                      <th>Open</th>
+                      <th>Current</th>
+                      <th>P/L</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(copyDashboard.terminal?.positions ?? []).length === 0 ? (
+                      <tr>
+                        <td colSpan={6}>No open positions on copy account</td>
+                      </tr>
+                    ) : (
+                      (copyDashboard.terminal?.positions ?? []).map((p) => (
+                        <tr key={p.id}>
+                          <td>{p.symbol}</td>
+                          <td>{p.type.includes("BUY") ? "BUY" : "SELL"}</td>
+                          <td>{p.volume}</td>
+                          <td>{p.openPrice}</td>
+                          <td>{p.currentPrice}</td>
+                          <td>{fmtMoney(p.profit)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+
+                <h3 style={{ marginTop: "1.5rem" }}>Copy journal</h3>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Trader</th>
+                      <th>Symbol</th>
+                      <th>Side</th>
+                      <th>Status</th>
+                      <th>P/L</th>
+                      <th>When</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {copyDashboard.journal.length === 0 ? (
+                      <tr>
+                        <td colSpan={6}>No copied trades yet</td>
+                      </tr>
+                    ) : (
+                      copyDashboard.journal.map((row) => (
+                        <tr key={row.id}>
+                          <td>
+                            #{row.sourceRank} {row.sourceName}
+                          </td>
+                          <td>{row.symbol}</td>
+                          <td>{row.direction}</td>
+                          <td>
+                            <span className={badgeClass(row.status)}>{row.status}</span>
+                          </td>
+                          <td>{row.profit != null ? fmtMoney(row.profit) : "—"}</td>
+                          <td>{fmtDate(row.createdAt)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </>
+            )}
+          </>
+        )}
+
         {tab === "hub" && (
           <>
             <div className="page-header">
@@ -2237,7 +2747,7 @@ export default function App() {
         <div
           className="modal-overlay"
           role="presentation"
-          onClick={closeApprovePayoutModal}
+          onClick={() => closeApprovePayoutModal()}
         >
           <div
             className="modal"
@@ -2302,7 +2812,7 @@ export default function App() {
                 type="button"
                 className="secondary"
                 disabled={approvePayoutLoading}
-                onClick={closeApprovePayoutModal}
+                onClick={() => closeApprovePayoutModal()}
               >
                 Cancel
               </button>

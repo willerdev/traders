@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 export type Tab =
   | "overview"
+  | "paymentForecast"
   | "users"
   | "messages"
   | "signals"
@@ -9,12 +10,14 @@ export type Tab =
   | "payouts"
   | "tpClaims"
   | "promos"
+  | "mt5Copy"
   | "hub";
 
 type NavItem = { id: Tab; label: string; icon: keyof typeof icons };
 
 export const ADMIN_TABS: Tab[] = [
   "overview",
+  "paymentForecast",
   "users",
   "messages",
   "signals",
@@ -22,6 +25,7 @@ export const ADMIN_TABS: Tab[] = [
   "payouts",
   "tpClaims",
   "promos",
+  "mt5Copy",
   "hub",
 ];
 
@@ -31,6 +35,7 @@ export function isAdminTab(value: string): value is Tab {
 
 const NAV_ITEMS: NavItem[] = [
   { id: "overview", label: "Overview", icon: "overview" },
+  { id: "paymentForecast", label: "Payment forecast", icon: "forecast" },
   { id: "users", label: "Users", icon: "users" },
   { id: "messages", label: "Messages", icon: "messages" },
   { id: "signals", label: "Setups", icon: "setups" },
@@ -38,6 +43,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "payouts", label: "Payouts", icon: "payouts" },
   { id: "tpClaims", label: "TP Claims", icon: "tpClaims" },
   { id: "promos", label: "Promo codes", icon: "promos" },
+  { id: "mt5Copy", label: "MT5 Copy", icon: "mt5Copy" },
   { id: "hub", label: "Hub MT5", icon: "hub" },
 ];
 
@@ -46,6 +52,13 @@ const icons = {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
       <path d="M3 3v18h18" strokeLinecap="round" />
       <path d="M7 16l4-4 4 4 5-6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  forecast: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M4 19V5" strokeLinecap="round" />
+      <path d="M4 19h16" strokeLinecap="round" />
+      <path d="M8 16v-4M12 16V8M16 16v-6" strokeLinecap="round" />
     </svg>
   ),
   users: (
@@ -99,6 +112,13 @@ const icons = {
       <rect x="3" y="14" width="18" height="6" rx="1.5" />
       <circle cx="7" cy="7" r="1" fill="currentColor" stroke="none" />
       <circle cx="7" cy="17" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  mt5Copy: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M8 7h12M8 12h12M8 17h8" strokeLinecap="round" />
+      <path d="M4 7h.01M4 12h.01M4 17h.01" strokeLinecap="round" />
+      <path d="M3 5v14" strokeLinecap="round" />
     </svg>
   ),
   refresh: (
