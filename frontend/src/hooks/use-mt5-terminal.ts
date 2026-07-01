@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type UserMt5Terminal, type UserMt5Trade } from "@/lib/api";
+import { api, type UserMt5QuoteItem, type UserMt5Terminal, type UserMt5Trade } from "@/lib/api";
 import {
   patchMt5RunningCache,
   readMt5Cache,
@@ -9,7 +9,7 @@ import {
   writeMt5Cache,
 } from "@/lib/mt5-cache";
 
-type Tab = "setups" | "trades" | "history";
+type Tab = "quotes" | "setups" | "trades" | "history";
 
 function bootstrapFromCache(userId: string | undefined) {
   if (!userId) return null;
@@ -24,6 +24,7 @@ export function useMt5Terminal(
 ) {
   const [data, setData] = useState<UserMt5Terminal | null>(null);
   const [runningTrades, setRunningTrades] = useState<UserMt5Trade[]>([]);
+  const [quotes, setQuotes] = useState<UserMt5QuoteItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,26 +125,49 @@ export function useMt5Terminal(
     return () => window.clearTimeout(timer);
   }, [hasHydrated, isAuthenticated, userId, load]);
 
+  const loadQuotes = useCallback(async () => {
+    try {
+      const res = await api.signals.mt5Quotes();
+      setQuotes(res.items);
+    } catch {
+      /* keep last quotes on poll errors */
+    }
+  }, []);
+
   useEffect(() => {
     if (!isAuthenticated || tab !== "trades") return;
     const start = window.setTimeout(() => {
       void loadRunning();
     }, 0);
-    const id = window.setInterval(() => void loadRunning(), 2000);
+    const id = window.setInterval(() => void loadRunning(), 1000);
     return () => {
       window.clearTimeout(start);
       window.clearInterval(id);
     };
   }, [isAuthenticated, tab, loadRunning]);
 
+  useEffect(() => {
+    if (!isAuthenticated || tab !== "quotes") return;
+    const start = window.setTimeout(() => {
+      void loadQuotes();
+    }, 0);
+    const id = window.setInterval(() => void loadQuotes(), 1000);
+    return () => {
+      window.clearTimeout(start);
+      window.clearInterval(id);
+    };
+  }, [isAuthenticated, tab, loadQuotes]);
+
   return {
     data,
     runningTrades,
+    quotes,
     loading,
     refreshing,
     error,
     setError,
     load,
     loadRunning,
+    loadQuotes,
   };
 }

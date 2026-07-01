@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -11,6 +11,7 @@ import {
   api,
   type OpenSetupItem,
   type UserMt5HistoryItem,
+  type UserMt5QuoteItem,
   type UserMt5Trade,
 } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
@@ -29,14 +30,17 @@ import {
   Mt5Empty,
   Mt5ExpandableRow,
   Mt5Pnl,
+  Mt5QuotePrice,
   Mt5SubTabs,
   Mt5SummaryBlock,
   fmtMt5Date,
   fmtMt5Price,
+  fmtQuoteTime,
+  rowKey,
   useMt5Expand,
 } from "@/components/mt5/mt5-ui";
 
-type Tab = "setups" | "trades" | "history";
+type Tab = "quotes" | "setups" | "trades" | "history";
 type HistorySubTab = "positions" | "orders" | "deals";
 
 function toSetupSummary(setup: OpenSetupItem): SetupSummary {
@@ -82,6 +86,7 @@ export default function Mt5UserPage() {
   const {
     data,
     runningTrades,
+    quotes,
     loading,
     refreshing,
     error,
@@ -250,9 +255,19 @@ export default function Mt5UserPage() {
   }
 
   const mainTabs: { id: Tab; label: string; count?: number }[] = [
+    { id: "quotes", label: "Quotes", count: quotes.length },
     { id: "setups", label: "Setups", count: setups.length },
     { id: "trades", label: "Trade", count: runningCount },
   ];
+
+  const headerTitle =
+    tab === "history"
+      ? "History"
+      : tab === "trades"
+        ? "Trade"
+        : tab === "quotes"
+          ? "Quotes"
+          : "Setups";
 
   return (
     <div className="mt5-shell mx-auto flex min-h-[calc(100dvh-5.75rem-env(safe-area-inset-bottom,0px))] max-w-lg flex-col bg-[var(--mt5-bg)] text-[var(--mt5-text)] md:min-h-[calc(100dvh-1rem)] md:max-w-2xl">
@@ -271,15 +286,9 @@ export default function Mt5UserPage() {
               </button>
             )}
             <div className="min-w-0">
-              <h1 className="text-base font-semibold">
-                {tab === "history"
-                  ? "History"
-                  : tab === "trades"
-                    ? "Trade"
-                    : "Setups"}
-              </h1>
+              <h1 className="text-base font-semibold">{headerTitle}</h1>
               <p className="text-xs text-[var(--mt5-muted)]">
-                All symbols
+                {tab === "quotes" ? "Your open setups · 1s" : "All symbols"}
                 {refreshing && (
                   <span className="ml-2 text-[10px] text-primary">· syncing</span>
                 )}
@@ -318,7 +327,7 @@ export default function Mt5UserPage() {
           </div>
         </div>
 
-        {account && <Mt5AccountSummary account={account} />}
+        {account && tab !== "quotes" && <Mt5AccountSummary account={account} />}
 
         {tab === "trades" && runningCount > 0 && !account && (
           <Mt5SummaryBlock
@@ -408,11 +417,17 @@ export default function Mt5UserPage() {
       <div
         className={`flex-1 overflow-y-auto transition-opacity duration-200 ${refreshing ? "opacity-[0.92]" : ""}`}
       >
-        {loading && !data ? (
+        {loading && !data && tab !== "quotes" ? (
           <div className="flex flex-col items-center justify-center gap-2 py-12 text-[var(--mt5-muted)]">
             <Loader2 className="h-5 w-5 animate-spin" />
             <span className="text-xs">Loading MT5…</span>
           </div>
+        ) : tab === "quotes" ? (
+          <QuotesPanel
+            quotes={quotes}
+            setups={setups}
+            onOpenSetup={(s) => setSelectedSetup(toSetupSummary(s))}
+          />
         ) : tab === "setups" ? (
           <SetupsPanel
             setups={setups}
@@ -458,6 +473,101 @@ export default function Mt5UserPage() {
   );
 }
 
+function QuotesPanel({
+  quotes,
+  setups,
+  onOpenSetup,
+}: {
+  quotes: UserMt5QuoteItem[];
+  setups: OpenSetupItem[];
+  onOpenSetup: (s: OpenSetupItem) => void;
+}) {
+  const sessionExtremes = useRef<Record<string, { low: number; high: number }>>(
+    {},
+  );
+
+  useEffect(() => {
+    for (const q of quotes) {
+      if (q.mid == null) continue;
+      const prev = sessionExtremes.current[q.symbol];
+      if (!prev) {
+        sessionExtremes.current[q.symbol] = { low: q.mid, high: q.mid };
+      } else {
+        sessionExtremes.current[q.symbol] = {
+          low: Math.min(prev.low, q.mid),
+          high: Math.max(prev.high, q.mid),
+        };
+      }
+    }
+  }, [quotes]);
+
+  if (quotes.length === 0) {
+    return (
+      <Mt5Empty
+        title="No quotes"
+        hint="Submit an open setup to see live prices here · 1s refresh"
+      />
+    );
+  }
+
+  return (
+    <div>
+      {quotes.map((q) => {
+        const change = q.change ?? 0;
+        const changePct = q.changePct ?? 0;
+        const up = change >= 0;
+        const extremes = sessionExtremes.current[q.symbol];
+        const setup = setups.find((s) => s.signalId === q.signalId);
+
+        return (
+          <button
+            key={q.signalId}
+            type="button"
+            onClick={() => setup && onOpenSetup(setup)}
+            className="flex w-full gap-3 border-b border-[var(--mt5-divider)] px-4 py-3 text-left transition-colors hover:bg-[var(--mt5-row-hover)] active:bg-[var(--mt5-row-hover)]"
+          >
+            <div className="min-w-0 flex-1">
+              <p
+                className="text-xs tabular-nums"
+                style={{ color: up ? "#4a9eff" : "#ff5252" }}
+              >
+                {up ? "+" : ""}
+                {fmtMt5Price(change)} {changePct >= 0 ? "+" : ""}
+                {changePct.toFixed(2)}%
+              </p>
+              <p className="mt-0.5 text-lg font-bold tracking-tight">
+                {q.symbol}
+              </p>
+              <p className="mt-0.5 flex items-center gap-1 text-[10px] text-[var(--mt5-muted)]">
+                <span>{fmtQuoteTime(q.time)}</span>
+                {q.spread != null && (
+                  <>
+                    <span>·</span>
+                    <span className="tabular-nums">
+                      {q.spread.toFixed(q.spread < 1 ? 5 : 2)}
+                    </span>
+                  </>
+                )}
+              </p>
+            </div>
+            <div className="shrink-0 text-right">
+              <div className="flex items-baseline justify-end gap-3">
+                <Mt5QuotePrice value={q.bid} />
+                <Mt5QuotePrice value={q.ask} />
+              </div>
+              {extremes && (
+                <p className="mt-1 text-[10px] tabular-nums text-[var(--mt5-muted)]">
+                  L: {fmtMt5Price(extremes.low)} H: {fmtMt5Price(extremes.high)}
+                </p>
+              )}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function SetupsPanel({
   setups,
   limitTrades,
@@ -486,8 +596,11 @@ function SetupsPanel({
 
   return (
     <div>
-      {limitTrades.map((order) => {
-        const id = order.orderId ?? order.signalId ?? order.symbol;
+      {limitTrades.map((order, index) => {
+        const id = rowKey(
+          [order.orderId, order.signalId, `limit-${order.symbol}`],
+          index,
+        );
         const expanded = expand.isExpanded(id);
         return (
           <Mt5ExpandableRow
@@ -677,7 +790,7 @@ function PositionsPanel({
     return (
       <Mt5Empty
         title="No open positions"
-        hint="Running trades from your setups appear here · refreshes every 2s"
+        hint="Running trades from your setups appear here · refreshes every 1s"
       />
     );
   }
@@ -687,9 +800,11 @@ function PositionsPanel({
       <div className="border-b border-[var(--mt5-divider)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--mt5-muted)]">
         Positions
       </div>
-      {trades.map((trade) => {
-        const key =
-          trade.signalId ?? trade.positionId ?? trade.orderId ?? trade.symbol;
+      {trades.map((trade, index) => {
+        const key = rowKey(
+          [trade.positionId, trade.orderId, trade.signalId, trade.symbol],
+          index,
+        );
         const expanded = expand.isExpanded(key);
         const profit = trade.profit ?? 0;
         const partialKey = partialLot[key] ?? "";

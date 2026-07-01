@@ -271,6 +271,8 @@ class ApiClient {
     metaApiAccounts: () =>
       this.request<MetaApiAccountsResult>("/signals/metaapi/accounts"),
     mt5Terminal: () => this.request<UserMt5Terminal>("/signals/mt5/terminal"),
+    mt5Quotes: () =>
+      this.request<UserMt5QuotesResult>("/signals/mt5/quotes"),
     mt5Running: () =>
       this.request<UserMt5RunningResult>("/signals/mt5/running"),
     closeMt5Position: (positionId: string) =>
@@ -1366,6 +1368,28 @@ export interface UserMt5HistoryItem {
   isWin: boolean | null;
   submittedAt: string;
   closedAt: string;
+}
+
+export interface UserMt5QuoteItem {
+  signalId: string;
+  symbol: string;
+  direction: string;
+  entryMin: number;
+  entryMax: number;
+  entryMid: number;
+  bid: number | null;
+  ask: number | null;
+  mid: number | null;
+  spread: number | null;
+  change: number | null;
+  changePct: number | null;
+  time: string | null;
+  submittedAt: string;
+}
+
+export interface UserMt5QuotesResult {
+  items: UserMt5QuoteItem[];
+  refreshedAt: string;
 }
 
 export interface UserMt5AccountSummary {

@@ -295,6 +295,12 @@ export class SignalsController {
     return this.signalsService.claimSetup(req.user.id, signalId, dto);
   }
 
+  @Get('mt5/quotes')
+  @UseGuards(JwtAuthGuard)
+  getUserMt5Quotes(@Request() req: { user: { id: string } }) {
+    return this.signalsService.getUserMt5Quotes(req.user.id);
+  }
+
   @Get('mt5/running')
   @UseGuards(JwtAuthGuard)
   getUserMt5Running(@Request() req: { user: { id: string } }) {

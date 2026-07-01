@@ -374,3 +374,46 @@ export function Mt5FloatingHeader({
 export function fmtCurrencyMt5(value: number) {
   return formatCurrency(value).replace("$", "");
 }
+
+export function fmtQuoteTime(iso: string | null) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
+/** MT5-style bid/ask with emphasized trailing digits */
+export function Mt5QuotePrice({ value }: { value: number | null }) {
+  if (value == null) return <span className="text-[var(--mt5-muted)]">—</span>;
+  const raw = value.toFixed(value >= 100 ? 2 : value >= 1 ? 3 : 5);
+  const [intPart, decPart] = raw.split(".");
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  if (!decPart || decPart.length <= 2) {
+    return (
+      <span className="font-semibold tabular-nums text-[var(--mt5-text)]">
+        {grouped}.{decPart ?? "00"}
+      </span>
+    );
+  }
+  const main = decPart.slice(0, -1);
+  const last = decPart.slice(-1);
+  return (
+    <span className="tabular-nums text-[var(--mt5-text)]">
+      <span className="text-base font-medium">
+        {grouped}.{main}
+      </span>
+      <span className="text-xl font-bold">{last}</span>
+    </span>
+  );
+}
+
+export function rowKey(
+  parts: (string | null | undefined)[],
+  index: number,
+) {
+  return parts.find(Boolean) ?? `row-${index}`;
+}

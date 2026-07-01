@@ -4429,6 +4429,92 @@ export class SignalsService {
     return report;
   }
 
+  /** Live quotes for symbols with open submitted setups (platform MT5). */
+  async getUserMt5Quotes(userId: string) {
+    await this.compliance.requireActiveTrader(userId);
+
+    const platformAccountId = this.metaApi.getConfiguredDefaultAccountId();
+    if (!this.metaApi.isConfigured || !platformAccountId) {
+      return { items: [], refreshedAt: new Date().toISOString() };
+    }
+
+    const openSignals = await this.prisma.signal.findMany({
+      where: { userId, status: 'OPEN' },
+      orderBy: { submittedAt: 'desc' },
+      select: {
+        signalId: true,
+        symbol: true,
+        direction: true,
+        entryMin: true,
+        entryMax: true,
+        submittedAt: true,
+      },
+    });
+
+    const bySymbol = new Map<string, (typeof openSignals)[number]>();
+    for (const row of openSignals) {
+      if (!bySymbol.has(row.symbol)) bySymbol.set(row.symbol, row);
+    }
+
+    const account = await this.metaApi.getAccount(platformAccountId);
+    const items = await Promise.all(
+      [...bySymbol.values()].map(async (row) => {
+        const entryMin = Number(row.entryMin);
+        const entryMax = Number(row.entryMax);
+        const entryMid = (entryMin + entryMax) / 2;
+        try {
+          const price = await this.metaApi.getSymbolPrice(account, row.symbol);
+          const bid = price.bid;
+          const ask = price.ask;
+          const mid = (bid + ask) / 2;
+          const spread = ask - bid;
+          const change = mid - entryMid;
+          const changePct =
+            entryMid !== 0 ? (change / entryMid) * 100 : 0;
+
+          return {
+            signalId: row.signalId,
+            symbol: row.symbol,
+            direction: row.direction,
+            entryMin,
+            entryMax,
+            entryMid,
+            bid,
+            ask,
+            mid,
+            spread,
+            change,
+            changePct,
+            time: price.time,
+            submittedAt: row.submittedAt.toISOString(),
+          };
+        } catch {
+          return {
+            signalId: row.signalId,
+            symbol: row.symbol,
+            direction: row.direction,
+            entryMin,
+            entryMax,
+            entryMid,
+            bid: null,
+            ask: null,
+            mid: null,
+            spread: null,
+            change: null,
+            changePct: null,
+            time: null,
+            submittedAt: row.submittedAt.toISOString(),
+          };
+        }
+      }),
+    );
+
+    return {
+      items,
+      refreshedAt: new Date().toISOString(),
+    };
+  }
+
   /** User MT5 hub — their submitted setups on the platform MT5 account. */
   private async buildMt5UserAccountSummary(
     userId: string,
