@@ -3,68 +3,54 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  ClipboardCheck,
-  LayoutDashboard,
-  LineChart,
-  Send,
-  Settings,
-  Wallet,
-  X,
-} from "lucide-react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const cashRoutes = ["/tp-claims", "/payouts", "/settings"] as const;
 
 const cashMenuItems = [
-  { href: "/tp-claims", label: "Claims", icon: ClipboardCheck },
-  { href: "/payouts", label: "Payouts", icon: Wallet },
-  { href: "/settings", label: "Account", icon: Settings },
+  { href: "/tp-claims", label: "Claims" },
+  { href: "/payouts", label: "Payouts" },
+  { href: "/settings", label: "Account" },
 ] as const;
 
-type TabItem = {
-  href: string;
-  shortLabel: string;
-  icon: typeof LayoutDashboard;
-};
-
-const tabs: TabItem[] = [
-  { href: "/dashboard", shortLabel: "Home", icon: LayoutDashboard },
-  { href: "/submit", shortLabel: "Submit", icon: Send },
-  { href: "/mt5", shortLabel: "MT5", icon: LineChart },
-];
+const tabs = [
+  { href: "/dashboard", label: "Home" },
+  { href: "/submit", label: "Submit" },
+  { href: "/mt5", label: "MT5" },
+] as const;
 
 function isMt5Path(pathname: string) {
   return pathname === "/mt5" || pathname.startsWith("/mt5/");
 }
 
 function NavTab({
-  item,
+  href,
+  label,
   active,
 }: {
-  item: TabItem;
+  href: string;
+  label: string;
   active: boolean;
 }) {
-  const Icon = item.icon;
   return (
     <Link
-      href={item.href}
+      href={href}
       className={cn(
-        "relative flex flex-col items-center justify-center gap-1 py-2 transition-colors",
+        "relative flex flex-col items-center justify-center py-2 transition-colors",
         active ? "text-primary" : "text-muted hover:text-foreground",
       )}
     >
-      <Icon className="h-5 w-5" strokeWidth={active ? 2.5 : 2} />
       <span
         className={cn(
-          "text-[10px] font-medium leading-none",
-          active && "font-semibold",
+          "text-[11px] font-semibold leading-none tracking-wide",
+          active && "text-primary",
         )}
       >
-        {item.shortLabel}
+        {label}
       </span>
       {active && (
-        <span className="absolute bottom-0.5 h-0.5 w-7 rounded-full bg-primary" />
+        <span className="absolute bottom-0.5 h-0.5 w-8 rounded-full bg-primary" />
       )}
     </Link>
   );
@@ -75,8 +61,7 @@ export function MobileBottomNav() {
   const [cashAt, setCashAt] = useState<string | null>(null);
 
   const cashOpen = cashAt === pathname;
-  const setCashOpen = (open: boolean) =>
-    setCashAt(open ? pathname : null);
+  const setCashOpen = (open: boolean) => setCashAt(open ? pathname : null);
 
   const cashActive = cashRoutes.some(
     (r) => pathname === r || pathname.startsWith(`${r}/`),
@@ -91,8 +76,6 @@ export function MobileBottomNav() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [cashOpen]);
-
-  const Mt5Icon = tabs[2].icon;
 
   return (
     <>
@@ -126,7 +109,6 @@ export function MobileBottomNav() {
           </div>
           <ul className="space-y-1">
             {cashMenuItems.map((item) => {
-              const Icon = item.icon;
               const active = pathname === item.href;
               return (
                 <li key={item.href}>
@@ -134,13 +116,12 @@ export function MobileBottomNav() {
                     href={item.href}
                     onClick={() => setCashOpen(false)}
                     className={cn(
-                      "flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-colors",
+                      "flex items-center rounded-xl px-3 py-3 text-sm font-medium transition-colors",
                       active
                         ? "bg-primary/10 text-primary"
                         : "text-foreground hover:bg-foreground/5",
                     )}
                   >
-                    <Icon className="h-5 w-5 shrink-0" />
                     {item.label}
                   </Link>
                 </li>
@@ -154,57 +135,53 @@ export function MobileBottomNav() {
         className="fixed bottom-0 left-0 right-0 z-50 border-t border-[var(--color-border)] bg-[var(--color-surface)] backdrop-blur-xl md:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
       >
-        <div className="relative mx-auto grid h-16 max-w-lg grid-cols-4 items-end px-1">
-          <NavTab item={tabs[0]} active={pathname === tabs[0].href} />
-          <NavTab item={tabs[1]} active={pathname === tabs[1].href} />
+        <div className="relative mx-auto grid h-14 max-w-lg grid-cols-4 items-center px-1">
+          <NavTab
+            href={tabs[0].href}
+            label={tabs[0].label}
+            active={pathname === tabs[0].href}
+          />
+          <NavTab
+            href={tabs[1].href}
+            label={tabs[1].label}
+            active={pathname === tabs[1].href}
+          />
 
-          <div className="relative flex flex-col items-center justify-end pb-1">
+          <div className="relative flex flex-col items-center justify-center">
             <Link
               href={tabs[2].href}
               className={cn(
-                "absolute -top-5 flex h-14 w-14 items-center justify-center rounded-full border-4 border-[var(--color-surface)] shadow-lg transition-transform active:scale-95",
+                "flex h-10 min-w-[3.25rem] items-center justify-center rounded-full px-3 transition-transform active:scale-95",
                 mt5Active
-                  ? "bg-primary text-white"
+                  ? "bg-primary text-white shadow-md"
                   : "bg-[var(--color-background)] text-primary ring-1 ring-[var(--color-border)]",
               )}
               aria-label="MT5"
             >
-              <Mt5Icon className="h-6 w-6" strokeWidth={2.25} />
+              <span className="text-[11px] font-bold tracking-wide">MT5</span>
             </Link>
-            <span
-              className={cn(
-                "mt-7 text-[10px] font-medium leading-none",
-                mt5Active ? "font-semibold text-primary" : "text-muted",
-              )}
-            >
-              MT5
-            </span>
           </div>
 
           <button
             type="button"
             onClick={() => setCashOpen(!cashOpen)}
             className={cn(
-              "relative flex flex-col items-center justify-center gap-1 py-2 transition-colors",
+              "relative flex flex-col items-center justify-center py-2 transition-colors",
               cashActive || cashOpen
                 ? "text-primary"
                 : "text-muted hover:text-foreground",
             )}
           >
-            <Wallet
-              className="h-5 w-5"
-              strokeWidth={cashActive || cashOpen ? 2.5 : 2}
-            />
             <span
               className={cn(
-                "text-[10px] font-medium leading-none",
-                (cashActive || cashOpen) && "font-semibold",
+                "text-[11px] font-semibold leading-none tracking-wide",
+                (cashActive || cashOpen) && "text-primary",
               )}
             >
               Cash
             </span>
             {(cashActive || cashOpen) && (
-              <span className="absolute bottom-0.5 h-0.5 w-7 rounded-full bg-primary" />
+              <span className="absolute bottom-0.5 h-0.5 w-8 rounded-full bg-primary" />
             )}
           </button>
         </div>

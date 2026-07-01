@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Loader2,
-  RefreshCw,
 } from "lucide-react";
 import {
   api,
@@ -17,7 +16,6 @@ import {
 import { useAuthStore } from "@/stores/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
 import {
   SetupDetailModal,
   type SetupSummary,
@@ -326,9 +324,9 @@ export default function Mt5UserPage() {
               type="button"
               onClick={() => void load()}
               disabled={loading}
-              className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)]"
+              className="rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)] hover:text-[var(--mt5-text)] disabled:opacity-50"
             >
-              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+              {loading ? "…" : "Refresh"}
             </button>
           </div>
         </div>

@@ -4,8 +4,6 @@ import { type ReactNode, useState } from "react";
 import {
   ChevronDown,
   Loader2,
-  Moon,
-  Sun,
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { useThemeStore } from "@/stores/theme";
@@ -56,17 +54,13 @@ export function Mt5ThemeToggle({ className }: { className?: string }) {
       type="button"
       onClick={toggleTheme}
       className={cn(
-        "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
+        "rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wide transition-colors",
         "text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)] hover:text-[var(--mt5-text)]",
         className,
       )}
       aria-label="Toggle theme"
     >
-      {theme === "dark" ? (
-        <Sun className="h-4 w-4" />
-      ) : (
-        <Moon className="h-4 w-4" />
-      )}
+      {theme === "dark" ? "Light" : "Dark"}
     </button>
   );
 }
