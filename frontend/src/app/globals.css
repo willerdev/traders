@@ -82,6 +82,21 @@ html.light .mt5-shell {
   --mt5-row-hover: rgba(0, 0, 0, 0.03);
 }
 
+/* Floating mobile bottom nav */
+.mobile-nav-dock {
+  --nav-dock-bg: #1a2438;
+  --nav-dock-border: rgba(255, 255, 255, 0.08);
+  --nav-dock-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --nav-dock-inactive: #94a3b8;
+}
+
+html.light .mobile-nav-dock {
+  --nav-dock-bg: #ffffff;
+  --nav-dock-border: rgba(15, 23, 42, 0.08);
+  --nav-dock-shadow: 0 8px 28px rgba(15, 23, 42, 0.12);
+  --nav-dock-inactive: #64748b;
+}
+
 .gradient-orb {
   position: absolute;
   border-radius: 50%;

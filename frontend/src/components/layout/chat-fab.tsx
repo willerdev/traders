@@ -56,7 +56,7 @@ export function ChatFab() {
         "right-4",
       )}
       style={{
-        bottom: "calc(4.25rem + env(safe-area-inset-bottom, 0px) + 0.5rem)",
+        bottom: "calc(5.75rem + env(safe-area-inset-bottom, 0px) + 0.25rem)",
       }}
       aria-label="Open chat"
     >
