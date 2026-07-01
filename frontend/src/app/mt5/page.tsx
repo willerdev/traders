@@ -1,46 +1,45 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Activity,
-  Ban,
-  ChevronRight,
-  Clock,
-  History,
-  Layers,
   Loader2,
-  Play,
   RefreshCw,
-  Shield,
-  TrendingDown,
-  TrendingUp,
-  X,
 } from "lucide-react";
 import {
   api,
   type OpenSetupItem,
+  type UserMt5HistoryItem,
   type UserMt5Terminal,
   type UserMt5Trade,
 } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { formatCurrency, cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import {
   SetupDetailModal,
   type SetupSummary,
 } from "@/components/dashboard/setup-detail-modal";
-import { SetupExecutionBadge } from "@/components/dashboard/setup-execution-badge";
+import {
+  Mt5ActionStrip,
+  Mt5DetailGrid,
+  Mt5DirectionTag,
+  Mt5Empty,
+  Mt5ExpandableRow,
+  Mt5FloatingHeader,
+  Mt5Pnl,
+  Mt5SubTabs,
+  Mt5SummaryBlock,
+  Mt5ThemeToggle,
+  fmtMt5Date,
+  fmtMt5Price,
+  useMt5Expand,
+} from "@/components/mt5/mt5-ui";
 
 type Tab = "setups" | "trades" | "history";
-
-function fmtPnl(value: number) {
-  const prefix = value >= 0 ? "+" : "";
-  return `${prefix}${formatCurrency(value)}`;
-}
+type HistorySubTab = "positions" | "orders" | "deals";
 
 function toSetupSummary(setup: OpenSetupItem): SetupSummary {
   return {
@@ -56,12 +55,18 @@ function toSetupSummary(setup: OpenSetupItem): SetupSummary {
   };
 }
 
-function historyStatusClass(status: string) {
-  const s = status.toUpperCase();
-  if (s === "WON") return "bg-emerald-500/15 text-emerald-400";
-  if (s === "LOST") return "bg-red-500/15 text-red-400";
-  if (s === "ARCHIVED" || s === "CANCELLED") return "bg-white/10 text-gray-400";
-  return "bg-sky-500/15 text-sky-400";
+function orderStatus(row: UserMt5HistoryItem): "FILLED" | "CANCELED" {
+  if (row.status === "CANCELLED") return "CANCELED";
+  return "FILLED";
+}
+
+function orderTypeLabel(row: UserMt5HistoryItem) {
+  const dir = row.direction.toLowerCase();
+  if (row.entryPrice == null && row.status === "CANCELLED") {
+    return `${dir} limit`;
+  }
+  if (row.entryPrice != null) return dir;
+  return `${dir} limit`;
 }
 
 export default function Mt5UserPage() {
@@ -74,8 +79,10 @@ export default function Mt5UserPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("trades");
+  const [historySubTab, setHistorySubTab] = useState<HistorySubTab>("deals");
   const [selectedSetup, setSelectedSetup] = useState<SetupSummary | null>(null);
   const [actionKey, setActionKey] = useState<string | null>(null);
+  const [historyLoadingId, setHistoryLoadingId] = useState<string | null>(null);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) {
@@ -130,24 +137,31 @@ export default function Mt5UserPage() {
     return () => window.clearInterval(id);
   }, [isAuthenticated, tab, loadRunning]);
 
-  if (!hasHydrated || !isAuthenticated) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   const setups = data?.setups.items ?? [];
   const history = data?.history.items ?? [];
+  const limitTrades = useMemo(
+    () => (data?.trades ?? []).filter((t) => t.kind === "limit"),
+    [data?.trades],
+  );
   const floating = data?.stats.floatingProfit ?? 0;
   const limitCount = data?.stats.limitCount ?? 0;
   const runningCount = data?.stats.runningCount ?? runningTrades.length;
 
-  async function runSetupAction(
-    key: string,
-    fn: () => Promise<void>,
-  ) {
+  const historyPositions = useMemo(
+    () => history.filter((h) => h.status === "WON" || h.status === "LOST"),
+    [history],
+  );
+  const historyOrders = useMemo(
+    () => history,
+    [history],
+  );
+  const historyProfit = useMemo(
+    () =>
+      history.reduce((sum, h) => sum + (h.pnl ?? 0), 0),
+    [history],
+  );
+
+  async function runSetupAction(key: string, fn: () => Promise<void>) {
     setActionKey(key);
     setError(null);
     try {
@@ -162,7 +176,7 @@ export default function Mt5UserPage() {
   }
 
   async function handleCloseTrade(trade: UserMt5Trade) {
-    if (!confirm(`Close running ${trade.symbol} trade?`)) return;
+    if (!confirm(`Close running ${trade.symbol} position?`)) return;
     const key = trade.signalId ?? trade.positionId ?? trade.symbol;
     await runSetupAction(key, async () => {
       if (trade.signalId) {
@@ -203,6 +217,36 @@ export default function Mt5UserPage() {
     });
   }
 
+  async function openSetupFromHistory(row: UserMt5HistoryItem) {
+    setHistoryLoadingId(row.signalId);
+    setError(null);
+    try {
+      let screenshotUrl: string | undefined;
+      try {
+        const full = await api.signals.get(row.signalId);
+        screenshotUrl = full.screenshotUrl;
+      } catch {
+        /* chart optional */
+      }
+      setSelectedSetup({
+        signalId: row.signalId,
+        symbol: row.symbol,
+        direction: row.direction,
+        entryMin: row.entryMin,
+        entryMax: row.entryMax,
+        stopLoss: row.stopLoss,
+        takeProfit: row.takeProfit,
+        status: row.status,
+        submittedAt: row.submittedAt,
+        screenshotUrl,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load setup");
+    } finally {
+      setHistoryLoadingId(null);
+    }
+  }
+
   async function handlePlaceSetup(setup: OpenSetupItem) {
     if (
       !confirm(
@@ -236,147 +280,179 @@ export default function Mt5UserPage() {
     });
   }
 
-  const tabs: { id: Tab; label: string; icon: typeof Layers; count?: number }[] =
-    [
-      { id: "setups", label: "Setups", icon: Layers, count: setups.length },
-      {
-        id: "trades",
-        label: "Trades",
-        icon: Activity,
-        count: runningCount,
-      },
-      { id: "history", label: "History", icon: History, count: history.length },
-    ];
+  if (!hasHydrated || !isAuthenticated) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  const mainTabs: { id: Tab; label: string; count?: number }[] = [
+    { id: "setups", label: "Setups", count: setups.length },
+    { id: "trades", label: "Trade", count: runningCount },
+    { id: "history", label: "History", count: history.length },
+  ];
 
   return (
-    <div className="mx-auto flex min-h-[calc(100dvh-4rem)] max-w-lg flex-col md:max-w-2xl">
-      <div className="sticky top-0 z-20 border-b border-white/5 bg-[var(--color-surface)]/95 px-4 pb-3 pt-4 backdrop-blur-xl">
-        <div className="mb-3 flex items-start justify-between gap-3">
+    <div className="mt5-shell mx-auto flex min-h-[calc(100dvh-4rem)] max-w-lg flex-col bg-[var(--mt5-bg)] text-[var(--mt5-text)] md:max-w-2xl">
+      {/* MT5-style header */}
+      <div className="sticky top-0 z-20 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)]">
+        <div className="flex items-center justify-between px-4 py-3">
           <div>
-            <h1 className="text-lg font-bold text-white">MT5</h1>
-            <p className="text-xs text-gray-500">
-              Setups · limits on platform MT5 · running trades refresh every 2s
-            </p>
+            <h1 className="text-base font-semibold">
+              {tab === "history"
+                ? "History"
+                : tab === "trades"
+                  ? "Trade"
+                  : "Setups"}
+            </h1>
+            <p className="text-xs text-[var(--mt5-muted)]">All symbols</p>
           </div>
-          <div className="flex gap-1">
+          <div className="flex items-center gap-0.5">
             {userRole === "ADMIN" && (
               <Link href="/mt5/copy">
-                <Button variant="ghost" size="sm" className="text-xs text-gray-400">
-                  Copy pool
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-[10px] text-[var(--mt5-muted)]"
+                >
+                  Copy
                 </Button>
               </Link>
             )}
-            <Button
-              variant="ghost"
-              size="sm"
+            <Mt5ThemeToggle />
+            <button
+              type="button"
               onClick={() => void load()}
               disabled={loading}
-              className="h-8 w-8 p-0"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)]"
             >
               <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-            </Button>
+            </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 rounded-xl bg-white/[0.03] p-3">
-          <div>
-            <p className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-gray-500">
-              <Clock className="h-3 w-3" />
-              Limits
-            </p>
-            <p className="mt-0.5 text-sm font-semibold text-amber-300/90">
-              {limitCount}
-            </p>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wide text-gray-500">
-              Running
-            </p>
-            <p className="mt-0.5 text-sm font-semibold text-emerald-400">
-              {runningCount}
-            </p>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wide text-gray-500">
-              Floating
-            </p>
-            <p
-              className={cn(
-                "mt-0.5 text-sm font-semibold",
-                floating >= 0 ? "text-emerald-400" : "text-red-400",
-              )}
-            >
-              {fmtPnl(floating)}
-            </p>
-          </div>
-        </div>
+        {tab === "trades" && (
+          <Mt5FloatingHeader profit={floating} />
+        )}
+
+        {tab === "trades" && runningCount > 0 && (
+          <Mt5SummaryBlock
+            rows={[
+              { label: "Positions", value: String(runningCount) },
+              {
+                label: "Floating",
+                value: `${floating >= 0 ? "" : ""}${fmtMt5Price(floating)}`,
+                color: floating >= 0 ? "#4a9eff" : "#ff5252",
+              },
+            ]}
+          />
+        )}
+
+        {tab === "history" && history.length > 0 && (
+          <Mt5SummaryBlock
+            rows={[
+              {
+                label: "Profit",
+                value: fmtMt5Price(historyProfit),
+                color: historyProfit >= 0 ? "#4a9eff" : "#ff5252",
+              },
+              {
+                label: "Closed",
+                value: String(history.length),
+              },
+              {
+                label: "Wins",
+                value: String(
+                  history.filter((h) => h.status === "WON").length,
+                ),
+                color: "#4a9eff",
+              },
+              {
+                label: "Losses",
+                value: String(
+                  history.filter((h) => h.status === "LOST").length,
+                ),
+                color: "#ff5252",
+              },
+            ]}
+          />
+        )}
+
+        {tab === "setups" && (
+          <Mt5SummaryBlock
+            rows={[
+              { label: "Open setups", value: String(setups.length) },
+              { label: "Limits on MT5", value: String(limitCount) },
+            ]}
+          />
+        )}
 
         {data?.message && (
-          <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200/90">
+          <p className="mx-4 mb-2 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-200">
             {data.message}
           </p>
         )}
 
-        <div className="mt-3 flex rounded-lg bg-white/[0.04] p-1">
-          {tabs.map(({ id, label, icon: Icon, count }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setTab(id)}
-              className={cn(
-                "flex flex-1 items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium transition-colors",
-                tab === id
-                  ? "bg-primary text-white shadow-sm"
-                  : "text-gray-400 hover:text-gray-200",
-              )}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-              {count != null && count > 0 && (
-                <span
-                  className={cn(
-                    "rounded-full px-1.5 py-0.5 text-[10px]",
-                    tab === id ? "bg-white/20" : "bg-white/10",
-                  )}
-                >
-                  {count}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+        <Mt5SubTabs
+          tabs={mainTabs.map((t) => ({ id: t.id, label: t.label.toUpperCase() }))}
+          active={tab}
+          onChange={setTab}
+        />
+
+        {tab === "history" && (
+          <Mt5SubTabs
+            tabs={[
+              { id: "positions" as const, label: "POSITIONS" },
+              { id: "orders" as const, label: "ORDERS" },
+              { id: "deals" as const, label: "DEALS" },
+            ]}
+            active={historySubTab}
+            onChange={setHistorySubTab}
+          />
+        )}
       </div>
 
       {error && (
-        <p className="mx-4 mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+        <p className="mx-4 mt-3 rounded border border-[#ff5252]/30 bg-[#ff5252]/10 px-3 py-2 text-xs text-[#ff5252]">
           {error}
         </p>
       )}
 
-      <div className="flex-1 px-4 py-4">
+      <div className="flex-1 overflow-y-auto">
         {loading && !data ? (
-          <div className="flex items-center justify-center py-16 text-gray-500">
+          <div className="flex items-center justify-center py-16 text-[var(--mt5-muted)]">
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
             Loading…
           </div>
         ) : tab === "setups" ? (
-          <SetupsTab
+          <SetupsPanel
             setups={setups}
+            limitTrades={limitTrades}
             actionKey={actionKey}
-            onSelect={setSelectedSetup}
+            onOpenSetup={(s) => setSelectedSetup(toSetupSummary(s))}
             onPlace={handlePlaceSetup}
             onInvalidate={handleInvalidateSetup}
           />
         ) : tab === "trades" ? (
-          <TradesTab
+          <PositionsPanel
             trades={runningTrades}
             actionKey={actionKey}
             onClose={handleCloseTrade}
             onBreakeven={handleBreakeven}
             onPartialClose={handlePartialClose}
+            onOpenSetup={setSelectedSetup}
           />
         ) : (
-          <HistoryTab history={history} />
+          <HistoryPanel
+            subTab={historySubTab}
+            positions={historyPositions}
+            orders={historyOrders}
+            deals={history}
+            loadingSignalId={historyLoadingId}
+            onOpenSetup={(row) => void openSetupFromHistory(row)}
+          />
         )}
       </div>
 
@@ -395,386 +471,652 @@ export default function Mt5UserPage() {
   );
 }
 
-function SetupsTab({
+function SetupsPanel({
   setups,
+  limitTrades,
   actionKey,
-  onSelect,
+  onOpenSetup,
   onPlace,
   onInvalidate,
 }: {
   setups: OpenSetupItem[];
+  limitTrades: UserMt5Trade[];
   actionKey: string | null;
-  onSelect: (s: SetupSummary) => void;
-  onPlace: (setup: OpenSetupItem) => void;
-  onInvalidate: (setup: OpenSetupItem) => void;
+  onOpenSetup: (s: OpenSetupItem) => void;
+  onPlace: (s: OpenSetupItem) => void;
+  onInvalidate: (s: OpenSetupItem) => void;
 }) {
-  if (setups.length === 0) {
+  const expand = useMt5Expand();
+
+  if (setups.length === 0 && limitTrades.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-white/10 py-12 text-center">
-        <Layers className="mx-auto h-8 w-8 text-gray-600" />
-        <p className="mt-3 text-sm text-gray-400">No open setups</p>
-        <Link href="/submit">
-          <Button size="sm" className="mt-4">
-            Submit a setup
-          </Button>
-        </Link>
-      </div>
+      <Mt5Empty
+        title="No open setups"
+        hint="Submit a setup to place limits on platform MT5"
+      />
     );
   }
 
   return (
-    <ul className="space-y-2">
-      {setups.map((setup) => {
-        const live = setup.liveTrade;
-        const res = setup.resolution;
-        const isLimit = live?.status === "pending" || res.executionPhase === "limit_active";
-        const isRunning = live?.status === "open" || setup.activated;
-
+    <div>
+      {limitTrades.map((order) => {
+        const id = order.orderId ?? order.signalId ?? order.symbol;
+        const expanded = expand.isExpanded(id);
         return (
-          <li
-            key={setup.signalId}
-            className="rounded-xl border border-white/5 bg-white/[0.02] overflow-hidden"
-          >
-            <button
-              type="button"
-              onClick={() => onSelect(toSetupSummary(setup))}
-              className="flex w-full items-center gap-3 p-3 text-left active:bg-white/[0.04]"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-bold text-white">{setup.symbol}</span>
-                  <Badge variant={setup.direction === "BUY" ? "success" : "danger"}>
-                    {setup.direction}
-                  </Badge>
-                  {res.executionPhase && (
-                    <SetupExecutionBadge
-                      phase={res.executionPhase}
-                      label={res.executionLabel}
+          <Mt5ExpandableRow
+            key={id}
+            id={id}
+            expanded={expanded}
+            onToggle={() => expand.toggle(id)}
+            header={
+              <>
+                <div>
+                  <span className="font-semibold">{order.symbol}</span>
+                  <span className="ml-2">
+                    <Mt5DirectionTag
+                      direction={order.direction}
+                      volume={order.volume}
+                      suffix="limit"
                     />
-                  )}
-                  {isLimit && !isRunning && (
-                    <Badge variant="gold">Limit pending</Badge>
-                  )}
-                  {isRunning && <Badge variant="success">Running</Badge>}
+                  </span>
                 </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  Entry {setup.entryMin} – {setup.entryMax} · SL {setup.stopLoss}{" "}
-                  · TP {setup.takeProfit}
-                </p>
-                {isRunning && live?.profit != null && (
-                  <p
-                    className={cn(
-                      "mt-1 text-sm font-semibold",
-                      live.profit >= 0 ? "text-emerald-400" : "text-red-400",
-                    )}
-                  >
-                    {fmtPnl(live.profit)}
-                  </p>
-                )}
-              </div>
-              <ChevronRight className="h-4 w-4 shrink-0 text-gray-600" />
-            </button>
-
-            <div className="flex flex-wrap gap-2 border-t border-white/5 p-2">
-              {res.canPlaceTrade && (
-                <Button
-                  size="sm"
-                  className="flex-1 gap-1"
-                  disabled={actionKey === `place-${setup.signalId}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void onPlace(setup);
-                  }}
-                >
-                  {actionKey === `place-${setup.signalId}` ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Play className="h-3.5 w-3.5" />
-                  )}
-                  Place on MT5
-                </Button>
-              )}
-              {!isRunning && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="flex-1 gap-1"
-                  disabled={
-                    actionKey === `inv-${setup.signalId}` || !res.canInvalidate
-                  }
-                  title={res.invalidateBlockedReason}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void onInvalidate(setup);
-                  }}
-                >
-                  {actionKey === `inv-${setup.signalId}` ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Ban className="h-3.5 w-3.5" />
-                  )}
-                  Invalidate
-                </Button>
-              )}
-            </div>
-          </li>
+                <span className="shrink-0 text-xs text-[var(--mt5-muted)]">
+                  pending
+                </span>
+              </>
+            }
+            subheader={
+              <>
+                {order.volume?.toFixed(2) ?? "—"} / {order.volume?.toFixed(2) ?? "—"}{" "}
+                at {fmtMt5Price(order.openPrice ?? order.entryMin)}
+              </>
+            }
+            actions={
+              order.signalId ? (
+                <Mt5ActionStrip
+                  actions={[
+                    {
+                      key: "setup",
+                      label: "Setup",
+                      variant: "buy",
+                      onClick: () => {
+                        const s = setups.find(
+                          (x) => x.signalId === order.signalId,
+                        );
+                        if (s) onOpenSetup(s);
+                      },
+                    },
+                  ]}
+                />
+              ) : undefined
+            }
+          >
+            <Mt5DetailGrid
+              left={[
+                {
+                  label: "S / L:",
+                  value: fmtMt5Price(order.stopLoss),
+                },
+                {
+                  label: "T / P:",
+                  value: fmtMt5Price(order.takeProfit),
+                },
+              ]}
+              right={[
+                {
+                  label: "Entry zone:",
+                  value: `${fmtMt5Price(order.entryMin)} – ${fmtMt5Price(order.entryMax)}`,
+                },
+                {
+                  label: "Order:",
+                  value: order.orderId ? `#${order.orderId}` : "—",
+                },
+              ]}
+            />
+          </Mt5ExpandableRow>
         );
       })}
-    </ul>
+
+      {setups.map((setup) => {
+        const id = setup.signalId;
+        const expanded = expand.isExpanded(id);
+        const res = setup.resolution;
+        const isRunning =
+          setup.liveTrade?.status === "open" || setup.activated;
+
+        return (
+          <Mt5ExpandableRow
+            key={id}
+            id={id}
+            expanded={expanded}
+            onToggle={() => expand.toggle(id)}
+            header={
+              <>
+                <div>
+                  <span className="font-semibold">{setup.symbol}</span>
+                  <span className="ml-2">
+                    <Mt5DirectionTag direction={setup.direction} />
+                  </span>
+                </div>
+                {setup.liveTrade?.profit != null && (
+                  <Mt5Pnl value={setup.liveTrade.profit} className="text-base" />
+                )}
+              </>
+            }
+            subheader={
+              <>
+                Entry {fmtMt5Price(setup.entryMin)} – {fmtMt5Price(setup.entryMax)}
+              </>
+            }
+            actions={
+              <Mt5ActionStrip
+                actions={[
+                  ...(res.canPlaceTrade
+                    ? [
+                        {
+                          key: "place",
+                          label: "Place",
+                          variant: "buy" as const,
+                          loading: actionKey === `place-${setup.signalId}`,
+                          onClick: () => void onPlace(setup),
+                        },
+                      ]
+                    : []),
+                  ...(!isRunning
+                    ? [
+                        {
+                          key: "inv",
+                          label: "Cancel",
+                          variant: "sell" as const,
+                          loading: actionKey === `inv-${setup.signalId}`,
+                          disabled: !res.canInvalidate,
+                          onClick: () => void onInvalidate(setup),
+                        },
+                      ]
+                    : []),
+                  {
+                    key: "setup",
+                    label: "Setup",
+                    variant: "neutral",
+                    onClick: () => onOpenSetup(setup),
+                  },
+                ]}
+              />
+            }
+          >
+            <Mt5DetailGrid
+              left={[
+                { label: "S / L:", value: fmtMt5Price(setup.stopLoss) },
+                { label: "T / P:", value: fmtMt5Price(setup.takeProfit) },
+              ]}
+              right={[
+                {
+                  label: "Setup:",
+                  value: `#${setup.signalId.slice(0, 8)}`,
+                },
+                {
+                  label: "Submitted:",
+                  value: fmtMt5Date(setup.submittedAt),
+                },
+              ]}
+            />
+          </Mt5ExpandableRow>
+        );
+      })}
+    </div>
   );
 }
 
-function TradesTab({
+function PositionsPanel({
   trades,
   actionKey,
   onClose,
   onBreakeven,
   onPartialClose,
+  onOpenSetup,
 }: {
   trades: UserMt5Trade[];
   actionKey: string | null;
-  onClose: (trade: UserMt5Trade) => void;
-  onBreakeven: (trade: UserMt5Trade) => void;
-  onPartialClose: (trade: UserMt5Trade, volume: number) => void;
+  onClose: (t: UserMt5Trade) => void;
+  onBreakeven: (t: UserMt5Trade) => void;
+  onPartialClose: (t: UserMt5Trade, vol: number) => void;
+  onOpenSetup: (setup: SetupSummary) => void;
 }) {
+  const expand = useMt5Expand();
   const [partialLot, setPartialLot] = useState<Record<string, string>>({});
-  const [expandedPartial, setExpandedPartial] = useState<string | null>(null);
+  const [partialOpen, setPartialOpen] = useState<string | null>(null);
 
   if (trades.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-white/10 py-12 text-center">
-        <Activity className="mx-auto h-8 w-8 text-gray-600" />
-        <p className="mt-3 text-sm text-gray-400">No running trades</p>
-        <p className="mt-1 text-xs text-gray-600">
-          Running positions appear here after a setup fills on platform MT5.
-          Limits stay under Setups.
-        </p>
-      </div>
+      <Mt5Empty
+        title="No open positions"
+        hint="Running trades from your setups appear here · refreshes every 2s"
+      />
     );
   }
 
   return (
-    <ul className="space-y-2">
+    <div>
+      <div className="border-b border-[var(--mt5-divider)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--mt5-muted)]">
+        Positions
+      </div>
       {trades.map((trade) => {
         const key =
           trade.signalId ?? trade.positionId ?? trade.orderId ?? trade.symbol;
+        const expanded = expand.isExpanded(key);
+        const profit = trade.profit ?? 0;
         const partialKey = partialLot[key] ?? "";
 
         return (
-          <li
+          <Mt5ExpandableRow
             key={key}
-            className="rounded-xl border border-white/5 bg-white/[0.02] p-3"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-base font-bold text-white">
-                    {trade.symbol}
-                  </span>
-                  <Badge variant={trade.direction === "BUY" ? "success" : "danger"}>
-                    {trade.direction}
-                  </Badge>
-                  <Badge variant="success">Running</Badge>
-                  {trade.breakevenSet && (
-                    <Badge variant="secondary">BE set</Badge>
-                  )}
+            id={key}
+            expanded={expanded}
+            onToggle={() => expand.toggle(key)}
+            header={
+              <>
+                <div>
+                  <span className="font-semibold">{trade.symbol}</span>
+                  <span className="text-[var(--mt5-muted)]">, </span>
+                  <Mt5DirectionTag
+                    direction={trade.direction}
+                    volume={trade.volume}
+                  />
                 </div>
-                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-500">
-                  {trade.openPrice != null && (
-                    <span>
-                      Open{" "}
-                      <span className="text-gray-300">{trade.openPrice}</span>
-                    </span>
-                  )}
-                  {trade.currentPrice != null && (
-                    <span>
-                      Now{" "}
-                      <span className="text-gray-300">{trade.currentPrice}</span>
-                    </span>
-                  )}
-                  <span>
-                    SL{" "}
-                    <span className="text-gray-300">{trade.stopLoss ?? "—"}</span>
-                  </span>
-                  <span>
-                    TP{" "}
-                    <span className="text-gray-300">{trade.takeProfit ?? "—"}</span>
-                  </span>
-                  {trade.volume != null && (
-                    <span>
-                      Lots <span className="text-gray-300">{trade.volume}</span>
-                    </span>
-                  )}
-                </div>
-                {trade.signalId && (
-                  <p className="mt-1 text-[10px] text-gray-600">
-                    Setup {trade.signalId}
-                  </p>
-                )}
-              </div>
-
-              <div className="shrink-0 text-right">
-                {trade.profit != null && (
-                  <p
-                    className={cn(
-                      "flex items-center justify-end gap-1 text-lg font-bold",
-                      trade.profit >= 0 ? "text-emerald-400" : "text-red-400",
-                    )}
+                <Mt5Pnl value={profit} className="text-base" />
+              </>
+            }
+            subheader={
+              <>
+                {fmtMt5Price(trade.openPrice)} →{" "}
+                {fmtMt5Price(trade.currentPrice ?? trade.openPrice)}
+              </>
+            }
+            actions={
+              <>
+                {partialOpen === key && trade.signalId && (
+                  <div
+                    className="flex items-end gap-2 border-t border-[var(--mt5-divider)] px-4 py-2"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    {trade.profit >= 0 ? (
-                      <TrendingUp className="h-4 w-4" />
-                    ) : (
-                      <TrendingDown className="h-4 w-4" />
-                    )}
-                    {fmtPnl(trade.profit)}
-                  </p>
+                    <Input
+                      type="number"
+                      step="any"
+                      min="0.01"
+                      placeholder={`Lots (max ${trade.volume ?? "?"})`}
+                      value={partialKey}
+                      onChange={(e) =>
+                        setPartialLot((p) => ({ ...p, [key]: e.target.value }))
+                      }
+                      className="h-9 flex-1 border-[var(--mt5-divider)] bg-[var(--mt5-bg)] text-[var(--mt5-text)]"
+                    />
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={actionKey === `partial-${trade.signalId}`}
+                      onClick={() => {
+                        const vol = parseFloat(partialKey);
+                        if (isNaN(vol) || vol <= 0) return;
+                        void onPartialClose(trade, vol);
+                        setPartialOpen(null);
+                      }}
+                    >
+                      OK
+                    </Button>
+                  </div>
                 )}
-                <p className="mt-0.5 text-[10px] text-gray-600">live · 2s</p>
-              </div>
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              {trade.canSetBreakeven && trade.signalId && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="gap-1"
-                  disabled={actionKey === `be-${trade.signalId}`}
-                  onClick={() => void onBreakeven(trade)}
-                >
-                  {actionKey === `be-${trade.signalId}` ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Shield className="h-3.5 w-3.5" />
-                  )}
-                  Breakeven
-                </Button>
-              )}
-              {trade.canPartialClose && trade.signalId && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() =>
-                    setExpandedPartial(expandedPartial === key ? null : key)
-                  }
-                >
-                  Partial
-                </Button>
-              )}
-              {trade.canClose && (
-                <Button
-                  variant="danger"
-                  size="sm"
-                  className="gap-1"
-                  disabled={actionKey === key}
-                  onClick={() => void onClose(trade)}
-                >
-                  {actionKey === key ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <X className="h-3.5 w-3.5" />
-                  )}
-                  Close
-                </Button>
-              )}
-            </div>
-
-            {expandedPartial === key && trade.signalId && (
-              <div className="mt-2 flex flex-wrap items-end gap-2 border-t border-white/5 pt-2">
-                <Input
-                  type="number"
-                  step="any"
-                  min="0.01"
-                  placeholder={`Lot (max ${trade.volume ?? "?"})`}
-                  value={partialKey}
-                  onChange={(e) =>
-                    setPartialLot((prev) => ({ ...prev, [key]: e.target.value }))
-                  }
-                  className="min-w-[100px] flex-1"
+                <Mt5ActionStrip
+                  actions={[
+                    ...(trade.canSetBreakeven && trade.signalId
+                      ? [
+                          {
+                            key: "be",
+                            label: "Modify",
+                            variant: "buy" as const,
+                            loading: actionKey === `be-${trade.signalId}`,
+                            onClick: () => void onBreakeven(trade),
+                          },
+                        ]
+                      : []),
+                    ...(trade.canPartialClose && trade.signalId
+                      ? [
+                          {
+                            key: "partial",
+                            label: "Partial",
+                            variant: "neutral" as const,
+                            onClick: () =>
+                              setPartialOpen(partialOpen === key ? null : key),
+                          },
+                        ]
+                      : []),
+                    ...(trade.canClose
+                      ? [
+                          {
+                            key: "close",
+                            label: "Close",
+                            variant: "sell" as const,
+                            loading: actionKey === key,
+                            onClick: () => void onClose(trade),
+                          },
+                        ]
+                      : []),
+                    ...(trade.signalId
+                      ? [
+                          {
+                            key: "setup",
+                            label: "Setup",
+                            variant: "neutral" as const,
+                            onClick: () =>
+                              onOpenSetup({
+                                signalId: trade.signalId!,
+                                symbol: trade.symbol,
+                                direction: trade.direction,
+                                entryMin: trade.entryMin ?? 0,
+                                entryMax: trade.entryMax ?? 0,
+                                stopLoss: trade.stopLoss ?? 0,
+                                takeProfit: trade.takeProfit ?? 0,
+                                status: "OPEN",
+                                submittedAt: new Date().toISOString(),
+                              }),
+                          },
+                        ]
+                      : []),
+                  ]}
                 />
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={actionKey === `partial-${trade.signalId}`}
-                  onClick={() => {
-                    const vol = parseFloat(partialKey);
-                    if (isNaN(vol) || vol <= 0) return;
-                    void onPartialClose(trade, vol);
-                    setExpandedPartial(null);
-                  }}
-                >
-                  {actionKey === `partial-${trade.signalId}` ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    "Close partial"
-                  )}
-                </Button>
-              </div>
-            )}
-          </li>
+              </>
+            }
+          >
+            <Mt5DetailGrid
+              left={[
+                {
+                  label: "",
+                  value: trade.positionId
+                    ? `#${trade.positionId}`
+                    : trade.signalId
+                      ? `#${trade.signalId.slice(0, 10)}`
+                      : "—",
+                },
+                { label: "S / L:", value: fmtMt5Price(trade.stopLoss) },
+                { label: "T / P:", value: fmtMt5Price(trade.takeProfit) },
+              ]}
+              right={[
+                {
+                  label: "Open:",
+                  value: fmtMt5Date(new Date().toISOString()),
+                },
+                { label: "Swap:", value: "0.00" },
+                ...(trade.breakevenSet
+                  ? [{ label: "BE:", value: "set" }]
+                  : []),
+              ]}
+            />
+          </Mt5ExpandableRow>
         );
       })}
-    </ul>
+    </div>
   );
 }
 
-function HistoryTab({
-  history,
+function HistoryPanel({
+  subTab,
+  positions,
+  orders,
+  deals,
+  loadingSignalId,
+  onOpenSetup,
 }: {
-  history: UserMt5Terminal["history"]["items"];
+  subTab: HistorySubTab;
+  positions: UserMt5HistoryItem[];
+  orders: UserMt5HistoryItem[];
+  deals: UserMt5HistoryItem[];
+  loadingSignalId: string | null;
+  onOpenSetup: (row: UserMt5HistoryItem) => void;
 }) {
-  if (history.length === 0) {
+  const expand = useMt5Expand();
+
+  if (subTab === "positions") {
+    if (positions.length === 0) {
+      return <Mt5Empty title="No closed positions" />;
+    }
     return (
-      <div className="rounded-xl border border-dashed border-white/10 py-12 text-center">
-        <History className="mx-auto h-8 w-8 text-gray-600" />
-        <p className="mt-3 text-sm text-gray-400">No trade history yet</p>
+      <div>
+        {positions.map((row) => {
+          const id = row.id;
+          const expanded = expand.isExpanded(id);
+          const pnl = row.pnl ?? 0;
+          return (
+            <Mt5ExpandableRow
+              key={id}
+              id={id}
+              expanded={expanded}
+              onToggle={() => expand.toggle(id)}
+              header={
+                <>
+                  <div>
+                    <span className="font-semibold">{row.symbol}</span>
+                    <span className="text-[var(--mt5-muted)]">, </span>
+                    <Mt5DirectionTag direction={row.direction} volume={0.01} />
+                  </div>
+                  <Mt5Pnl value={pnl} className="text-base" />
+                </>
+              }
+              subheader={
+                <>
+                  {fmtMt5Price(row.entryPrice)} → {fmtMt5Price(row.exitPrice)}
+                </>
+              }
+              actions={
+                <Mt5ActionStrip
+                  actions={[
+                    {
+                      key: "setup",
+                      label: loadingSignalId === row.signalId ? "…" : "Setup",
+                      variant: "buy",
+                      loading: loadingSignalId === row.signalId,
+                      onClick: () => onOpenSetup(row),
+                    },
+                  ]}
+                />
+              }
+            >
+              <Mt5DetailGrid
+                left={[
+                  { label: "", value: `#${row.signalId.slice(0, 10)}` },
+                  { label: "S / L:", value: fmtMt5Price(row.stopLoss) },
+                  { label: "T / P:", value: fmtMt5Price(row.takeProfit) },
+                ]}
+                right={[
+                  { label: "Open:", value: fmtMt5Date(row.submittedAt) },
+                  { label: "Close:", value: fmtMt5Date(row.closedAt) },
+                  {
+                    label: "Status:",
+                    value: row.status,
+                  },
+                ]}
+              />
+            </Mt5ExpandableRow>
+          );
+        })}
       </div>
     );
   }
 
+  if (subTab === "orders") {
+    const filled = orders.filter((o) => orderStatus(o) === "FILLED").length;
+    const canceled = orders.filter((o) => orderStatus(o) === "CANCELED").length;
+
+    if (orders.length === 0) {
+      return <Mt5Empty title="No orders in history" />;
+    }
+
+    return (
+      <div>
+        <Mt5SummaryBlock
+          rows={[
+            { label: "Filled", value: String(filled), color: "#4a9eff" },
+            { label: "Canceled", value: String(canceled) },
+            { label: "Total", value: String(orders.length) },
+          ]}
+        />
+        {orders.map((row) => {
+          const id = `ord-${row.id}`;
+          const expanded = expand.isExpanded(id);
+          const status = orderStatus(row);
+          return (
+            <Mt5ExpandableRow
+              key={id}
+              id={id}
+              expanded={expanded}
+              onToggle={() => expand.toggle(id)}
+              header={
+                <>
+                  <span className="font-semibold">{row.symbol}</span>
+                  <span className="shrink-0 text-xs text-[var(--mt5-muted)]">
+                    {fmtMt5Date(row.closedAt)}
+                  </span>
+                </>
+              }
+              subheader={
+                <div className="flex items-center justify-between gap-2">
+                  <span>
+                    <Mt5DirectionTag
+                      direction={row.direction}
+                      volume={0.01}
+                      suffix={
+                        orderTypeLabel(row).includes("limit") ? "limit" : undefined
+                      }
+                    />
+                    {" · "}
+                    0.01 / 0.01 at{" "}
+                    {row.entryPrice != null
+                      ? fmtMt5Price(row.entryPrice)
+                      : fmtMt5Price(row.entryMin)}
+                  </span>
+                  <span
+                    className="shrink-0 text-xs font-semibold uppercase"
+                    style={{
+                      color: status === "FILLED" ? "#4a9eff" : "var(--mt5-muted)",
+                    }}
+                  >
+                    {status}
+                  </span>
+                </div>
+              }
+              actions={
+                <Mt5ActionStrip
+                  actions={[
+                    {
+                      key: "setup",
+                      label: "Setup",
+                      variant: "buy",
+                      loading: loadingSignalId === row.signalId,
+                      onClick: () => onOpenSetup(row),
+                    },
+                  ]}
+                />
+              }
+            >
+              <Mt5DetailGrid
+                left={[
+                  { label: "S / L:", value: fmtMt5Price(row.stopLoss) },
+                  { label: "T / P:", value: fmtMt5Price(row.takeProfit) },
+                ]}
+                right={[
+                  {
+                    label: "Zone:",
+                    value: `${fmtMt5Price(row.entryMin)} – ${fmtMt5Price(row.entryMax)}`,
+                  },
+                  { label: "Setup:", value: `#${row.signalId.slice(0, 8)}` },
+                ]}
+              />
+            </Mt5ExpandableRow>
+          );
+        })}
+      </div>
+    );
+  }
+
+  /* DEALS */
+  if (deals.length === 0) {
+    return <Mt5Empty title="No deals yet" />;
+  }
+
+  const totalProfit = deals.reduce((s, d) => s + (d.pnl ?? 0), 0);
+
   return (
-    <ul className="space-y-2">
-      {history.map((row) => (
-        <li
-          key={row.id}
-          className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-3"
-        >
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold text-white">{row.symbol}</span>
-              <Badge variant={row.direction === "BUY" ? "success" : "danger"}>
-                {row.direction}
-              </Badge>
-              <span
-                className={cn(
-                  "rounded px-1.5 py-0.5 text-[10px] font-medium",
-                  historyStatusClass(row.status),
-                )}
-              >
-                {row.status}
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-gray-500">
-              {new Date(row.closedAt).toLocaleString()}
-              {row.exitPrice != null ? ` · exit ${row.exitPrice}` : ""}
-            </p>
-          </div>
-          <div className="shrink-0 text-right">
-            {row.pnl != null ? (
-              <p
-                className={cn(
-                  "text-sm font-semibold",
-                  row.pnl >= 0 ? "text-emerald-400" : "text-red-400",
-                )}
-              >
-                {fmtPnl(row.pnl)}
-              </p>
-            ) : (
-              <p className="text-xs text-gray-500">—</p>
-            )}
-          </div>
-        </li>
-      ))}
-    </ul>
+    <div>
+      <Mt5SummaryBlock
+        rows={[
+          {
+            label: "Profit",
+            value: fmtMt5Price(totalProfit),
+            color: totalProfit >= 0 ? "#4a9eff" : "#ff5252",
+          },
+          { label: "Deals", value: String(deals.length) },
+        ]}
+      />
+      {deals.map((row) => {
+        const id = `deal-${row.id}`;
+        const expanded = expand.isExpanded(id);
+        const pnl = row.pnl ?? 0;
+        return (
+          <Mt5ExpandableRow
+            key={id}
+            id={id}
+            expanded={expanded}
+            onToggle={() => expand.toggle(id)}
+            header={
+              <>
+                <div>
+                  <span className="font-semibold">{row.symbol}</span>
+                  <span className="ml-2">
+                    <Mt5DirectionTag direction={row.direction} volume={0.01} />
+                  </span>
+                </div>
+                <span className="shrink-0 text-xs text-[var(--mt5-muted)]">
+                  {fmtMt5Date(row.closedAt)}
+                </span>
+              </>
+            }
+            subheader={
+              <div className="flex items-center justify-between">
+                <span>
+                  {row.entryPrice != null
+                    ? `${fmtMt5Price(row.entryPrice)} → ${fmtMt5Price(row.exitPrice)}`
+                    : `Entry ${fmtMt5Price(row.entryMin)} – ${fmtMt5Price(row.entryMax)}`}
+                </span>
+                {row.pnl != null && <Mt5Pnl value={pnl} />}
+              </div>
+            }
+            actions={
+              <Mt5ActionStrip
+                actions={[
+                  {
+                    key: "setup",
+                    label: "Setup",
+                    variant: "buy",
+                    loading: loadingSignalId === row.signalId,
+                    onClick: () => onOpenSetup(row),
+                  },
+                ]}
+              />
+            }
+          >
+            <Mt5DetailGrid
+              left={[
+                { label: "", value: `#${row.signalId.slice(0, 10)}` },
+                { label: "S / L:", value: fmtMt5Price(row.stopLoss) },
+                { label: "T / P:", value: fmtMt5Price(row.takeProfit) },
+              ]}
+              right={[
+                { label: "Open:", value: fmtMt5Date(row.submittedAt) },
+                { label: "Swap:", value: "0.00" },
+                { label: "Commission:", value: "0.00" },
+              ]}
+            />
+          </Mt5ExpandableRow>
+        );
+      })}
+    </div>
   );
 }

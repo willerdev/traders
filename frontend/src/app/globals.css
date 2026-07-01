@@ -61,6 +61,27 @@ html.light .modal-panel {
   background: #ffffff !important;
 }
 
+/* MT5 terminal shell — theme-aware surfaces, fixed buy/sell accent colors */
+.mt5-shell {
+  --mt5-blue: #4a9eff;
+  --mt5-red: #ff5252;
+  --mt5-text: #f5f5f5;
+  --mt5-muted: #8a8a8a;
+  --mt5-bg: #000000;
+  --mt5-surface: #0a0a0a;
+  --mt5-divider: rgba(255, 255, 255, 0.08);
+  --mt5-row-hover: rgba(255, 255, 255, 0.04);
+}
+
+html.light .mt5-shell {
+  --mt5-text: #1a1a1a;
+  --mt5-muted: #6b7280;
+  --mt5-bg: #ffffff;
+  --mt5-surface: #f8f9fa;
+  --mt5-divider: rgba(0, 0, 0, 0.1);
+  --mt5-row-hover: rgba(0, 0, 0, 0.03);
+}
+
 .gradient-orb {
   position: absolute;
   border-radius: 50%;

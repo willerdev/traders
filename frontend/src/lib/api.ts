@@ -231,6 +231,8 @@ class ApiClient {
         };
       }>(`/signals/hub/resend/${signalId}`, { method: "POST" }),
     list: () => this.request<SignalRecord[]>("/signals"),
+    get: (signalId: string) =>
+      this.request<SignalRecord>(`/signals/${signalId}`),
     openUnresolved: () =>
       this.request<OpenSetupsResult>("/signals/open/unresolved"),
     claimableTps: () =>
