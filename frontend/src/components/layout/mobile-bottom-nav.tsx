@@ -38,42 +38,55 @@ function SideNavItem({
   icon: Icon,
   active,
   onClick,
+  textOnly,
 }: {
   href?: string;
   label: string;
-  icon: typeof Home;
+  icon?: typeof Home;
   active: boolean;
   onClick?: () => void;
+  textOnly?: boolean;
 }) {
   const inner = (
     <>
       <span
         className={cn(
-          "flex h-9 min-w-[3.25rem] items-center justify-center rounded-full transition-all duration-200",
+          "flex items-center justify-center rounded-full transition-all duration-200",
+          textOnly
+            ? "h-7 min-w-[2.85rem] px-2 text-[10px] font-bold tracking-wide"
+            : "h-7 min-w-[2.85rem]",
           active
-            ? "bg-primary text-white shadow-md shadow-primary/30"
+            ? "bg-primary text-white shadow-sm shadow-primary/25"
             : "text-[var(--nav-dock-inactive)]",
         )}
       >
-        <Icon
-          className="h-[1.35rem] w-[1.35rem]"
-          strokeWidth={active ? 2.25 : 1.75}
-          fill={active ? "currentColor" : "none"}
-        />
-      </span>
-      <span
-        className={cn(
-          "text-[10px] font-medium leading-none transition-colors",
-          active ? "font-semibold text-primary" : "text-[var(--nav-dock-inactive)]",
+        {textOnly ? (
+          label
+        ) : (
+          Icon && (
+            <Icon
+              className="h-4 w-4"
+              strokeWidth={active ? 2.25 : 1.75}
+              fill={active ? "currentColor" : "none"}
+            />
+          )
         )}
-      >
-        {label}
       </span>
+      {!textOnly && (
+        <span
+          className={cn(
+            "text-[10px] font-medium leading-none transition-colors",
+            active ? "font-semibold text-primary" : "text-[var(--nav-dock-inactive)]",
+          )}
+        >
+          {label}
+        </span>
+      )}
     </>
   );
 
   const className =
-    "flex flex-1 flex-col items-center justify-end gap-1 pb-0.5 pt-2 transition-transform active:scale-95";
+    "flex flex-1 flex-col items-center justify-end gap-1 pb-1 pt-1.5 transition-transform active:scale-95";
 
   if (href) {
     return (
@@ -182,7 +195,7 @@ export function MobileBottomNav() {
         style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom, 0px))" }}
       >
         <nav
-          className="pointer-events-auto mx-3 flex max-w-lg items-end justify-between rounded-[1.35rem] border border-[var(--nav-dock-border)] bg-[var(--nav-dock-bg)] px-1 pb-1.5 pt-2 sm:mx-auto"
+          className="pointer-events-auto mx-3 grid max-w-lg grid-cols-4 items-end rounded-[1.35rem] border border-[var(--nav-dock-border)] bg-[var(--nav-dock-bg)] px-1 pb-2 pt-1.5 sm:mx-auto"
           style={{ boxShadow: "var(--nav-dock-shadow)" }}
           aria-label="Main navigation"
         >
@@ -198,30 +211,12 @@ export function MobileBottomNav() {
             icon={sideTabs[1].icon}
             active={pathname === sideTabs[1].href}
           />
-
-          <div className="flex flex-1 flex-col items-center">
-            <Link
-              href={mt5Tab.href}
-              className={cn(
-                "relative -mt-7 flex h-[3.35rem] w-[3.35rem] items-center justify-center rounded-full transition-transform active:scale-95",
-                "bg-primary text-white shadow-lg shadow-primary/40",
-                "ring-[3px] ring-[var(--nav-dock-bg)]",
-                !mt5Active && "opacity-95",
-              )}
-              aria-label={mt5Tab.label}
-            >
-              <span className="text-xl font-bold leading-none">$</span>
-            </Link>
-            <span
-              className={cn(
-                "mt-1.5 text-[10px] font-medium leading-none",
-                mt5Active ? "font-semibold text-primary" : "text-[var(--nav-dock-inactive)]",
-              )}
-            >
-              {mt5Tab.label}
-            </span>
-          </div>
-
+          <SideNavItem
+            href={mt5Tab.href}
+            label={mt5Tab.label}
+            active={mt5Active}
+            textOnly
+          />
           <SideNavItem
             label="Cash"
             icon={Wallet}

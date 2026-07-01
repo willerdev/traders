@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  ChevronLeft,
   Loader2,
 } from "lucide-react";
 import {
@@ -251,7 +252,6 @@ export default function Mt5UserPage() {
   const mainTabs: { id: Tab; label: string; count?: number }[] = [
     { id: "setups", label: "Setups", count: setups.length },
     { id: "trades", label: "Trade", count: runningCount },
-    { id: "history", label: "History", count: history.length },
   ];
 
   return (
@@ -259,22 +259,34 @@ export default function Mt5UserPage() {
       {/* MT5-style header */}
       <div className="sticky top-0 z-20 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)]">
         <div className="flex items-center justify-between px-4 py-3">
-          <div>
-            <h1 className="text-base font-semibold">
-              {tab === "history"
-                ? "History"
-                : tab === "trades"
-                  ? "Trade"
-                  : "Setups"}
-            </h1>
-            <p className="text-xs text-[var(--mt5-muted)]">
-              All symbols
-              {refreshing && (
-                <span className="ml-2 text-[10px] text-primary">· syncing</span>
-              )}
-            </p>
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            {tab === "history" && (
+              <button
+                type="button"
+                onClick={() => setTab("trades")}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)] hover:text-[var(--mt5-text)]"
+                aria-label="Back to Trade"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+            )}
+            <div className="min-w-0">
+              <h1 className="text-base font-semibold">
+                {tab === "history"
+                  ? "History"
+                  : tab === "trades"
+                    ? "Trade"
+                    : "Setups"}
+              </h1>
+              <p className="text-xs text-[var(--mt5-muted)]">
+                All symbols
+                {refreshing && (
+                  <span className="ml-2 text-[10px] text-primary">· syncing</span>
+                )}
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-0.5">
+          <div className="flex shrink-0 items-center gap-1">
             {userRole === "ADMIN" && (
               <Link href="/mt5/copy">
                 <Button
@@ -285,6 +297,15 @@ export default function Mt5UserPage() {
                   Copy
                 </Button>
               </Link>
+            )}
+            {tab === "trades" && (
+              <button
+                type="button"
+                onClick={() => setTab("history")}
+                className="rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-primary hover:bg-[var(--mt5-row-hover)]"
+              >
+                History
+              </button>
             )}
             <button
               type="button"
@@ -357,11 +378,13 @@ export default function Mt5UserPage() {
           </p>
         )}
 
-        <Mt5SubTabs
-          tabs={mainTabs.map((t) => ({ id: t.id, label: t.label.toUpperCase() }))}
-          active={tab}
-          onChange={setTab}
-        />
+        {tab !== "history" && (
+          <Mt5SubTabs
+            tabs={mainTabs.map((t) => ({ id: t.id, label: t.label.toUpperCase() }))}
+            active={tab}
+            onChange={setTab}
+          />
+        )}
 
         {tab === "history" && (
           <Mt5SubTabs
