@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { api, type LoginResponse } from "@/lib/api";
+import { clearMt5Cache } from "@/lib/mt5-cache";
 
 interface User {
   id: string;
@@ -68,6 +69,8 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
+        const userId = useAuthStore.getState().user?.id;
+        if (userId) clearMt5Cache(userId);
         api.setToken(null);
         set({ user: null, token: null, isAuthenticated: false });
       },

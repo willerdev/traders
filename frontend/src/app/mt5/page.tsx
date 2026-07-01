@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -10,10 +10,10 @@ import {
   api,
   type OpenSetupItem,
   type UserMt5HistoryItem,
-  type UserMt5Terminal,
   type UserMt5Trade,
 } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
+import { useMt5Terminal } from "@/hooks/use-mt5-terminal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -72,68 +72,30 @@ export default function Mt5UserPage() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const hasHydrated = useAuthStore((s) => s.hasHydrated);
   const userRole = useAuthStore((s) => s.user?.role);
-  const [data, setData] = useState<UserMt5Terminal | null>(null);
-  const [runningTrades, setRunningTrades] = useState<UserMt5Trade[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const userId = useAuthStore((s) => s.user?.id);
   const [tab, setTab] = useState<Tab>("trades");
   const [historySubTab, setHistorySubTab] = useState<HistorySubTab>("deals");
   const [selectedSetup, setSelectedSetup] = useState<SetupSummary | null>(null);
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [historyLoadingId, setHistoryLoadingId] = useState<string | null>(null);
 
-  const load = useCallback(async (silent = false) => {
-    if (!silent) {
-      setLoading(true);
-      setError(null);
-    }
-    try {
-      const terminal = await api.signals.mt5Terminal();
-      setData(terminal);
-      setRunningTrades(terminal.trades.filter((t) => t.kind === "running"));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load MT5 data");
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, []);
-
-  const loadRunning = useCallback(async () => {
-    try {
-      const res = await api.signals.mt5Running();
-      setRunningTrades(res.trades);
-      setData((prev) =>
-        prev
-          ? {
-              ...prev,
-              stats: {
-                ...prev.stats,
-                runningCount: res.stats.runningCount,
-                floatingProfit: res.stats.floatingProfit,
-              },
-            }
-          : prev,
-      );
-    } catch {
-      /* keep last snapshot on poll errors */
-    }
-  }, []);
+  const {
+    data,
+    runningTrades,
+    loading,
+    refreshing,
+    error,
+    setError,
+    load,
+    loadRunning,
+  } = useMt5Terminal(userId, isAuthenticated, hasHydrated, tab);
 
   useEffect(() => {
     if (!hasHydrated) return;
     if (!isAuthenticated) {
       router.replace("/login");
-      return;
     }
-    void load();
-  }, [hasHydrated, isAuthenticated, router, load]);
-
-  useEffect(() => {
-    if (!isAuthenticated || tab !== "trades") return;
-    void loadRunning();
-    const id = window.setInterval(() => void loadRunning(), 2000);
-    return () => window.clearInterval(id);
-  }, [isAuthenticated, tab, loadRunning]);
+  }, [hasHydrated, isAuthenticated, router]);
 
   const setups = data?.setups.items ?? [];
   const history = data?.history.items ?? [];
@@ -164,7 +126,7 @@ export default function Mt5UserPage() {
     setError(null);
     try {
       await fn();
-      await load(true);
+      await load({ background: true });
       if (tab === "trades") await loadRunning();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Action failed");
@@ -305,7 +267,12 @@ export default function Mt5UserPage() {
                   ? "Trade"
                   : "Setups"}
             </h1>
-            <p className="text-xs text-[var(--mt5-muted)]">All symbols</p>
+            <p className="text-xs text-[var(--mt5-muted)]">
+              All symbols
+              {refreshing && (
+                <span className="ml-2 text-[10px] text-primary">· syncing</span>
+              )}
+            </p>
           </div>
           <div className="flex items-center gap-0.5">
             {userRole === "ADMIN" && (
@@ -322,11 +289,11 @@ export default function Mt5UserPage() {
             <Mt5ThemeToggle />
             <button
               type="button"
-              onClick={() => void load()}
-              disabled={loading}
+              onClick={() => void load({ background: Boolean(data) })}
+              disabled={refreshing}
               className="rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)] hover:text-[var(--mt5-text)] disabled:opacity-50"
             >
-              {loading ? "…" : "Refresh"}
+              {refreshing ? "…" : "Refresh"}
             </button>
           </div>
         </div>
@@ -418,11 +385,13 @@ export default function Mt5UserPage() {
         </p>
       )}
 
-      <div className="flex-1 overflow-y-auto">
+      <div
+        className={`flex-1 overflow-y-auto transition-opacity duration-200 ${refreshing ? "opacity-[0.92]" : ""}`}
+      >
         {loading && !data ? (
-          <div className="flex items-center justify-center py-16 text-[var(--mt5-muted)]">
-            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-            Loading…
+          <div className="flex flex-col items-center justify-center gap-2 py-12 text-[var(--mt5-muted)]">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span className="text-xs">Loading MT5…</span>
           </div>
         ) : tab === "setups" ? (
           <SetupsPanel
@@ -459,7 +428,7 @@ export default function Mt5UserPage() {
           setup={selectedSetup}
           onClose={() => setSelectedSetup(null)}
           onUpdated={() => {
-            void load(true);
+            void load({ background: true });
             void loadRunning();
             setSelectedSetup(null);
           }}
