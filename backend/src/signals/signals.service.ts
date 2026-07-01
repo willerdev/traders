@@ -45,7 +45,7 @@ import {
   resolveTp1ClaimBlockedReason,
   isHubLimitPending,
 } from '../common/setup-execution.util';
-import { RISK_PERCENT, MAX_RISK_PER_TRADE, MAX_BREAKEVEN_RETRIES } from '../common/constants';
+import { RISK_PERCENT, MAX_RISK_PER_TRADE, MAX_BREAKEVEN_RETRIES, SETUP_MAX_AGE_MS } from '../common/constants';
 import { CopyTradingService } from '../copy-trading/copy-trading.service';
 
 @Injectable()
@@ -1674,6 +1674,47 @@ export class SignalsService {
     }
   }
 
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  async expireStaleOpenSetups() {
+    const cutoff = new Date(Date.now() - SETUP_MAX_AGE_MS);
+
+    const stale = await this.prisma.signal.findMany({
+      where: {
+        status: 'OPEN',
+        submittedAt: { lte: cutoff },
+      },
+      include: {
+        trade: true,
+        user: { select: { id: true, displayName: true, metaApiAccountId: true } },
+      },
+      take: 100,
+      orderBy: { submittedAt: 'asc' },
+    });
+
+    let expiredCount = 0;
+    for (const signal of stale) {
+      if (!signal.user) continue;
+      try {
+        const expired = await this.systemExpireOpenSetup(signal, signal.user);
+        if (expired) expiredCount += 1;
+      } catch (err) {
+        this.logger.warn(
+          `Setup expiry failed for ${signal.signalId}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+
+    const deletedDrafts = await this.prisma.signalDraft.deleteMany({
+      where: { updatedAt: { lte: cutoff } },
+    });
+
+    if (expiredCount > 0 || deletedDrafts.count > 0) {
+      this.logger.log(
+        `Setup expiry sweep: archived ${expiredCount} setup(s), removed ${deletedDrafts.count} draft(s) older than ${SETUP_MAX_AGE_MS / 3600000}h`,
+      );
+    }
+  }
+
   @Cron(CronExpression.EVERY_MINUTE)
   async retryPendingBreakeven() {
     const pending = await this.prisma.signal.findMany({
@@ -3192,7 +3233,129 @@ export class SignalsService {
 
   private async applyArchiveToOpenSignal(
     signal: Signal & { trade: Trade | null },
+    resolvedAt = new Date(),
   ) {
+    await this.prisma.$transaction([
+      this.prisma.signal.update({
+        where: { id: signal.id },
+        data: {
+          status: 'ARCHIVED',
+          resolvedAt,
+        },
+      }),
+      ...(signal.trade
+        ? [
+            this.prisma.trade.update({
+              where: { id: signal.trade.id },
+              data: { closedAt: resolvedAt },
+            }),
+          ]
+        : []),
+    ]);
+  }
+
+  private async invalidateSetupOnHub(
+    signal: {
+      signalId: string;
+      hubRecordId: string | null;
+      hubSenderName: string | null;
+    },
+    user: { id: string; displayName: string },
+    reason: string,
+  ) {
+    if (!this.signalHub.isConfigured) return;
+
+    const sendername =
+      signal.hubSenderName ||
+      this.signalHub.toSenderName(user.displayName, user.id);
+    const alternates = [
+      this.signalHub.toSenderName(user.displayName, user.id),
+      `trader_${user.id.slice(0, 8)}`,
+    ].filter((name) => name !== sendername);
+
+    const result = await this.signalHub.invalidateByExternalId(
+      signal.signalId,
+      sendername,
+      reason,
+      alternates,
+    );
+    if (!result.data && result.notOnHub && signal.hubRecordId) {
+      await this.signalHub.invalidateByHubId(
+        signal.hubRecordId,
+        sendername,
+        reason,
+      );
+    }
+  }
+
+  private async tryCancelMetaApiPendingForSetup(
+    signal: {
+      id: string;
+      signalId: string;
+      symbol: string;
+      metaApiAccountId: string | null;
+      metaApiOrderId: string | null;
+      metaApiPositionId: string | null;
+      trade: { activatedAt: Date | null } | null;
+    },
+    user: { displayName: string; metaApiAccountId: string | null; id: string },
+  ) {
+    if (!this.metaApi.isConfigured) return;
+
+    const accountId = this.metaApi.resolveAccountId(
+      signal.metaApiAccountId ?? user.metaApiAccountId,
+    );
+    if (!accountId) return;
+
+    try {
+      const account = await this.metaApi.ensureAccountReady(accountId);
+      const { clientId } = this.metaApi.buildIdentifiersForUser(
+        user.displayName,
+        user.id,
+        signal.signalId,
+        signal.symbol,
+      );
+      const live = await this.metaApi.findLiveTradeForSignal(account, {
+        positionId: signal.metaApiPositionId,
+        orderId: signal.metaApiOrderId,
+        clientId,
+        displayName: user.displayName,
+        userId: user.id,
+        symbol: signal.symbol,
+        activated: Boolean(signal.trade?.activatedAt),
+      });
+
+      if (live.status === 'pending' && live.orderId) {
+        await this.metaApi.cancelPendingOrder(account, live.orderId);
+        await this.prisma.signal.update({
+          where: { id: signal.id },
+          data: {
+            metaApiAccountId: null,
+            metaApiOrderId: null,
+            metaApiPositionId: null,
+            metaApiExecutedAt: null,
+          },
+        });
+      }
+    } catch (err) {
+      this.logger.warn(
+        `MetaAPI pending cancel skipped for ${signal.signalId}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  private async systemExpireOpenSetup(
+    signal: Signal & {
+      trade: Trade | null;
+      user: { id: string; displayName: string; metaApiAccountId: string | null };
+    },
+    user: { id: string; displayName: string; metaApiAccountId: string | null },
+  ): Promise<boolean> {
+    const reason = `Auto-expired — setup older than ${SETUP_MAX_AGE_MS / 3600000} hours`;
+
+    await this.tryCancelMetaApiPendingForSetup(signal, user);
+    await this.invalidateSetupOnHub(signal, user, reason);
+
     const now = new Date();
     await this.prisma.$transaction([
       this.prisma.signal.update({
@@ -3210,7 +3373,27 @@ export class SignalsService {
             }),
           ]
         : []),
+      this.prisma.tpClaim.updateMany({
+        where: { signalId: signal.id, status: 'PENDING_REVIEW' },
+        data: {
+          status: 'REJECTED',
+          adminNote: reason,
+          reviewedAt: now,
+        },
+      }),
     ]);
+
+    await this.platformNotifications.create({
+      userId: user.id,
+      type: 'SETUP_EXPIRED',
+      title: `${signal.symbol} setup expired`,
+      body: `Your setup was automatically closed after ${SETUP_MAX_AGE_MS / 3600000} hours. Submit a fresh setup if you still want to trade it.`,
+      linkUrl: '/submit',
+      signalId: signal.signalId,
+    });
+
+    this.logger.log(`Setup auto-expired: ${signal.signalId} (user ${user.id})`);
+    return true;
   }
 
   async invalidateSetup(

@@ -30,6 +30,10 @@ export const TP_REWARD_USD = 5;
 export const MAX_BREAKEVEN_RETRIES = 10;
 export const PROMO_DEFAULT_VALIDITY_DAYS = 7;
 
+/** Open setups older than this are auto-invalidated/archived. */
+export const SETUP_MAX_AGE_HOURS = 24;
+export const SETUP_MAX_AGE_MS = SETUP_MAX_AGE_HOURS * 60 * 60 * 1000;
+
 export const STREAK_THRESHOLDS = {
   WARNING: 3,
   SCORE_REDUCTION: 5,
