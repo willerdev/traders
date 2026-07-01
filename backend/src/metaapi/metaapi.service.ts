@@ -89,6 +89,22 @@ export type MetaApiPosition = {
   clientId?: string;
 };
 
+export type MetaApiOrder = {
+  id: string;
+  type: string;
+  state: string;
+  symbol: string;
+  openPrice: number;
+  currentPrice: number;
+  volume: number;
+  currentVolume: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  time: string;
+  comment?: string;
+  clientId?: string;
+};
+
 export type MetaApiTerminalState = {
   configured: boolean;
   defaultAccountId: string | null;
@@ -541,6 +557,57 @@ export class MetaApiService {
 
     if (!Array.isArray(body)) return [];
     return body.map((row) => this.mapPosition(row as Record<string, unknown>));
+  }
+
+  private mapOrder(raw: Record<string, unknown>): MetaApiOrder {
+    return {
+      id: String(raw.id ?? ''),
+      type: String(raw.type ?? ''),
+      state: String(raw.state ?? ''),
+      symbol: String(raw.symbol ?? ''),
+      openPrice: Number(raw.openPrice ?? 0),
+      currentPrice: Number(raw.currentPrice ?? 0),
+      volume: Number(raw.volume ?? 0),
+      currentVolume: Number(raw.currentVolume ?? raw.volume ?? 0),
+      stopLoss: raw.stopLoss != null ? Number(raw.stopLoss) : undefined,
+      takeProfit: raw.takeProfit != null ? Number(raw.takeProfit) : undefined,
+      time: String(raw.time ?? raw.brokerTime ?? ''),
+      comment: typeof raw.comment === 'string' ? raw.comment : undefined,
+      clientId: typeof raw.clientId === 'string' ? raw.clientId : undefined,
+    };
+  }
+
+  async getOrders(account: MetaApiAccount): Promise<MetaApiOrder[]> {
+    const base = this.clientUrl(account.region);
+    const res = await fetch(
+      `${base}/users/current/accounts/${encodeURIComponent(account.id)}/orders?refreshTerminalState=true`,
+      { headers: this.headers() },
+    );
+    const body = (await res.json().catch(() => ({}))) as unknown;
+
+    if (!res.ok) {
+      const err = body as Record<string, unknown>;
+      throw new BadRequestException(
+        (err.message as string) ||
+          `Could not read open orders (${res.status})`,
+      );
+    }
+
+    if (!Array.isArray(body)) return [];
+    return body.map((row) => this.mapOrder(row as Record<string, unknown>));
+  }
+
+  /** Pending limit/stop orders on the platform account for this trader. */
+  async findUserPendingOrders(
+    account: MetaApiAccount,
+    displayName: string,
+    userId: string,
+  ): Promise<MetaApiOrder[]> {
+    const ready = await this.ensureAccountReady(account.id);
+    const orders = await this.getOrders(ready);
+    return orders.filter((o) =>
+      tradeCommentBelongsToUser(o.comment, displayName, userId),
+    );
   }
 
   async getTerminalState(accountId: string): Promise<MetaApiTerminalState> {

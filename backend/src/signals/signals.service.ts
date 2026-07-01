@@ -4335,4 +4335,397 @@ export class SignalsService {
     }
     return report;
   }
+
+  /** User MT5 hub — their submitted setups on the platform MT5 account. */
+  async getUserMt5Terminal(userId: string) {
+    await this.compliance.requireActiveTrader(userId);
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { displayName: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const platformAccountId = this.metaApi.getConfiguredDefaultAccountId();
+    const platformTrader = { displayName: user.displayName, metaApiAccountId: null };
+
+    const [openSetups, history] = await Promise.all([
+      this.getOpenSignalsWithResolution(userId),
+      this.listUserTradeHistory(userId, 50),
+    ]);
+
+    const openSignals = await this.prisma.signal.findMany({
+      where: { userId, status: 'OPEN' },
+      include: { trade: true },
+      orderBy: { submittedAt: 'desc' },
+    });
+
+    const signalByPositionId = new Map<string, string>();
+    const signalByOrderId = new Map<string, string>();
+    const clientIdBySignalId = new Map<string, string>();
+    for (const s of openSignals) {
+      if (s.metaApiPositionId) {
+        signalByPositionId.set(s.metaApiPositionId, s.signalId);
+      }
+      if (s.metaApiOrderId) {
+        signalByOrderId.set(s.metaApiOrderId, s.signalId);
+      }
+      const { clientId } = this.metaApi.buildIdentifiersForUser(
+        user.displayName,
+        userId,
+        s.signalId,
+        s.symbol,
+      );
+      clientIdBySignalId.set(s.signalId, clientId);
+    }
+
+    const setups = await Promise.all(
+      openSetups.items.map(async (item) => {
+        const signal = openSignals.find((s) => s.signalId === item.signalId);
+        if (!signal) {
+          return { ...item, liveTrade: item.resolution.liveTrade ?? null };
+        }
+
+        const entryMin = Number(signal.entryMin);
+        const entryMax = Number(signal.entryMax);
+        const sl = Number(signal.stopLoss);
+        const oneToOnePrice = computeOneToOnePrice(
+          signal.direction,
+          entryMin,
+          entryMax,
+          sl,
+        );
+
+        const liveTrade = await this.resolveSetupLiveTrade(
+          signal,
+          userId,
+          platformTrader,
+          oneToOnePrice,
+          item.resolution.currentPrice ??
+            item.resolution.metaApiPrice ??
+            null,
+        );
+
+        return { ...item, liveTrade };
+      }),
+    );
+
+    type Mt5TradeRow = {
+      signalId: string | null;
+      symbol: string;
+      direction: string;
+      kind: 'limit' | 'running';
+      status: 'pending' | 'open';
+      entryMin?: number;
+      entryMax?: number;
+      stopLoss?: number;
+      takeProfit?: number;
+      volume?: number;
+      openPrice?: number;
+      currentPrice?: number;
+      profit?: number;
+      orderId?: string;
+      positionId?: string;
+      orderType?: string;
+      canClose: boolean;
+      executionLabel?: string;
+    };
+
+    const trades: Mt5TradeRow[] = [];
+    const seenKeys = new Set<string>();
+
+    const pushTrade = (row: Mt5TradeRow) => {
+      const key =
+        row.signalId ??
+        row.positionId ??
+        row.orderId ??
+        `${row.symbol}-${row.kind}`;
+      if (seenKeys.has(key)) return;
+      seenKeys.add(key);
+      trades.push(row);
+    };
+
+    for (const setup of setups) {
+      const signal = openSignals.find((s) => s.signalId === setup.signalId);
+      const live = setup.liveTrade as Record<string, unknown> | null | undefined;
+      const liveStatus = live?.status as string | undefined;
+      const res = setup.resolution;
+
+      const isPending =
+        liveStatus === 'pending' ||
+        (Boolean(signal?.metaApiOrderId) &&
+          !setup.activated &&
+          liveStatus !== 'open');
+      const isRunning =
+        liveStatus === 'open' ||
+        setup.activated ||
+        res.executionPhase === 'running' ||
+        res.executionPhase === 'partial';
+
+      if (!isPending && !isRunning) continue;
+
+      pushTrade({
+        signalId: setup.signalId,
+        symbol: setup.symbol,
+        direction: setup.direction,
+        kind: isPending && !isRunning ? 'limit' : 'running',
+        status: isPending && !isRunning ? 'pending' : 'open',
+        entryMin: setup.entryMin,
+        entryMax: setup.entryMax,
+        stopLoss: setup.stopLoss,
+        takeProfit: setup.takeProfit,
+        volume: live?.volume != null ? Number(live.volume) : undefined,
+        openPrice:
+          live?.openPrice != null
+            ? Number(live.openPrice)
+            : live?.entryPrice != null
+              ? Number(live.entryPrice)
+              : undefined,
+        currentPrice:
+          live?.currentPrice != null ? Number(live.currentPrice) : undefined,
+        profit:
+          live?.profit != null
+            ? Number(live.profit)
+            : live?.unrealizedProfit != null
+              ? Number(live.unrealizedProfit)
+              : undefined,
+        orderId:
+          (live?.orderId as string | undefined) ??
+          signal?.metaApiOrderId ??
+          undefined,
+        positionId:
+          (live?.positionId as string | undefined) ??
+          signal?.metaApiPositionId ??
+          undefined,
+        canClose: Boolean(
+          live?.canClose ?? res.canCloseTrade ?? (isPending || isRunning),
+        ),
+        executionLabel: res.executionLabel,
+      });
+    }
+
+    let terminalError: string | undefined;
+    if (!this.metaApi.isConfigured) {
+      terminalError = 'Live trading is not configured on the platform.';
+    } else if (!platformAccountId) {
+      terminalError = 'Platform MT5 account is not configured.';
+    } else {
+      try {
+        const account = await this.metaApi.getAccount(platformAccountId);
+        const [pendingOrders, openPositions] = await Promise.all([
+          this.metaApi.findUserPendingOrders(
+            account,
+            user.displayName,
+            userId,
+          ),
+          this.metaApi.findUserOpenPositions(
+            account,
+            user.displayName,
+            userId,
+          ),
+        ]);
+
+        for (const order of pendingOrders) {
+          const signalId =
+            signalByOrderId.get(order.id) ??
+            openSignals.find(
+              (s) => clientIdBySignalId.get(s.signalId) === order.clientId,
+            )?.signalId ??
+            null;
+          if (signalId && seenKeys.has(signalId)) continue;
+
+          const linked = signalId
+            ? openSignals.find((s) => s.signalId === signalId)
+            : null;
+
+          pushTrade({
+            signalId,
+            symbol: order.symbol,
+            direction: order.type.toLowerCase().includes('sell') ? 'SELL' : 'BUY',
+            kind: 'limit',
+            status: 'pending',
+            entryMin: linked ? Number(linked.entryMin) : undefined,
+            entryMax: linked ? Number(linked.entryMax) : undefined,
+            stopLoss: order.stopLoss ?? (linked ? Number(linked.stopLoss) : undefined),
+            takeProfit:
+              order.takeProfit ?? (linked ? Number(linked.takeProfit) : undefined),
+            volume: order.currentVolume ?? order.volume,
+            openPrice: order.openPrice,
+            currentPrice: order.currentPrice,
+            orderId: order.id,
+            orderType: order.type,
+            canClose: true,
+            executionLabel: 'Limit order on platform MT5',
+          });
+        }
+
+        for (const pos of openPositions) {
+          const signalId =
+            signalByPositionId.get(pos.id) ??
+            openSignals.find(
+              (s) => clientIdBySignalId.get(s.signalId) === pos.clientId,
+            )?.signalId ??
+            null;
+          const key = signalId ?? pos.id;
+          if (seenKeys.has(key)) continue;
+
+          const linked = signalId
+            ? openSignals.find((s) => s.signalId === signalId)
+            : null;
+          const pnl =
+            pos.profit + pos.unrealizedProfit + pos.swap + pos.commission;
+
+          pushTrade({
+            signalId,
+            symbol: pos.symbol,
+            direction: pos.type.toLowerCase().includes('sell') ? 'SELL' : 'BUY',
+            kind: 'running',
+            status: 'open',
+            entryMin: linked ? Number(linked.entryMin) : undefined,
+            entryMax: linked ? Number(linked.entryMax) : undefined,
+            stopLoss: pos.stopLoss,
+            takeProfit: pos.takeProfit,
+            volume: pos.volume,
+            openPrice: pos.openPrice,
+            currentPrice: pos.currentPrice,
+            profit: pnl,
+            positionId: pos.id,
+            canClose: true,
+            executionLabel: 'Running on platform MT5',
+          });
+        }
+      } catch (err) {
+        terminalError =
+          err instanceof Error ? err.message : 'Could not load platform MT5 state';
+        this.logger.warn(`User MT5 terminal poll failed: ${terminalError}`);
+      }
+    }
+
+    const floatingProfit = trades
+      .filter((t) => t.status === 'open' && t.profit != null)
+      .reduce((sum, t) => sum + (t.profit ?? 0), 0);
+
+    const limitCount = trades.filter((t) => t.kind === 'limit').length;
+    const runningCount = trades.filter((t) => t.kind === 'running').length;
+
+    return {
+      configured: this.metaApi.isConfigured && Boolean(platformAccountId),
+      message: terminalError,
+      setups: {
+        items: setups,
+        count: setups.length,
+        claimableCount: openSetups.claimableCount,
+      },
+      trades,
+      history,
+      stats: {
+        openSetupCount: setups.length,
+        limitCount,
+        runningCount,
+        floatingProfit,
+        historyCount: history.count,
+      },
+      refreshedAt: new Date().toISOString(),
+    };
+  }
+
+  async listUserTradeHistory(userId: string, limit = 50) {
+    await this.compliance.requireActiveTrader(userId);
+    const take = Math.min(Math.max(limit, 1), 100);
+
+    const rows = await this.prisma.signal.findMany({
+      where: {
+        userId,
+        status: { in: ['WON', 'LOST', 'ARCHIVED', 'CANCELLED'] },
+      },
+      orderBy: [{ resolvedAt: 'desc' }, { submittedAt: 'desc' }],
+      take,
+      include: { trade: true },
+    });
+
+    const items = rows.map((row) => {
+      const pnl =
+        row.pnl != null
+          ? Number(row.pnl)
+          : row.trade?.pnl != null
+            ? Number(row.trade.pnl)
+            : null;
+      const closedAt = row.trade?.closedAt ?? row.resolvedAt ?? row.submittedAt;
+
+      return {
+        id: row.id,
+        signalId: row.signalId,
+        symbol: row.symbol,
+        direction: row.direction,
+        status: row.status,
+        entryMin: Number(row.entryMin),
+        entryMax: Number(row.entryMax),
+        stopLoss: Number(row.stopLoss),
+        takeProfit: Number(row.takeProfit),
+        entryPrice:
+          row.trade?.entryPrice != null ? Number(row.trade.entryPrice) : null,
+        exitPrice:
+          row.trade?.exitPrice != null ? Number(row.trade.exitPrice) : null,
+        pnl,
+        isWin: row.trade?.isWin ?? (row.status === 'WON' ? true : row.status === 'LOST' ? false : null),
+        submittedAt: row.submittedAt.toISOString(),
+        closedAt: closedAt.toISOString(),
+      };
+    });
+
+    return { items, count: items.length };
+  }
+
+  async closeUserMetaApiPosition(userId: string, positionId: string) {
+    await this.compliance.requireActiveTrader(userId);
+
+    if (!this.metaApi.isConfigured) {
+      throw new ServiceUnavailableException('Live trading is not configured');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const platformAccountId = this.metaApi.getConfiguredDefaultAccountId();
+    if (!platformAccountId) {
+      throw new ServiceUnavailableException('Platform MT5 account is not configured');
+    }
+
+    const linkedSignal = await this.prisma.signal.findFirst({
+      where: {
+        userId,
+        status: 'OPEN',
+        OR: [
+          { metaApiPositionId: positionId },
+          { metaApiOrderId: positionId },
+        ],
+      },
+    });
+
+    if (linkedSignal) {
+      return this.closeSetupTrade(userId, linkedSignal.signalId);
+    }
+
+    const account = await this.metaApi.ensureAccountReady(platformAccountId);
+    const owned = await this.metaApi.findUserOpenPositions(
+      account,
+      user.displayName,
+      userId,
+    );
+    if (!owned.some((p) => p.id === positionId)) {
+      const pending = await this.metaApi.findUserPendingOrders(
+        account,
+        user.displayName,
+        userId,
+      );
+      if (!pending.some((o) => o.id === positionId)) {
+        throw new ForbiddenException('Order or position not found for your setups');
+      }
+      await this.metaApi.cancelPendingOrder(account, positionId);
+      return { ok: true, positionId, status: 'cancelled' };
+    }
+
+    await this.metaApi.closePositionById(account, positionId);
+    return { ok: true, positionId, status: 'closed' };
+  }
 }

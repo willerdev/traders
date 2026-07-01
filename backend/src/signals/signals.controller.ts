@@ -294,6 +294,24 @@ export class SignalsController {
     return this.signalsService.claimSetup(req.user.id, signalId, dto);
   }
 
+  @Get('mt5/terminal')
+  @UseGuards(JwtAuthGuard)
+  getUserMt5Terminal(@Request() req: { user: { id: string } }) {
+    return this.signalsService.getUserMt5Terminal(req.user.id);
+  }
+
+  @Post('mt5/positions/:positionId/close')
+  @UseGuards(JwtAuthGuard)
+  closeUserMt5Position(
+    @Request() req: { user: { id: string } },
+    @Param('positionId') positionId: string,
+  ) {
+    return this.signalsService.closeUserMetaApiPosition(
+      req.user.id,
+      positionId,
+    );
+  }
+
   @Get('metaapi/accounts')
   @UseGuards(JwtAuthGuard)
   listMetaApiAccounts() {

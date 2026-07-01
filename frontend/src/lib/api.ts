@@ -263,6 +263,12 @@ class ApiClient {
       }),
     metaApiAccounts: () =>
       this.request<MetaApiAccountsResult>("/signals/metaapi/accounts"),
+    mt5Terminal: () => this.request<UserMt5Terminal>("/signals/mt5/terminal"),
+    closeMt5Position: (positionId: string) =>
+      this.request<{ ok: boolean; positionId: string; status?: string }>(
+        `/signals/mt5/positions/${encodeURIComponent(positionId)}/close`,
+        { method: "POST" },
+      ),
     copyDashboard: () =>
       this.request<CopyTradingDashboard>("/signals/metaapi/copy-dashboard"),
     claim: (
@@ -1301,6 +1307,68 @@ export interface CopyTradingDashboard {
   };
 }
 
+export interface UserMt5Trade {
+  signalId: string | null;
+  symbol: string;
+  direction: string;
+  kind: "limit" | "running";
+  status: "pending" | "open";
+  entryMin?: number;
+  entryMax?: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  volume?: number;
+  openPrice?: number;
+  currentPrice?: number;
+  profit?: number;
+  orderId?: string;
+  positionId?: string;
+  orderType?: string;
+  canClose: boolean;
+  executionLabel?: string;
+}
+
+export interface UserMt5HistoryItem {
+  id: string;
+  signalId: string;
+  symbol: string;
+  direction: string;
+  status: string;
+  entryMin: number;
+  entryMax: number;
+  stopLoss: number;
+  takeProfit: number;
+  entryPrice: number | null;
+  exitPrice: number | null;
+  pnl: number | null;
+  isWin: boolean | null;
+  submittedAt: string;
+  closedAt: string;
+}
+
+export interface UserMt5Terminal {
+  configured: boolean;
+  message?: string;
+  setups: {
+    items: OpenSetupItem[];
+    count: number;
+    claimableCount: number;
+  };
+  trades: UserMt5Trade[];
+  history: {
+    items: UserMt5HistoryItem[];
+    count: number;
+  };
+  stats: {
+    openSetupCount: number;
+    limitCount: number;
+    runningCount: number;
+    floatingProfit: number;
+    historyCount: number;
+  };
+  refreshedAt: string;
+}
+
 export interface PlaceTradeResult {
   status: string;
   signalId: string;
@@ -1345,6 +1413,7 @@ export interface OpenSetupItem {
   submittedAt: string;
   activated: boolean;
   resolution: SetupResolution;
+  liveTrade?: SetupLiveTrade | null;
 }
 
 export interface OpenSetupsResult {

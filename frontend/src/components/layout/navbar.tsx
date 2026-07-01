@@ -23,10 +23,9 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", shortLabel: "Home", icon: LayoutDashboard },
   {
     href: "/mt5",
-    label: "MT5 Copy",
+    label: "MT5",
     shortLabel: "MT5",
     icon: LineChart,
-    adminOnly: true,
   },
   { href: "/submit", label: "Submit Signal", shortLabel: "Submit", icon: Send },
   { href: "/leaderboard", label: "Leaderboard", shortLabel: "Ranks", icon: Trophy },
