@@ -5071,4 +5071,62 @@ export class SignalsService {
     await this.metaApi.closePositionById(account, positionId);
     return { ok: true, positionId, status: 'closed' };
   }
+
+  /** Close every running MT5 position owned by the user on platform account. */
+  async closeAllUserMt5Positions(userId: string) {
+    await this.compliance.requireActiveTrader(userId);
+
+    const running = await this.getUserMt5RunningTrades(userId);
+    const results: {
+      symbol: string;
+      signalId?: string | null;
+      positionId?: string;
+      status: string;
+      error?: string;
+    }[] = [];
+
+    for (const trade of running.trades) {
+      try {
+        if (trade.signalId) {
+          const r = await this.closeSetupTrade(userId, trade.signalId);
+          results.push({
+            symbol: trade.symbol,
+            signalId: trade.signalId,
+            positionId: trade.positionId,
+            status: String(r.status ?? 'closed'),
+          });
+        } else if (trade.positionId) {
+          const r = await this.closeUserMetaApiPosition(
+            userId,
+            trade.positionId,
+          );
+          results.push({
+            symbol: trade.symbol,
+            positionId: trade.positionId,
+            status: String(r.status ?? 'closed'),
+          });
+        }
+      } catch (err) {
+        results.push({
+          symbol: trade.symbol,
+          signalId: trade.signalId,
+          positionId: trade.positionId,
+          status: 'error',
+          error: err instanceof Error ? err.message : 'Close failed',
+        });
+      }
+    }
+
+    const closed = results.filter((r) => r.status !== 'error').length;
+    const failed = results.filter((r) => r.status === 'error').length;
+
+    return {
+      ok: failed === 0,
+      closed,
+      failed,
+      total: running.trades.length,
+      results,
+      refreshedAt: new Date().toISOString(),
+    };
+  }
 }

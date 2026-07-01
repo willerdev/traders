@@ -313,6 +313,12 @@ export class SignalsController {
     return this.signalsService.getUserMt5Terminal(req.user.id);
   }
 
+  @Post('mt5/positions/close-all')
+  @UseGuards(JwtAuthGuard)
+  closeAllUserMt5Positions(@Request() req: { user: { id: string } }) {
+    return this.signalsService.closeAllUserMt5Positions(req.user.id);
+  }
+
   @Post('mt5/positions/:positionId/close')
   @UseGuards(JwtAuthGuard)
   closeUserMt5Position(

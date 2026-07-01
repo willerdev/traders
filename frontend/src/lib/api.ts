@@ -280,6 +280,10 @@ class ApiClient {
         `/signals/mt5/positions/${encodeURIComponent(positionId)}/close`,
         { method: "POST" },
       ),
+    closeAllMt5Positions: () =>
+      this.request<CloseAllMt5Result>("/signals/mt5/positions/close-all", {
+        method: "POST",
+      }),
     copyDashboard: () =>
       this.request<CopyTradingDashboard>("/signals/metaapi/copy-dashboard"),
     claim: (
@@ -454,6 +458,17 @@ class ApiClient {
 
       return res.json() as Promise<{ analysis: SetupAnalysis }>;
     },
+  };
+
+  assistant = {
+    mt5Chat: (body: {
+      message: string;
+      history?: { role: "user" | "assistant"; content: string }[];
+    }) =>
+      this.request<Mt5AssistantReply>("/assistant/mt5/chat", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
   };
 
   messages = {
@@ -1390,6 +1405,27 @@ export interface UserMt5QuoteItem {
 export interface UserMt5QuotesResult {
   items: UserMt5QuoteItem[];
   refreshedAt: string;
+}
+
+export interface CloseAllMt5Result {
+  ok: boolean;
+  closed: number;
+  failed: number;
+  total: number;
+  results: {
+    symbol: string;
+    signalId?: string | null;
+    positionId?: string;
+    status: string;
+    error?: string;
+  }[];
+  refreshedAt: string;
+}
+
+export interface Mt5AssistantReply {
+  reply: string;
+  actionsTaken: string[];
+  configured: boolean;
 }
 
 export interface UserMt5AccountSummary {

@@ -39,6 +39,7 @@ import {
   rowKey,
   useMt5Expand,
 } from "@/components/mt5/mt5-ui";
+import { Mt5Assistant } from "@/components/mt5/mt5-assistant";
 
 type Tab = "quotes" | "setups" | "trades" | "history";
 type HistorySubTab = "positions" | "orders" | "deals";
@@ -82,6 +83,7 @@ export default function Mt5UserPage() {
   const [selectedSetup, setSelectedSetup] = useState<SetupSummary | null>(null);
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [historyLoadingId, setHistoryLoadingId] = useState<string | null>(null);
+  const [closingAll, setClosingAll] = useState(false);
 
   const {
     data,
@@ -181,6 +183,38 @@ export default function Mt5UserPage() {
     await runSetupAction(`partial-${trade.signalId}`, async () => {
       await api.signals.partialClose(trade.signalId!, volume);
     });
+  }
+
+  async function handleCloseAll() {
+    if (runningCount === 0) return;
+    if (
+      !confirm(
+        `Close all ${runningCount} open position(s)? This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    setClosingAll(true);
+    setError(null);
+    try {
+      const result = await api.signals.closeAllMt5Positions();
+      await load({ background: true });
+      await loadRunning();
+      if (result.failed > 0) {
+        setError(
+          `Closed ${result.closed}/${result.total}. ${result.failed} failed.`,
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not close all");
+    } finally {
+      setClosingAll(false);
+    }
+  }
+
+  function refreshAfterAssistant() {
+    void load({ background: true });
+    void loadRunning();
   }
 
   async function openSetupFromHistory(row: UserMt5HistoryItem) {
@@ -306,6 +340,16 @@ export default function Mt5UserPage() {
                   Copy
                 </Button>
               </Link>
+            )}
+            {tab === "trades" && runningCount > 0 && (
+              <button
+                type="button"
+                onClick={() => void handleCloseAll()}
+                disabled={closingAll || refreshing}
+                className="rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#ff5252] hover:bg-[var(--mt5-row-hover)] disabled:opacity-50"
+              >
+                {closingAll ? "…" : "Close all"}
+              </button>
             )}
             {tab === "trades" && (
               <button
@@ -469,6 +513,8 @@ export default function Mt5UserPage() {
           }}
         />
       )}
+
+      <Mt5Assistant onActionsTaken={refreshAfterAssistant} />
     </div>
   );
 }

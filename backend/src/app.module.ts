@@ -19,6 +19,7 @@ import { EmailModule } from './email/email.module';
 import { PlatformModule } from './platform/platform.module';
 import { PlatformNotificationsModule } from './platform-notifications/platform-notifications.module';
 import { FeedsModule } from './feeds/feeds.module';
+import { AssistantModule } from './assistant/assistant.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { FeedsModule } from './feeds/feeds.module';
     PlatformModule,
     PlatformNotificationsModule,
     FeedsModule,
+    AssistantModule,
   ],
 })
 export class AppModule {}
