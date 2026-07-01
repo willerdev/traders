@@ -253,6 +253,11 @@ class ApiClient {
       this.request<SetBreakevenResult>(`/signals/${signalId}/set-breakeven`, {
         method: "POST",
       }),
+    partialClose: (signalId: string, volume: number) =>
+      this.request<{ status: string; signalId: string; volume: number; message?: string }>(
+        `/signals/${signalId}/partial-close`,
+        { method: "POST", body: JSON.stringify({ volume }) },
+      ),
     updateStops: (
       signalId: string,
       stops: { stopLoss?: number; takeProfit?: number },
@@ -264,6 +269,8 @@ class ApiClient {
     metaApiAccounts: () =>
       this.request<MetaApiAccountsResult>("/signals/metaapi/accounts"),
     mt5Terminal: () => this.request<UserMt5Terminal>("/signals/mt5/terminal"),
+    mt5Running: () =>
+      this.request<UserMt5RunningResult>("/signals/mt5/running"),
     closeMt5Position: (positionId: string) =>
       this.request<{ ok: boolean; positionId: string; status?: string }>(
         `/signals/mt5/positions/${encodeURIComponent(positionId)}/close`,
@@ -1325,7 +1332,19 @@ export interface UserMt5Trade {
   positionId?: string;
   orderType?: string;
   canClose: boolean;
+  canSetBreakeven?: boolean;
+  breakevenSet?: boolean;
+  canPartialClose?: boolean;
   executionLabel?: string;
+}
+
+export interface UserMt5RunningResult {
+  trades: UserMt5Trade[];
+  stats: {
+    runningCount: number;
+    floatingProfit: number;
+  };
+  refreshedAt: string;
 }
 
 export interface UserMt5HistoryItem {

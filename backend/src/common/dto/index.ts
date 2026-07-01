@@ -8,6 +8,7 @@ import {
   IsBoolean,
   MinLength,
   MaxLength,
+  Min,
   Equals,
   IsIn,
   ValidateIf,
@@ -605,6 +606,12 @@ export class UpdateSetupStopsDto {
   @IsOptional()
   @IsNumber()
   takeProfit?: number;
+}
+
+export class PartialCloseSetupDto {
+  @IsNumber()
+  @Min(0.01)
+  volume: number;
 }
 
 export class SendMessageDto {

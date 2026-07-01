@@ -20,6 +20,7 @@ import {
   ClaimSetupDto,
   UpdateSetupStopsDto,
   InvalidateSetupDto,
+  PartialCloseSetupDto,
   TradeOutcomeWebhookDto,
   TradeLifecycleWebhookDto,
   HubActionDto,
@@ -294,6 +295,12 @@ export class SignalsController {
     return this.signalsService.claimSetup(req.user.id, signalId, dto);
   }
 
+  @Get('mt5/running')
+  @UseGuards(JwtAuthGuard)
+  getUserMt5Running(@Request() req: { user: { id: string } }) {
+    return this.signalsService.getUserMt5RunningTrades(req.user.id);
+  }
+
   @Get('mt5/terminal')
   @UseGuards(JwtAuthGuard)
   getUserMt5Terminal(@Request() req: { user: { id: string } }) {
@@ -350,6 +357,20 @@ export class SignalsController {
     @Param('signalId') signalId: string,
   ) {
     return this.signalsService.setBreakeven(req.user.id, signalId);
+  }
+
+  @Post(':signalId/partial-close')
+  @UseGuards(JwtAuthGuard)
+  partialCloseSetupTrade(
+    @Request() req: { user: { id: string } },
+    @Param('signalId') signalId: string,
+    @Body() dto: PartialCloseSetupDto,
+  ) {
+    return this.signalsService.partialCloseSetupTrade(
+      req.user.id,
+      signalId,
+      dto.volume,
+    );
   }
 
   @Post(':signalId/update-stops')

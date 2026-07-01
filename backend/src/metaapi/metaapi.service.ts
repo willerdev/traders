@@ -1133,6 +1133,19 @@ export class MetaApiService {
     });
   }
 
+  async closePositionPartialById(
+    account: MetaApiAccount,
+    positionId: string,
+    volume: number,
+  ): Promise<MetaApiTradeResult> {
+    const ready = await this.ensureAccountReady(account.id);
+    return this.submitTrade(ready, {
+      actionType: 'POSITION_CLOSE_ID',
+      positionId,
+      volume,
+    });
+  }
+
   async modifyPositionStops(
     account: MetaApiAccount,
     input: {

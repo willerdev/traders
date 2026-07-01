@@ -1856,6 +1856,99 @@ export class SignalsService {
     };
   }
 
+  async partialCloseSetupTrade(
+    userId: string,
+    signalId: string,
+    volume: number,
+  ) {
+    await this.compliance.requireActiveTrader(userId);
+
+    if (!this.metaApi.isConfigured) {
+      throw new ServiceUnavailableException('Live trading is not configured');
+    }
+
+    if (!Number.isFinite(volume) || volume <= 0) {
+      throw new BadRequestException('Volume must be greater than zero');
+    }
+
+    const signal = await this.prisma.signal.findFirst({
+      where: { signalId, userId, status: 'OPEN' },
+      include: { trade: true },
+    });
+    if (!signal?.trade) {
+      throw new NotFoundException('Open setup not found');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const accountId = this.metaApi.resolveAccountId(
+      signal.metaApiAccountId ?? user.metaApiAccountId,
+    );
+    if (!accountId) {
+      throw new BadRequestException('Platform trading account is not configured');
+    }
+
+    const account = await this.metaApi.ensureAccountReady(accountId);
+    const { clientId } = this.metaApi.buildIdentifiersForUser(
+      user.displayName,
+      userId,
+      signal.signalId,
+      signal.symbol,
+    );
+    const live = await this.metaApi.findLiveTradeForSignal(account, {
+      positionId: signal.metaApiPositionId,
+      orderId: signal.metaApiOrderId,
+      clientId,
+      displayName: user.displayName,
+      userId,
+      symbol: signal.symbol,
+      activated: Boolean(signal.trade.activatedAt),
+    });
+
+    if (live.status !== 'open' || !live.positionId) {
+      throw new BadRequestException(
+        'No open running position found for this setup',
+      );
+    }
+
+    const openVolume = live.volume ?? 0;
+    if (volume >= openVolume) {
+      throw new BadRequestException(
+        `Partial volume must be less than open size (${openVolume} lots) — use Close for full exit`,
+      );
+    }
+
+    await this.metaApi.closePositionPartialById(
+      account,
+      live.positionId,
+      volume,
+    );
+
+    await this.prisma.trade.update({
+      where: { id: signal.trade.id },
+      data: {
+        partialClosedAt: new Date(),
+        partialCloseVolume: volume,
+      },
+    });
+
+    this.notifications.tradePartialClose(userId, {
+      symbol: signal.symbol,
+      signalId: signal.signalId,
+      volume,
+      message: `Partial close ${volume} lot(s) on ${signal.symbol} via MT5`,
+    });
+
+    return {
+      status: 'partial',
+      signalId: signal.signalId,
+      volume,
+      positionId: live.positionId,
+      message: `Closed ${volume} lot(s) — position still running`,
+    };
+  }
+
   async updateSetupStops(
     userId: string,
     signalId: string,
@@ -4428,6 +4521,9 @@ export class SignalsService {
       positionId?: string;
       orderType?: string;
       canClose: boolean;
+      canSetBreakeven?: boolean;
+      breakevenSet?: boolean;
+      canPartialClose?: boolean;
       executionLabel?: string;
     };
 
@@ -4500,6 +4596,12 @@ export class SignalsService {
         canClose: Boolean(
           live?.canClose ?? res.canCloseTrade ?? (isPending || isRunning),
         ),
+        canSetBreakeven: isRunning ? Boolean(res.canSetBreakeven) : undefined,
+        breakevenSet: isRunning ? Boolean(res.breakevenSet) : undefined,
+        canPartialClose:
+          isRunning &&
+          (live?.volume != null ? Number(live.volume) > 0 : true) &&
+          Boolean(res.canCloseTrade),
         executionLabel: res.executionLabel,
       });
     }
@@ -4591,6 +4693,18 @@ export class SignalsService {
             profit: pnl,
             positionId: pos.id,
             canClose: true,
+            canSetBreakeven: linked?.trade
+              ? Boolean(
+                  linked.trade.activatedAt &&
+                    !linked.trade.tp1BreakevenAt &&
+                    (linked.trade.breakevenRetryCount ?? 0) <
+                      MAX_BREAKEVEN_RETRIES,
+                )
+              : undefined,
+            breakevenSet: linked?.trade
+              ? Boolean(linked.trade.tp1BreakevenAt)
+              : undefined,
+            canPartialClose: pos.volume > 0,
             executionLabel: 'Running on platform MT5',
           });
         }
@@ -4624,6 +4738,105 @@ export class SignalsService {
         runningCount,
         floatingProfit,
         historyCount: history.count,
+      },
+      refreshedAt: new Date().toISOString(),
+    };
+  }
+
+  /** Lightweight poll for running trades only (MT5 Trades tab). */
+  async getUserMt5RunningTrades(userId: string) {
+    await this.compliance.requireActiveTrader(userId);
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { displayName: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const platformAccountId = this.metaApi.getConfiguredDefaultAccountId();
+    if (!this.metaApi.isConfigured || !platformAccountId) {
+      return {
+        trades: [],
+        stats: { runningCount: 0, floatingProfit: 0 },
+        refreshedAt: new Date().toISOString(),
+      };
+    }
+
+    const openSignals = await this.prisma.signal.findMany({
+      where: { userId, status: 'OPEN' },
+      include: { trade: true },
+    });
+
+    const signalByPositionId = new Map<string, (typeof openSignals)[number]>();
+    const clientIdBySignalId = new Map<string, string>();
+    for (const s of openSignals) {
+      if (s.metaApiPositionId) {
+        signalByPositionId.set(s.metaApiPositionId, s);
+      }
+      const { clientId } = this.metaApi.buildIdentifiersForUser(
+        user.displayName,
+        userId,
+        s.signalId,
+        s.symbol,
+      );
+      clientIdBySignalId.set(s.signalId, clientId);
+    }
+
+    const account = await this.metaApi.getAccount(platformAccountId);
+    const positions = await this.metaApi.findUserOpenPositions(
+      account,
+      user.displayName,
+      userId,
+    );
+
+    const trades = positions.map((pos) => {
+      const linked =
+        signalByPositionId.get(pos.id) ??
+        openSignals.find(
+          (s) => clientIdBySignalId.get(s.signalId) === pos.clientId,
+        ) ??
+        null;
+      const pnl =
+        pos.profit + pos.unrealizedProfit + pos.swap + pos.commission;
+
+      return {
+        signalId: linked?.signalId ?? null,
+        symbol: pos.symbol,
+        direction: pos.type.toLowerCase().includes('sell') ? 'SELL' : 'BUY',
+        kind: 'running' as const,
+        status: 'open' as const,
+        entryMin: linked ? Number(linked.entryMin) : undefined,
+        entryMax: linked ? Number(linked.entryMax) : undefined,
+        stopLoss: pos.stopLoss,
+        takeProfit: pos.takeProfit,
+        volume: pos.volume,
+        openPrice: pos.openPrice,
+        currentPrice: pos.currentPrice,
+        profit: pnl,
+        positionId: pos.id,
+        canClose: Boolean(linked),
+        canSetBreakeven: linked?.trade
+          ? Boolean(
+              linked.trade.activatedAt &&
+                !linked.trade.tp1BreakevenAt &&
+                (linked.trade.breakevenRetryCount ?? 0) < MAX_BREAKEVEN_RETRIES,
+            )
+          : false,
+        breakevenSet: linked?.trade
+          ? Boolean(linked.trade.tp1BreakevenAt)
+          : false,
+        canPartialClose: pos.volume > 0 && Boolean(linked),
+        executionLabel: 'Running on platform MT5',
+      };
+    });
+
+    const floatingProfit = trades.reduce((sum, t) => sum + (t.profit ?? 0), 0);
+
+    return {
+      trades,
+      stats: {
+        runningCount: trades.length,
+        floatingProfit,
       },
       refreshedAt: new Date().toISOString(),
     };

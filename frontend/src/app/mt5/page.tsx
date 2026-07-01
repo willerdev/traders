@@ -5,20 +5,29 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Activity,
+  Ban,
   ChevronRight,
   Clock,
   History,
   Layers,
   Loader2,
+  Play,
   RefreshCw,
+  Shield,
   TrendingDown,
   TrendingUp,
   X,
 } from "lucide-react";
-import { api, type OpenSetupItem, type UserMt5Terminal, type UserMt5Trade } from "@/lib/api";
+import {
+  api,
+  type OpenSetupItem,
+  type UserMt5Terminal,
+  type UserMt5Trade,
+} from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { formatCurrency, cn } from "@/lib/utils";
 import {
   SetupDetailModal,
@@ -61,11 +70,12 @@ export default function Mt5UserPage() {
   const hasHydrated = useAuthStore((s) => s.hasHydrated);
   const userRole = useAuthStore((s) => s.user?.role);
   const [data, setData] = useState<UserMt5Terminal | null>(null);
+  const [runningTrades, setRunningTrades] = useState<UserMt5Trade[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("trades");
   const [selectedSetup, setSelectedSetup] = useState<SetupSummary | null>(null);
-  const [closingKey, setClosingKey] = useState<string | null>(null);
+  const [actionKey, setActionKey] = useState<string | null>(null);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) {
@@ -73,11 +83,34 @@ export default function Mt5UserPage() {
       setError(null);
     }
     try {
-      setData(await api.signals.mt5Terminal());
+      const terminal = await api.signals.mt5Terminal();
+      setData(terminal);
+      setRunningTrades(terminal.trades.filter((t) => t.kind === "running"));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load MT5 data");
     } finally {
       if (!silent) setLoading(false);
+    }
+  }, []);
+
+  const loadRunning = useCallback(async () => {
+    try {
+      const res = await api.signals.mt5Running();
+      setRunningTrades(res.trades);
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              stats: {
+                ...prev.stats,
+                runningCount: res.stats.runningCount,
+                floatingProfit: res.stats.floatingProfit,
+              },
+            }
+          : prev,
+      );
+    } catch {
+      /* keep last snapshot on poll errors */
     }
   }, []);
 
@@ -92,9 +125,10 @@ export default function Mt5UserPage() {
 
   useEffect(() => {
     if (!isAuthenticated || tab !== "trades") return;
-    const id = window.setInterval(() => void load(true), 5000);
+    void loadRunning();
+    const id = window.setInterval(() => void loadRunning(), 2000);
     return () => window.clearInterval(id);
-  }, [isAuthenticated, tab, load]);
+  }, [isAuthenticated, tab, loadRunning]);
 
   if (!hasHydrated || !isAuthenticated) {
     return (
@@ -105,41 +139,112 @@ export default function Mt5UserPage() {
   }
 
   const setups = data?.setups.items ?? [];
-  const trades = data?.trades ?? [];
   const history = data?.history.items ?? [];
   const floating = data?.stats.floatingProfit ?? 0;
   const limitCount = data?.stats.limitCount ?? 0;
-  const runningCount = data?.stats.runningCount ?? 0;
+  const runningCount = data?.stats.runningCount ?? runningTrades.length;
+
+  async function runSetupAction(
+    key: string,
+    fn: () => Promise<void>,
+  ) {
+    setActionKey(key);
+    setError(null);
+    try {
+      await fn();
+      await load(true);
+      if (tab === "trades") await loadRunning();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Action failed");
+    } finally {
+      setActionKey(null);
+    }
+  }
 
   async function handleCloseTrade(trade: UserMt5Trade) {
-    const label =
-      trade.kind === "limit"
-        ? `Cancel limit order on ${trade.symbol}?`
-        : `Close running ${trade.symbol} trade?`;
-    if (!confirm(label)) return;
-
-    const key = trade.signalId ?? trade.positionId ?? trade.orderId ?? trade.symbol;
-    setClosingKey(key);
-    try {
+    if (!confirm(`Close running ${trade.symbol} trade?`)) return;
+    const key = trade.signalId ?? trade.positionId ?? trade.symbol;
+    await runSetupAction(key, async () => {
       if (trade.signalId) {
         await api.signals.closeTrade(trade.signalId);
+      } else if (trade.positionId) {
+        await api.signals.closeMt5Position(trade.positionId);
       } else {
-        const id = trade.positionId ?? trade.orderId;
-        if (!id) throw new Error("No trade id to close");
-        await api.signals.closeMt5Position(id);
+        throw new Error("No trade id to close");
       }
-      await load(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to close trade");
-    } finally {
-      setClosingKey(null);
+    });
+  }
+
+  async function handleBreakeven(trade: UserMt5Trade) {
+    if (!trade.signalId) return;
+    if (
+      !confirm(
+        "Move stop loss to breakeven (entry)? Retries automatically if the broker rejects.",
+      )
+    ) {
+      return;
     }
+    await runSetupAction(`be-${trade.signalId}`, async () => {
+      await api.signals.setBreakeven(trade.signalId!);
+    });
+  }
+
+  async function handlePartialClose(trade: UserMt5Trade, volume: number) {
+    if (!trade.signalId) return;
+    if (
+      !confirm(
+        `Partial close ${volume} lot(s) on ${trade.symbol}? Position stays open.`,
+      )
+    ) {
+      return;
+    }
+    await runSetupAction(`partial-${trade.signalId}`, async () => {
+      await api.signals.partialClose(trade.signalId!, volume);
+    });
+  }
+
+  async function handlePlaceSetup(setup: OpenSetupItem) {
+    if (
+      !confirm(
+        `Place ${setup.direction} ${setup.symbol} on platform MT5 now?\n\nSL ${setup.stopLoss} · TP ${setup.takeProfit}`,
+      )
+    ) {
+      return;
+    }
+    await runSetupAction(`place-${setup.signalId}`, async () => {
+      await api.signals.placeTrade(setup.signalId);
+    });
+  }
+
+  async function handleInvalidateSetup(setup: OpenSetupItem) {
+    if (setup.resolution.canInvalidate === false) {
+      setError(
+        setup.resolution.invalidateBlockedReason ??
+          "Cannot invalidate while a trade is running on this setup.",
+      );
+      return;
+    }
+    if (
+      !confirm(
+        `Invalidate ${setup.symbol} setup? Pending orders will be cancelled.`,
+      )
+    ) {
+      return;
+    }
+    await runSetupAction(`inv-${setup.signalId}`, async () => {
+      await api.signals.invalidate(setup.signalId);
+    });
   }
 
   const tabs: { id: Tab; label: string; icon: typeof Layers; count?: number }[] =
     [
       { id: "setups", label: "Setups", icon: Layers, count: setups.length },
-      { id: "trades", label: "Trades", icon: Activity, count: trades.length },
+      {
+        id: "trades",
+        label: "Trades",
+        icon: Activity,
+        count: runningCount,
+      },
       { id: "history", label: "History", icon: History, count: history.length },
     ];
 
@@ -150,7 +255,7 @@ export default function Mt5UserPage() {
           <div>
             <h1 className="text-lg font-bold text-white">MT5</h1>
             <p className="text-xs text-gray-500">
-              Your setups on platform MT5 — limits &amp; running trades
+              Setups · limits on platform MT5 · running trades refresh every 2s
             </p>
           </div>
           <div className="flex gap-1">
@@ -255,12 +360,20 @@ export default function Mt5UserPage() {
             Loading…
           </div>
         ) : tab === "setups" ? (
-          <SetupsTab setups={setups} onSelect={setSelectedSetup} />
+          <SetupsTab
+            setups={setups}
+            actionKey={actionKey}
+            onSelect={setSelectedSetup}
+            onPlace={handlePlaceSetup}
+            onInvalidate={handleInvalidateSetup}
+          />
         ) : tab === "trades" ? (
           <TradesTab
-            trades={trades}
+            trades={runningTrades}
+            actionKey={actionKey}
             onClose={handleCloseTrade}
-            closingKey={closingKey}
+            onBreakeven={handleBreakeven}
+            onPartialClose={handlePartialClose}
           />
         ) : (
           <HistoryTab history={history} />
@@ -273,6 +386,7 @@ export default function Mt5UserPage() {
           onClose={() => setSelectedSetup(null)}
           onUpdated={() => {
             void load(true);
+            void loadRunning();
             setSelectedSetup(null);
           }}
         />
@@ -283,10 +397,16 @@ export default function Mt5UserPage() {
 
 function SetupsTab({
   setups,
+  actionKey,
   onSelect,
+  onPlace,
+  onInvalidate,
 }: {
   setups: OpenSetupItem[];
+  actionKey: string | null;
   onSelect: (s: SetupSummary) => void;
+  onPlace: (setup: OpenSetupItem) => void;
+  onInvalidate: (setup: OpenSetupItem) => void;
 }) {
   if (setups.length === 0) {
     return (
@@ -306,17 +426,19 @@ function SetupsTab({
     <ul className="space-y-2">
       {setups.map((setup) => {
         const live = setup.liveTrade;
-        const running =
-          live?.status === "open" ||
-          live?.status === "pending" ||
-          setup.resolution.metaApiExecuted;
+        const res = setup.resolution;
+        const isLimit = live?.status === "pending" || res.executionPhase === "limit_active";
+        const isRunning = live?.status === "open" || setup.activated;
 
         return (
-          <li key={setup.signalId}>
+          <li
+            key={setup.signalId}
+            className="rounded-xl border border-white/5 bg-white/[0.02] overflow-hidden"
+          >
             <button
               type="button"
               onClick={() => onSelect(toSetupSummary(setup))}
-              className="flex w-full items-center gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-3 text-left active:bg-white/[0.04]"
+              className="flex w-full items-center gap-3 p-3 text-left active:bg-white/[0.04]"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -324,24 +446,22 @@ function SetupsTab({
                   <Badge variant={setup.direction === "BUY" ? "success" : "danger"}>
                     {setup.direction}
                   </Badge>
-                  {setup.resolution.executionPhase && (
+                  {res.executionPhase && (
                     <SetupExecutionBadge
-                      phase={setup.resolution.executionPhase}
-                      label={setup.resolution.executionLabel}
+                      phase={res.executionPhase}
+                      label={res.executionLabel}
                     />
                   )}
-                  {live?.status === "pending" && (
+                  {isLimit && !isRunning && (
                     <Badge variant="gold">Limit pending</Badge>
                   )}
-                  {live?.status === "open" && (
-                    <Badge variant="success">Running</Badge>
-                  )}
+                  {isRunning && <Badge variant="success">Running</Badge>}
                 </div>
                 <p className="mt-1 text-xs text-gray-500">
                   Entry {setup.entryMin} – {setup.entryMax} · SL {setup.stopLoss}{" "}
                   · TP {setup.takeProfit}
                 </p>
-                {running && live?.profit != null && (
+                {isRunning && live?.profit != null && (
                   <p
                     className={cn(
                       "mt-1 text-sm font-semibold",
@@ -354,6 +474,49 @@ function SetupsTab({
               </div>
               <ChevronRight className="h-4 w-4 shrink-0 text-gray-600" />
             </button>
+
+            <div className="flex flex-wrap gap-2 border-t border-white/5 p-2">
+              {res.canPlaceTrade && (
+                <Button
+                  size="sm"
+                  className="flex-1 gap-1"
+                  disabled={actionKey === `place-${setup.signalId}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void onPlace(setup);
+                  }}
+                >
+                  {actionKey === `place-${setup.signalId}` ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Play className="h-3.5 w-3.5" />
+                  )}
+                  Place on MT5
+                </Button>
+              )}
+              {!isRunning && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="flex-1 gap-1"
+                  disabled={
+                    actionKey === `inv-${setup.signalId}` || !res.canInvalidate
+                  }
+                  title={res.invalidateBlockedReason}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void onInvalidate(setup);
+                  }}
+                >
+                  {actionKey === `inv-${setup.signalId}` ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Ban className="h-3.5 w-3.5" />
+                  )}
+                  Invalidate
+                </Button>
+              )}
+            </div>
           </li>
         );
       })}
@@ -363,27 +526,29 @@ function SetupsTab({
 
 function TradesTab({
   trades,
+  actionKey,
   onClose,
-  closingKey,
+  onBreakeven,
+  onPartialClose,
 }: {
   trades: UserMt5Trade[];
+  actionKey: string | null;
   onClose: (trade: UserMt5Trade) => void;
-  closingKey: string | null;
+  onBreakeven: (trade: UserMt5Trade) => void;
+  onPartialClose: (trade: UserMt5Trade, volume: number) => void;
 }) {
+  const [partialLot, setPartialLot] = useState<Record<string, string>>({});
+  const [expandedPartial, setExpandedPartial] = useState<string | null>(null);
+
   if (trades.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-white/10 py-12 text-center">
         <Activity className="mx-auto h-8 w-8 text-gray-600" />
-        <p className="mt-3 text-sm text-gray-400">No active trades from your setups</p>
+        <p className="mt-3 text-sm text-gray-400">No running trades</p>
         <p className="mt-1 text-xs text-gray-600">
-          Limit orders and running positions appear here after a setup is queued on
-          platform MT5
+          Running positions appear here after a setup fills on platform MT5.
+          Limits stay under Setups.
         </p>
-        <Link href="/submit">
-          <Button size="sm" variant="secondary" className="mt-4">
-            Submit setup
-          </Button>
-        </Link>
       </div>
     );
   }
@@ -393,7 +558,7 @@ function TradesTab({
       {trades.map((trade) => {
         const key =
           trade.signalId ?? trade.positionId ?? trade.orderId ?? trade.symbol;
-        const isLimit = trade.kind === "limit";
+        const partialKey = partialLot[key] ?? "";
 
         return (
           <li
@@ -409,26 +574,19 @@ function TradesTab({
                   <Badge variant={trade.direction === "BUY" ? "success" : "danger"}>
                     {trade.direction}
                   </Badge>
-                  <Badge variant={isLimit ? "gold" : "success"}>
-                    {isLimit ? "Limit" : "Running"}
-                  </Badge>
+                  <Badge variant="success">Running</Badge>
+                  {trade.breakevenSet && (
+                    <Badge variant="secondary">BE set</Badge>
+                  )}
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-500">
-                  {trade.entryMin != null && trade.entryMax != null && (
-                    <span className="col-span-2">
-                      Zone{" "}
-                      <span className="text-gray-300">
-                        {trade.entryMin} – {trade.entryMax}
-                      </span>
-                    </span>
-                  )}
                   {trade.openPrice != null && (
                     <span>
-                      {isLimit ? "Limit" : "Open"}{" "}
+                      Open{" "}
                       <span className="text-gray-300">{trade.openPrice}</span>
                     </span>
                   )}
-                  {trade.currentPrice != null && !isLimit && (
+                  {trade.currentPrice != null && (
                     <span>
                       Now{" "}
                       <span className="text-gray-300">{trade.currentPrice}</span>
@@ -453,18 +611,13 @@ function TradesTab({
                     Setup {trade.signalId}
                   </p>
                 )}
-                {trade.executionLabel && (
-                  <p className="mt-0.5 text-[10px] text-gray-600">
-                    {trade.executionLabel}
-                  </p>
-                )}
               </div>
 
-              <div className="flex shrink-0 flex-col items-end gap-2">
-                {!isLimit && trade.profit != null && (
+              <div className="shrink-0 text-right">
+                {trade.profit != null && (
                   <p
                     className={cn(
-                      "flex items-center gap-1 text-lg font-bold",
+                      "flex items-center justify-end gap-1 text-lg font-bold",
                       trade.profit >= 0 ? "text-emerald-400" : "text-red-400",
                     )}
                   >
@@ -476,24 +629,88 @@ function TradesTab({
                     {fmtPnl(trade.profit)}
                   </p>
                 )}
-                {trade.canClose && (
-                  <Button
-                    variant={isLimit ? "secondary" : "danger"}
-                    size="sm"
-                    className="gap-1"
-                    disabled={closingKey === key}
-                    onClick={() => void onClose(trade)}
-                  >
-                    {closingKey === key ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <X className="h-3.5 w-3.5" />
-                    )}
-                    {isLimit ? "Cancel" : "Close"}
-                  </Button>
-                )}
+                <p className="mt-0.5 text-[10px] text-gray-600">live · 2s</p>
               </div>
             </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {trade.canSetBreakeven && trade.signalId && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1"
+                  disabled={actionKey === `be-${trade.signalId}`}
+                  onClick={() => void onBreakeven(trade)}
+                >
+                  {actionKey === `be-${trade.signalId}` ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Shield className="h-3.5 w-3.5" />
+                  )}
+                  Breakeven
+                </Button>
+              )}
+              {trade.canPartialClose && trade.signalId && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setExpandedPartial(expandedPartial === key ? null : key)
+                  }
+                >
+                  Partial
+                </Button>
+              )}
+              {trade.canClose && (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  className="gap-1"
+                  disabled={actionKey === key}
+                  onClick={() => void onClose(trade)}
+                >
+                  {actionKey === key ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <X className="h-3.5 w-3.5" />
+                  )}
+                  Close
+                </Button>
+              )}
+            </div>
+
+            {expandedPartial === key && trade.signalId && (
+              <div className="mt-2 flex flex-wrap items-end gap-2 border-t border-white/5 pt-2">
+                <Input
+                  type="number"
+                  step="any"
+                  min="0.01"
+                  placeholder={`Lot (max ${trade.volume ?? "?"})`}
+                  value={partialKey}
+                  onChange={(e) =>
+                    setPartialLot((prev) => ({ ...prev, [key]: e.target.value }))
+                  }
+                  className="min-w-[100px] flex-1"
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={actionKey === `partial-${trade.signalId}`}
+                  onClick={() => {
+                    const vol = parseFloat(partialKey);
+                    if (isNaN(vol) || vol <= 0) return;
+                    void onPartialClose(trade, vol);
+                    setExpandedPartial(null);
+                  }}
+                >
+                  {actionKey === `partial-${trade.signalId}` ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    "Close partial"
+                  )}
+                </Button>
+              </div>
+            )}
           </li>
         );
       })}
