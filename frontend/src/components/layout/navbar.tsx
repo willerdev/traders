@@ -219,9 +219,14 @@ function MobileHeader() {
   );
 }
 
+function isMt5Route(pathname: string) {
+  return pathname === "/mt5" || pathname.startsWith("/mt5/");
+}
+
 export function Navbar() {
   const pathname = usePathname();
   const { isAuthenticated } = useAuthStore();
+  const hideMobileHeader = isMt5Route(pathname);
 
   if (!isAuthenticated) {
     return <PublicHeader />;
@@ -230,7 +235,7 @@ export function Navbar() {
   return (
     <>
       <Sidebar pathname={pathname} />
-      <MobileHeader />
+      {!hideMobileHeader && <MobileHeader />}
       <MobileBottomNav />
       <ChatFab />
     </>
@@ -238,13 +243,17 @@ export function Navbar() {
 }
 
 export function MainContent({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const { isAuthenticated } = useAuthStore();
+  const onMt5 = isMt5Route(pathname);
 
   return (
     <main
       className={cn(
         "flex-1",
-        isAuthenticated && "pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] md:pb-0 md:pl-[4.25rem]",
+        isAuthenticated &&
+          "pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] md:pb-0",
+        isAuthenticated && !onMt5 && "md:pl-[4.25rem]",
       )}
     >
       {children}

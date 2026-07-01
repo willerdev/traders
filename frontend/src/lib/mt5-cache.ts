@@ -57,6 +57,7 @@ export function patchMt5RunningCache(
   userId: string,
   runningTrades: UserMt5Trade[],
   stats: { runningCount: number; floatingProfit: number },
+  account?: UserMt5Terminal["account"],
 ) {
   const cached = readMt5Cache(userId);
   if (!cached) return;
@@ -64,6 +65,7 @@ export function patchMt5RunningCache(
     userId,
     {
       ...cached.terminal,
+      account: account ?? cached.terminal.account,
       stats: { ...cached.terminal.stats, ...stats },
     },
     runningTrades,

@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import {
   ClipboardCheck,
   Home,
-  LineChart,
   Send,
   Settings,
   Wallet,
@@ -27,7 +26,7 @@ const sideTabs = [
   { href: "/submit", label: "Submit", icon: Send },
 ] as const;
 
-const mt5Tab = { href: "/mt5", label: "MT5", icon: LineChart };
+const mt5Tab = { href: "/mt5", label: "MT5" };
 
 function isMt5Path(pathname: string) {
   return pathname === "/mt5" || pathname.startsWith("/mt5/");
@@ -111,8 +110,6 @@ export function MobileBottomNav() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [cashOpen]);
-
-  const Mt5Icon = mt5Tab.icon;
 
   return (
     <>
@@ -213,7 +210,7 @@ export function MobileBottomNav() {
               )}
               aria-label={mt5Tab.label}
             >
-              <Mt5Icon className="h-6 w-6" strokeWidth={2.25} />
+              <span className="text-xl font-bold leading-none">$</span>
             </Link>
             <span
               className={cn(

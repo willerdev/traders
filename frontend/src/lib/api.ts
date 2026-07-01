@@ -1342,6 +1342,7 @@ export interface UserMt5Trade {
 
 export interface UserMt5RunningResult {
   trades: UserMt5Trade[];
+  account?: UserMt5AccountSummary;
   stats: {
     runningCount: number;
     floatingProfit: number;
@@ -1367,9 +1368,19 @@ export interface UserMt5HistoryItem {
   closedAt: string;
 }
 
+export interface UserMt5AccountSummary {
+  startingBalance: number;
+  currency: string;
+  realizedProfit: number;
+  floatingProfit: number;
+  totalProfit: number;
+  equity: number;
+}
+
 export interface UserMt5Terminal {
   configured: boolean;
   message?: string;
+  account?: UserMt5AccountSummary;
   setups: {
     items: OpenSetupItem[];
     count: number;

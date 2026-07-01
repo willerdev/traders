@@ -21,16 +21,15 @@ import {
   type SetupSummary,
 } from "@/components/dashboard/setup-detail-modal";
 import {
+  Mt5AccountSummary,
   Mt5ActionStrip,
   Mt5DetailGrid,
   Mt5DirectionTag,
   Mt5Empty,
   Mt5ExpandableRow,
-  Mt5FloatingHeader,
   Mt5Pnl,
   Mt5SubTabs,
   Mt5SummaryBlock,
-  Mt5ThemeToggle,
   fmtMt5Date,
   fmtMt5Price,
   useMt5Expand,
@@ -104,6 +103,7 @@ export default function Mt5UserPage() {
     [data?.trades],
   );
   const floating = data?.stats.floatingProfit ?? 0;
+  const account = data?.account;
   const limitCount = data?.stats.limitCount ?? 0;
   const runningCount = data?.stats.runningCount ?? runningTrades.length;
 
@@ -255,7 +255,7 @@ export default function Mt5UserPage() {
   ];
 
   return (
-    <div className="mt5-shell mx-auto flex min-h-[calc(100dvh-4rem)] max-w-lg flex-col bg-[var(--mt5-bg)] text-[var(--mt5-text)] md:max-w-2xl">
+    <div className="mt5-shell mx-auto flex min-h-[calc(100dvh-5.75rem-env(safe-area-inset-bottom,0px))] max-w-lg flex-col bg-[var(--mt5-bg)] text-[var(--mt5-text)] md:min-h-[calc(100dvh-1rem)] md:max-w-2xl">
       {/* MT5-style header */}
       <div className="sticky top-0 z-20 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)]">
         <div className="flex items-center justify-between px-4 py-3">
@@ -286,7 +286,6 @@ export default function Mt5UserPage() {
                 </Button>
               </Link>
             )}
-            <Mt5ThemeToggle />
             <button
               type="button"
               onClick={() => void load({ background: Boolean(data) })}
@@ -298,24 +297,22 @@ export default function Mt5UserPage() {
           </div>
         </div>
 
-        {tab === "trades" && (
-          <Mt5FloatingHeader profit={floating} />
-        )}
+        {account && <Mt5AccountSummary account={account} />}
 
-        {tab === "trades" && runningCount > 0 && (
+        {tab === "trades" && runningCount > 0 && !account && (
           <Mt5SummaryBlock
             rows={[
               { label: "Positions", value: String(runningCount) },
               {
                 label: "Floating",
-                value: `${floating >= 0 ? "" : ""}${fmtMt5Price(floating)}`,
+                value: fmtMt5Price(floating),
                 color: floating >= 0 ? "#4a9eff" : "#ff5252",
               },
             ]}
           />
         )}
 
-        {tab === "history" && history.length > 0 && (
+        {tab === "history" && history.length > 0 && !account && (
           <Mt5SummaryBlock
             rows={[
               {
@@ -345,7 +342,7 @@ export default function Mt5UserPage() {
           />
         )}
 
-        {tab === "setups" && (
+        {tab === "setups" && !account && (
           <Mt5SummaryBlock
             rows={[
               { label: "Open setups", value: String(setups.length) },

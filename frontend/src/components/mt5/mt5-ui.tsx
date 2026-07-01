@@ -6,7 +6,6 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
-import { useThemeStore } from "@/stores/theme";
 
 /* MT5 palette — blue wins/buy, red losses/sell in both themes */
 export const MT5_BUY = "#4a9eff";
@@ -44,25 +43,6 @@ export function directionColor(direction: string) {
 
 export function pnlColor(value: number) {
   return value >= 0 ? MT5_BUY : MT5_SELL;
-}
-
-export function Mt5ThemeToggle({ className }: { className?: string }) {
-  const theme = useThemeStore((s) => s.theme);
-  const toggleTheme = useThemeStore((s) => s.toggleTheme);
-  return (
-    <button
-      type="button"
-      onClick={toggleTheme}
-      className={cn(
-        "rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wide transition-colors",
-        "text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)] hover:text-[var(--mt5-text)]",
-        className,
-      )}
-      aria-label="Toggle theme"
-    >
-      {theme === "dark" ? "Light" : "Dark"}
-    </button>
-  );
 }
 
 export function Mt5SubTabs<T extends string>({
@@ -330,15 +310,62 @@ export function Mt5Empty({
   );
 }
 
-export function Mt5FloatingHeader({ profit }: { profit: number }) {
+export function Mt5AccountSummary({
+  account,
+}: {
+  account: {
+    startingBalance: number;
+    currency: string;
+    realizedProfit: number;
+    floatingProfit: number;
+    totalProfit: number;
+    equity: number;
+  };
+}) {
+  const rows = [
+    {
+      label: "Balance",
+      value: fmtMt5Price(account.startingBalance + account.realizedProfit),
+    },
+    {
+      label: "Profit",
+      value: `${account.totalProfit >= 0 ? "+" : ""}${fmtMt5Price(account.totalProfit)}`,
+      color: pnlColor(account.totalProfit),
+    },
+    {
+      label: "Floating",
+      value: `${account.floatingProfit >= 0 ? "+" : ""}${fmtMt5Price(account.floatingProfit)}`,
+      color: pnlColor(account.floatingProfit),
+    },
+    {
+      label: "Equity",
+      value: fmtMt5Price(account.equity),
+    },
+  ];
+
+  return <Mt5SummaryBlock rows={rows} />;
+}
+
+export function Mt5FloatingHeader({
+  account,
+}: {
+  account: {
+    totalProfit: number;
+    currency: string;
+    equity: number;
+  };
+}) {
   return (
     <div className="border-b border-[var(--mt5-divider)] px-4 py-3 text-center">
-      <p className="text-xs text-[var(--mt5-muted)]">Floating P/L</p>
+      <p className="text-xs text-[var(--mt5-muted)]">Account P/L</p>
       <p className="mt-0.5 text-2xl font-semibold tabular-nums">
-        <Mt5Pnl value={profit} showSign />
+        <Mt5Pnl value={account.totalProfit} showSign />
         <span className="ml-1 text-sm font-normal text-[var(--mt5-muted)]">
-          USD
+          {account.currency}
         </span>
+      </p>
+      <p className="mt-1 text-xs text-[var(--mt5-muted)]">
+        Equity {fmtMt5Price(account.equity)} {account.currency}
       </p>
     </div>
   );

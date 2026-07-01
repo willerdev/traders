@@ -4430,6 +4430,36 @@ export class SignalsService {
   }
 
   /** User MT5 hub — their submitted setups on the platform MT5 account. */
+  private async buildMt5UserAccountSummary(
+    userId: string,
+    floatingProfit: number,
+  ) {
+    const [config, realizedAgg] = await Promise.all([
+      this.prisma.platformConfig.findFirst({ orderBy: { id: 'asc' } }),
+      this.prisma.trade.aggregate({
+        where: {
+          userId,
+          closedAt: { not: null },
+          pnl: { not: null },
+        },
+        _sum: { pnl: true },
+      }),
+    ]);
+
+    const startingBalance = Number(config?.startingBalance ?? 1000);
+    const realizedProfit = Number(realizedAgg._sum.pnl ?? 0);
+    const totalProfit = realizedProfit + floatingProfit;
+
+    return {
+      startingBalance,
+      currency: 'USD',
+      realizedProfit,
+      floatingProfit,
+      totalProfit,
+      equity: startingBalance + totalProfit,
+    };
+  }
+
   async getUserMt5Terminal(userId: string) {
     await this.compliance.requireActiveTrader(userId);
 
@@ -4722,9 +4752,15 @@ export class SignalsService {
     const limitCount = trades.filter((t) => t.kind === 'limit').length;
     const runningCount = trades.filter((t) => t.kind === 'running').length;
 
+    const accountLedger = await this.buildMt5UserAccountSummary(
+      userId,
+      floatingProfit,
+    );
+
     return {
       configured: this.metaApi.isConfigured && Boolean(platformAccountId),
       message: terminalError,
+      account: accountLedger,
       setups: {
         items: setups,
         count: setups.length,
@@ -4755,8 +4791,10 @@ export class SignalsService {
 
     const platformAccountId = this.metaApi.getConfiguredDefaultAccountId();
     if (!this.metaApi.isConfigured || !platformAccountId) {
+      const accountLedger = await this.buildMt5UserAccountSummary(userId, 0);
       return {
         trades: [],
+        account: accountLedger,
         stats: { runningCount: 0, floatingProfit: 0 },
         refreshedAt: new Date().toISOString(),
       };
@@ -4832,8 +4870,14 @@ export class SignalsService {
 
     const floatingProfit = trades.reduce((sum, t) => sum + (t.profit ?? 0), 0);
 
+    const accountLedger = await this.buildMt5UserAccountSummary(
+      userId,
+      floatingProfit,
+    );
+
     return {
       trades,
+      account: accountLedger,
       stats: {
         runningCount: trades.length,
         floatingProfit,

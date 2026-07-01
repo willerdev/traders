@@ -887,6 +887,7 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
+        {/* Account */}
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -895,38 +896,8 @@ export default function SettingsPage() {
               ) : (
                 <Sun className="h-5 w-5 text-primary" />
               )}
-              <CardTitle>Appearance</CardTitle>
+              <CardTitle>Account</CardTitle>
             </div>
-            <CardDescription>Choose your preferred theme.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant={theme === "dark" ? "default" : "secondary"}
-                className="flex-1 gap-2"
-                onClick={() => setTheme("dark")}
-              >
-                <Moon className="h-4 w-4" />
-                Dark
-              </Button>
-              <Button
-                type="button"
-                variant={theme === "light" ? "default" : "secondary"}
-                className="flex-1 gap-2"
-                onClick={() => setTheme("light")}
-              >
-                <Sun className="h-4 w-4" />
-                Light
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Account */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Account</CardTitle>
             <CardDescription>
               Member since{" "}
               {settings?.user.createdAt
@@ -936,7 +907,30 @@ export default function SettingsPage() {
               Tier: {settings?.user.tier ?? "BRONZE"}
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            <div>
+              <p className="mb-2 text-sm font-medium text-foreground">Appearance</p>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={theme === "dark" ? "default" : "secondary"}
+                  className="flex-1 gap-2"
+                  onClick={() => setTheme("dark")}
+                >
+                  <Moon className="h-4 w-4" />
+                  Dark
+                </Button>
+                <Button
+                  type="button"
+                  variant={theme === "light" ? "default" : "secondary"}
+                  className="flex-1 gap-2"
+                  onClick={() => setTheme("light")}
+                >
+                  <Sun className="h-4 w-4" />
+                  Light
+                </Button>
+              </div>
+            </div>
             <Button
               variant="secondary"
               className="w-full gap-2 text-danger hover:text-danger"

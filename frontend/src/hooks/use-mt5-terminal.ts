@@ -93,6 +93,7 @@ export function useMt5Terminal(
         if (!prev) return prev;
         const next = {
           ...prev,
+          account: res.account ?? prev.account,
           stats: {
             ...prev.stats,
             runningCount: res.stats.runningCount,
@@ -100,7 +101,12 @@ export function useMt5Terminal(
           },
         };
         if (userId) {
-          patchMt5RunningCache(userId, res.trades, res.stats);
+          patchMt5RunningCache(
+            userId,
+            res.trades,
+            res.stats,
+            res.account,
+          );
         }
         return next;
       });
