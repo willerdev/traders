@@ -18,6 +18,7 @@ import { MessagesModule } from './messages/messages.module';
 import { EmailModule } from './email/email.module';
 import { PlatformModule } from './platform/platform.module';
 import { PlatformNotificationsModule } from './platform-notifications/platform-notifications.module';
+import { FeedsModule } from './feeds/feeds.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { PlatformNotificationsModule } from './platform-notifications/platform-n
     MessagesModule,
     PlatformModule,
     PlatformNotificationsModule,
+    FeedsModule,
   ],
 })
 export class AppModule {}

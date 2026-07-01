@@ -14,6 +14,9 @@ import {
   ValidateIf,
   IsArray,
   ValidateNested,
+  IsInt,
+  Max,
+  IsISO8601,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { TradeDirection, KycDocumentType, PayoutMethod } from '@prisma/client';
@@ -612,6 +615,29 @@ export class PartialCloseSetupDto {
   @IsNumber()
   @Min(0.01)
   volume: number;
+}
+
+export class ListSetupFeedQueryDto {
+  @IsOptional()
+  @IsString()
+  @IsIn(['OPEN', 'PENDING', 'ACTIVE', 'WON', 'LOST', 'ARCHIVED', 'CANCELLED', 'ALL'])
+  status?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  symbol?: string;
+
+  @IsOptional()
+  @IsISO8601()
+  since?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
 }
 
 export class SendMessageDto {
