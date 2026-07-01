@@ -2,6 +2,44 @@
 
 Third-party integrators can read trader-submitted setups from TraderRank Pro using a shared API key. Responses include the **pair/symbol**, **entry zone**, **stop loss**, and **take profit** for each setup.
 
+## Quick start (production)
+
+| | |
+|---|---|
+| **API host** | `https://traders-c53s.onrender.com` |
+| **Feed base** | `https://traders-c53s.onrender.com/api/v1/feeds` |
+| **List setups** | `GET /api/v1/feeds/setups` |
+| **Auth header** | `X-Api-Key: <your SETUP_FEED_API_KEY>` |
+
+**Copy-paste test** (replace the key with yours, or export it first):
+
+```bash
+export SETUP_FEED_API_KEY="your-key-here"
+
+curl -s \
+  -H "X-Api-Key: $SETUP_FEED_API_KEY" \
+  "https://traders-c53s.onrender.com/api/v1/feeds/setups?status=OPEN&limit=10"
+```
+
+Or run the repo test script:
+
+```bash
+chmod +x scripts/test-setup-feed.sh
+SETUP_FEED_API_KEY="your-key-here" ./scripts/test-setup-feed.sh
+```
+
+**Render (production):** In [Render → traders-api → Environment](https://dashboard.render.com), add:
+
+```bash
+SETUP_FEED_API_KEY=your-key-here
+```
+
+Redeploy **traders-api** after saving. Until deploy + env are set, production returns `404` (old build) or `503` (key missing).
+
+**Local dev:** `http://localhost:4000/api/v1/feeds` with the same header.
+
+---
+
 ## Authentication
 
 Set on the server:
@@ -23,7 +61,7 @@ Missing or wrong keys return `401 Unauthorized`. If the server has no key config
 ## Base URL
 
 ```
-https://YOUR_API_HOST/api/v1/feeds
+https://traders-c53s.onrender.com/api/v1/feeds
 ```
 
 Local development:
@@ -53,8 +91,8 @@ GET /api/v1/feeds/setups
 
 ```bash
 curl -s \
-  -H "X-Api-Key: YOUR_SETUP_FEED_API_KEY" \
-  "https://YOUR_API_HOST/api/v1/feeds/setups?status=OPEN&limit=20"
+  -H "X-Api-Key: $SETUP_FEED_API_KEY" \
+  "https://traders-c53s.onrender.com/api/v1/feeds/setups?status=OPEN&limit=20"
 ```
 
 ### Example response
@@ -128,8 +166,8 @@ GET /api/v1/feeds/setups/:signalId
 
 ```bash
 curl -s \
-  -H "X-Api-Key: YOUR_SETUP_FEED_API_KEY" \
-  "https://YOUR_API_HOST/api/v1/feeds/setups/clx9abc123"
+  -H "X-Api-Key: $SETUP_FEED_API_KEY" \
+  "https://traders-c53s.onrender.com/api/v1/feeds/setups/cmr2gl51z018ciq01d0hkcem9"
 ```
 
 Returns a single object (same shape as one item in the list). `404` if the id does not exist.
@@ -143,8 +181,8 @@ Returns a single object (same shape as one item in the list). `404` if the id do
 
 ```bash
 curl -s \
-  -H "X-Api-Key: YOUR_KEY" \
-  "https://YOUR_API_HOST/api/v1/feeds/setups?status=OPEN&since=2026-06-30T14:22:10.123Z"
+  -H "X-Api-Key: $SETUP_FEED_API_KEY" \
+  "https://traders-c53s.onrender.com/api/v1/feeds/setups?status=OPEN&since=2026-06-30T14:22:10.123Z"
 ```
 
 - Store `signalId` on your side to avoid processing the same setup twice.
@@ -156,7 +194,7 @@ curl -s \
 | HTTP | Meaning |
 |------|---------|
 | `401` | Invalid or missing API key |
-| `404` | Setup id not found (single-setup endpoint) |
+| `404` | Route not deployed yet, or setup id not found |
 | `503` | `SETUP_FEED_API_KEY` not configured on server |
 
 ---
@@ -165,7 +203,7 @@ curl -s \
 
 - Rotate `SETUP_FEED_API_KEY` if it is leaked.
 - Prefer the `X-Api-Key` header over query parameters.
-- Do not expose the key in client-side apps or public repos.
+- Do not commit the key to git or expose it in client-side apps.
 - This feed is read-only; it cannot submit or modify setups.
 
 ---
@@ -173,7 +211,7 @@ curl -s \
 ## Node.js example
 
 ```javascript
-const API_BASE = "https://YOUR_API_HOST/api/v1/feeds";
+const API_BASE = "https://traders-c53s.onrender.com/api/v1/feeds";
 const API_KEY = process.env.SETUP_FEED_API_KEY;
 
 async function fetchOpenSetups() {
@@ -200,10 +238,15 @@ async function fetchOpenSetups() {
 import os
 import requests
 
-API_BASE = "https://YOUR_API_HOST/api/v1/feeds"
+API_BASE = "https://traders-c53s.onrender.com/api/v1/feeds"
 headers = {"X-Api-Key": os.environ["SETUP_FEED_API_KEY"]}
 
-r = requests.get(f"{API_BASE}/setups", params={"status": "OPEN", "limit": 50}, headers=headers, timeout=30)
+r = requests.get(
+    f"{API_BASE}/setups",
+    params={"status": "OPEN", "limit": 50},
+    headers=headers,
+    timeout=30,
+)
 r.raise_for_status()
 for setup in r.json()["items"]:
     print(setup["pair"], setup["direction"], setup["entry"], setup["stopLoss"])

@@ -50,6 +50,8 @@ services:
         value: "0.01"
       - key: TRADE_OUTCOME_WEBHOOK_SECRET
         sync: false
+      - key: SETUP_FEED_API_KEY
+        sync: false
       - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM
