@@ -14,9 +14,10 @@ import {
   LineChart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAuthStore } from "@/stores/auth";
+import { useAuthStore, useDashboardStore } from "@/stores/auth";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/layout/logo";
+import { UserAvatar } from "@/components/layout/user-avatar";
 import { PlatformNotificationsBell } from "@/components/layout/platform-notifications-bell";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import { ChatFab } from "@/components/layout/chat-fab";
@@ -203,17 +204,23 @@ function Sidebar({ pathname }: { pathname: string }) {
 
 function MobileHeader() {
   const { user } = useAuthStore();
+  const dashboardUser = useDashboardStore((s) => s.data?.user);
+  const avatarUrl = dashboardUser?.avatarUrl ?? user?.avatarUrl ?? null;
+  const displayName = user?.displayName ?? dashboardUser?.displayName;
 
   return (
-    <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 backdrop-blur-xl md:hidden">
+    <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 backdrop-blur-xl md:hidden">
       <Link href="/dashboard" className="flex items-center">
-        <Logo compact className="text-sm" />
+        <Logo compact className="text-xl font-bold tracking-tight" />
       </Link>
       <Link
         href="/settings"
-        className="flex max-w-[8rem] items-center gap-2 truncate text-xs text-muted"
+        className="flex min-w-0 max-w-[55%] items-center gap-2 rounded-full py-1 pl-1 pr-2 transition-colors hover:bg-foreground/5"
       >
-        <span className="truncate">{user?.displayName}</span>
+        <UserAvatar name={displayName} src={avatarUrl} size="sm" />
+        <span className="truncate text-sm font-medium text-foreground">
+          {displayName}
+        </span>
       </Link>
     </header>
   );

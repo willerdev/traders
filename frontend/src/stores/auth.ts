@@ -9,6 +9,7 @@ interface User {
   email?: string;
   role: string;
   status: string;
+  avatarUrl?: string | null;
 }
 
 interface AuthState {
@@ -121,6 +122,14 @@ export const useDashboardStore = create<DashboardState>((set) => ({
         throw new Error("Dashboard data unavailable");
       }
       set({ data, loading: false, error: null });
+      const auth = useAuthStore.getState();
+      if (auth.user && auth.token && data.user) {
+        useAuthStore.getState().setAuth(auth.token, {
+          ...auth.user,
+          displayName: data.user.displayName,
+          avatarUrl: data.user.avatarUrl ?? null,
+        });
+      }
     } catch (err) {
       set({
         loading: false,

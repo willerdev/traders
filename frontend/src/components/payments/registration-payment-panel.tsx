@@ -32,8 +32,10 @@ const PROGRESS_LABEL: Record<Progress, string> = {
 
 export function RegistrationPaymentPanel({
   onComplete,
+  renewal = false,
 }: {
   onComplete?: () => void;
+  renewal?: boolean;
 }) {
   const [network, setNetwork] = useState<string>("TRC20");
   const [loading, setLoading] = useState(false);
@@ -78,6 +80,10 @@ export function RegistrationPaymentPanel({
         onComplete?.();
         return;
       }
+      if (result.message?.includes("still active")) {
+        setError("Your weekly access is still active.");
+        return;
+      }
       if (!result.payAddress || !result.paymentId) {
         throw new Error(result.message || "Could not create payment");
       }
@@ -104,8 +110,10 @@ export function RegistrationPaymentPanel({
     return (
       <div className="space-y-4 rounded-lg border border-[var(--color-border)] bg-foreground/[0.02] p-4">
         <p className="text-sm text-muted">
-          Pay <strong className="text-foreground">5 USDT</strong> in-app — send
-          crypto to a wallet address and we track confirmation automatically.
+          Pay <strong className="text-foreground">5 USDT</strong> for{" "}
+          <strong className="text-foreground">7 days</strong> of trading
+          {renewal ? " (renewal)" : ""} — send crypto to the address below and
+          we confirm automatically.
         </p>
         <div className="grid gap-2 sm:grid-cols-3">
           {NETWORKS.map((n) => (

@@ -10,8 +10,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/stores/auth";
 import { api, type SignalDraft, type MatchedDuplicateSignal, type HubQuote } from "@/lib/api";
+import { hasTradingAccess } from "@/lib/trading-access";
 import { normalizeSetupFields, setupValidationError } from "@/lib/chart-setup";
-import { RegistrationCheckout } from "@/components/payments/registration-checkout";
+import { WeeklyAccessGate } from "@/components/payments/weekly-access-gate";
 import {
   SubmitReviewCard,
   type ReviewPayload,
@@ -166,17 +167,22 @@ export default function SubmitSignalPage() {
   const [resumingDraftId, setResumingDraftId] = useState<string | null>(null);
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
   const [accountReady, setAccountReady] = useState<boolean | null>(null);
+  const [hadPaidBefore, setHadPaidBefore] = useState(false);
 
   const progress = calcProgress(form, screenshotUrl);
 
   const refreshAccountStatus = useCallback(async () => {
     try {
       const dash = await api.users.dashboard();
-      const active = dash?.user.status === "ACTIVE";
+      const active = dash?.user ? hasTradingAccess(dash.user) : false;
       setAccountReady(active);
+      setHadPaidBefore(Boolean(dash?.user?.registrationPaid));
       const { token, user } = useAuthStore.getState();
-      if (token && user && dash?.user.status) {
-        useAuthStore.getState().setAuth(token, { ...user, status: dash.user.status });
+      if (token && user && dash?.user) {
+        useAuthStore.getState().setAuth(token, {
+          ...user,
+          status: dash.user.status,
+        });
       }
     } catch {
       setAccountReady(false);
@@ -600,7 +606,7 @@ export default function SubmitSignalPage() {
   function handleGoToReview(e: React.FormEvent) {
     e.preventDefault();
     if (!accountReady) {
-      setError("Pay registration to submit setups. KYC is only required for payouts.");
+      setError("Pay for weekly access to submit setups. KYC is only required for payouts.");
       return;
     }
     setError("");
@@ -847,18 +853,12 @@ export default function SubmitSignalPage() {
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
         {accountReady === false && (
-          <Card className="border-primary/30 bg-primary/5">
-            <CardHeader>
-              <CardTitle>Pay registration to submit</CardTitle>
-              <CardDescription>
-                You can fill in setups and save drafts now. Complete registration (5 USDT)
-                to lock in and send setups. KYC is only required when you request a payout.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <RegistrationCheckout onComplete={() => void refreshAccountStatus()} />
-            </CardContent>
-          </Card>
+          <WeeklyAccessGate
+            renewal={hadPaidBefore}
+            onComplete={() => void refreshAccountStatus()}
+            title={hadPaidBefore ? "Renew weekly access" : "Pay to start trading"}
+            description="You can fill in setups and save drafts now. Pay 5 USDT for 7 trading days to lock in and send setups."
+          />
         )}
 
         {!draftsLoading && drafts.length > 0 && (
@@ -1280,7 +1280,7 @@ export default function SubmitSignalPage() {
                 disabled={loading || uploading || analyzing || accountReady === false}
               >
                 {accountReady === false
-                  ? "Pay registration to submit"
+                  ? "Pay weekly access to submit"
                   : analyzing
                   ? "Analyzing chart..."
                   : uploading

@@ -21,6 +21,7 @@ export function useMt5Terminal(
   isAuthenticated: boolean,
   hasHydrated: boolean,
   tab: Tab,
+  accessGranted = true,
 ) {
   const [data, setData] = useState<UserMt5Terminal | null>(null);
   const [runningTrades, setRunningTrades] = useState<UserMt5Trade[]>([]);
@@ -116,14 +117,16 @@ export function useMt5Terminal(
     }
   }, [userId]);
 
+  const canLoad = isAuthenticated && accessGranted;
+
   useEffect(() => {
-    if (!hasHydrated || !isAuthenticated || !userId) return;
+    if (!hasHydrated || !canLoad || !userId) return;
     const cached = readMt5Cache(userId);
     const timer = window.setTimeout(() => {
       void load({ background: Boolean(cached) });
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [hasHydrated, isAuthenticated, userId, load]);
+  }, [hasHydrated, canLoad, userId, load]);
 
   const loadQuotes = useCallback(async () => {
     try {
@@ -135,7 +138,7 @@ export function useMt5Terminal(
   }, []);
 
   useEffect(() => {
-    if (!isAuthenticated || tab !== "trades") return;
+    if (!canLoad || tab !== "trades") return;
     const start = window.setTimeout(() => {
       void loadRunning();
     }, 0);
@@ -144,10 +147,10 @@ export function useMt5Terminal(
       window.clearTimeout(start);
       window.clearInterval(id);
     };
-  }, [isAuthenticated, tab, loadRunning]);
+  }, [canLoad, tab, loadRunning]);
 
   useEffect(() => {
-    if (!isAuthenticated || tab !== "quotes") return;
+    if (!canLoad || tab !== "quotes") return;
     const start = window.setTimeout(() => {
       void loadQuotes();
     }, 0);
@@ -156,7 +159,7 @@ export function useMt5Terminal(
       window.clearTimeout(start);
       window.clearInterval(id);
     };
-  }, [isAuthenticated, tab, loadQuotes]);
+  }, [canLoad, tab, loadQuotes]);
 
   return {
     data,

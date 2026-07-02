@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -16,6 +16,8 @@ import {
 } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
 import { useMt5Terminal } from "@/hooks/use-mt5-terminal";
+import { hasTradingAccess } from "@/lib/trading-access";
+import { WeeklyAccessGate } from "@/components/payments/weekly-access-gate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -84,6 +86,20 @@ export default function Mt5UserPage() {
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [historyLoadingId, setHistoryLoadingId] = useState<string | null>(null);
   const [closingAll, setClosingAll] = useState(false);
+  const [tradingAccess, setTradingAccess] = useState<boolean | null>(null);
+  const [hadPaidBefore, setHadPaidBefore] = useState(false);
+
+  const refreshTradingAccess = useCallback(async () => {
+    try {
+      const dash = await api.users.dashboard();
+      setTradingAccess(dash?.user ? hasTradingAccess(dash.user) : false);
+      setHadPaidBefore(Boolean(dash?.user?.registrationPaid));
+    } catch {
+      setTradingAccess(false);
+    }
+  }, []);
+
+  const accessGranted = tradingAccess === true;
 
   const {
     data,
@@ -95,14 +111,16 @@ export default function Mt5UserPage() {
     setError,
     load,
     loadRunning,
-  } = useMt5Terminal(userId, isAuthenticated, hasHydrated, tab);
+  } = useMt5Terminal(userId, isAuthenticated, hasHydrated, tab, accessGranted);
 
   useEffect(() => {
     if (!hasHydrated) return;
     if (!isAuthenticated) {
       router.replace("/login");
+      return;
     }
-  }, [hasHydrated, isAuthenticated, router]);
+    void refreshTradingAccess();
+  }, [hasHydrated, isAuthenticated, router, refreshTradingAccess]);
 
   const setups = data?.setups.items ?? [];
   const history = data?.history.items ?? [];
@@ -284,6 +302,29 @@ export default function Mt5UserPage() {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (tradingAccess === null) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!tradingAccess) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-6">
+        <WeeklyAccessGate
+          renewal={hadPaidBefore}
+          onComplete={() => {
+            void refreshTradingAccess();
+          }}
+          title={hadPaidBefore ? "Renew to use MT5" : "Pay to unlock MT5"}
+          description="MT5 quotes, setups, and live trading require an active weekly pass (7 days per payment)."
+        />
       </div>
     );
   }

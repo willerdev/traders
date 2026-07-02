@@ -2,23 +2,22 @@
 
 import { useEffect } from "react";
 import { motion } from "framer-motion";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DashboardStats } from "@/components/dashboard/stats-cards";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuthStore, useDashboardStore } from "@/stores/auth";
-import { Send } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
+import { hasTradingAccess, formatAccessExpiry } from "@/lib/trading-access";
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
+import { WeeklyAccessGate } from "@/components/payments/weekly-access-gate";
 import { ArchivedSetupsCard } from "@/components/dashboard/archived-setups";
 import { HubExecutionsCard } from "@/components/dashboard/hub-executions";
 import { Mt5PositionsPanel } from "@/components/dashboard/open-positions";
 import { UnresolvedSetupsCard } from "@/components/dashboard/unresolved-setups";
 import { RecentSignalsCard } from "@/components/dashboard/recent-signals-card";
 import { PayoutRewardTiersCard } from "@/components/dashboard/payout-reward-tiers";
-import { RegistrationCheckout } from "@/components/payments/registration-checkout";
 import { RISK_PERCENT, MAX_RISK_PER_TRADE } from "@/lib/platform-rules";
 
 export default function DashboardPage() {
@@ -49,22 +48,24 @@ export default function DashboardPage() {
 
   if (loading && !data) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <div className="h-7 w-7 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center px-4 text-center">
-        <p className="text-lg font-semibold text-white">Could not load dashboard</p>
+      <div className="mx-auto flex min-h-[50vh] max-w-md flex-col items-center justify-center px-4 text-center">
+        <p className="text-base font-semibold text-white">Could not load dashboard</p>
         <p className="mt-2 text-sm text-gray-400">
           {error || "Something went wrong. Check that the API is running."}
         </p>
-        <div className="mt-6 flex gap-3">
-          <Button onClick={() => fetchDashboard()}>Retry</Button>
-          <Button variant="secondary" onClick={() => router.push("/login")}>
+        <div className="mt-5 flex gap-3">
+          <Button size="sm" onClick={() => fetchDashboard()}>
+            Retry
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => router.push("/login")}>
             Sign in again
           </Button>
         </div>
@@ -73,30 +74,28 @@ export default function DashboardPage() {
   }
 
   const account = data.account;
+  const tradingActive = hasTradingAccess(data.user);
+  const accessLabel = formatAccessExpiry(data.user.accessExpiresAt);
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
-      >
-        <div>
-          <h1 className="text-2xl font-bold text-white">
-            Welcome back, {data.user.displayName}
-          </h1>
-          <p className="mt-1 text-gray-400">
-            Track your performance and climb the leaderboard
-          </p>
-        </div>
-        <Link href="/submit">
-          <Button className="gap-2">
-            <Send className="h-4 w-4" />
-            Submit Signal
-          </Button>
-        </Link>
-      </motion.div>
+    <div className="mx-auto max-w-7xl space-y-4 px-4 py-4 sm:px-6 sm:py-5">
+      {!tradingActive && (
+        <WeeklyAccessGate
+          renewal={Boolean(data.user.registrationPaid)}
+          onComplete={() => void fetchDashboard()}
+          title={
+            data.user.registrationPaid
+              ? "Weekly access expired"
+              : "Activate weekly trading"
+          }
+        />
+      )}
 
+      {tradingActive && accessLabel && (
+        <p className="text-xs text-muted">
+          Trading access · <span className="text-foreground">{accessLabel}</span>
+        </p>
+      )}
       {data.onboarding && (
         <OnboardingChecklist
           onboarding={data.onboarding}
@@ -104,21 +103,7 @@ export default function DashboardPage() {
         />
       )}
 
-      {data.user.status === "PENDING_PAYMENT" && !data.onboarding && (
-        <Card className="mb-6 border-primary/30 bg-primary/5">
-          <CardHeader>
-            <CardTitle>Complete Registration</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="mb-4 text-sm text-gray-400">
-              Pay 5 USDT to unlock setup submission. Invite codes are available on request.
-            </p>
-            <RegistrationCheckout onComplete={handleRegistrationComplete} />
-          </CardContent>
-        </Card>
-      )}
-
-      {account && (
+      {account && tradingActive && (
         <DashboardStats
           balance={Number(account.balance)}
           weeklyProfit={Number(account.weeklyProfit)}
@@ -133,12 +118,15 @@ export default function DashboardPage() {
       )}
 
       {data.payoutReward && (
-        <div className="mt-8">
-          <PayoutRewardTiersCard reward={data.payoutReward} />
-        </div>
+        <PayoutRewardTiersCard reward={data.payoutReward} />
       )}
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-2">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.05 }}
+        className="grid gap-4 lg:grid-cols-2"
+      >
         <UnresolvedSetupsCard onClaimed={() => fetchDashboard()} />
         <Mt5PositionsPanel />
         <ArchivedSetupsCard />
@@ -150,29 +138,24 @@ export default function DashboardPage() {
         />
 
         <Card>
-          <CardHeader>
-            <CardTitle>Account Rules</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Account Rules</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
+          <CardContent className="pt-0">
+            <div className="divide-y divide-white/5">
               {[
                 { label: "Starting Balance", value: "$1,000 virtual" },
                 { label: "Risk Per Trade", value: `${RISK_PERCENT}% fixed ($${MAX_RISK_PER_TRADE} max)` },
-                { label: "TP Hit Reward", value: "$5 USDT auto-credited to wallet" },
-                { label: "Win Points", value: "+10 points" },
-                { label: "Loss Points", value: "-5 points" },
+                { label: "TP Hit Reward", value: "$5 USDT auto-credited" },
+                { label: "Win / Loss Points", value: "+10 / −5" },
                 { label: "Payout Split", value: "40% trader / 60% platform" },
-                {
-                  label: "Payout Source",
-                  value: "Subscriptions & marketplace revenue",
-                },
               ].map((rule) => (
                 <div
                   key={rule.label}
-                  className="flex items-center justify-between border-b border-white/5 pb-3 last:border-0"
+                  className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
                 >
-                  <span className="text-sm text-gray-400">{rule.label}</span>
-                  <span className="text-sm font-medium text-white">
+                  <span className="text-xs text-gray-400">{rule.label}</span>
+                  <span className="text-right text-xs font-medium text-white">
                     {rule.value}
                   </span>
                 </div>
@@ -182,28 +165,28 @@ export default function DashboardPage() {
         </Card>
 
         {data.walletTransactions && data.walletTransactions.length > 0 && (
-          <Card className="mt-6 lg:col-span-2">
-            <CardHeader>
-              <CardTitle>Trade Wallet Activity</CardTitle>
+          <Card className="lg:col-span-2">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Trade Wallet Activity</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
+            <CardContent className="pt-0">
+              <div className="space-y-1.5">
                 {data.walletTransactions.map((tx) => (
                   <div
                     key={tx.id}
-                    className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] p-3"
+                    className="flex items-center justify-between gap-3 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"
                   >
-                    <div>
-                      <p className="text-sm text-white">{tx.description}</p>
-                      <p className="text-xs text-gray-500">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm text-white">{tx.description}</p>
+                      <p className="text-[10px] text-gray-500">
                         {new Date(tx.createdAt).toLocaleString()}
                       </p>
                     </div>
                     <span
                       className={
                         Number(tx.amount) >= 0
-                          ? "font-bold text-success"
-                          : "font-bold text-danger"
+                          ? "shrink-0 text-sm font-bold text-success"
+                          : "shrink-0 text-sm font-bold text-danger"
                       }
                     >
                       {Number(tx.amount) >= 0 ? "+" : ""}
@@ -215,7 +198,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         )}
-      </div>
+      </motion.div>
     </div>
   );
 }

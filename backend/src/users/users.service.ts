@@ -16,6 +16,10 @@ import { assertAllowedDisplayName } from '../common/display-name.util';
 import { isValidTrc20Address } from '../common/payout.util';
 import { MetaApiService } from '../metaapi/metaapi.service';
 import { getPayoutRewardStatus } from '../payouts/payout-reward-tier.util';
+import {
+  hasActiveTradingAccess,
+  tradingAccessDaysRemaining,
+} from '../common/weekly-access.util';
 
 @Injectable()
 export class UsersService {
@@ -64,11 +68,15 @@ export class UsersService {
       user: {
         id: user.id,
         displayName: user.displayName,
+        avatarUrl: user.avatarUrl,
         email: user.email,
         role: user.role,
         status: user.status,
         emailVerified: user.emailVerified,
         registrationPaid: user.registrationPaid,
+        accessExpiresAt: user.accessExpiresAt?.toISOString() ?? null,
+        tradingAccessActive: hasActiveTradingAccess(user),
+        tradingDaysRemaining: tradingAccessDaysRemaining(user.accessExpiresAt),
       },
       onboarding: {
         emailVerified: user.emailVerified,

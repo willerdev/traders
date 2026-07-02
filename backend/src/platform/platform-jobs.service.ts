@@ -1,17 +1,56 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { LeaderboardService } from '../leaderboard/leaderboard.service';
 import { PayoutService } from '../payouts/payout.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { currentWeekYear, getWeekNumber } from '../common/week.util';
+import { WEEKLY_ACCESS_MS } from '../common/weekly-access.util';
 
 @Injectable()
-export class PlatformJobsService {
+export class PlatformJobsService implements OnModuleInit {
   private readonly logger = new Logger(PlatformJobsService.name);
 
   constructor(
     private leaderboard: LeaderboardService,
     private payouts: PayoutService,
+    private prisma: PrismaService,
   ) {}
+
+  async onModuleInit() {
+    const grace = new Date(Date.now() + WEEKLY_ACCESS_MS);
+    const backfill = await this.prisma.user.updateMany({
+      where: {
+        role: { not: 'ADMIN' },
+        status: 'ACTIVE',
+        registrationPaid: true,
+        accessExpiresAt: null,
+      },
+      data: { accessExpiresAt: grace },
+    });
+    if (backfill.count > 0) {
+      this.logger.log(
+        `Backfilled weekly access expiry for ${backfill.count} active trader(s)`,
+      );
+    }
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async expireWeeklyTradingAccessJob() {
+    const now = new Date();
+    const expired = await this.prisma.user.updateMany({
+      where: {
+        role: { not: 'ADMIN' },
+        status: 'ACTIVE',
+        accessExpiresAt: { lt: now },
+      },
+      data: { status: 'PENDING_PAYMENT' },
+    });
+    if (expired.count > 0) {
+      this.logger.log(
+        `Locked ${expired.count} trader(s) — weekly access expired`,
+      );
+    }
+  }
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async refreshLeaderboardJob() {

@@ -10,15 +10,23 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 export function RegistrationCheckout({
   onComplete,
   compact = false,
+  renewal = false,
 }: {
   onComplete?: () => void;
   compact?: boolean;
+  /** True when renewing weekly access after expiry */
+  renewal?: boolean;
 }) {
   const [showPay, setShowPay] = useState(false);
   const [showPromo, setShowPromo] = useState(false);
 
   return (
     <div className={cn("space-y-3", !compact && "mt-2")}>
+      <p className="text-sm text-muted">
+        {renewal
+          ? "Your 7-day trading window ended. Pay again to unlock Submit and MT5 for another week."
+          : "Pay weekly for 7 trading days — submit setups and use MT5. Access activates automatically once payment confirms."}
+      </p>
       <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
@@ -28,7 +36,7 @@ export function RegistrationCheckout({
             setShowPromo(false);
           }}
         >
-          Pay 5 USDT
+          {renewal ? "Renew 7 days · 5 USDT" : "Pay 5 USDT · 7 days"}
         </Button>
         <Button
           size="sm"
@@ -50,6 +58,7 @@ export function RegistrationCheckout({
 
       {showPay && (
         <RegistrationPaymentPanel
+          renewal={renewal}
           onComplete={() => {
             setShowPay(false);
             onComplete?.();

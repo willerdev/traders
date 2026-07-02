@@ -15,6 +15,8 @@ import { MetaApiService } from '../metaapi/metaapi.service';
 import { SignalHubService } from '../signals/signal-hub.service';
 import { SignalsService } from '../signals/signals.service';
 import { AuthService } from '../auth/auth.service';
+import { PaymentsService } from '../payments/payments.service';
+import { hasActiveTradingAccess } from '../common/weekly-access.util';
 import { MessagesService } from '../messages/messages.service';
 import { NotificationService } from '../email/notification.service';
 import { CreatePromoCodeDto, SendMessageDto } from '../common/dto';
@@ -33,6 +35,7 @@ export class AdminService {
     private signalHub: SignalHubService,
     private signals: SignalsService,
     private auth: AuthService,
+    private payments: PaymentsService,
     private messages: MessagesService,
     private notifications: NotificationService,
   ) {}
@@ -955,8 +958,8 @@ export class AdminService {
   async approveRegistrationPayment(userId: string, adminId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
-    if (user.registrationPaid) {
-      throw new BadRequestException('Registration is already marked as paid');
+    if (hasActiveTradingAccess(user)) {
+      throw new BadRequestException('Weekly trading access is already active');
     }
 
     const config = await this.prisma.platformConfig.findUnique({
@@ -978,11 +981,7 @@ export class AdminService {
       },
     });
 
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { registrationPaid: true },
-    });
-
+    const accessExpiresAt = await this.payments.grantWeeklyAccess(userId);
     await this.auth.activateAccount(userId);
 
     await this.logAction(adminId, 'REGISTRATION_APPROVED', userId, {
@@ -995,7 +994,8 @@ export class AdminService {
       userId,
       status: 'ACTIVE',
       registrationPaid: true,
-      message: 'Registration approved — account activated',
+      accessExpiresAt: accessExpiresAt.toISOString(),
+      message: 'Weekly access approved — 7 trading days activated',
     };
   }
 

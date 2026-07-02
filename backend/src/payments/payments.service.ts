@@ -11,6 +11,10 @@ import { NowPaymentsService } from './nowpayments.service';
 import { PromoService } from './promo.service';
 import { BlockchainScannerService } from './blockchain-scanner.service';
 import { REGISTRATION_FEE_USDT } from '../common/constants';
+import {
+  computeWeeklyAccessExpiry,
+  hasActiveTradingAccess,
+} from '../common/weekly-access.util';
 import { NotificationService } from '../email/notification.service';
 import { SubscriptionPlan } from '@prisma/client';
 
@@ -46,6 +50,37 @@ export class PaymentsService {
     return Number(config?.registrationFeeUsdt ?? REGISTRATION_FEE_USDT);
   }
 
+  async grantWeeklyAccess(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const accessExpiresAt = computeWeeklyAccessExpiry(
+      new Date(),
+      user.accessExpiresAt,
+    );
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        registrationPaid: true,
+        status: 'ACTIVE',
+        accessExpiresAt,
+      },
+    });
+
+    return accessExpiresAt;
+  }
+
+  private needsWeeklyPayment(user: {
+    registrationPaid: boolean;
+    status: string;
+    role: string;
+    accessExpiresAt: Date | null;
+  }) {
+    if (user.role === 'ADMIN') return false;
+    return !hasActiveTradingAccess(user);
+  }
+
   private async completeFreeRegistration(
     userId: string,
     promoCode: string,
@@ -69,11 +104,7 @@ export class PaymentsService {
       },
     });
 
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { registrationPaid: true },
-    });
-
+    await this.grantWeeklyAccess(userId);
     await this.authService.activateAccount(userId);
 
     this.notifications.accountActivated(userId);
@@ -85,15 +116,19 @@ export class PaymentsService {
       discountPercent: 100,
       amountCharged: 0,
       originalAmount,
-      message: 'Promo applied — registration fee waived. Account activated.',
+      message: 'Promo applied — 7 days of trading access activated.',
     };
   }
 
   async applyPromoCode(userId: string, code: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
-    if (user.registrationPaid) {
-      return { message: 'Registration already paid', alreadyPaid: true };
+    if (!this.needsWeeklyPayment(user)) {
+      return {
+        message: 'Weekly access is already active',
+        alreadyPaid: true,
+        accessExpiresAt: user.accessExpiresAt?.toISOString() ?? null,
+      };
     }
 
     const fee = await this.registrationFee();
@@ -115,8 +150,11 @@ export class PaymentsService {
   ) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
-    if (user.registrationPaid) {
-      return { message: 'Registration already paid' };
+    if (!this.needsWeeklyPayment(user)) {
+      return {
+        message: 'Weekly access is still active',
+        accessExpiresAt: user.accessExpiresAt?.toISOString() ?? null,
+      };
     }
 
     const fee = await this.registrationFee();
@@ -154,7 +192,7 @@ export class PaymentsService {
       amount: fee,
       orderId: payment.id,
       network,
-      description: 'TraderRank Pro registration fee',
+      description: 'TraderRank Pro weekly trading access (7 days)',
       ipnCallbackUrl: this.ipnUrl(),
     });
 
@@ -240,9 +278,9 @@ export class PaymentsService {
   ) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
-    if (!user.registrationPaid) {
+    if (!hasActiveTradingAccess(user)) {
       throw new BadRequestException(
-        'Complete registration payment before buying setup plan',
+        'Complete weekly payment before buying setup plan',
       );
     }
 
@@ -393,6 +431,7 @@ export class PaymentsService {
       data: { registrationPaid: true },
     });
 
+    const accessExpiresAt = await this.grantWeeklyAccess(payment.userId);
     await this.authService.activateAccount(payment.userId);
 
     const { network } = this.extractPayDetails(payment);
@@ -406,7 +445,11 @@ export class PaymentsService {
       `Registration payment ${paymentId} confirmed via ${opts?.source ?? 'nowpayments'}${opts?.txHash ? ` (tx ${opts.txHash.slice(0, 12)}…)` : ''}`,
     );
 
-    return { status: 'confirmed', paymentId: payment.id };
+    return {
+      status: 'confirmed',
+      paymentId: payment.id,
+      accessExpiresAt: accessExpiresAt.toISOString(),
+    };
   }
 
   async confirmSetupPlanPayment(

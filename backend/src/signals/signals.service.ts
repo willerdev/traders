@@ -46,6 +46,7 @@ import {
   isHubLimitPending,
 } from '../common/setup-execution.util';
 import { RISK_PERCENT, MAX_RISK_PER_TRADE, MAX_BREAKEVEN_RETRIES, SETUP_MAX_AGE_MS } from '../common/constants';
+import { hasActiveTradingAccess } from '../common/weekly-access.util';
 import { CopyTradingService } from '../copy-trading/copy-trading.service';
 
 @Injectable()
@@ -830,10 +831,12 @@ export class SignalsService {
   }
 
   private isActiveTraderUser(user: {
+    role?: string;
     status: string;
     registrationPaid: boolean;
+    accessExpiresAt?: Date | null;
   }): boolean {
-    return user.status === 'ACTIVE' && user.registrationPaid;
+    return hasActiveTradingAccess(user);
   }
 
   private resolveMetaApiLimitOrderDetails(

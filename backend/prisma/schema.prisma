@@ -135,6 +135,7 @@ model User {
   emailVerified     Boolean    @default(false)
   emailVerifyToken  String?
   registrationPaid  Boolean    @default(false)
+  accessExpiresAt   DateTime?
   termsAcceptedAt   DateTime?
   lastLoginIp       String?
   metaApiAccountId  String?

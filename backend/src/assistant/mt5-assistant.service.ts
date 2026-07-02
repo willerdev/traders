@@ -5,6 +5,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ComplianceService } from '../compliance/compliance.service';
 import { SignalsService } from '../signals/signals.service';
 
 type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
@@ -232,6 +233,7 @@ export class Mt5AssistantService {
   constructor(
     private config: ConfigService,
     private signals: SignalsService,
+    private compliance: ComplianceService,
   ) {
     this.apiKey = this.config.get<string>('DEEPSEEK_API_KEY') || '';
     this.model = this.config.get<string>('DEEPSEEK_MODEL') || 'deepseek-chat';
@@ -245,6 +247,8 @@ export class Mt5AssistantService {
   }
 
   async chat(userId: string, message: string, history: HistoryItem[] = []) {
+    await this.compliance.requireActiveTrader(userId);
+
     if (!this.isConfigured) {
       throw new ServiceUnavailableException(
         'MT5 assistant is not configured (DeepSeek API key missing)',

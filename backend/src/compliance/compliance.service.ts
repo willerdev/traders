@@ -4,12 +4,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { hasActiveTradingAccess } from '../common/weekly-access.util';
 
 @Injectable()
 export class ComplianceService {
   constructor(private prisma: PrismaService) {}
 
-  /** Paid, non-suspended traders can submit setups — KYC not required. */
+  /** Paid traders with valid weekly access can submit setups and use MT5. */
   async requireActiveTrader(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
@@ -18,9 +19,11 @@ export class ComplianceService {
       throw new ForbiddenException('Account is suspended');
     }
 
-    if (user.status !== 'ACTIVE') {
+    if (!hasActiveTradingAccess(user)) {
       throw new ForbiddenException(
-        'Complete registration payment to access this feature',
+        user.registrationPaid
+          ? 'Weekly access expired — pay to renew for 7 more trading days'
+          : 'Complete weekly payment to access trading',
       );
     }
 

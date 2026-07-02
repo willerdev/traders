@@ -700,11 +700,15 @@ export interface DashboardData {
   user: {
     id: string;
     displayName: string;
+    avatarUrl?: string | null;
     email: string;
     role: string;
     status: string;
     emailVerified?: boolean;
     registrationPaid?: boolean;
+    accessExpiresAt?: string | null;
+    tradingAccessActive?: boolean;
+    tradingDaysRemaining?: number | null;
   };
   onboarding?: OnboardingStatus;
   account: {
