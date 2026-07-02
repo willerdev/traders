@@ -20,12 +20,14 @@ import {
   hasActiveTradingAccess,
   tradingAccessDaysRemaining,
 } from '../common/weekly-access.util';
+import { ProfitShareService } from '../profit-share/profit-share.service';
 
 @Injectable()
 export class UsersService {
   constructor(
     private prisma: PrismaService,
     private metaApi: MetaApiService,
+    private profitShare: ProfitShareService,
   ) {}
 
   async getDashboard(userId: string) {
@@ -63,6 +65,7 @@ export class UsersService {
     });
 
     const payoutReward = await getPayoutRewardStatus(this.prisma, userId);
+    const profitShare = await this.profitShare.getStatus(userId);
 
     return {
       user: {
@@ -97,6 +100,7 @@ export class UsersService {
       recentSignals,
       walletTransactions,
       payoutReward,
+      profitShare,
     };
   }
 

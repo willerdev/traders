@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { LeaderboardService } from '../leaderboard/leaderboard.service';
 import { PayoutService } from '../payouts/payout.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { CopyTradingService } from '../copy-trading/copy-trading.service';
 import { currentWeekYear, getWeekNumber } from '../common/week.util';
 import { WEEKLY_ACCESS_MS } from '../common/weekly-access.util';
 
@@ -14,6 +15,7 @@ export class PlatformJobsService implements OnModuleInit {
     private leaderboard: LeaderboardService,
     private payouts: PayoutService,
     private prisma: PrismaService,
+    private copyTrading: CopyTradingService,
   ) {}
 
   async onModuleInit() {
@@ -90,6 +92,17 @@ export class PlatformJobsService implements OnModuleInit {
     } catch (err) {
       this.logger.error(
         `Weekly payout job failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async syncCopyTradeCommissionsJob() {
+    try {
+      await this.copyTrading.syncCopyTradeCommissions();
+    } catch (err) {
+      this.logger.error(
+        `Copy trade commission sync failed: ${err instanceof Error ? err.message : err}`,
       );
     }
   }

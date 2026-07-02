@@ -8,9 +8,10 @@ import { PaymentMonitorService } from './payment-monitor.service';
 import { PromoService } from './promo.service';
 import { AuthModule } from '../auth/auth.module';
 import { EmailModule } from '../email/email.module';
+import { ProfitShareModule } from '../profit-share/profit-share.module';
 
 @Module({
-  imports: [AuthModule, EmailModule],
+  imports: [AuthModule, EmailModule, ProfitShareModule],
   controllers: [PaymentsController],
   providers: [
     PaymentsService,

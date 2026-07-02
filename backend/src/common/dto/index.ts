@@ -200,6 +200,12 @@ export class CreateSetupPlanPaymentDto {
   plan: 'PREMIUM' | 'PRO';
 }
 
+export class CreateProfitSharePaymentDto {
+  @IsString()
+  @IsNotEmpty()
+  network: string;
+}
+
 export class ApplyPromoDto {
   @IsString()
   @IsNotEmpty()

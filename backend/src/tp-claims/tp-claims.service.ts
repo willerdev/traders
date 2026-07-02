@@ -10,6 +10,7 @@ import { PriceMonitorService } from '../trades/price-monitor.service';
 import { NotificationService } from '../email/notification.service';
 import { Signal, Trade, TpClaimType } from '@prisma/client';
 import { TP_REWARD_USD } from '../common/constants';
+import { ProfitShareService } from '../profit-share/profit-share.service';
 import { MetaApiService } from '../metaapi/metaapi.service';
 
 @Injectable()
@@ -20,6 +21,7 @@ export class TpClaimsService {
     private priceMonitor: PriceMonitorService,
     private notifications: NotificationService,
     private metaApi: MetaApiService,
+    private profitShare: ProfitShareService,
   ) {}
 
   async hasPendingClaim(signalId: string): Promise<boolean> {
@@ -338,6 +340,13 @@ export class TpClaimsService {
         'Could not credit TP — setup may already be resolved',
       );
     }
+
+    await this.profitShare.creditEarning(
+      claim.userId,
+      reward,
+      `Setup TP profit share — ${claim.symbol} (${claim.signal.signalId})`,
+      claim.signal.signalId,
+    );
 
     await this.prisma.tpClaim.update({
       where: { id: claimId },

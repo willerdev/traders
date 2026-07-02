@@ -570,6 +570,27 @@ class ApiClient {
       }>(`/payments/promo/validate?code=${encodeURIComponent(code)}`),
     history: () => this.request("/payments/history"),
     wallet: () => this.request<WalletTransaction[]>("/payments/wallet"),
+    createProfitShare: (network: string) =>
+      this.request<{
+        paymentId?: string;
+        amount?: number;
+        currency?: string;
+        network?: string;
+        payAddress?: string;
+        payAmount?: number;
+        payCurrency?: string;
+        gatewayPaymentId?: number;
+        liveStatus?: string;
+        gateway?: string;
+        message?: string;
+        active?: boolean;
+        enrolledAt?: string | null;
+      }>("/payments/profit-share", {
+        method: "POST",
+        body: JSON.stringify({ network }),
+      }),
+    profitShareStatus: () =>
+      this.request<ProfitShareStatus>("/payments/profit-share/status"),
   };
 
   tpClaims = {
@@ -607,6 +628,18 @@ class ApiClient {
           walletAddress?.trim()
             ? { payoutId, walletAddress: walletAddress.trim() }
             : { payoutId },
+        ),
+      }),
+    withdrawProfitShare: (walletAddress?: string) =>
+      this.request<{
+        status: string;
+        payoutId: string;
+        amount: number;
+        source: string;
+      }>("/payouts/profit-share/withdraw", {
+        method: "POST",
+        body: JSON.stringify(
+          walletAddress?.trim() ? { walletAddress: walletAddress.trim() } : {},
         ),
       }),
   };
@@ -696,6 +729,21 @@ export interface PayoutRewardStatus {
   recentResults: ("W" | "L")[];
 }
 
+export interface ProfitShareStatus {
+  active: boolean;
+  enrolledAt: string | null;
+  balance: number;
+  lifetimeEarned: number;
+  sharePercent: number;
+  feeUsdt: number;
+  withdrawThreshold: number;
+  withdrawThresholdPercent: number;
+  canWithdraw: boolean;
+  amountToWithdraw: number;
+  remainingToWithdraw: number;
+  initialInvestmentBasis: number;
+}
+
 export interface DashboardData {
   user: {
     id: string;
@@ -728,6 +776,7 @@ export interface DashboardData {
   recentSignals: SignalRecord[];
   walletTransactions: WalletTransaction[];
   payoutReward?: PayoutRewardStatus;
+  profitShare?: ProfitShareStatus;
 }
 
 export interface OnboardingStatus {

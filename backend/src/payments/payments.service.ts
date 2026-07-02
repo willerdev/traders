@@ -17,6 +17,8 @@ import {
 } from '../common/weekly-access.util';
 import { NotificationService } from '../email/notification.service';
 import { SubscriptionPlan } from '@prisma/client';
+import { ProfitShareService } from '../profit-share/profit-share.service';
+import { resolveProfitShareConfig } from '../common/profit-share.util';
 
 @Injectable()
 export class PaymentsService {
@@ -34,6 +36,7 @@ export class PaymentsService {
     private config: ConfigService,
     private notifications: NotificationService,
     private blockchain: BlockchainScannerService,
+    private profitShare: ProfitShareService,
   ) {}
 
   private ipnUrl() {
@@ -233,6 +236,17 @@ export class PaymentsService {
     return null;
   }
 
+  private isProfitSharePurpose(purpose: string | null | undefined) {
+    return purpose === 'profit_share';
+  }
+
+  private async profitShareFee(): Promise<number> {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    return resolveProfitShareConfig(config).feeUsdt;
+  }
+
   private async activateSetupPlanSubscription(
     userId: string,
     plan: 'PREMIUM' | 'PRO',
@@ -344,6 +358,99 @@ export class PaymentsService {
       liveStatus: npPayment.payment_status,
       gateway: 'NOWPayments',
       orderId: payment.id,
+    };
+  }
+
+  async createProfitSharePayment(userId: string, network: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (!hasActiveTradingAccess(user)) {
+      throw new BadRequestException(
+        'Complete weekly payment before enrolling in profit share',
+      );
+    }
+    if (user.profitShareActive) {
+      return {
+        message: 'Profit share is already active',
+        active: true,
+        enrolledAt: user.profitShareEnrolledAt?.toISOString() ?? null,
+      };
+    }
+
+    const amount = await this.profitShareFee();
+    const purpose = 'profit_share';
+    const payment = await this.prisma.payment.create({
+      data: {
+        userId,
+        amount,
+        currency: 'USDT',
+        network,
+        purpose,
+        gatewayId: `pending_${Date.now()}`,
+      },
+    });
+
+    if (!this.nowPayments.isConfigured) {
+      return {
+        paymentId: payment.id,
+        amount,
+        currency: 'USDT',
+        network,
+        purpose,
+        message: 'NOWPayments not configured — set NOWPAYMENTS_API_KEY',
+      };
+    }
+
+    const npPayment = await this.nowPayments.createPayment({
+      amount,
+      orderId: payment.id,
+      network,
+      description: 'TraderRank profit share — 50% setup & copy commission',
+      ipnCallbackUrl: this.ipnUrl(),
+    });
+
+    await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        gatewayId: String(npPayment.payment_id),
+        gatewayResponse: npPayment as object,
+        payAddress: npPayment.pay_address,
+        payAmount: npPayment.pay_amount,
+      },
+    });
+
+    return {
+      paymentId: payment.id,
+      amount,
+      currency: 'USDT',
+      network,
+      purpose,
+      payCurrency: npPayment.pay_currency,
+      payAmount: npPayment.pay_amount,
+      payAddress: npPayment.pay_address,
+      gatewayPaymentId: npPayment.payment_id,
+      liveStatus: npPayment.payment_status,
+      gateway: 'NOWPayments',
+      orderId: payment.id,
+    };
+  }
+
+  async getProfitSharePaymentStatus(userId: string) {
+    const status = await this.profitShare.getStatus(userId);
+    const latestPayment = await this.prisma.payment.findFirst({
+      where: { userId, purpose: 'profit_share' },
+      orderBy: { createdAt: 'desc' },
+    });
+    return {
+      ...status,
+      latestPayment: latestPayment
+        ? {
+            id: latestPayment.id,
+            status: latestPayment.status,
+            amount: Number(latestPayment.amount),
+            confirmedAt: latestPayment.confirmedAt?.toISOString() ?? null,
+          }
+        : null,
     };
   }
 
@@ -502,6 +609,55 @@ export class PaymentsService {
     return { status: 'confirmed', paymentId: payment.id, plan };
   }
 
+  async confirmProfitSharePayment(
+    paymentId: string,
+    gatewayPayload: object,
+    opts?: {
+      gatewayId?: string;
+      txHash?: string;
+      source?: 'ipn' | 'nowpayments' | 'blockchain' | 'manual';
+    },
+  ) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+    });
+    if (!payment) throw new NotFoundException('Payment not found');
+
+    if (!this.isProfitSharePurpose(payment.purpose)) {
+      throw new BadRequestException('Payment is not a profit share enrollment');
+    }
+
+    if (payment.status === 'CONFIRMED') {
+      return { alreadyConfirmed: true, paymentId: payment.id };
+    }
+
+    await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: 'CONFIRMED',
+        gatewayId: opts?.gatewayId ?? payment.gatewayId ?? undefined,
+        gatewayResponse: {
+          ...(payment.gatewayResponse &&
+          typeof payment.gatewayResponse === 'object'
+            ? (payment.gatewayResponse as object)
+            : {}),
+          ...gatewayPayload,
+          confirmationSource: opts?.source ?? 'nowpayments',
+        },
+        txHash: opts?.txHash ?? undefined,
+        confirmedAt: new Date(),
+      },
+    });
+
+    await this.profitShare.activate(payment.userId);
+
+    this.logger.log(
+      `Profit share payment ${paymentId} confirmed via ${opts?.source ?? 'nowpayments'}`,
+    );
+
+    return { status: 'confirmed', paymentId: payment.id, profitShare: true };
+  }
+
   async syncAllPendingRegistrationPayments() {
     const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const pending = await this.prisma.payment.findMany({
@@ -627,6 +783,14 @@ export class PaymentsService {
     const setupPlan = this.purposeToSetupPlan(payment.purpose);
     if (setupPlan) {
       return this.confirmSetupPlanPayment(payment.id, gatewayPayload, {
+        gatewayId,
+        txHash: opts?.txHash,
+        source: opts?.source ?? 'ipn',
+      });
+    }
+
+    if (this.isProfitSharePurpose(payment.purpose)) {
+      return this.confirmProfitSharePayment(payment.id, gatewayPayload, {
         gatewayId,
         txHash: opts?.txHash,
         source: opts?.source ?? 'ipn',

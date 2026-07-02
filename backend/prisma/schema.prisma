@@ -59,6 +59,7 @@ enum PayoutStatus {
 enum PayoutSource {
   WEEKLY
   TP_REWARD
+  PROFIT_SHARE
 }
 
 enum PaymentStatus {
@@ -88,6 +89,7 @@ enum WalletTxType {
   DEPOSIT
   PAYOUT
   ADJUSTMENT
+  PROFIT_SHARE
 }
 
 enum KycStatus {
@@ -134,7 +136,9 @@ model User {
   status            UserStatus @default(PENDING_VERIFICATION)
   emailVerified     Boolean    @default(false)
   emailVerifyToken  String?
-  registrationPaid  Boolean    @default(false)
+  registrationPaid    Boolean    @default(false)
+  profitShareActive   Boolean    @default(false)
+  profitShareEnrolledAt DateTime?
   accessExpiresAt   DateTime?
   termsAcceptedAt   DateTime?
   lastLoginIp       String?
@@ -269,6 +273,8 @@ model VirtualAccount {
   maxRiskPerTrade     Decimal  @default(50) @db.Decimal(12, 2)
   weeklyProfit        Decimal  @default(0) @db.Decimal(12, 2)
   totalProfit         Decimal  @default(0) @db.Decimal(12, 2)
+  profitShareBalance  Decimal  @default(0) @db.Decimal(12, 2)
+  profitShareEarned   Decimal  @default(0) @db.Decimal(12, 2)
   winRate             Decimal  @default(0) @db.Decimal(5, 2)
   score               Int      @default(0)
   consecutiveWins     Int      @default(0)
@@ -616,6 +622,9 @@ model PlatformConfig {
   duplicateThreshold    Decimal @default(0.9) @db.Decimal(3, 2)
   entryTolerancePercent Decimal @default(0.2) @db.Decimal(5, 2)
   tpRewardUsd           Decimal @default(5) @db.Decimal(10, 2)
+  profitShareFeeUsdt    Decimal @default(50) @db.Decimal(10, 2)
+  profitSharePercent    Decimal @default(50) @db.Decimal(5, 2)
+  profitShareWithdrawThresholdPercent Decimal @default(40) @db.Decimal(5, 2)
   requireKycForPayouts  Boolean @default(true)
 
   @@map("platform_config")
@@ -713,6 +722,7 @@ model CopyTrade {
   metaApiPositionId String?
   status            CopyTradeStatus @default(PENDING)
   profit            Decimal?        @db.Decimal(12, 2)
+  commissionCredited Boolean        @default(false)
   notes             String?
   executedAt        DateTime?
   closedAt          DateTime?

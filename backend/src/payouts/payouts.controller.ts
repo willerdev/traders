@@ -47,6 +47,17 @@ export class PayoutsController {
     );
   }
 
+  @Post('profit-share/withdraw')
+  requestProfitShareWithdrawal(
+    @Request() req: { user: { id: string } },
+    @Body() dto: RequestPayoutDto,
+  ) {
+    return this.payoutService.requestProfitShareWithdrawal(
+      req.user.id,
+      dto.walletAddress,
+    );
+  }
+
   @Post('approve')
   @UseGuards(RolesGuard)
   @Roles('ADMIN')

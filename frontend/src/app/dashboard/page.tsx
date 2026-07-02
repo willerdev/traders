@@ -18,6 +18,7 @@ import { Mt5PositionsPanel } from "@/components/dashboard/open-positions";
 import { UnresolvedSetupsCard } from "@/components/dashboard/unresolved-setups";
 import { RecentSignalsCard } from "@/components/dashboard/recent-signals-card";
 import { PayoutRewardTiersCard } from "@/components/dashboard/payout-reward-tiers";
+import { ProfitShareCard } from "@/components/dashboard/profit-share-card";
 import { RISK_PERCENT, MAX_RISK_PER_TRADE } from "@/lib/platform-rules";
 
 export default function DashboardPage() {
@@ -117,8 +118,16 @@ export default function DashboardPage() {
         />
       )}
 
-      {data.payoutReward && (
+      {data.payoutReward && !data.profitShare?.active && (
         <PayoutRewardTiersCard reward={data.payoutReward} />
+      )}
+
+      {data.profitShare && (
+        <ProfitShareCard
+          status={data.profitShare}
+          tradingActive={tradingActive}
+          onRefresh={() => void fetchDashboard()}
+        />
       )}
 
       <motion.div
@@ -148,7 +157,7 @@ export default function DashboardPage() {
                 { label: "Risk Per Trade", value: `${RISK_PERCENT}% fixed ($${MAX_RISK_PER_TRADE} max)` },
                 { label: "TP Hit Reward", value: "$5 USDT auto-credited" },
                 { label: "Win / Loss Points", value: "+10 / −5" },
-                { label: "Payout Split", value: "40% trader / 60% platform" },
+                { label: "Payout Split", value: data.profitShare?.active ? "50% profit share" : "40% trader / 60% platform" },
               ].map((rule) => (
                 <div
                   key={rule.label}

@@ -12,6 +12,7 @@ import {
 } from '../metaapi/metaapi-order.util';
 import { MetaApiService } from '../metaapi/metaapi.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ProfitShareService } from '../profit-share/profit-share.service';
 
 export type CopyMirrorInput = {
   signalDbId: string;
@@ -38,6 +39,7 @@ export class CopyTradingService {
     private metaApi: MetaApiService,
     private tradeRisk: TradeRiskService,
     private leaderboard: LeaderboardService,
+    private profitShare: ProfitShareService,
   ) {}
 
   async getTopLeaders(limit = 3) {
@@ -306,5 +308,94 @@ export class CopyTradingService {
         floatingProfit,
       },
     };
+  }
+
+  /** Sync open copy trades and credit profit-share commission when positions close. */
+  async syncCopyTradeCommissions(): Promise<{ closed: number; credited: number }> {
+    const copyAccountId = this.metaApi.resolveCopyAccountId();
+    if (!this.metaApi.isConfigured || !copyAccountId) {
+      return { closed: 0, credited: 0 };
+    }
+
+    const openRows = await this.prisma.copyTrade.findMany({
+      where: {
+        copyAccountId,
+        status: CopyTradeStatus.OPEN,
+        commissionCredited: false,
+      },
+      include: {
+        signal: { select: { signalId: true } },
+      },
+    });
+    if (openRows.length === 0) return { closed: 0, credited: 0 };
+
+    const terminal = await this.metaApi.getTerminalState(copyAccountId);
+    const openPositionIds = new Set(
+      (terminal.positions ?? []).map((p) => p.id),
+    );
+    const positionProfitById = new Map(
+      (terminal.positions ?? []).map((p) => [
+        p.id,
+        p.profit + p.unrealizedProfit + p.swap + p.commission,
+      ]),
+    );
+
+    let closed = 0;
+    let credited = 0;
+
+    for (const row of openRows) {
+      const positionId = row.metaApiPositionId;
+      if (positionId && openPositionIds.has(positionId)) {
+        const liveProfit = positionProfitById.get(positionId);
+        if (liveProfit != null && liveProfit !== Number(row.profit ?? 0)) {
+          await this.prisma.copyTrade.update({
+            where: { id: row.id },
+            data: { profit: liveProfit },
+          });
+        }
+        continue;
+      }
+
+      const finalProfit = Number(row.profit ?? 0);
+      const now = new Date();
+      await this.prisma.copyTrade.update({
+        where: { id: row.id },
+        data: {
+          status: CopyTradeStatus.CLOSED,
+          closedAt: now,
+          profit: finalProfit,
+        },
+      });
+      closed += 1;
+
+      if (finalProfit > 0) {
+        const result = await this.profitShare.creditEarning(
+          row.sourceUserId,
+          finalProfit,
+          `Copy trade commission — ${row.symbol} (${row.signal.signalId})`,
+          row.id,
+        );
+        if (result) {
+          await this.prisma.copyTrade.update({
+            where: { id: row.id },
+            data: { commissionCredited: true },
+          });
+          credited += 1;
+        }
+      } else {
+        await this.prisma.copyTrade.update({
+          where: { id: row.id },
+          data: { commissionCredited: true },
+        });
+      }
+    }
+
+    if (closed > 0) {
+      this.logger.log(
+        `Copy trade sync: ${closed} closed, ${credited} commission credit(s)`,
+      );
+    }
+
+    return { closed, credited };
   }
 }

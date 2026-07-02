@@ -25,6 +25,9 @@ export const RISK_PERCENT = 5;
 export const MAX_RISK_PER_TRADE = 50;
 export const REGISTRATION_FEE_USDT = 5;
 export const TP_REWARD_USD = 5;
+export const PROFIT_SHARE_FEE_USDT = 50;
+export const PROFIT_SHARE_PERCENT = 50;
+export const PROFIT_SHARE_WITHDRAW_THRESHOLD_PERCENT = 40;
 
 /** Max broker/Hub attempts to move stop to breakeven when price initially rejects it. */
 export const MAX_BREAKEVEN_RETRIES = 10;
