@@ -33,17 +33,37 @@ type UserDetailModalProps = {
   userId: string | null;
   onClose: () => void;
   onChat?: (userId: string, displayName: string) => void;
+  onKycUpdated?: () => void;
 };
 
-export function UserDetailModal({ userId, onClose, onChat }: UserDetailModalProps) {
+export function UserDetailModal({
+  userId,
+  onClose,
+  onChat,
+  onKycUpdated,
+}: UserDetailModalProps) {
   const [detail, setDetail] = useState<AdminUserDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [kycBusy, setKycBusy] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+
+  const reload = () => {
+    if (!userId) return;
+    setLoading(true);
+    setError("");
+    void api
+      .getUser(userId)
+      .then(setDetail)
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => {
     if (!userId) {
       setDetail(null);
       setError("");
+      setRejectReason("");
       return;
     }
 
@@ -72,6 +92,37 @@ export function UserDetailModal({ userId, onClose, onChat }: UserDetailModalProp
 
   const profile = detail?.profile;
   const kyc = detail?.kyc;
+
+  async function approveKyc() {
+    if (!userId) return;
+    setKycBusy(true);
+    setError("");
+    try {
+      await api.approveKyc(userId);
+      reload();
+      onKycUpdated?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "KYC approval failed");
+    } finally {
+      setKycBusy(false);
+    }
+  }
+
+  async function rejectKyc() {
+    if (!userId) return;
+    setKycBusy(true);
+    setError("");
+    try {
+      await api.rejectKyc(userId, rejectReason.trim() || "Documents unclear");
+      setRejectReason("");
+      reload();
+      onKycUpdated?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "KYC rejection failed");
+    } finally {
+      setKycBusy(false);
+    }
+  }
 
   return (
     <div className="modal-overlay" role="presentation" onClick={onClose}>
@@ -104,6 +155,7 @@ export function UserDetailModal({ userId, onClose, onChat }: UserDetailModalProp
                 <Field label="Status" value={detail.status} />
                 <Field label="Role" value={detail.role} />
                 <Field label="Registration paid" value={detail.registrationPaid ? "Yes" : "No"} />
+                <Field label="Access expires" value={fmtDate(detail.accessExpiresAt)} />
                 <Field label="Email verified" value={detail.emailVerified ? "Yes" : "No"} />
                 <Field label="Login wallet" value={detail.walletAddress} mono />
                 <Field label="Last login IP" value={detail.lastLoginIp} mono />
@@ -198,6 +250,42 @@ export function UserDetailModal({ userId, onClose, onChat }: UserDetailModalProp
                       </div>
                     )}
                   </div>
+                  {kyc.status === "PENDING" && (
+                    <div style={{ marginTop: "1rem" }}>
+                      <input
+                        placeholder="Rejection reason (if rejecting)"
+                        value={rejectReason}
+                        onChange={(e) => setRejectReason(e.target.value)}
+                        style={{
+                          width: "100%",
+                          marginBottom: "0.5rem",
+                          padding: "0.5rem",
+                          borderRadius: 6,
+                          border: "1px solid #334155",
+                          background: "#0b0f14",
+                          color: "#e8eaed",
+                        }}
+                      />
+                      <div className="row-actions">
+                        <button
+                          type="button"
+                          className="primary"
+                          disabled={kycBusy}
+                          onClick={() => void approveKyc()}
+                        >
+                          {kycBusy ? "…" : "Approve KYC"}
+                        </button>
+                        <button
+                          type="button"
+                          className="danger"
+                          disabled={kycBusy}
+                          onClick={() => void rejectKyc()}
+                        >
+                          {kycBusy ? "…" : "Reject KYC"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </>
               ) : (
                 <p className="muted">KYC not submitted.</p>

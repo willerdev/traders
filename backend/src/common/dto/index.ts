@@ -646,3 +646,10 @@ export class SendMessageDto {
   @MaxLength(4000)
   body: string;
 }
+
+export class AdminRejectReasonDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
+}

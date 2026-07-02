@@ -372,6 +372,7 @@ export type UserRow = {
   role: string;
   status: string;
   registrationPaid: boolean;
+  accessExpiresAt?: string | null;
   createdAt: string;
   emailAssessment?: EmailAssessment;
   kyc?: { status: string } | null;
@@ -388,6 +389,7 @@ export type AdminUserDetail = {
   status: string;
   walletAddress: string | null;
   registrationPaid: boolean;
+  accessExpiresAt?: string | null;
   emailVerified: boolean;
   lastLoginIp: string | null;
   createdAt: string;
@@ -528,10 +530,14 @@ export type ApproveTp1ClaimEmailResult = {
 export type KycRow = {
   id: string;
   userId: string;
-  documentType: string;
-  documentFrontUrl?: string;
-  selfieUrl?: string;
-  user: { displayName: string; email: string };
+  status: string;
+  documentType: string | null;
+  documentNumber?: string | null;
+  documentFrontUrl?: string | null;
+  documentBackUrl?: string | null;
+  selfieUrl?: string | null;
+  submittedAt?: string | null;
+  user: { id?: string; displayName: string; email: string | null };
 };
 
 export type PayoutRow = {

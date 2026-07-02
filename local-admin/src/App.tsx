@@ -40,7 +40,12 @@ function fmtDate(iso: string) {
 }
 
 function needsPaymentReview(u: UserRow) {
-  return u.status === "PENDING_PAYMENT" && !u.registrationPaid;
+  return u.status === "PENDING_PAYMENT";
+}
+
+function paymentReviewLabel(u: UserRow) {
+  if (u.registrationPaid) return "Renew weekly access";
+  return "Review payment";
 }
 
 function isAuthFailure(message: string) {
@@ -179,6 +184,7 @@ export default function App() {
   const [newPromoDays, setNewPromoDays] = useState("7");
   const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
   const [tpRejectReason, setTpRejectReason] = useState<Record<string, string>>({});
+  const [kycActionUserId, setKycActionUserId] = useState<string | null>(null);
   const [paymentModalUser, setPaymentModalUser] = useState<UserRow | null>(null);
   const [userDetailId, setUserDetailId] = useState<string | null>(null);
   const [paymentDenyReason, setPaymentDenyReason] = useState("");
@@ -628,6 +634,39 @@ export default function App() {
     if (paymentActionLoading) return;
     setPaymentModalUser(null);
     setPaymentDenyReason("");
+  }
+
+  async function approveKyc(userId: string) {
+    setKycActionUserId(userId);
+    setMessage("");
+    try {
+      await api.approveKyc(userId);
+      setMessage("KYC approved");
+      await loadTab("kyc");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "KYC approval failed");
+    } finally {
+      setKycActionUserId(null);
+    }
+  }
+
+  async function rejectKyc(userId: string, reason: string) {
+    setKycActionUserId(userId);
+    setMessage("");
+    try {
+      await api.rejectKyc(userId, reason.trim() || "Documents unclear");
+      setMessage("KYC rejected");
+      setRejectReason((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+      await loadTab("kyc");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "KYC rejection failed");
+    } finally {
+      setKycActionUserId(null);
+    }
   }
 
   async function approveRegistrationPayment() {
@@ -1260,9 +1299,9 @@ export default function App() {
                           type="button"
                           className="badge-clickable pending_payment"
                           onClick={() => openPaymentModal(u)}
-                          title="Review registration payment"
+                          title={paymentReviewLabel(u)}
                         >
-                          {u.status}
+                          {paymentReviewLabel(u)}
                         </button>
                       ) : (
                         <span className={badgeClass(u.status)}>{u.status}</span>
@@ -1544,17 +1583,30 @@ export default function App() {
               {kycQueue.length === 0 ? (
                 <p className="muted">No pending KYC submissions</p>
               ) : (
-                kycQueue.map((item) => (
+                kycQueue.map((item) => {
+                  const busy = kycActionUserId === item.userId;
+                  return (
                   <div key={item.id} className="kyc-card">
                     <p>
-                      <strong>{item.user.displayName}</strong> — {item.user.email}
+                      <strong>{item.user.displayName}</strong> —{" "}
+                      {item.user.email ?? "No email"}
                     </p>
-                    <p className="muted">{item.documentType}</p>
-                    <div style={{ margin: "0.5rem 0" }}>
+                    <p className="muted">
+                      {item.documentType ?? "Document"}
+                      {item.submittedAt
+                        ? ` · ${fmtDate(item.submittedAt)}`
+                        : ""}
+                    </p>
+                    <div style={{ margin: "0.5rem 0", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                       {item.documentFrontUrl && (
-                        <AdminImage src={item.documentFrontUrl} alt="ID" />
+                        <AdminImage src={item.documentFrontUrl} alt="ID front" />
                       )}
-                      {item.selfieUrl && <AdminImage src={item.selfieUrl} alt="Selfie" />}
+                      {item.documentBackUrl && (
+                        <AdminImage src={item.documentBackUrl} alt="ID back" />
+                      )}
+                      {item.selfieUrl && (
+                        <AdminImage src={item.selfieUrl} alt="Selfie" />
+                      )}
                     </div>
                     <input
                       placeholder="Rejection reason (if rejecting)"
@@ -1579,29 +1631,28 @@ export default function App() {
                       <button
                         type="button"
                         className="primary"
-                        onClick={() =>
-                          void api.approveKyc(item.userId).then(() => loadTab("kyc"))
-                        }
+                        disabled={busy}
+                        onClick={() => void approveKyc(item.userId)}
                       >
-                        Approve
+                        {busy ? "…" : "Approve"}
                       </button>
                       <button
                         type="button"
                         className="danger"
+                        disabled={busy}
                         onClick={() =>
-                          void api
-                            .rejectKyc(
-                              item.userId,
-                              rejectReason[item.userId] || "Documents unclear",
-                            )
-                            .then(() => loadTab("kyc"))
+                          void rejectKyc(
+                            item.userId,
+                            rejectReason[item.userId] || "Documents unclear",
+                          )
                         }
                       >
-                        Reject
+                        {busy ? "…" : "Reject"}
                       </button>
                     </div>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </>
@@ -2681,7 +2732,11 @@ export default function App() {
             aria-labelledby="payment-modal-title"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 id="payment-modal-title">Registration payment review</h3>
+            <h3 id="payment-modal-title">
+              {paymentModalUser.registrationPaid
+                ? "Weekly access renewal"
+                : "Registration payment review"}
+            </h3>
             <p>
               <strong>{paymentModalUser.displayName}</strong>
               <br />
@@ -2700,10 +2755,18 @@ export default function App() {
                 <dt>Joined</dt>
                 <dd>{fmtDate(paymentModalUser.createdAt)}</dd>
               </div>
+              <div>
+                <dt>Access expires</dt>
+                <dd>
+                  {paymentModalUser.accessExpiresAt
+                    ? fmtDate(paymentModalUser.accessExpiresAt)
+                    : "—"}
+                </dd>
+              </div>
             </dl>
             <p className="muted">
-              Approve to activate their virtual account. Deny to suspend the user
-              and cancel any pending gateway payment.
+              Approve to grant 7 more trading days (Submit + MT5). Deny only for
+              first-time registrations without valid payment.
             </p>
             <label htmlFor="payment-deny-reason">Denial reason (required to deny)</label>
             <textarea
@@ -2836,6 +2899,9 @@ export default function App() {
       <UserDetailModal
         userId={userDetailId}
         onClose={() => setUserDetailId(null)}
+        onKycUpdated={() => {
+          if (tab === "kyc") void loadTab("kyc");
+        }}
         onChat={(id) => {
           const user = users.find((u) => u.id === id);
           if (user) openChatWithUser(user);

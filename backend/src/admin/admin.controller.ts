@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { AdminService } from './admin.service';
-import { CreatePromoCodeDto, SendMessageDto } from '../common/dto';
+import { CreatePromoCodeDto, SendMessageDto, AdminRejectReasonDto } from '../common/dto';
 import { JwtAuthGuard, RolesGuard } from '../auth/guards';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UploadStorageService } from '../uploads/upload-storage.service';
@@ -52,9 +52,13 @@ export class AdminController {
   rejectKyc(
     @Param('userId') userId: string,
     @Request() req: { user: { id: string } },
-    @Body('reason') reason: string,
+    @Body() dto: AdminRejectReasonDto,
   ) {
-    return this.adminService.rejectKyc(userId, req.user.id, reason || 'Rejected');
+    return this.adminService.rejectKyc(
+      userId,
+      req.user.id,
+      dto.reason?.trim() || 'Documents unclear',
+    );
   }
 
   @Get('users')
@@ -360,12 +364,12 @@ export class AdminController {
   denyRegistration(
     @Param('userId') userId: string,
     @Request() req: { user: { id: string } },
-    @Body('reason') reason: string,
+    @Body() dto: AdminRejectReasonDto,
   ) {
     return this.adminService.denyRegistrationPayment(
       userId,
       req.user.id,
-      reason || 'Registration payment not accepted',
+      dto.reason?.trim() || 'Registration payment not accepted',
     );
   }
 

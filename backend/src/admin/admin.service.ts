@@ -352,7 +352,7 @@ export class AdminService {
   }
 
   async listPendingKyc() {
-    return this.prisma.kycVerification.findMany({
+    const rows = await this.prisma.kycVerification.findMany({
       where: { status: 'PENDING' },
       orderBy: { submittedAt: 'asc' },
       include: {
@@ -367,6 +367,19 @@ export class AdminService {
         },
       },
     });
+
+    return rows.map((row) => ({
+      id: row.id,
+      userId: row.userId,
+      status: row.status,
+      documentType: row.documentType,
+      documentNumber: row.documentNumber,
+      documentFrontUrl: row.documentFrontUrl,
+      documentBackUrl: row.documentBackUrl,
+      selfieUrl: row.selfieUrl,
+      submittedAt: row.submittedAt?.toISOString() ?? null,
+      user: row.user,
+    }));
   }
 
   async approveKyc(userId: string, adminId: string) {
@@ -453,6 +466,7 @@ export class AdminService {
           role: true,
           status: true,
           registrationPaid: true,
+          accessExpiresAt: true,
           createdAt: true,
           kyc: { select: { status: true } },
           virtualAccount: { select: { tier: true, score: true, totalProfit: true } },
@@ -490,6 +504,7 @@ export class AdminService {
           role: true,
           status: true,
           registrationPaid: true,
+          accessExpiresAt: true,
           createdAt: true,
           kyc: { select: { status: true } },
           virtualAccount: { select: { tier: true, score: true, totalProfit: true } },
@@ -501,6 +516,8 @@ export class AdminService {
 
     const items = rows.map((user) => ({
       ...user,
+      accessExpiresAt: user.accessExpiresAt?.toISOString() ?? null,
+      createdAt: user.createdAt.toISOString(),
       emailAssessment: assessEmail(user.email),
     }));
 
@@ -564,6 +581,7 @@ export class AdminService {
       status: user.status,
       walletAddress: user.walletAddress,
       registrationPaid: user.registrationPaid,
+      accessExpiresAt: user.accessExpiresAt?.toISOString() ?? null,
       emailVerified: user.emailVerified,
       lastLoginIp: user.lastLoginIp,
       createdAt: user.createdAt.toISOString(),

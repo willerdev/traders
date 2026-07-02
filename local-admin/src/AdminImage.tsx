@@ -58,9 +58,9 @@ export function AdminImage({
           } else {
             const kycName = kycFetchPath(src)?.split("/").pop();
             if (kycName) {
-              res = await fetch(`/api/v1/uploads/kyc/${kycName}`, { headers });
+              res = await fetch(`/api/v1/admin/uploads/kyc/${kycName}`, { headers });
               if (!res.ok) {
-                res = await fetch(`/api/v1/admin/uploads/kyc/${kycName}`, { headers });
+                res = await fetch(`/api/v1/uploads/kyc/${kycName}`, { headers });
               }
             }
           }
