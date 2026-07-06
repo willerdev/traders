@@ -14,6 +14,7 @@ import {
   SubmitKycDto,
   UpdatePaymentDetailsDto,
   UpdateTradingAccountDto,
+  LinkMt5AccountDto,
 } from '../common/dto';
 import { JwtAuthGuard } from '../auth/guards';
 
@@ -70,8 +71,11 @@ export class UsersController {
   }
 
   @Post('trading-account/claim')
-  claimTradingAccount(@Request() req: { user: { id: string } }) {
-    return this.usersService.claimTradingAccount(req.user.id);
+  claimTradingAccount(
+    @Request() req: { user: { id: string } },
+    @Body() dto: LinkMt5AccountDto,
+  ) {
+    return this.usersService.claimTradingAccount(req.user.id, dto);
   }
 
   @Get('kyc')

@@ -89,6 +89,29 @@ export class UpdateCopySettingsDto {
   copyEmailAlertsEnabled?: boolean;
 }
 
+export class LinkMt5AccountDto {
+  @IsString()
+  @IsNotEmpty()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  accountName: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().replace(/\D/g, '') : value,
+  )
+  login: string;
+
+  @IsString()
+  @IsNotEmpty()
+  password: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  server: string;
+}
+
 export class MarketingTestEmailDto {
   @IsOptional()
   @IsEmail()

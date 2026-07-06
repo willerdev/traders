@@ -10,10 +10,9 @@ import { AuthModule } from '../auth/auth.module';
 import { EmailModule } from '../email/email.module';
 import { ProfitShareModule } from '../profit-share/profit-share.module';
 import { Mt5SyncBillingModule } from '../mt5-sync/mt5-sync-billing.module';
-import { Mt5PoolModule } from '../mt5-sync/mt5-pool.module';
 
 @Module({
-  imports: [AuthModule, EmailModule, ProfitShareModule, Mt5SyncBillingModule, Mt5PoolModule],
+  imports: [AuthModule, EmailModule, ProfitShareModule, Mt5SyncBillingModule],
   controllers: [PaymentsController],
   providers: [
     PaymentsService,

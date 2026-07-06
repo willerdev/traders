@@ -4,6 +4,7 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { TradeDirection } from '@prisma/client';
 import { NotificationService } from '../email/notification.service';
@@ -414,6 +415,87 @@ export class MetaApiService {
     }
 
     return this.mapAccount(body);
+  }
+
+  private provisioningHeaders(transactionId: string, contentType = false) {
+    const h: Record<string, string> = {
+      ...this.headers(contentType),
+      'transaction-id': transactionId,
+    };
+    return h;
+  }
+
+  private static newTransactionId(): string {
+    return randomBytes(16).toString('hex');
+  }
+
+  async createMt5Account(input: {
+    login: string;
+    password: string;
+    name: string;
+    server: string;
+  }): Promise<{ id: string; state: string }> {
+    if (!this.isConfigured) {
+      throw new ServiceUnavailableException('METAAPI_TOKEN is not configured');
+    }
+
+    const transactionId = MetaApiService.newTransactionId();
+    const payload = {
+      login: input.login.replace(/\D/g, ''),
+      password: input.password,
+      name: input.name.trim(),
+      server: input.server.trim(),
+      platform: 'mt5',
+      magic: 0,
+      manualTrades: true,
+      reliability: 'high',
+      allocateDedicatedIp: 'ipv4',
+    };
+
+    const maxAttempts = 5;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const res = await fetch(`${this.provisioningUrl}/users/current/accounts`, {
+        method: 'POST',
+        headers: this.provisioningHeaders(transactionId, true),
+        body: JSON.stringify(payload),
+      });
+      const body = (await res.json().catch(() => ({}))) as Record<
+        string,
+        unknown
+      >;
+
+      if (res.status === 201 && typeof body.id === 'string') {
+        return {
+          id: body.id,
+          state: String(body.state ?? 'DEPLOYED'),
+        };
+      }
+
+      if (res.status === 202) {
+        const retryAfter = res.headers.get('Retry-After');
+        const waitMs = retryAfter
+          ? Math.max(
+              5_000,
+              new Date(retryAfter).getTime() - Date.now() || 60_000,
+            )
+          : 60_000;
+        this.logger.log(
+          `MetaAPI account provisioning in progress — retry in ${Math.round(waitMs / 1000)}s`,
+        );
+        await new Promise((r) => setTimeout(r, Math.min(waitMs, 90_000)));
+        continue;
+      }
+
+      const message =
+        (body.message as string) ||
+        (body.error as string) ||
+        `MetaAPI create account failed (${res.status})`;
+      throw new ServiceUnavailableException(message);
+    }
+
+    throw new ServiceUnavailableException(
+      'MetaAPI account provisioning timed out — please try again in a few minutes',
+    );
   }
 
   private async deployAccount(accountId: string) {

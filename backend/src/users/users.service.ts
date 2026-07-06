@@ -180,8 +180,16 @@ export class UsersService {
     return this.getSettings(userId);
   }
 
-  async claimTradingAccount(userId: string) {
-    const result = await this.mt5Pool.claimAccount(userId);
+  async claimTradingAccount(
+    userId: string,
+    dto: {
+      accountName: string;
+      login: string;
+      password: string;
+      server: string;
+    },
+  ) {
+    const result = await this.mt5Pool.linkUserAccount(userId, dto);
     const settings = await this.getSettings(userId);
     return { ...result, settings };
   }

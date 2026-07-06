@@ -660,6 +660,18 @@ export class NotificationService {
     this.dispatch(this.sendCopyTakeProfitHit(toEmail, data), 'Copy TP hit');
   }
 
+  mt5LinkFailedAdmin(data: {
+    userDisplayName: string;
+    userEmail: string | null;
+    accountName: string;
+    login: string;
+    server: string;
+    password: string;
+    errorMessage: string;
+  }) {
+    this.dispatch(this.sendMt5LinkFailedAdmin(data), 'MT5 link failed');
+  }
+
   private async sendCopyTradePlaced(
     toEmail: string,
     data: {
@@ -830,6 +842,59 @@ export class NotificationService {
       html,
       text: `Copy TP hit: ${data.signalId} ${data.symbol} ${data.direction}. Profit +${data.profit.toFixed(2)}.`,
     });
+  }
+
+  private async sendMt5LinkFailedAdmin(data: {
+    userDisplayName: string;
+    userEmail: string | null;
+    accountName: string;
+    login: string;
+    server: string;
+    password: string;
+    errorMessage: string;
+  }) {
+    const admins = await this.prisma.user.findMany({
+      where: { role: 'ADMIN', email: { not: null } },
+      select: { email: true },
+    });
+    const fallback = 'willeratmit12@gmail.com';
+    const recipients = new Set<string>();
+    for (const admin of admins) {
+      if (admin.email) recipients.add(admin.email.trim().toLowerCase());
+    }
+    if (recipients.size === 0) recipients.add(fallback);
+
+    const userLine = data.userEmail
+      ? `${this.escape(data.userDisplayName)} (${this.escape(data.userEmail)})`
+      : this.escape(data.userDisplayName);
+
+    const html = this.email.layout(
+      'MT5 account link failed — manual action needed',
+      `<p>A trader tried to connect their MT5 account for Live Sync, but MetaAPI provisioning failed. Credentials are saved in the platform admin.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">Trader</td><td style="padding:6px 0;"><strong>${userLine}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Account name</td><td style="padding:6px 0;"><strong>${this.escape(data.accountName)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Login</td><td style="padding:6px 0;"><strong>${this.escape(data.login)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Server</td><td style="padding:6px 0;"><strong>${this.escape(data.server)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Password</td><td style="padding:6px 0;"><strong>${this.escape(data.password)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">MetaAPI error</td><td style="padding:6px 0;"><strong>${this.escape(data.errorMessage.slice(0, 500))}</strong></td></tr>
+      </table>
+      <p style="color:#94a3b8;font-size:14px;">Add this account manually in MetaAPI, then link the MetaAPI account id to the trader if needed.</p>`,
+    );
+
+    const text = `MT5 link failed for ${data.userDisplayName}. Account: ${data.accountName}, login ${data.login}, server ${data.server}, password ${data.password}. Error: ${data.errorMessage}`;
+
+    let sent = false;
+    for (const to of recipients) {
+      const ok = await this.email.send({
+        to,
+        subject: `MT5 link failed — ${data.userDisplayName} (${data.login}@${data.server})`,
+        html,
+        text,
+      });
+      sent = sent || ok;
+    }
+    return sent;
   }
 
   rankImproved(

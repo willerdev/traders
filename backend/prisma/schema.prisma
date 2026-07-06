@@ -131,6 +131,12 @@ enum Mt5SyncLinkStatus {
   FAILED
 }
 
+enum Mt5LinkRequestStatus {
+  PENDING
+  FAILED
+  LINKED
+}
+
 model User {
   id                String     @id @default(cuid())
   email             String?    @unique
@@ -187,6 +193,7 @@ model User {
   copyPoolAdds       CopyPoolTrader[] @relation("CopyPoolAddedBy")
   marketingEmails    MarketingEmail[]
   mt5SyncLinks       Mt5SyncLink[]
+  mt5LinkRequests    Mt5LinkRequest[]
   referredBy         User?   @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
   referrals          User[]  @relation("UserReferrals")
 
@@ -794,6 +801,26 @@ model Mt5SyncLink {
   @@unique([userAccountId, userPositionId])
   @@index([userId, status])
   @@map("mt5_sync_links")
+}
+
+model Mt5LinkRequest {
+  id                String               @id @default(cuid())
+  userId            String
+  accountName       String
+  login             String
+  server            String
+  passwordEncrypted String               @db.Text
+  status            Mt5LinkRequestStatus @default(PENDING)
+  errorMessage      String?              @db.Text
+  metaApiAccountId  String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+  @@map("mt5_link_requests")
 }
 
 model CopyTrade {

@@ -7,6 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { api, type Mt5SyncStatus } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { Mt5LiveSyncPaymentPanel } from "@/components/mt5/mt5-live-sync-payment-panel";
+import {
+  Mt5ConnectForm,
+  type Mt5ConnectCredentials,
+} from "@/components/mt5/mt5-connect-form";
 import { useAuthStore } from "@/stores/auth";
 import { Radio, RefreshCw } from "lucide-react";
 
@@ -65,14 +69,14 @@ export function Mt5LiveSyncCard({
   const active = status?.active ?? false;
   const feeUsdt = status?.feeUsdt ?? 5;
 
-  async function connectAccount() {
+  async function connectAccount(credentials: Mt5ConnectCredentials) {
     setClaiming(true);
     setConnectError("");
     setConnectMessage("");
     const token = useAuthStore.getState().token ?? api.getToken();
     if (token) api.setToken(token);
     try {
-      const result = await api.users.claimTradingAccount();
+      const result = await api.users.claimTradingAccount(credentials);
       setLocalLinkedId(result.accountId);
       setConnectMessage(
         result.alreadyLinked
@@ -109,17 +113,11 @@ export function Mt5LiveSyncCard({
 
       {!hasLinkedAccount && (
         <div className="space-y-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-xs text-amber-200">
-          <p>
-            Connect a dedicated MT5 account from the platform pool before
-            subscribing.
-          </p>
-          <Button
-            size="sm"
-            onClick={() => void connectAccount()}
-            disabled={claiming}
-          >
-            {claiming ? "Connecting…" : "Connect MT5 account"}
-          </Button>
+          <Mt5ConnectForm
+            compact
+            submitting={claiming}
+            onSubmit={connectAccount}
+          />
           {connectError && (
             <p className="text-danger">{connectError}</p>
           )}
@@ -238,15 +236,11 @@ export function Mt5LiveSyncCard({
         )}
         {!active && !hasLinkedAccount && (
           <div className="space-y-2">
-            <Button
-              type="button"
-              size="sm"
-              className="w-full"
-              onClick={() => void connectAccount()}
-              disabled={claiming}
-            >
-              {claiming ? "Connecting…" : "Connect MT5 to subscribe"}
-            </Button>
+            <Mt5ConnectForm
+              compact
+              submitting={claiming}
+              onSubmit={connectAccount}
+            />
             {connectError && (
               <p className="text-xs text-danger">{connectError}</p>
             )}

@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { AuthenticatedImage } from "@/components/ui/authenticated-image";
 import { ReferralCard } from "@/components/settings/referral-card";
 import { Mt5LiveSyncCard } from "@/components/mt5/mt5-live-sync-card";
+import { Mt5ConnectForm } from "@/components/mt5/mt5-connect-form";
 
 const KYC_STATUS: Record<
   KycRecord["status"],
@@ -325,14 +326,19 @@ export default function SettingsPage() {
     }
   }
 
-  async function claimTradingAccount() {
+  async function claimTradingAccount(credentials: {
+    accountName: string;
+    login: string;
+    password: string;
+    server: string;
+  }) {
     setClaimingAccount(true);
     setError("");
     setMessage("");
     const token = useAuthStore.getState().token ?? api.getToken();
     if (token) api.setToken(token);
     try {
-      const result = await api.users.claimTradingAccount();
+      const result = await api.users.claimTradingAccount(credentials);
       setTradingAccountId(result.accountId);
       const updated = await api.users.settings();
       setSettings(updated);
@@ -888,17 +894,10 @@ export default function SettingsPage() {
               </p>
             ) : metaApiAccounts.length === 0 && !tradingAccountId ? (
               <div className="space-y-3">
-                <p className="text-sm text-muted">
-                  Get a dedicated MT5 account from the platform pool — required
-                  for MT5 Live Sync and personal trade tracking.
-                </p>
-                <Button
-                  type="button"
-                  onClick={() => void claimTradingAccount()}
-                  disabled={claimingAccount}
-                >
-                  {claimingAccount ? "Connecting…" : "Connect MT5 account"}
-                </Button>
+                <Mt5ConnectForm
+                  submitting={claimingAccount}
+                  onSubmit={claimTradingAccount}
+                />
                 {error && (
                   <p className="text-sm text-danger">{error}</p>
                 )}
@@ -941,16 +940,6 @@ export default function SettingsPage() {
                   >
                     {tradingSaving ? "Saving…" : "Save trading account"}
                   </Button>
-                  {!tradingAccountId && (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => void claimTradingAccount()}
-                      disabled={claimingAccount}
-                    >
-                      {claimingAccount ? "Connecting…" : "Auto-connect account"}
-                    </Button>
-                  )}
                 </div>
               </>
             )}

@@ -13,6 +13,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Mt5SyncService } from './mt5-sync.service';
 import { Mt5PoolService } from './mt5-pool.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { LinkMt5AccountDto } from '../common/dto';
 
 class SetMt5SyncEnabledDto {
   @IsBoolean()
@@ -49,8 +50,11 @@ export class Mt5SyncController {
   }
 
   @Post('claim-account')
-  claimAccount(@Request() req: { user: { id: string } }) {
-    return this.pool.claimAccount(req.user.id);
+  claimAccount(
+    @Request() req: { user: { id: string } },
+    @Body() dto: LinkMt5AccountDto,
+  ) {
+    return this.pool.linkUserAccount(req.user.id, dto);
   }
 
   @Post('enabled')
@@ -68,6 +72,7 @@ export class Mt5SyncController {
 export class AdminMt5SyncController {
   constructor(
     private sync: Mt5SyncService,
+    private pool: Mt5PoolService,
     private prisma: PrismaService,
   ) {}
 
@@ -88,5 +93,10 @@ export class AdminMt5SyncController {
       data: { mt5SyncActive: false },
     });
     return { ok: true, userId: dto.userId.trim() };
+  }
+
+  @Get('link-requests')
+  listFailedLinkRequests() {
+    return this.pool.listFailedLinkRequests();
   }
 }

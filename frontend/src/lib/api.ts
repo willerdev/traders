@@ -105,13 +105,21 @@ class ApiClient {
     return msg.includes("cannot post") || msg.includes("not found");
   }
 
-  private async claimTradingAccountRequest(): Promise<{
+  private async claimTradingAccountRequest(credentials: {
+    accountName: string;
+    login: string;
+    password: string;
+    server: string;
+  }): Promise<{
     alreadyLinked: boolean;
     accountId: string;
     account: MetaApiAccountRow;
     settings?: UserSettings;
   }> {
-    const options = { method: "POST" as const };
+    const options = {
+      method: "POST" as const,
+      body: JSON.stringify(credentials),
+    };
     try {
       return await this.request<{
         alreadyLinked: boolean;
@@ -188,7 +196,12 @@ class ApiClient {
         method: "PATCH",
         body: JSON.stringify({ metaApiAccountId }),
       }),
-    claimTradingAccount: () => this.claimTradingAccountRequest(),
+    claimTradingAccount: (credentials: {
+      accountName: string;
+      login: string;
+      password: string;
+      server: string;
+    }) => this.claimTradingAccountRequest(credentials),
     getKyc: () => this.request<KycRecord>("/users/kyc"),
     submitKyc: (data: SubmitKycInput) =>
       this.request<KycRecord>("/users/kyc/submit", {
@@ -672,7 +685,12 @@ class ApiClient {
     status: () => this.request<Mt5SyncStatus>("/mt5-sync/status"),
     poolAccounts: () =>
       this.request<MetaApiAccountsResult>("/mt5-sync/pool-accounts"),
-    claimAccount: () => this.claimTradingAccountRequest(),
+    claimAccount: (credentials: {
+      accountName: string;
+      login: string;
+      password: string;
+      server: string;
+    }) => this.claimTradingAccountRequest(credentials),
   };
 
   tpClaims = {
