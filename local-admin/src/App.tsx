@@ -183,6 +183,9 @@ export default function App() {
   const [copyDashboard, setCopyDashboard] = useState<CopyTradingDashboard | null>(null);
   const [copyPoolAddUserId, setCopyPoolAddUserId] = useState("");
   const [copyPoolLoading, setCopyPoolLoading] = useState(false);
+  const [copyRiskAmount, setCopyRiskAmount] = useState("");
+  const [copyNotifyEmail, setCopyNotifyEmail] = useState("");
+  const [copySettingsSaving, setCopySettingsSaving] = useState(false);
   const [selectedMetaApiAccountId, setSelectedMetaApiAccountId] = useState<
     string | null
   >(null);
@@ -363,7 +366,10 @@ export default function App() {
         setRefPaidAmount(String(settings.paidRewardUsdt));
         setReferrers(list);
       } else if (active === "mt5Copy") {
-        setCopyDashboard(await api.metaApiCopyDashboard());
+        const dashboard = await api.metaApiCopyDashboard();
+        setCopyDashboard(dashboard);
+        setCopyRiskAmount(String(dashboard.copyRiskPercent ?? dashboard.riskPercent ?? 5));
+        setCopyNotifyEmail(dashboard.copyNotifyEmail ?? "willeratmit12@gmail.com");
       } else if (active === "hub") {
         setMetaApiLoadError(null);
         const [reportResult, accountsResult] = await Promise.allSettled([
@@ -2799,7 +2805,8 @@ export default function App() {
                   {copyDashboard?.poolMode === "manual"
                     ? "your selected traders"
                     : "top 3 weekly traders (default)"}{" "}
-                  at {copyDashboard?.riskPercent ?? 5}% risk per trade.
+                  at {copyDashboard?.copyRiskPercent ?? copyDashboard?.riskPercent ?? 5}% max
+                  risk per trade (one trade per setup).
                 </p>
               </div>
               <button
@@ -2815,6 +2822,84 @@ export default function App() {
               <p className="muted">Loading copy pool…</p>
             ) : (
               <>
+                <div className="kyc-card" style={{ marginBottom: "1rem" }}>
+                  <h3 style={{ marginTop: 0 }}>Risk guard &amp; alerts</h3>
+                  <p className="muted" style={{ margin: "0.35rem 0 1rem" }}>
+                    Each setup opens exactly one copy trade. Lot size is capped so
+                    estimated SL loss never exceeds the risk percent — adjusted per
+                    symbol using broker contract size, tick value, and setup SL/TP.
+                  </p>
+                  <div className="toolbar toolbar-wrap">
+                    <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                      <span className="muted">Max risk per copy trade (%)</span>
+                      <input
+                        type="number"
+                        min="0.1"
+                        max="100"
+                        step="0.1"
+                        value={copyRiskAmount}
+                        onChange={(e) => setCopyRiskAmount(e.target.value)}
+                        disabled={copySettingsSaving}
+                      />
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1 }}>
+                      <span className="muted">Copy trade alert email</span>
+                      <input
+                        type="email"
+                        value={copyNotifyEmail}
+                        onChange={(e) => setCopyNotifyEmail(e.target.value)}
+                        disabled={copySettingsSaving}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      style={{ alignSelf: "flex-end" }}
+                      disabled={copySettingsSaving}
+                      onClick={() => {
+                        const copyRiskPercent = Number(copyRiskAmount);
+                        if (!Number.isFinite(copyRiskPercent) || copyRiskPercent <= 0) {
+                          setMessage("Enter a valid risk percent.");
+                          return;
+                        }
+                        if (!copyNotifyEmail.trim()) {
+                          setMessage("Enter a notify email.");
+                          return;
+                        }
+                        setCopySettingsSaving(true);
+                        void api
+                          .updateCopySettings({
+                            copyRiskPercent,
+                            copyNotifyEmail: copyNotifyEmail.trim(),
+                          })
+                          .then((updated) => {
+                            setCopyRiskAmount(String(updated.copyRiskPercent));
+                            setCopyNotifyEmail(updated.copyNotifyEmail);
+                            setCopyDashboard((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    copyRiskPercent: updated.copyRiskPercent,
+                                    copyNotifyEmail: updated.copyNotifyEmail,
+                                    riskPercent: updated.copyRiskPercent,
+                                  }
+                                : prev,
+                            );
+                            setMessage("Copy risk settings saved.");
+                          })
+                          .catch((err) =>
+                            setMessage(
+                              err instanceof Error ? err.message : "Could not save settings",
+                            ),
+                          )
+                          .finally(() => setCopySettingsSaving(false));
+                      }}
+                    >
+                      {copySettingsSaving ? "Saving…" : "Save settings"}
+                    </button>
+                  </div>
+                </div>
+
                 <div className="kyc-card" style={{ marginBottom: "1rem" }}>
                   <div className="toolbar toolbar-wrap" style={{ marginBottom: "0.75rem" }}>
                     <div>

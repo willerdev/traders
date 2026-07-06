@@ -62,6 +62,21 @@ export class UpdateReferralSettingsDto {
   paidRewardUsdt?: number;
 }
 
+export class UpdateCopySettingsDto {
+  @IsOptional()
+  @IsNumber()
+  @Min(0.1)
+  @Max(100)
+  copyRiskPercent?: number;
+
+  @IsOptional()
+  @IsEmail()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
+  copyNotifyEmail?: string;
+}
+
 export class MarketingTestEmailDto {
   @IsOptional()
   @IsEmail()

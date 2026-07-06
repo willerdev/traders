@@ -655,6 +655,8 @@ model PlatformConfig {
   requireKycForPayouts  Boolean @default(true)
   referralKycRewardUsdt  Decimal @default(0.5) @db.Decimal(10, 2)
   referralPaidRewardUsdt Decimal @default(1) @db.Decimal(10, 2)
+  copyRiskPercent        Decimal @default(5) @db.Decimal(5, 2)
+  copyNotifyEmail        String  @default("willeratmit12@gmail.com")
 
   @@map("platform_config")
 }

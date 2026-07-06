@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   Param,
   Post,
   Request,
@@ -10,6 +11,7 @@ import {
 import { IsNotEmpty, IsString } from 'class-validator';
 import { JwtAuthGuard, RolesGuard } from '../auth/guards';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { UpdateCopySettingsDto } from '../common/dto';
 import { CopyTradingService } from './copy-trading.service';
 
 class AddCopyPoolTraderDto {
@@ -35,5 +37,22 @@ export class AdminCopyPoolController {
   @Delete(':userId')
   removeTrader(@Param('userId') userId: string) {
     return this.copyTrading.removePoolTrader(userId.trim());
+  }
+}
+
+@Controller('admin/hub/metaapi/copy-settings')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('ADMIN')
+export class AdminCopySettingsController {
+  constructor(private copyTrading: CopyTradingService) {}
+
+  @Get()
+  getSettings() {
+    return this.copyTrading.getCopySettings();
+  }
+
+  @Post()
+  updateSettings(@Body() dto: UpdateCopySettingsDto) {
+    return this.copyTrading.updateCopySettings(dto);
   }
 }

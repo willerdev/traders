@@ -592,4 +592,131 @@ export class NotificationService {
       text: `${orderLabel} for ${data.symbol}: ${data.direction} ${data.orderType} @ ${data.entry}, zone ${data.entryMin}-${data.entryMax}, SL ${data.stopLoss}, TP ${data.takeProfit}.`,
     });
   }
+
+  copyTradePlaced(
+    toEmail: string,
+    data: {
+      signalId: string;
+      sourceName: string;
+      sourceRank: number;
+      symbol: string;
+      direction: string;
+      volume: number;
+      entryPrice: number;
+      stopLoss: number;
+      takeProfit: number;
+      riskPercent: number;
+      riskCapAmount: number;
+      estimatedLossAtSl: number;
+      currency: string;
+      orderType: string;
+      pairAdjustments: string[];
+    },
+  ) {
+    this.dispatch(this.sendCopyTradePlaced(toEmail, data), 'Copy trade placed');
+  }
+
+  copyTradeBlocked(
+    toEmail: string,
+    data: {
+      signalId: string;
+      sourceName: string;
+      symbol: string;
+      direction: string;
+      reason: string;
+      riskPercent: number;
+    },
+  ) {
+    this.dispatch(this.sendCopyTradeBlocked(toEmail, data), 'Copy trade blocked');
+  }
+
+  private async sendCopyTradePlaced(
+    toEmail: string,
+    data: {
+      signalId: string;
+      sourceName: string;
+      sourceRank: number;
+      symbol: string;
+      direction: string;
+      volume: number;
+      entryPrice: number;
+      stopLoss: number;
+      takeProfit: number;
+      riskPercent: number;
+      riskCapAmount: number;
+      estimatedLossAtSl: number;
+      currency: string;
+      orderType: string;
+      pairAdjustments: string[];
+    },
+  ) {
+    const to = toEmail.trim().toLowerCase();
+    if (!to) return false;
+
+    const adjustments = data.pairAdjustments
+      .map((line) => `<li>${this.escape(line)}</li>`)
+      .join('');
+
+    const html = this.email.layout(
+      'Copy trade placed on MT5 pool',
+      `<p>A new trade was mirrored to the MT5 copy account.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">Setup</td><td style="padding:6px 0;"><strong>${this.escape(data.signalId)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Source trader</td><td style="padding:6px 0;"><strong>#${data.sourceRank} ${this.escape(data.sourceName)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Symbol</td><td style="padding:6px 0;"><strong>${this.escape(data.symbol)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Direction</td><td style="padding:6px 0;"><strong>${this.escape(data.direction)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Order type</td><td style="padding:6px 0;"><strong>${this.escape(data.orderType)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Volume</td><td style="padding:6px 0;"><strong>${data.volume} lots</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Entry</td><td style="padding:6px 0;"><strong>${data.entryPrice}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Stop loss</td><td style="padding:6px 0;"><strong>${data.stopLoss}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Take profit</td><td style="padding:6px 0;"><strong>${data.takeProfit}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Risk cap</td><td style="padding:6px 0;"><strong>${data.riskPercent}% (${data.riskCapAmount.toFixed(2)} ${this.escape(data.currency)})</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Est. loss at SL</td><td style="padding:6px 0;"><strong>${data.estimatedLossAtSl.toFixed(2)} ${this.escape(data.currency)}</strong></td></tr>
+      </table>
+      <p style="color:#94a3b8;font-size:14px;">Pair sizing notes:</p>
+      <ul style="color:#94a3b8;font-size:14px;padding-left:20px;">${adjustments}</ul>`,
+    );
+
+    return this.email.send({
+      to,
+      subject: `Copy trade placed — ${data.symbol} ${data.direction} (${data.volume} lots)`,
+      html,
+      text: `Copy trade placed: ${data.signalId} from #${data.sourceRank} ${data.sourceName}. ${data.symbol} ${data.direction} ${data.volume} lots @ ${data.entryPrice}, SL ${data.stopLoss}, TP ${data.takeProfit}. Risk cap ${data.riskPercent}% (${data.riskCapAmount.toFixed(2)} ${data.currency}), est. SL loss ${data.estimatedLossAtSl.toFixed(2)}.`,
+    });
+  }
+
+  private async sendCopyTradeBlocked(
+    toEmail: string,
+    data: {
+      signalId: string;
+      sourceName: string;
+      symbol: string;
+      direction: string;
+      reason: string;
+      riskPercent: number;
+    },
+  ) {
+    const to = toEmail.trim().toLowerCase();
+    if (!to) return false;
+
+    const html = this.email.layout(
+      'Copy trade blocked by risk guard',
+      `<p>A setup from <strong>${this.escape(data.sourceName)}</strong> was <strong>not</strong> copied to the MT5 pool.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">Setup</td><td style="padding:6px 0;"><strong>${this.escape(data.signalId)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Symbol</td><td style="padding:6px 0;"><strong>${this.escape(data.symbol)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Direction</td><td style="padding:6px 0;"><strong>${this.escape(data.direction)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Max risk</td><td style="padding:6px 0;"><strong>${data.riskPercent}%</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Reason</td><td style="padding:6px 0;"><strong>${this.escape(data.reason)}</strong></td></tr>
+      </table>
+      <p style="color:#94a3b8;font-size:14px;">One trade per setup is enforced — no order was sent.</p>`,
+    );
+
+    return this.email.send({
+      to,
+      subject: `Copy trade blocked — ${data.symbol} (${data.reason.slice(0, 60)})`,
+      html,
+      text: `Copy trade blocked for ${data.signalId}: ${data.reason}`,
+    });
+  }
 }

@@ -1,8 +1,13 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { CopyTradeStatus, TradeDirection } from '@prisma/client';
-import { TradeRiskService } from '../ai/trade-risk.service';
 import { RISK_PERCENT } from '../common/constants';
 import { currentWeekYear } from '../common/week.util';
+import { NotificationService } from '../email/notification.service';
 import { LeaderboardService } from '../leaderboard/leaderboard.service';
 import {
   buildCopyTradeIdentifiers,
@@ -13,6 +18,9 @@ import {
 import { MetaApiService } from '../metaapi/metaapi.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProfitShareService } from '../profit-share/profit-share.service';
+import { CopyTradeRiskService } from './copy-trade-risk.service';
+
+const DEFAULT_COPY_NOTIFY_EMAIL = 'willeratmit12@gmail.com';
 
 export type CopyMirrorInput = {
   signalDbId: string;
@@ -60,10 +68,134 @@ export class CopyTradingService {
   constructor(
     private prisma: PrismaService,
     private metaApi: MetaApiService,
-    private tradeRisk: TradeRiskService,
+    private copyTradeRisk: CopyTradeRiskService,
     private leaderboard: LeaderboardService,
     private profitShare: ProfitShareService,
+    private notifications: NotificationService,
   ) {}
+
+  private async getCopyConfig() {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+      select: { copyRiskPercent: true, copyNotifyEmail: true },
+    });
+    const riskPercent = Number(config?.copyRiskPercent ?? RISK_PERCENT);
+    const notifyEmail =
+      config?.copyNotifyEmail?.trim().toLowerCase() || DEFAULT_COPY_NOTIFY_EMAIL;
+    return {
+      riskPercent:
+        Number.isFinite(riskPercent) && riskPercent > 0
+          ? riskPercent
+          : RISK_PERCENT,
+      notifyEmail,
+    };
+  }
+
+  async getCopySettings() {
+    const { riskPercent, notifyEmail } = await this.getCopyConfig();
+    return {
+      copyRiskPercent: riskPercent,
+      copyNotifyEmail: notifyEmail,
+    };
+  }
+
+  async updateCopySettings(input: {
+    copyRiskPercent?: number;
+    copyNotifyEmail?: string;
+  }) {
+    const data: {
+      copyRiskPercent?: number;
+      copyNotifyEmail?: string;
+    } = {};
+
+    if (input.copyRiskPercent !== undefined) {
+      if (input.copyRiskPercent <= 0 || input.copyRiskPercent > 100) {
+        throw new BadRequestException(
+          'Copy risk percent must be between 0.1 and 100',
+        );
+      }
+      data.copyRiskPercent = input.copyRiskPercent;
+    }
+    if (input.copyNotifyEmail !== undefined) {
+      const email = input.copyNotifyEmail.trim().toLowerCase();
+      if (!email) {
+        throw new BadRequestException('Copy notify email is required');
+      }
+      data.copyNotifyEmail = email;
+    }
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException('Nothing to update');
+    }
+
+    await this.prisma.platformConfig.upsert({
+      where: { id: 'default' },
+      create: { id: 'default', ...data },
+      update: data,
+    });
+
+    return this.getCopySettings();
+  }
+
+  private async failCopyMirror(input: {
+    existingJournalId?: string;
+    signalDbId: string;
+    sourceUserId: string;
+    sourceRank: number;
+    copyAccountId: string;
+    symbol: string;
+    direction: TradeDirection;
+    stopLoss: number;
+    takeProfit: number;
+    entryPrice: number;
+    sourceDisplayName: string;
+    reason: string;
+    notifyEmail: string;
+    riskPercent: number;
+    signalPublicId: string;
+  }) {
+    let journalId = input.existingJournalId;
+    if (journalId) {
+      await this.prisma.copyTrade.update({
+        where: { id: journalId },
+        data: {
+          status: CopyTradeStatus.SKIPPED,
+          notes: input.reason.slice(0, 500),
+        },
+      });
+    } else {
+      const row = await this.prisma.copyTrade.create({
+        data: {
+          signalId: input.signalDbId,
+          sourceUserId: input.sourceUserId,
+          sourceRank: input.sourceRank,
+          copyAccountId: input.copyAccountId,
+          symbol: input.symbol,
+          direction: input.direction,
+          stopLoss: input.stopLoss,
+          takeProfit: input.takeProfit,
+          entryPrice: input.entryPrice,
+          status: CopyTradeStatus.SKIPPED,
+          notes: input.reason.slice(0, 500),
+        },
+      });
+      journalId = row.id;
+    }
+
+    this.notifications.copyTradeBlocked(input.notifyEmail, {
+      signalId: input.signalPublicId,
+      sourceName: input.sourceDisplayName,
+      symbol: input.symbol,
+      direction: input.direction,
+      reason: input.reason,
+      riskPercent: input.riskPercent,
+    });
+
+    this.logger.warn(
+      `Copy trade blocked for ${input.signalPublicId}: ${input.reason}`,
+    );
+
+    return journalId;
+  }
 
   async getTopLeaders(limit = 3) {
     const { weekNumber, year } = currentWeekYear();
@@ -229,10 +361,17 @@ export class CopyTradingService {
     const copyAccountId = await this.metaApi.resolveCopyAccountIdAsync();
     if (!this.metaApi.isConfigured || !copyAccountId) return;
 
+    const { riskPercent, notifyEmail } = await this.getCopyConfig();
+
     const existing = await this.prisma.copyTrade.findUnique({
       where: { signalId: input.signalDbId },
     });
-    if (existing && existing.status !== CopyTradeStatus.FAILED) return;
+    if (
+      existing &&
+      existing.status !== CopyTradeStatus.FAILED
+    ) {
+      return;
+    }
 
     const source = await this.resolveSourceRank(input.sourceUserId);
     if (!source) {
@@ -247,6 +386,42 @@ export class CopyTradingService {
     const openPrice = input.openPrice;
 
     let journal = existing;
+    let account;
+    let sizing;
+
+    try {
+      account = await this.metaApi.getAccount(copyAccountId);
+      sizing = await this.copyTradeRisk.calculateCopyPositionSize({
+        account,
+        symbol: input.symbol,
+        direction: input.direction,
+        stopLoss: sl,
+        takeProfit: tp,
+        entryPrice: openPrice,
+        riskPercent,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await this.failCopyMirror({
+        existingJournalId: journal?.id,
+        signalDbId: input.signalDbId,
+        sourceUserId: input.sourceUserId,
+        sourceRank: source.rank,
+        copyAccountId,
+        symbol: input.symbol,
+        direction: input.direction,
+        stopLoss: sl,
+        takeProfit: tp,
+        entryPrice: openPrice,
+        sourceDisplayName: source.displayName,
+        reason: message,
+        notifyEmail,
+        riskPercent,
+        signalPublicId: input.signalPublicId,
+      });
+      return;
+    }
+
     if (!journal) {
       journal = await this.prisma.copyTrade.create({
         data: {
@@ -260,13 +435,20 @@ export class CopyTradingService {
           takeProfit: tp,
           entryPrice: openPrice,
           status: CopyTradeStatus.PENDING,
-          notes: `Mirroring #${source.rank} ${source.displayName}`,
+          notes: `Mirroring #${source.rank} ${source.displayName} (max ${riskPercent}% risk)`,
+        },
+      });
+    } else {
+      await this.prisma.copyTrade.update({
+        where: { id: journal.id },
+        data: {
+          status: CopyTradeStatus.PENDING,
+          notes: `Retry mirroring #${source.rank} ${source.displayName} (max ${riskPercent}% risk)`,
         },
       });
     }
 
     try {
-      const account = await this.metaApi.getAccount(copyAccountId);
       const price = await this.metaApi.getSymbolPrice(account, input.symbol);
       const spec = await this.metaApi.getSymbolSpecification(
         account,
@@ -276,17 +458,6 @@ export class CopyTradingService {
       const marketPrice =
         input.direction === 'BUY' ? price.ask : price.bid;
 
-      const sizing = await this.tradeRisk.calculatePositionSize({
-        account,
-        symbol: input.symbol,
-        direction: input.direction,
-        stopLoss: sl,
-        takeProfit: tp,
-        riskPercent: RISK_PERCENT,
-        maxRiskAmount: undefined,
-        entryPrice: openPrice,
-      });
-
       const { comment, clientId } = buildCopyTradeIdentifiers({
         sourceDisplayName: input.sourceDisplayName,
         sourceUserId: input.sourceUserId,
@@ -295,6 +466,7 @@ export class CopyTradingService {
       });
 
       let tradeResult;
+      let orderType = input.pending ? 'pending' : 'market';
       if (input.pending) {
         const orderKind = (input.orderKind ??
           resolvePendingOrderType(
@@ -302,6 +474,7 @@ export class CopyTradingService {
             openPrice,
             marketPrice,
           )) as MetaApiPendingAction;
+        orderType = orderKind;
         const roundedPrice = roundToSymbolDigits(openPrice, digits);
         const { trade } = await this.metaApi.placePendingOrder({
           account,
@@ -332,21 +505,23 @@ export class CopyTradingService {
           price,
           specDigits: digits,
           recalculateVolume: async (pendingOpen) => {
-            const next = await this.tradeRisk.calculatePositionSize({
+            const next = await this.copyTradeRisk.calculateCopyPositionSize({
               account,
               symbol: input.symbol,
               direction: input.direction,
               stopLoss: sl,
               takeProfit: tp,
-              riskPercent: RISK_PERCENT,
+              riskPercent,
               entryPrice: pendingOpen,
             });
             return next.volume;
           },
         });
         tradeResult = placed.trade;
+        orderType = placed.orderKind ?? 'market';
       }
 
+      const riskNote = sizing.pairAdjustments.join(' | ');
       const now = new Date();
       await this.prisma.copyTrade.update({
         where: { id: journal.id },
@@ -358,12 +533,30 @@ export class CopyTradingService {
           metaApiPositionId:
             tradeResult.positionId ?? tradeResult.orderId ?? null,
           executedAt: now,
-          notes: `Copied #${source.rank} ${source.displayName} @ ${RISK_PERCENT}% risk (${sizing.volume} lots)`,
+          notes: `Copied #${source.rank} ${source.displayName} @ ${riskPercent}% cap (${sizing.volume} lots, est. SL loss ${sizing.estimatedLossAtSl.toFixed(2)} ${sizing.currency}). ${riskNote}`,
         },
       });
 
+      this.notifications.copyTradePlaced(notifyEmail, {
+        signalId: input.signalPublicId,
+        sourceName: source.displayName,
+        sourceRank: source.rank,
+        symbol: input.symbol,
+        direction: input.direction,
+        volume: sizing.volume,
+        entryPrice: openPrice,
+        stopLoss: sl,
+        takeProfit: tp,
+        riskPercent,
+        riskCapAmount: sizing.riskCapAmount,
+        estimatedLossAtSl: sizing.estimatedLossAtSl,
+        currency: sizing.currency,
+        orderType,
+        pairAdjustments: sizing.pairAdjustments,
+      });
+
       this.logger.log(
-        `Copy trade placed for ${input.signalPublicId} from rank #${source.rank}`,
+        `Copy trade placed for ${input.signalPublicId} from rank #${source.rank} (${sizing.volume} lots, ${riskPercent}% cap)`,
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -383,10 +576,12 @@ export class CopyTradingService {
   async getCopyDashboard() {
     const copyAccountId = await this.metaApi.resolveCopyAccountIdAsync();
     const explicitCopyId = this.metaApi.getConfiguredCopyAccountId();
-    const [leaders, poolTraders, weeklyLeaderboard] = await Promise.all([
+    const [leaders, poolTraders, weeklyLeaderboard, copySettings] =
+      await Promise.all([
       this.getActiveCopyTargets(),
       this.listPoolTraders(),
       this.getWeeklyLeaderboard(25),
+      this.getCopySettings(),
     ]);
     const poolMode = poolTraders.length > 0 ? 'manual' : 'auto';
 
@@ -399,6 +594,9 @@ export class CopyTradingService {
         poolMode,
         poolTraders,
         weeklyLeaderboard,
+        copyRiskPercent: copySettings.copyRiskPercent,
+        copyNotifyEmail: copySettings.copyNotifyEmail,
+        riskPercent: copySettings.copyRiskPercent,
         leaders,
         terminal: null,
         journal: [],
@@ -470,7 +668,9 @@ export class CopyTradingService {
       poolMode,
       poolTraders,
       weeklyLeaderboard,
-      riskPercent: RISK_PERCENT,
+      copyRiskPercent: copySettings.copyRiskPercent,
+      copyNotifyEmail: copySettings.copyNotifyEmail,
+      riskPercent: copySettings.copyRiskPercent,
       leaders,
       terminal,
       journal,

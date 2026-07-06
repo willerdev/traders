@@ -309,6 +309,13 @@ export const api = {
     request<CopyPoolMutationResult>(`/admin/hub/metaapi/copy-pool/${encodeURIComponent(userId)}`, {
       method: "DELETE",
     }),
+  copySettings: () =>
+    request<CopySettings>("/admin/hub/metaapi/copy-settings"),
+  updateCopySettings: (body: Partial<CopySettings>) =>
+    request<CopySettings>("/admin/hub/metaapi/copy-settings", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   marketingSchedule: () =>
     request<MarketingSchedule>("/admin/marketing/schedule"),
@@ -823,6 +830,11 @@ export type CopyPoolMutationResult = {
   leaders: CopyTradingLeader[];
 };
 
+export type CopySettings = {
+  copyRiskPercent: number;
+  copyNotifyEmail: string;
+};
+
 export type CopyTradeJournalEntry = {
   id: string;
   signalId: string;
@@ -851,6 +863,8 @@ export type CopyTradingDashboard = {
   poolMode?: "manual" | "auto";
   poolTraders?: CopyPoolTraderRow[];
   weeklyLeaderboard?: CopyTradingLeader[];
+  copyRiskPercent?: number;
+  copyNotifyEmail?: string;
   leaders: CopyTradingLeader[];
   terminal: MetaApiTerminalState | null;
   journal: CopyTradeJournalEntry[];
