@@ -150,6 +150,7 @@ model User {
   adminCanApproveKyc        Boolean @default(false)
   adminCanApprovePayouts    Boolean @default(false)
   adminCanApproveTpClaims   Boolean @default(false)
+  adminCanManageSetups      Boolean @default(false)
   emailVerified     Boolean    @default(false)
   emailVerifyToken  String?
   registrationPaid    Boolean    @default(false)

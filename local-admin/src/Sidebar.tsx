@@ -45,6 +45,7 @@ export type AdminPermissions = {
   kyc: boolean;
   payout: boolean;
   tpClaim: boolean;
+  setup: boolean;
   managePermissions: boolean;
 };
 
@@ -52,6 +53,7 @@ export function tabsForPermissions(permissions: AdminPermissions | null): Tab[] 
   if (!permissions) return [];
   if (permissions.fullAdmin) return ADMIN_TABS;
   const tabs: Tab[] = [];
+  if (permissions.setup) tabs.push("signals");
   if (permissions.kyc) tabs.push("kyc");
   if (permissions.payout) tabs.push("payouts");
   if (permissions.tpClaim) tabs.push("tpClaims");
@@ -60,7 +62,7 @@ export function tabsForPermissions(permissions: AdminPermissions | null): Tab[] 
 
 export function defaultTabForPermissions(permissions: AdminPermissions | null): Tab {
   const tabs = tabsForPermissions(permissions);
-  return tabs[0] ?? "kyc";
+  return tabs[0] ?? "signals";
 }
 
 const NAV_ITEMS: NavItem[] = [

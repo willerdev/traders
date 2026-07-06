@@ -193,6 +193,8 @@ function tabFromHash(): Tab {
   return isAdminTab(hash) ? hash : "overview";
 }
 
+const USERS_PAGE_SIZE = 50;
+
 function setupCanSetLimit(signal: SignalRow) {
   if (signal.status !== "OPEN") return false;
   if (signal.trade?.closedAt || signal.trade?.activatedAt) return false;
@@ -337,6 +339,9 @@ export default function App() {
   const [chatSending, setChatSending] = useState(false);
   const [chatModalUser, setChatModalUser] = useState<UserRow | null>(null);
   const [suspiciousOnly, setSuspiciousOnly] = useState(false);
+  const [userPage, setUserPage] = useState(0);
+  const [userSearch, setUserSearch] = useState("");
+  const [userSearchInput, setUserSearchInput] = useState("");
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [banLoadingId, setBanLoadingId] = useState<string | null>(null);
   const [bulkBanLoading, setBulkBanLoading] = useState(false);
@@ -365,6 +370,9 @@ export default function App() {
   }, []);
 
   const allowedTabs = tabsForPermissions(adminSession?.permissions ?? null);
+  const isFullAdmin = Boolean(adminSession?.permissions.fullAdmin);
+  const canManageSetups =
+    isFullAdmin || Boolean(adminSession?.permissions.setup);
 
   useEffect(() => {
     if (!authed || !getToken()) return;
@@ -497,6 +505,23 @@ export default function App() {
     }
   }, [loadCopyDashboard]);
 
+  const loadUsersPage = useCallback(
+    async (page: number, search: string, suspicious = suspiciousOnly) => {
+      const res = await api.users({
+        offset: page * USERS_PAGE_SIZE,
+        limit: USERS_PAGE_SIZE,
+        suspiciousOnly: suspicious,
+        search: search.trim() || undefined,
+      });
+      setUsers(res.items);
+      setUserCount(res.count);
+      setSelectedUserIds([]);
+      setUserPage(page);
+      setUserSearch(search.trim());
+    },
+    [suspiciousOnly],
+  );
+
   const loadTab = useCallback(async (active: Tab) => {
     setLoading(true);
     setMessage("");
@@ -506,10 +531,7 @@ export default function App() {
       } else if (active === "paymentForecast") {
         setPaymentForecast(await api.paymentForecast());
       } else if (active === "users") {
-        const res = await api.users(0, suspiciousOnly);
-        setUsers(res.items);
-        setUserCount(res.count);
-        setSelectedUserIds([]);
+        await loadUsersPage(userPage, userSearch);
       } else if (active === "messages") {
         const res = await api.messageThreads();
         setMessageThreads(res.items);
@@ -644,7 +666,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [suspiciousOnly, selectedMetaApiAccountId, loadMetaApiTerminal, setupFilter, copyDashboard, loadCopyDashboard]);
+  }, [suspiciousOnly, selectedMetaApiAccountId, loadMetaApiTerminal, setupFilter, copyDashboard, loadCopyDashboard, loadUsersPage, userPage, userSearch]);
 
   useEffect(() => {
     if (!authed || copyPrefetchedRef.current) return;
@@ -839,9 +861,54 @@ export default function App() {
     setChatDraft("");
   }
 
+  async function applyUserSearch() {
+    const q = userSearchInput.trim();
+    setLoading(true);
+    setMessage("");
+    try {
+      await loadUsersPage(0, q);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Search failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function clearUserSearch() {
+    setUserSearchInput("");
+    if (!userSearch) return;
+    setLoading(true);
+    setMessage("");
+    try {
+      await loadUsersPage(0, "");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Failed to clear search");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function changeUserPage(nextPage: number) {
+    const totalPages = Math.max(1, Math.ceil(userCount / USERS_PAGE_SIZE));
+    if (nextPage < 0 || nextPage >= totalPages) return;
+    setLoading(true);
+    setMessage("");
+    try {
+      await loadUsersPage(nextPage, userSearch);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Failed to load users");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
-    if (authed) void loadTab(tab);
-  }, [authed, tab, loadTab]);
+    if (!authed) return;
+    if (!adminSession) return;
+    const tabs = tabsForPermissions(adminSession.permissions);
+    if (tabs.length > 0 && !tabs.includes(tab)) return;
+    void loadTab(tab);
+  }, [authed, tab, loadTab, adminSession]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -861,6 +928,9 @@ export default function App() {
           setEmail(res.user.email);
           setLoginStep("credentials");
           setAuthed(true);
+          const session = await api.adminSession();
+          setAdminSession(session);
+          setTab(defaultTabForPermissions(session.permissions));
           return;
         }
         const sessionId = res.loginSessionId?.trim();
@@ -892,6 +962,9 @@ export default function App() {
       setAdminEmail(res.user.email);
       setEmail(res.user.email);
       setAuthed(true);
+      const session = await api.adminSession();
+      setAdminSession(session);
+      setTab(defaultTabForPermissions(session.permissions));
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -1490,13 +1563,44 @@ export default function App() {
               <h2>
                 Users ({userCount})
                 {suspiciousOnly ? " — suspicious emails" : ""}
+                {userSearch ? ` — “${userSearch}”` : ""}
               </h2>
-              <div className="toolbar-actions">
+              <div className="toolbar-actions toolbar-actions-wrap">
+                <form
+                  className="users-search"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void applyUserSearch();
+                  }}
+                >
+                  <input
+                    type="search"
+                    placeholder="Search name or email…"
+                    value={userSearchInput}
+                    onChange={(e) => setUserSearchInput(e.target.value)}
+                    aria-label="Search users by name or email"
+                  />
+                  <button type="submit" className="secondary">
+                    Search
+                  </button>
+                  {userSearch && (
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => void clearUserSearch()}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </form>
                 <label className="filter-toggle">
                   <input
                     type="checkbox"
                     checked={suspiciousOnly}
-                    onChange={(e) => setSuspiciousOnly(e.target.checked)}
+                    onChange={(e) => {
+                      setSuspiciousOnly(e.target.checked);
+                      setUserPage(0);
+                    }}
                   />
                   Suspicious emails only
                 </label>
@@ -1629,6 +1733,49 @@ export default function App() {
                 ))}
               </tbody>
             </table>
+            {userCount > 0 && (
+              <div className="pagination-bar">
+                <span className="muted pagination-summary">
+                  Showing {userPage * USERS_PAGE_SIZE + 1}–
+                  {Math.min((userPage + 1) * USERS_PAGE_SIZE, userCount)} of{" "}
+                  {userCount}
+                </span>
+                <div className="pagination-controls">
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={userPage <= 0 || loading}
+                    onClick={() => void changeUserPage(userPage - 1)}
+                  >
+                    Previous
+                  </button>
+                  <span className="pagination-page">
+                    Page {userPage + 1} of{" "}
+                    {Math.max(1, Math.ceil(userCount / USERS_PAGE_SIZE))}
+                  </span>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={
+                      loading ||
+                      userPage + 1 >= Math.ceil(userCount / USERS_PAGE_SIZE)
+                    }
+                    onClick={() => void changeUserPage(userPage + 1)}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+            {users.length === 0 && (
+              <p className="muted">
+                {userSearch
+                  ? `No users match “${userSearch}”.`
+                  : suspiciousOnly
+                    ? "No suspicious emails found."
+                    : "No users yet."}
+              </p>
+            )}
           </>
         )}
 
@@ -1794,7 +1941,7 @@ export default function App() {
                       </div>
                     )}
                     <div className="row-actions">
-                      {s.user.id && (
+                      {isFullAdmin && s.user.id && (
                         <button
                           type="button"
                           onClick={() => setUserDetailId(s.user.id!)}
@@ -1802,12 +1949,14 @@ export default function App() {
                           View trader
                         </button>
                       )}
-                      <span className="muted" style={{ fontSize: "0.8rem" }}>
-                        {s.hubQueued ? "Hub queued" : "Hub not queued"}
-                        {" · "}
-                        {s.metaApiQueued ? "MetaAPI queued" : "MetaAPI not queued"}
-                      </span>
-                      {setupCanSetLimit(s) && (
+                      {isFullAdmin && (
+                        <span className="muted" style={{ fontSize: "0.8rem" }}>
+                          {s.hubQueued ? "Hub queued" : "Hub not queued"}
+                          {" · "}
+                          {s.metaApiQueued ? "MetaAPI queued" : "MetaAPI not queued"}
+                        </span>
+                      )}
+                      {isFullAdmin && setupCanSetLimit(s) && (
                         <button
                           type="button"
                           className="primary"
@@ -1832,7 +1981,7 @@ export default function App() {
                               : "Retry set limit"}
                         </button>
                       )}
-                      {setupCanMirrorToCopy(s) && (
+                      {canManageSetups && setupCanMirrorToCopy(s) && (
                         <button
                           type="button"
                           disabled={copyMirrorLoadingId === s.signalId}
@@ -1854,7 +2003,7 @@ export default function App() {
                             : "Send to MT5 Copy"}
                         </button>
                       )}
-                      {!s.tp1ClaimNoticeApprovedAt && (
+                      {isFullAdmin && !s.tp1ClaimNoticeApprovedAt && (
                         <button
                           type="button"
                           disabled={tp1ApproveLoadingId === s.signalId}

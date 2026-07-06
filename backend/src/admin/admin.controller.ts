@@ -76,11 +76,13 @@ export class AdminController {
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
     @Query('suspicious') suspicious?: string,
+    @Query('search') search?: string,
   ) {
     return this.adminService.listUsers(
       limit ? Number(limit) : 50,
       offset ? Number(offset) : 0,
       suspicious === 'true' || suspicious === '1',
+      search,
     );
   }
 
@@ -98,6 +100,7 @@ export class AdminController {
   }
 
   @Get('signals')
+  @RequireAdminPermission('full', 'setup')
   listSignals(
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
@@ -116,6 +119,7 @@ export class AdminController {
   }
 
   @Post('signals/:signalId/mirror-copy')
+  @RequireAdminPermission('full', 'setup')
   mirrorSetupToCopy(@Param('signalId') signalId: string) {
     return this.adminService.mirrorSetupToCopy(signalId);
   }
@@ -451,6 +455,7 @@ export class AdminController {
   }
 
   @Get('uploads/setups/:filename')
+  @RequireAdminPermission('full', 'setup')
   getSetupUpload(
     @Param('filename') filename: string,
     @Res() res: Response,

@@ -1720,10 +1720,12 @@ export class SignalsService {
 
     const entryMin = Number(signal.entryMin);
     const entryMax = Number(signal.entryMax);
+    const limitEntry =
+      signal.direction === 'BUY' ? entryMin : entryMax;
     const openPrice =
-      signal.trade?.entryPrice != null
+      signal.trade?.activatedAt && signal.trade.entryPrice != null
         ? Number(signal.trade.entryPrice)
-        : (entryMin + entryMax) / 2;
+        : limitEntry;
     const pending = !signal.trade?.activatedAt;
 
     await this.mirrorToCopyPool({
@@ -1743,6 +1745,7 @@ export class SignalsService {
         signalId,
         mirrored: false,
         copyStatus: null as string | null,
+        entryPrice: openPrice,
         message:
           'Copy mirror skipped — trader may not be in the pool, copy account unavailable, or pool not ready',
       };
@@ -1754,6 +1757,7 @@ export class SignalsService {
         signalId,
         mirrored: false,
         copyStatus: copyTrade.status,
+        entryPrice: openPrice,
         message:
           copyTrade.notes ||
           'Copy mirror failed — check MT5 Copy dashboard for details',
@@ -1766,7 +1770,8 @@ export class SignalsService {
         signalId,
         mirrored: true,
         copyStatus: copyTrade.status,
-        message: `Sent to MT5 Copy (${copyTrade.status.toLowerCase()}) for ${signal.symbol} ${signal.direction}`,
+        entryPrice: openPrice,
+        message: `Sent to MT5 Copy (${copyTrade.status.toLowerCase()}) @ ${openPrice} for ${signal.symbol} ${signal.direction}`,
       };
     }
 
@@ -1775,6 +1780,7 @@ export class SignalsService {
       signalId,
       mirrored: false,
       copyStatus: copyTrade.status,
+      entryPrice: openPrice,
       message: `Copy trade already ${copyTrade.status.toLowerCase()} for this setup`,
     };
   }

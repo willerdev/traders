@@ -78,6 +78,7 @@ export type AdminPermissionsView = {
   kyc: boolean;
   payout: boolean;
   tpClaim: boolean;
+  setup: boolean;
   managePermissions: boolean;
 };
 
@@ -107,7 +108,14 @@ export const api = {
     }),
 
   verifyLoginOtp: (loginSessionId: string, code: string) =>
-    request<{ accessToken: string; user: { role: string; email: string } }>(
+    request<{
+      accessToken: string;
+      user: {
+        role: string;
+        email: string;
+        adminPermissions?: AdminPermissionsView;
+      };
+    }>(
       "/auth/login/verify-otp",
       {
         method: "POST",
@@ -126,10 +134,26 @@ export const api = {
 
   overview: () => request<Record<string, unknown>>("/admin/overview"),
   paymentForecast: () => request<PaymentForecast>("/admin/payment-forecast"),
-  users: (offset = 0, suspiciousOnly = false) =>
-    request<{ items: UserRow[]; count: number; suspiciousOnly?: boolean }>(
-      `/admin/users?limit=50&offset=${offset}${suspiciousOnly ? "&suspicious=true" : ""}`,
-    ),
+  users: (params?: {
+    offset?: number;
+    limit?: number;
+    suspiciousOnly?: boolean;
+    search?: string;
+  }) => {
+    const q = new URLSearchParams();
+    q.set("limit", String(params?.limit ?? 50));
+    q.set("offset", String(params?.offset ?? 0));
+    if (params?.suspiciousOnly) q.set("suspicious", "true");
+    if (params?.search?.trim()) q.set("search", params.search.trim());
+    return request<{
+      items: UserRow[];
+      count: number;
+      limit: number;
+      offset: number;
+      suspiciousOnly?: boolean;
+      search?: string | null;
+    }>(`/admin/users?${q.toString()}`);
+  },
 
   getUser: (userId: string) =>
     request<AdminUserDetail>(`/admin/users/${userId}`),
@@ -139,6 +163,7 @@ export const api = {
       canApproveKyc?: boolean;
       canApprovePayouts?: boolean;
       canApproveTpClaims?: boolean;
+      canManageSetups?: boolean;
     },
   ) =>
     request<{
@@ -149,6 +174,7 @@ export const api = {
       adminCanApproveKyc: boolean;
       adminCanApprovePayouts: boolean;
       adminCanApproveTpClaims: boolean;
+      adminCanManageSetups: boolean;
       permissions: AdminPermissionsView;
     }>(`/admin/users/${userId}/staff-permissions`, {
       method: "PATCH",
@@ -501,6 +527,7 @@ export type UserRow = {
   adminCanApproveKyc?: boolean;
   adminCanApprovePayouts?: boolean;
   adminCanApproveTpClaims?: boolean;
+  adminCanManageSetups?: boolean;
   registrationPaid: boolean;
   accessExpiresAt?: string | null;
   createdAt: string;
@@ -520,6 +547,7 @@ export type AdminUserDetail = {
   adminCanApproveKyc?: boolean;
   adminCanApprovePayouts?: boolean;
   adminCanApproveTpClaims?: boolean;
+  adminCanManageSetups?: boolean;
   walletAddress: string | null;
   registrationPaid: boolean;
   accessExpiresAt?: string | null;
@@ -658,6 +686,7 @@ export type MirrorSetupToCopyResult = {
   signalId: string;
   mirrored: boolean;
   copyStatus: string | null;
+  entryPrice: number;
   message: string;
 };
 

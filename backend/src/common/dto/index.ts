@@ -756,4 +756,8 @@ export class UpdateStaffPermissionsDto {
   @IsOptional()
   @IsBoolean()
   canApproveTpClaims?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  canManageSetups?: boolean;
 }

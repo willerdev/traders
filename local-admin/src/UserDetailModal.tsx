@@ -53,6 +53,8 @@ export function UserDetailModal({
   const [staffKyc, setStaffKyc] = useState(false);
   const [staffPayout, setStaffPayout] = useState(false);
   const [staffTpClaim, setStaffTpClaim] = useState(false);
+  const [staffSetups, setStaffSetups] = useState(false);
+  const [permissionsMessage, setPermissionsMessage] = useState("");
 
   const reload = () => {
     if (!userId) return;
@@ -99,6 +101,7 @@ export function UserDetailModal({
     setStaffKyc(Boolean(detail.adminCanApproveKyc));
     setStaffPayout(Boolean(detail.adminCanApprovePayouts));
     setStaffTpClaim(Boolean(detail.adminCanApproveTpClaims));
+    setStaffSetups(Boolean(detail.adminCanManageSetups));
   }, [detail]);
 
   if (!userId) return null;
@@ -141,11 +144,13 @@ export function UserDetailModal({
     if (!userId) return;
     setPermissionsBusy(true);
     setError("");
+    setPermissionsMessage("");
     try {
       const updated = await api.updateStaffPermissions(userId, {
         canApproveKyc: staffKyc,
         canApprovePayouts: staffPayout,
         canApproveTpClaims: staffTpClaim,
+        canManageSetups: staffSetups,
       });
       setDetail((prev) =>
         prev
@@ -154,9 +159,11 @@ export function UserDetailModal({
               adminCanApproveKyc: updated.adminCanApproveKyc,
               adminCanApprovePayouts: updated.adminCanApprovePayouts,
               adminCanApproveTpClaims: updated.adminCanApproveTpClaims,
+              adminCanManageSetups: updated.adminCanManageSetups,
             }
           : prev,
       );
+      setPermissionsMessage("Permissions saved.");
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not update staff permissions",
@@ -246,7 +253,21 @@ export function UserDetailModal({
                     />
                     <span>TP claim approver</span>
                   </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <input
+                      type="checkbox"
+                      checked={staffSetups}
+                      disabled={permissionsBusy}
+                      onChange={(e) => setStaffSetups(e.target.checked)}
+                    />
+                    <span>Setup reviewer — view setups and send to MT5 Copy</span>
+                  </label>
                 </div>
+                {permissionsMessage && (
+                  <p className="muted" style={{ margin: "0 0 0.75rem" }}>
+                    {permissionsMessage}
+                  </p>
+                )}
                 <button
                   type="button"
                   className="primary"

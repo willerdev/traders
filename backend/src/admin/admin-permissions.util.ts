@@ -1,6 +1,12 @@
 import { User, UserRole } from '@prisma/client';
 
-export type AdminPermission = 'full' | 'hub' | 'kyc' | 'payout' | 'tp_claim';
+export type AdminPermission =
+  | 'full'
+  | 'hub'
+  | 'kyc'
+  | 'payout'
+  | 'tp_claim'
+  | 'setup';
 
 export type AdminPermissionsView = {
   fullAdmin: boolean;
@@ -8,6 +14,7 @@ export type AdminPermissionsView = {
   kyc: boolean;
   payout: boolean;
   tpClaim: boolean;
+  setup: boolean;
   managePermissions: boolean;
 };
 
@@ -17,6 +24,7 @@ export type AdminUserFlags = Pick<
   | 'adminCanApproveKyc'
   | 'adminCanApprovePayouts'
   | 'adminCanApproveTpClaims'
+  | 'adminCanManageSetups'
 >;
 
 export function hasAdminHubAccess(user: AdminUserFlags): boolean {
@@ -24,7 +32,8 @@ export function hasAdminHubAccess(user: AdminUserFlags): boolean {
     user.role === UserRole.ADMIN ||
     user.adminCanApproveKyc ||
     user.adminCanApprovePayouts ||
-    user.adminCanApproveTpClaims
+    user.adminCanApproveTpClaims ||
+    user.adminCanManageSetups
   );
 }
 
@@ -38,6 +47,7 @@ export function resolveAdminPermissions(
     kyc: fullAdmin || user.adminCanApproveKyc,
     payout: fullAdmin || user.adminCanApprovePayouts,
     tpClaim: fullAdmin || user.adminCanApproveTpClaims,
+    setup: fullAdmin || user.adminCanManageSetups,
     managePermissions: fullAdmin,
   };
 }
@@ -63,6 +73,9 @@ export function userHasAdminPermission(
   }
   if (permission === 'tp_claim') {
     return user.adminCanApproveTpClaims;
+  }
+  if (permission === 'setup') {
+    return user.adminCanManageSetups;
   }
   return false;
 }

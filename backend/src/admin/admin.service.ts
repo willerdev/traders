@@ -472,6 +472,7 @@ export class AdminService {
         adminCanApproveKyc: true,
         adminCanApprovePayouts: true,
         adminCanApproveTpClaims: true,
+        adminCanManageSetups: true,
       },
     });
     if (!user) {
@@ -513,6 +514,7 @@ export class AdminService {
       adminCanApproveKyc?: boolean;
       adminCanApprovePayouts?: boolean;
       adminCanApproveTpClaims?: boolean;
+      adminCanManageSetups?: boolean;
     } = {};
     if (dto.canApproveKyc !== undefined) {
       data.adminCanApproveKyc = dto.canApproveKyc;
@@ -522,6 +524,9 @@ export class AdminService {
     }
     if (dto.canApproveTpClaims !== undefined) {
       data.adminCanApproveTpClaims = dto.canApproveTpClaims;
+    }
+    if (dto.canManageSetups !== undefined) {
+      data.adminCanManageSetups = dto.canManageSetups;
     }
     if (Object.keys(data).length === 0) {
       throw new BadRequestException('Nothing to update');
@@ -538,6 +543,7 @@ export class AdminService {
         adminCanApproveKyc: true,
         adminCanApprovePayouts: true,
         adminCanApproveTpClaims: true,
+        adminCanManageSetups: true,
       },
     });
 
@@ -547,9 +553,27 @@ export class AdminService {
     };
   }
 
-  async listUsers(limit = 50, offset = 0, suspiciousOnly = false) {
+  async listUsers(
+    limit = 50,
+    offset = 0,
+    suspiciousOnly = false,
+    search?: string,
+  ) {
     const take = Math.min(Math.max(limit, 1), 100);
     const skip = Math.max(offset, 0);
+    const searchTerm = search?.trim() ?? '';
+
+    const matchesSearch = (user: {
+      email: string | null;
+      displayName: string;
+    }) => {
+      if (!searchTerm) return true;
+      const q = searchTerm.toLowerCase();
+      return (
+        user.displayName.toLowerCase().includes(q) ||
+        (user.email?.toLowerCase().includes(q) ?? false)
+      );
+    };
 
     if (suspiciousOnly) {
       const users = await this.prisma.user.findMany({
@@ -568,6 +592,7 @@ export class AdminService {
           adminCanApproveKyc: true,
           adminCanApprovePayouts: true,
           adminCanApproveTpClaims: true,
+          adminCanManageSetups: true,
           registrationPaid: true,
           accessExpiresAt: true,
           createdAt: true,
@@ -582,9 +607,14 @@ export class AdminService {
           ...user,
           emailAssessment: assessEmail(user.email),
         }))
-        .filter((user) => user.emailAssessment.suspicious);
+        .filter((user) => user.emailAssessment.suspicious)
+        .filter(matchesSearch);
 
-      const items = flagged.slice(skip, skip + take);
+      const items = flagged.slice(skip, skip + take).map((user) => ({
+        ...user,
+        accessExpiresAt: user.accessExpiresAt?.toISOString() ?? null,
+        createdAt: user.createdAt.toISOString(),
+      }));
 
       return {
         items,
@@ -592,11 +622,22 @@ export class AdminService {
         limit: take,
         offset: skip,
         suspiciousOnly: true,
+        search: searchTerm || null,
       };
     }
 
+    const where = searchTerm
+      ? {
+          OR: [
+            { email: { contains: searchTerm, mode: 'insensitive' as const } },
+            { displayName: { contains: searchTerm, mode: 'insensitive' as const } },
+          ],
+        }
+      : {};
+
     const [rows, count] = await Promise.all([
       this.prisma.user.findMany({
+        where,
         take,
         skip,
         orderBy: { createdAt: 'desc' },
@@ -609,6 +650,7 @@ export class AdminService {
           adminCanApproveKyc: true,
           adminCanApprovePayouts: true,
           adminCanApproveTpClaims: true,
+          adminCanManageSetups: true,
           registrationPaid: true,
           accessExpiresAt: true,
           createdAt: true,
@@ -617,7 +659,7 @@ export class AdminService {
           _count: { select: { signals: true, payouts: true } },
         },
       }),
-      this.prisma.user.count(),
+      this.prisma.user.count({ where }),
     ]);
 
     const items = rows.map((user) => ({
@@ -627,7 +669,14 @@ export class AdminService {
       emailAssessment: assessEmail(user.email),
     }));
 
-    return { items, count, limit: take, offset: skip, suspiciousOnly: false };
+    return {
+      items,
+      count,
+      limit: take,
+      offset: skip,
+      suspiciousOnly: false,
+      search: searchTerm || null,
+    };
   }
 
   async getUserDetail(userId: string) {
@@ -688,6 +737,7 @@ export class AdminService {
       adminCanApproveKyc: user.adminCanApproveKyc,
       adminCanApprovePayouts: user.adminCanApprovePayouts,
       adminCanApproveTpClaims: user.adminCanApproveTpClaims,
+      adminCanManageSetups: user.adminCanManageSetups,
       walletAddress: user.walletAddress,
       registrationPaid: user.registrationPaid,
       accessExpiresAt: user.accessExpiresAt?.toISOString() ?? null,

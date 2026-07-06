@@ -36,6 +36,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       adminCanApproveKyc: user.adminCanApproveKyc,
       adminCanApprovePayouts: user.adminCanApprovePayouts,
       adminCanApproveTpClaims: user.adminCanApproveTpClaims,
+      adminCanManageSetups: user.adminCanManageSetups,
     };
   }
 }
