@@ -39,6 +39,30 @@ export function isAdminTab(value: string): value is Tab {
   return (ADMIN_TABS as string[]).includes(value);
 }
 
+export type AdminPermissions = {
+  fullAdmin: boolean;
+  hubAccess: boolean;
+  kyc: boolean;
+  payout: boolean;
+  tpClaim: boolean;
+  managePermissions: boolean;
+};
+
+export function tabsForPermissions(permissions: AdminPermissions | null): Tab[] {
+  if (!permissions) return [];
+  if (permissions.fullAdmin) return ADMIN_TABS;
+  const tabs: Tab[] = [];
+  if (permissions.kyc) tabs.push("kyc");
+  if (permissions.payout) tabs.push("payouts");
+  if (permissions.tpClaim) tabs.push("tpClaims");
+  return tabs;
+}
+
+export function defaultTabForPermissions(permissions: AdminPermissions | null): Tab {
+  const tabs = tabsForPermissions(permissions);
+  return tabs[0] ?? "kyc";
+}
+
 const NAV_ITEMS: NavItem[] = [
   { id: "overview", label: "Overview", icon: "overview" },
   { id: "paymentForecast", label: "Payment forecast", icon: "forecast" },
@@ -186,6 +210,7 @@ function truncateEmail(email: string, max = 22) {
 
 type SidebarProps = {
   tab: Tab;
+  allowedTabs: Tab[];
   onTabChange: (tab: Tab) => void;
   adminEmail: string;
   onRefresh: () => void;
@@ -194,6 +219,7 @@ type SidebarProps = {
 
 export function Sidebar({
   tab,
+  allowedTabs,
   onTabChange,
   adminEmail,
   onRefresh,
@@ -224,7 +250,7 @@ export function Sidebar({
       </div>
 
       <nav className="sidebar-nav" aria-label="Admin navigation">
-        {NAV_ITEMS.map((item) => (
+        {NAV_ITEMS.filter((item) => allowedTabs.includes(item.id)).map((item) => (
           <button
             key={item.id}
             type="button"

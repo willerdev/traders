@@ -743,3 +743,17 @@ export class AdminRejectReasonDto {
   @MaxLength(500)
   reason?: string;
 }
+
+export class UpdateStaffPermissionsDto {
+  @IsOptional()
+  @IsBoolean()
+  canApproveKyc?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  canApprovePayouts?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  canApproveTpClaims?: boolean;
+}

@@ -5,6 +5,8 @@ import {
   setToken,
   getAdminEmail,
   setAdminEmail,
+  hubAccessFromLoginUser,
+  type AdminSession,
   type KycRow,
   type PayoutRow,
   type SignalRow,
@@ -28,7 +30,7 @@ import {
   type Mt5SyncAdminOverview,
 } from "./api";
 import { AdminImage } from "./AdminImage";
-import { Sidebar, type Tab, isAdminTab } from "./Sidebar";
+import { Sidebar, type Tab, isAdminTab, tabsForPermissions, defaultTabForPermissions, type AdminPermissions } from "./Sidebar";
 import { UserDetailModal } from "./UserDetailModal";
 
 function badgeClass(status: string) {
@@ -248,6 +250,7 @@ export default function App() {
   const [loginSessionId, setLoginSessionId] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
+  const [adminSession, setAdminSession] = useState<AdminSession | null>(null);
   const [tab, setTab] = useState<Tab>(tabFromHash);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -354,6 +357,33 @@ export default function App() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
+  const allowedTabs = tabsForPermissions(adminSession?.permissions ?? null);
+
+  useEffect(() => {
+    if (!authed || !getToken()) return;
+    void api
+      .adminSession()
+      .then((session) => {
+        setAdminSession(session);
+        const tabs = tabsForPermissions(session.permissions);
+        if (tabs.length > 0 && !tabs.includes(tab)) {
+          setTab(defaultTabForPermissions(session.permissions));
+        }
+      })
+      .catch(() => {
+        setAuthed(false);
+        setAdminSession(null);
+      });
+  }, [authed]);
+
+  useEffect(() => {
+    if (!adminSession) return;
+    const tabs = tabsForPermissions(adminSession.permissions);
+    if (tabs.length > 0 && !tabs.includes(tab)) {
+      setTab(defaultTabForPermissions(adminSession.permissions));
+    }
+  }, [adminSession, tab]);
+
   useEffect(() => {
     const next = `#${tab}`;
     if (window.location.hash !== next) {
@@ -362,9 +392,10 @@ export default function App() {
   }, [tab]);
 
   const changeTab = useCallback((next: Tab) => {
+    if (allowedTabs.length > 0 && !allowedTabs.includes(next)) return;
     setTab(next);
     setMessage("");
-  }, []);
+  }, [allowedTabs]);
 
   const refreshCustodyDeposits = useCallback(async (sync = true) => {
     const res = await api.custodyDeposits(20, sync);
@@ -813,8 +844,8 @@ export default function App() {
       if (loginStep === "credentials") {
         const res = await api.login(email, password);
         if ("accessToken" in res) {
-          if (res.user.role !== "ADMIN") {
-            setLoginError("This account is not an admin.");
+          if (!hubAccessFromLoginUser(res.user)) {
+            setLoginError("This account does not have admin hub access.");
             return;
           }
           sessionStorage.removeItem("admin-login-session");
@@ -845,8 +876,8 @@ export default function App() {
       }
 
       const res = await api.verifyLoginOtp(sessionId, otpCode.trim());
-      if (res.user.role !== "ADMIN") {
-        setLoginError("This account is not an admin.");
+      if (!hubAccessFromLoginUser(res.user)) {
+        setLoginError("This account does not have admin hub access.");
         return;
       }
       sessionStorage.removeItem("admin-login-session");
@@ -864,6 +895,7 @@ export default function App() {
   function logout() {
     setToken(null);
     setAdminEmail(null);
+    setAdminSession(null);
     sessionStorage.removeItem("admin-login-session");
     setAuthed(false);
   }
@@ -1067,6 +1099,7 @@ export default function App() {
     <div className="app">
       <Sidebar
         tab={tab}
+        allowedTabs={allowedTabs.length > 0 ? allowedTabs : ["overview"]}
         onTabChange={changeTab}
         adminEmail={email || getAdminEmail() || "admin"}
         onRefresh={() => void refresh()}
@@ -4259,6 +4292,7 @@ export default function App() {
       <UserDetailModal
         userId={userDetailId}
         onClose={() => setUserDetailId(null)}
+        canManagePermissions={Boolean(adminSession?.permissions.managePermissions)}
         onKycUpdated={() => {
           if (tab === "kyc") void loadTab("kyc");
         }}

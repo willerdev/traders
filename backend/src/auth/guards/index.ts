@@ -5,6 +5,8 @@ import { UserRole } from '@prisma/client';
 
 export const ROLES_KEY = 'roles';
 
+export { AdminPermissionGuard } from './admin-permission.guard';
+
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {}
 

@@ -70,9 +70,36 @@ export type LoginResponse =
       message: string;
       expiresIn: number;
     }
-  | { accessToken: string; user: { role: string; email: string } };
+  | { accessToken: string; user: { role: string; email: string; adminPermissions?: AdminPermissionsView } };
+
+export type AdminPermissionsView = {
+  fullAdmin: boolean;
+  hubAccess: boolean;
+  kyc: boolean;
+  payout: boolean;
+  tpClaim: boolean;
+  managePermissions: boolean;
+};
+
+export type AdminSession = {
+  id: string;
+  email: string | null;
+  displayName: string;
+  role: string;
+  permissions: AdminPermissionsView;
+};
+
+function hubAccessFromLoginUser(user: {
+  role: string;
+  adminPermissions?: AdminPermissionsView;
+}) {
+  return user.role === "ADMIN" || Boolean(user.adminPermissions?.hubAccess);
+}
+
+export { hubAccessFromLoginUser };
 
 export const api = {
+  adminSession: () => request<AdminSession>("/admin/session"),
   login: (email: string, password: string) =>
     request<LoginResponse>("/auth/login", {
       method: "POST",
@@ -106,6 +133,27 @@ export const api = {
 
   getUser: (userId: string) =>
     request<AdminUserDetail>(`/admin/users/${userId}`),
+  updateStaffPermissions: (
+    userId: string,
+    body: {
+      canApproveKyc?: boolean;
+      canApprovePayouts?: boolean;
+      canApproveTpClaims?: boolean;
+    },
+  ) =>
+    request<{
+      id: string;
+      email: string | null;
+      displayName: string;
+      role: string;
+      adminCanApproveKyc: boolean;
+      adminCanApprovePayouts: boolean;
+      adminCanApproveTpClaims: boolean;
+      permissions: AdminPermissionsView;
+    }>(`/admin/users/${userId}/staff-permissions`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
   signals: (offset = 0, status?: string) =>
     request<{ items: SignalRow[]; count: number }>(
       `/admin/signals?limit=50&offset=${offset}${status ? `&status=${encodeURIComponent(status)}` : ""}`,
@@ -445,6 +493,9 @@ export type UserRow = {
   displayName: string;
   role: string;
   status: string;
+  adminCanApproveKyc?: boolean;
+  adminCanApprovePayouts?: boolean;
+  adminCanApproveTpClaims?: boolean;
   registrationPaid: boolean;
   accessExpiresAt?: string | null;
   createdAt: string;
@@ -461,6 +512,9 @@ export type AdminUserDetail = {
   avatarUrl: string | null;
   role: string;
   status: string;
+  adminCanApproveKyc?: boolean;
+  adminCanApprovePayouts?: boolean;
+  adminCanApproveTpClaims?: boolean;
   walletAddress: string | null;
   registrationPaid: boolean;
   accessExpiresAt?: string | null;

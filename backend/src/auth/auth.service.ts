@@ -33,6 +33,10 @@ import { randomBytes, randomInt, createHash } from 'crypto';
 import { verifyMessage } from 'viem';
 import { NotificationService } from '../email/notification.service';
 import { ReferralsService } from '../referrals/referrals.service';
+import {
+  hasAdminHubAccess,
+  resolveAdminPermissions,
+} from '../admin/admin-permissions.util';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
@@ -115,7 +119,7 @@ export class AuthService {
       throw new UnauthorizedException('Account is not allowed to sign in');
     }
 
-    if (user.role === 'ADMIN') {
+    if (hasAdminHubAccess(user)) {
       await this.prisma.user.update({
         where: { id: user.id },
         data: { lastLoginIp: ip, emailVerified: true },
@@ -480,6 +484,9 @@ export class AuthService {
     email: string | null;
     role: string;
     displayName: string;
+    adminCanApproveKyc?: boolean;
+    adminCanApprovePayouts?: boolean;
+    adminCanApproveTpClaims?: boolean;
   }) {
     const payload = {
       sub: user.id,
@@ -498,6 +505,14 @@ export class AuthService {
     const { passwordHash, emailVerifyToken, ...safe } = user;
     void passwordHash;
     void emailVerifyToken;
-    return safe;
+    return {
+      ...safe,
+      adminPermissions: resolveAdminPermissions({
+        role: user.role as 'TRADER' | 'MODERATOR' | 'ADMIN',
+        adminCanApproveKyc: Boolean(user.adminCanApproveKyc),
+        adminCanApprovePayouts: Boolean(user.adminCanApprovePayouts),
+        adminCanApproveTpClaims: Boolean(user.adminCanApproveTpClaims),
+      }),
+    };
   }
 }

@@ -20,8 +20,9 @@ import { hasActiveTradingAccess } from '../common/weekly-access.util';
 import { MessagesService } from '../messages/messages.service';
 import { NotificationService } from '../email/notification.service';
 import { ReferralsService } from '../referrals/referrals.service';
-import { CreatePromoCodeDto, SendMessageDto } from '../common/dto';
+import { CreatePromoCodeDto, SendMessageDto, UpdateStaffPermissionsDto } from '../common/dto';
 import { assessEmail } from '../common/email-quality.util';
+import { resolveAdminPermissions } from './admin-permissions.util';
 
 @Injectable()
 export class AdminService {
@@ -460,6 +461,92 @@ export class AdminService {
     return this.payoutService.setWeeklyTierPayoutsEnabled(enabled);
   }
 
+  async getAdminSession(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        role: true,
+        adminCanApproveKyc: true,
+        adminCanApprovePayouts: true,
+        adminCanApproveTpClaims: true,
+      },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      role: user.role,
+      permissions: resolveAdminPermissions(user),
+    };
+  }
+
+  async updateStaffPermissions(
+    userId: string,
+    dto: UpdateStaffPermissionsDto,
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        role: true,
+        displayName: true,
+        email: true,
+      },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    if (user.role === 'ADMIN') {
+      throw new BadRequestException(
+        'Admin accounts already have full access — assign permissions to non-admin users',
+      );
+    }
+
+    const data: {
+      adminCanApproveKyc?: boolean;
+      adminCanApprovePayouts?: boolean;
+      adminCanApproveTpClaims?: boolean;
+    } = {};
+    if (dto.canApproveKyc !== undefined) {
+      data.adminCanApproveKyc = dto.canApproveKyc;
+    }
+    if (dto.canApprovePayouts !== undefined) {
+      data.adminCanApprovePayouts = dto.canApprovePayouts;
+    }
+    if (dto.canApproveTpClaims !== undefined) {
+      data.adminCanApproveTpClaims = dto.canApproveTpClaims;
+    }
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException('Nothing to update');
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data,
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        role: true,
+        adminCanApproveKyc: true,
+        adminCanApprovePayouts: true,
+        adminCanApproveTpClaims: true,
+      },
+    });
+
+    return {
+      ...updated,
+      permissions: resolveAdminPermissions(updated),
+    };
+  }
+
   async listUsers(limit = 50, offset = 0, suspiciousOnly = false) {
     const take = Math.min(Math.max(limit, 1), 100);
     const skip = Math.max(offset, 0);
@@ -478,6 +565,9 @@ export class AdminService {
           displayName: true,
           role: true,
           status: true,
+          adminCanApproveKyc: true,
+          adminCanApprovePayouts: true,
+          adminCanApproveTpClaims: true,
           registrationPaid: true,
           accessExpiresAt: true,
           createdAt: true,
@@ -516,6 +606,9 @@ export class AdminService {
           displayName: true,
           role: true,
           status: true,
+          adminCanApproveKyc: true,
+          adminCanApprovePayouts: true,
+          adminCanApproveTpClaims: true,
           registrationPaid: true,
           accessExpiresAt: true,
           createdAt: true,
@@ -592,6 +685,9 @@ export class AdminService {
       avatarUrl: user.avatarUrl,
       role: user.role,
       status: user.status,
+      adminCanApproveKyc: user.adminCanApproveKyc,
+      adminCanApprovePayouts: user.adminCanApprovePayouts,
+      adminCanApproveTpClaims: user.adminCanApproveTpClaims,
       walletAddress: user.walletAddress,
       registrationPaid: user.registrationPaid,
       accessExpiresAt: user.accessExpiresAt?.toISOString() ?? null,

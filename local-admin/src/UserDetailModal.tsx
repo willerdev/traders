@@ -34,6 +34,7 @@ type UserDetailModalProps = {
   onClose: () => void;
   onChat?: (userId: string, displayName: string) => void;
   onKycUpdated?: () => void;
+  canManagePermissions?: boolean;
 };
 
 export function UserDetailModal({
@@ -41,12 +42,17 @@ export function UserDetailModal({
   onClose,
   onChat,
   onKycUpdated,
+  canManagePermissions = false,
 }: UserDetailModalProps) {
   const [detail, setDetail] = useState<AdminUserDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [kycBusy, setKycBusy] = useState(false);
+  const [permissionsBusy, setPermissionsBusy] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  const [staffKyc, setStaffKyc] = useState(false);
+  const [staffPayout, setStaffPayout] = useState(false);
+  const [staffTpClaim, setStaffTpClaim] = useState(false);
 
   const reload = () => {
     if (!userId) return;
@@ -88,6 +94,13 @@ export function UserDetailModal({
     };
   }, [userId]);
 
+  useEffect(() => {
+    if (!detail) return;
+    setStaffKyc(Boolean(detail.adminCanApproveKyc));
+    setStaffPayout(Boolean(detail.adminCanApprovePayouts));
+    setStaffTpClaim(Boolean(detail.adminCanApproveTpClaims));
+  }, [detail]);
+
   if (!userId) return null;
 
   const profile = detail?.profile;
@@ -121,6 +134,35 @@ export function UserDetailModal({
       setError(err instanceof Error ? err.message : "KYC rejection failed");
     } finally {
       setKycBusy(false);
+    }
+  }
+
+  async function saveStaffPermissions() {
+    if (!userId) return;
+    setPermissionsBusy(true);
+    setError("");
+    try {
+      const updated = await api.updateStaffPermissions(userId, {
+        canApproveKyc: staffKyc,
+        canApprovePayouts: staffPayout,
+        canApproveTpClaims: staffTpClaim,
+      });
+      setDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              adminCanApproveKyc: updated.adminCanApproveKyc,
+              adminCanApprovePayouts: updated.adminCanApprovePayouts,
+              adminCanApproveTpClaims: updated.adminCanApproveTpClaims,
+            }
+          : prev,
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not update staff permissions",
+      );
+    } finally {
+      setPermissionsBusy(false);
     }
   }
 
@@ -169,6 +211,52 @@ export function UserDetailModal({
                 )}
               </dl>
             </section>
+
+            {canManagePermissions && detail.role !== "ADMIN" && (
+              <section className="user-detail-section">
+                <h4>Admin hub permissions</h4>
+                <p className="muted" style={{ marginTop: 0 }}>
+                  Grant access to specific review queues in the local admin panel.
+                </p>
+                <div style={{ display: "grid", gap: "0.5rem", marginBottom: "0.75rem" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <input
+                      type="checkbox"
+                      checked={staffKyc}
+                      disabled={permissionsBusy}
+                      onChange={(e) => setStaffKyc(e.target.checked)}
+                    />
+                    <span>KYC approver</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <input
+                      type="checkbox"
+                      checked={staffPayout}
+                      disabled={permissionsBusy}
+                      onChange={(e) => setStaffPayout(e.target.checked)}
+                    />
+                    <span>Payout approver</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <input
+                      type="checkbox"
+                      checked={staffTpClaim}
+                      disabled={permissionsBusy}
+                      onChange={(e) => setStaffTpClaim(e.target.checked)}
+                    />
+                    <span>TP claim approver</span>
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={permissionsBusy}
+                  onClick={() => void saveStaffPermissions()}
+                >
+                  {permissionsBusy ? "Saving…" : "Save permissions"}
+                </button>
+              </section>
+            )}
 
             {detail.virtualAccount && (
               <section className="user-detail-section">

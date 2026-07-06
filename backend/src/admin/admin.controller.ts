@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Body,
   Param,
   Query,
@@ -11,19 +12,25 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { AdminService } from './admin.service';
-import { CreatePromoCodeDto, SendMessageDto, AdminRejectReasonDto } from '../common/dto';
-import { JwtAuthGuard, RolesGuard } from '../auth/guards';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { CreatePromoCodeDto, SendMessageDto, AdminRejectReasonDto, UpdateStaffPermissionsDto } from '../common/dto';
+import { JwtAuthGuard, AdminPermissionGuard } from '../auth/guards';
+import { RequireAdminPermission } from '../auth/decorators/admin-permission.decorator';
 import { UploadStorageService } from '../uploads/upload-storage.service';
 
 @Controller('admin')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN')
+@UseGuards(JwtAuthGuard, AdminPermissionGuard)
+@RequireAdminPermission('full')
 export class AdminController {
   constructor(
     private adminService: AdminService,
     private uploadStorage: UploadStorageService,
   ) {}
+
+  @Get('session')
+  @RequireAdminPermission('hub')
+  getSession(@Request() req: { user: { id: string } }) {
+    return this.adminService.getAdminSession(req.user.id);
+  }
 
   @Get('overview')
   getOverview() {
@@ -36,11 +43,13 @@ export class AdminController {
   }
 
   @Get('kyc/pending')
+  @RequireAdminPermission('kyc')
   listPendingKyc() {
     return this.adminService.listPendingKyc();
   }
 
   @Post('kyc/:userId/approve')
+  @RequireAdminPermission('kyc')
   approveKyc(
     @Param('userId') userId: string,
     @Request() req: { user: { id: string } },
@@ -49,6 +58,7 @@ export class AdminController {
   }
 
   @Post('kyc/:userId/reject')
+  @RequireAdminPermission('kyc')
   rejectKyc(
     @Param('userId') userId: string,
     @Request() req: { user: { id: string } },
@@ -79,6 +89,14 @@ export class AdminController {
     return this.adminService.getUserDetail(userId);
   }
 
+  @Patch('users/:userId/staff-permissions')
+  updateStaffPermissions(
+    @Param('userId') userId: string,
+    @Body() dto: UpdateStaffPermissionsDto,
+  ) {
+    return this.adminService.updateStaffPermissions(userId, dto);
+  }
+
   @Get('signals')
   listSignals(
     @Query('limit') limit?: string,
@@ -106,6 +124,7 @@ export class AdminController {
   }
 
   @Get('payouts')
+  @RequireAdminPermission('payout')
   listPayouts(
     @Query('status') status?: string,
     @Query('limit') limit?: string,
@@ -119,6 +138,7 @@ export class AdminController {
   }
 
   @Get('payouts/pending')
+  @RequireAdminPermission('payout')
   listPendingPayouts() {
     return this.adminService.listPendingPayouts();
   }
@@ -134,6 +154,7 @@ export class AdminController {
   }
 
   @Get('payouts/custody/wallet')
+  @RequireAdminPermission('payout')
   getPayoutCustodyWallet() {
     return this.adminService.getNowPaymentsWallet();
   }
@@ -152,6 +173,7 @@ export class AdminController {
   }
 
   @Get('payouts/custody/deposits')
+  @RequireAdminPermission('payout')
   listPayoutCustodyDeposits(
     @Query('limit') limit?: string,
     @Query('status') status?: string,
@@ -175,11 +197,13 @@ export class AdminController {
   }
 
   @Get('payouts/custody/deposits/:depositId')
+  @RequireAdminPermission('payout')
   getPayoutCustodyDeposit(@Param('depositId') depositId: string) {
     return this.adminService.getCustodyDepositStatus(depositId);
   }
 
   @Post('payouts/:payoutId/approve')
+  @RequireAdminPermission('payout')
   approvePayout(
     @Param('payoutId') payoutId: string,
     @Request() req: { user: { id: string } },
@@ -188,6 +212,7 @@ export class AdminController {
   }
 
   @Post('payouts/:payoutId/verify')
+  @RequireAdminPermission('payout')
   verifyPayout(
     @Param('payoutId') payoutId: string,
     @Request() req: { user: { id: string } },
@@ -231,11 +256,13 @@ export class AdminController {
   }
 
   @Get('tp-claims/pending')
+  @RequireAdminPermission('tp_claim')
   listPendingTpClaims() {
     return this.adminService.listPendingTpClaims();
   }
 
   @Post('tp-claims/:claimId/approve')
+  @RequireAdminPermission('tp_claim')
   approveTpClaim(
     @Param('claimId') claimId: string,
     @Request() req: { user: { id: string } },
@@ -244,6 +271,7 @@ export class AdminController {
   }
 
   @Post('tp-claims/:claimId/reject')
+  @RequireAdminPermission('tp_claim')
   rejectTpClaim(
     @Param('claimId') claimId: string,
     @Request() req: { user: { id: string } },
@@ -426,6 +454,7 @@ export class AdminController {
   }
 
   @Get('uploads/kyc/:filename')
+  @RequireAdminPermission('kyc')
   getKycUpload(
     @Param('filename') filename: string,
     @Res() res: Response,

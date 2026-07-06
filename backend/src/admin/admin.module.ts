@@ -11,6 +11,7 @@ import { AuthModule } from '../auth/auth.module';
 import { MessagesModule } from '../messages/messages.module';
 import { UploadsModule } from '../uploads/uploads.module';
 import { MetaApiModule } from '../metaapi/metaapi.module';
+import { AdminPermissionGuard } from '../auth/guards/admin-permission.guard';
 
 @Module({
   imports: [
@@ -26,6 +27,6 @@ import { MetaApiModule } from '../metaapi/metaapi.module';
     UploadsModule,
   ],
   controllers: [AdminController],
-  providers: [AdminService],
+  providers: [AdminService, AdminPermissionGuard],
 })
 export class AdminModule {}
