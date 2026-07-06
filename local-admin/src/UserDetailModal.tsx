@@ -168,6 +168,7 @@ export function UserDetailModal({
           ? "Permissions saved. The user was emailed about their new role."
           : "Permissions saved.",
       );
+      void api.getUser(userId).then(setDetail);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not update staff permissions",

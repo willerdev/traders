@@ -28,6 +28,18 @@ function isAuthError(status: number) {
   return status === 401 || status === 403;
 }
 
+function formatApiError(data: unknown, status: number): string {
+  if (typeof data === "object" && data && "message" in data) {
+    const msg = (data as { message: unknown }).message;
+    if (Array.isArray(msg)) return msg.map(String).join("; ");
+    if (typeof msg === "string" && msg.trim()) return msg;
+  }
+  if (status === 502 || status === 503) {
+    return "API server unreachable — start the backend (port 4000) or check VITE_PROXY_TARGET";
+  }
+  return `Request failed (${status})`;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const authToken = getToken();
   const headers: Record<string, string> = {
@@ -50,13 +62,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       setToken(null);
       setAdminEmail(null);
     }
-    const msg =
-      typeof data === "object" && data && "message" in data
-        ? String((data as { message: string }).message)
-        : res.status === 502 || res.status === 503
-          ? `API server unreachable — start the backend (port 4000) or check VITE_PROXY_TARGET`
-          : `Request failed (${res.status})`;
-    throw new Error(msg);
+    throw new Error(formatApiError(data, res.status));
   }
 
   return data as T;
