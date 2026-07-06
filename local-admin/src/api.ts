@@ -162,6 +162,11 @@ export const api = {
     request<SetSetupLimitResult>(`/admin/signals/${encodeURIComponent(signalId)}/set-limit`, {
       method: "POST",
     }),
+  mirrorSetupToCopy: (signalId: string) =>
+    request<MirrorSetupToCopyResult>(
+      `/admin/signals/${encodeURIComponent(signalId)}/mirror-copy`,
+      { method: "POST" },
+    ),
   approveTp1ClaimEmail: (signalId: string) =>
     request<ApproveTp1ClaimEmailResult>(
       `/admin/signals/${encodeURIComponent(signalId)}/approve-tp1-claim-email`,
@@ -645,6 +650,14 @@ export type SetSetupLimitResult = {
   outcome: "placed" | "already_active" | "failed";
   orderType?: string;
   entry?: number;
+  message: string;
+};
+
+export type MirrorSetupToCopyResult = {
+  ok: boolean;
+  signalId: string;
+  mirrored: boolean;
+  copyStatus: string | null;
   message: string;
 };
 

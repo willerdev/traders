@@ -1695,6 +1695,90 @@ export class SignalsService {
     };
   }
 
+  /** Admin: manually mirror an OPEN setup to the MT5 copy pool (independent of set-limit). */
+  async adminMirrorSetupToCopy(signalId: string) {
+    const signal = await this.prisma.signal.findFirst({
+      where: { signalId },
+      include: {
+        trade: true,
+        user: { select: { id: true, displayName: true } },
+      },
+    });
+
+    if (!signal) throw new NotFoundException('Setup not found');
+    if (!signal.user) {
+      throw new BadRequestException('Setup has no trader');
+    }
+    if (signal.status !== 'OPEN') {
+      throw new BadRequestException(
+        `Only OPEN setups can be sent to MT5 Copy (current: ${signal.status})`,
+      );
+    }
+    if (signal.trade?.closedAt) {
+      throw new BadRequestException('This trade is already closed');
+    }
+
+    const entryMin = Number(signal.entryMin);
+    const entryMax = Number(signal.entryMax);
+    const openPrice =
+      signal.trade?.entryPrice != null
+        ? Number(signal.trade.entryPrice)
+        : (entryMin + entryMax) / 2;
+    const pending = !signal.trade?.activatedAt;
+
+    await this.mirrorToCopyPool({
+      signal,
+      user: signal.user,
+      openPrice,
+      pending,
+    });
+
+    const copyTrade = await this.prisma.copyTrade.findUnique({
+      where: { signalId: signal.id },
+    });
+
+    if (!copyTrade) {
+      return {
+        ok: false,
+        signalId,
+        mirrored: false,
+        copyStatus: null as string | null,
+        message:
+          'Copy mirror skipped — trader may not be in the pool, copy account unavailable, or pool not ready',
+      };
+    }
+
+    if (copyTrade.status === 'FAILED') {
+      return {
+        ok: false,
+        signalId,
+        mirrored: false,
+        copyStatus: copyTrade.status,
+        message:
+          copyTrade.notes ||
+          'Copy mirror failed — check MT5 Copy dashboard for details',
+      };
+    }
+
+    if (copyTrade.status === 'OPEN' || copyTrade.status === 'PENDING') {
+      return {
+        ok: true,
+        signalId,
+        mirrored: true,
+        copyStatus: copyTrade.status,
+        message: `Sent to MT5 Copy (${copyTrade.status.toLowerCase()}) for ${signal.symbol} ${signal.direction}`,
+      };
+    }
+
+    return {
+      ok: true,
+      signalId,
+      mirrored: false,
+      copyStatus: copyTrade.status,
+      message: `Copy trade already ${copyTrade.status.toLowerCase()} for this setup`,
+    };
+  }
+
   /**
    * Every minute: ensure OPEN setups have pending limits — MetaAPI first, Hub fallback.
    */

@@ -636,22 +636,103 @@ th {
 
 .kyc-card img,
 .admin-image-fallback {
-  width: 72px;
-  height: 72px;
-  object-fit: cover;
-  border-radius: 6px;
-  margin-right: 0.5rem;
+  width: 100%;
+  max-width: 360px;
+  height: auto;
+  min-height: 140px;
+  max-height: 280px;
+  object-fit: contain;
+  border-radius: 8px;
+  margin-right: 0;
+  background: #0a0f14;
+  border: 1px solid #1e2936;
+}
+
+.admin-image-button {
+  display: block;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  cursor: zoom-in;
+  text-align: left;
+  max-width: 100%;
+}
+
+.admin-image-thumb {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  height: auto;
+  min-height: 140px;
+  max-height: 280px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #0a0f14;
+  border: 1px solid #1e2936;
+}
+
+.admin-image-hint {
+  display: block;
+  margin-top: 0.35rem;
+  color: #64748b;
+  font-size: 0.72rem;
+}
+
+.image-lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(2, 6, 12, 0.92);
+  backdrop-filter: blur(8px);
+}
+
+.image-lightbox-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: min(1200px, 96vw);
+  max-height: 96vh;
+}
+
+.image-lightbox-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.image-lightbox-title {
+  color: #e2e8f0;
+  font-size: 0.9rem;
+}
+
+.image-lightbox-img {
+  display: block;
+  max-width: min(1200px, 96vw);
+  max-height: calc(96vh - 4rem);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 10px;
+  border: 1px solid #334155;
+  background: #0f1419;
 }
 
 .kyc-card .admin-image-fallback,
 .kyc-card img[alt="Before"],
 .kyc-card img[alt="After"],
-.kyc-card img[alt="Original setup"] {
+.kyc-card img[alt="Original setup"],
+.kyc-card .admin-image-thumb {
   width: 100%;
-  max-width: 280px;
+  max-width: 100%;
   height: auto;
-  min-height: 120px;
-  max-height: 220px;
+  min-height: 160px;
+  max-height: 320px;
   margin-right: 0;
 }
 
@@ -887,11 +968,14 @@ th {
 }
 
 .user-detail-kyc-images img,
-.user-detail-kyc-images .admin-image-fallback {
+.user-detail-kyc-images .admin-image-fallback,
+.user-detail-kyc-images .admin-image-thumb {
   width: 100%;
-  max-height: 160px;
-  object-fit: cover;
-  border-radius: 6px;
+  max-width: 420px;
+  min-height: 180px;
+  max-height: 360px;
+  object-fit: contain;
+  border-radius: 8px;
 }
 
 .user-detail-img-label {

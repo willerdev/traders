@@ -115,6 +115,11 @@ export class AdminController {
     return this.adminService.setSetupLimit(signalId);
   }
 
+  @Post('signals/:signalId/mirror-copy')
+  mirrorSetupToCopy(@Param('signalId') signalId: string) {
+    return this.adminService.mirrorSetupToCopy(signalId);
+  }
+
   @Post('signals/:signalId/approve-tp1-claim-email')
   approveTp1ClaimEmail(
     @Param('signalId') signalId: string,

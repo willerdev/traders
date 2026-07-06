@@ -819,6 +819,10 @@ export class AdminService {
     return this.signals.adminSetSetupLimit(signalId);
   }
 
+  mirrorSetupToCopy(signalId: string) {
+    return this.signals.adminMirrorSetupToCopy(signalId);
+  }
+
   async approveTp1ClaimEmail(signalId: string, adminId: string) {
     const signal = await this.prisma.signal.findUnique({
       where: { signalId },

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getToken } from "./api";
+import { ImageLightbox } from "./ImageLightbox";
 
 function setupFilename(url: string): string | null {
   const match = url.match(/\/uploads\/setups\/([^/?#]+)/i);
@@ -16,13 +17,16 @@ export function AdminImage({
   src,
   alt,
   className,
+  expandable = true,
 }: {
   src: string;
   alt: string;
   className?: string;
+  expandable?: boolean;
 }) {
   const [displaySrc, setDisplaySrc] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   useEffect(() => {
     if (!src) {
@@ -75,7 +79,6 @@ export function AdminImage({
           return;
         }
 
-        // Public static path — same-origin via /uploads proxy
         let path = src;
         try {
           const parsed = new URL(src);
@@ -113,5 +116,36 @@ export function AdminImage({
     );
   }
 
-  return <img src={displaySrc} alt={alt} className={className} />;
+  const img = (
+    <img
+      src={displaySrc}
+      alt={alt}
+      className={className ?? "admin-image-thumb"}
+    />
+  );
+
+  if (!expandable) {
+    return img;
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="admin-image-button"
+        onClick={() => setLightboxOpen(true)}
+        title="Click to view full size"
+      >
+        {img}
+        <span className="admin-image-hint">Click to enlarge</span>
+      </button>
+      {lightboxOpen && (
+        <ImageLightbox
+          src={displaySrc}
+          alt={alt}
+          onClose={() => setLightboxOpen(false)}
+        />
+      )}
+    </>
+  );
 }

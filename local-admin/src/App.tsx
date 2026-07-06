@@ -199,6 +199,12 @@ function setupCanSetLimit(signal: SignalRow) {
   return true;
 }
 
+function setupCanMirrorToCopy(signal: SignalRow) {
+  if (signal.status !== "OPEN") return false;
+  if (signal.trade?.closedAt) return false;
+  return true;
+}
+
 function setupNeedsLimit(signal: SignalRow) {
   return (
     setupCanSetLimit(signal) && !signal.hubQueued && !signal.metaApiQueued
@@ -263,6 +269,7 @@ export default function App() {
   const [signalCount, setSignalCount] = useState(0);
   const [setupFilter, setSetupFilter] = useState<"pending" | "all">("pending");
   const [setLimitLoadingId, setSetLimitLoadingId] = useState<string | null>(null);
+  const [copyMirrorLoadingId, setCopyMirrorLoadingId] = useState<string | null>(null);
   const [tp1ApproveLoadingId, setTp1ApproveLoadingId] = useState<string | null>(null);
   const [kycQueue, setKycQueue] = useState<KycRow[]>([]);
   const [payouts, setPayouts] = useState<PayoutRow[]>([]);
@@ -1823,6 +1830,28 @@ export default function App() {
                             : setupNeedsLimit(s)
                               ? "Set limit"
                               : "Retry set limit"}
+                        </button>
+                      )}
+                      {setupCanMirrorToCopy(s) && (
+                        <button
+                          type="button"
+                          disabled={copyMirrorLoadingId === s.signalId}
+                          onClick={() => {
+                            setCopyMirrorLoadingId(s.signalId);
+                            setMessage("");
+                            void api
+                              .mirrorSetupToCopy(s.signalId)
+                              .then((res) => {
+                                setMessage(res.message);
+                                return loadTab("signals");
+                              })
+                              .catch((err: Error) => setMessage(err.message))
+                              .finally(() => setCopyMirrorLoadingId(null));
+                          }}
+                        >
+                          {copyMirrorLoadingId === s.signalId
+                            ? "Sending to copy…"
+                            : "Send to MT5 Copy"}
                         </button>
                       )}
                       {!s.tp1ClaimNoticeApprovedAt && (
