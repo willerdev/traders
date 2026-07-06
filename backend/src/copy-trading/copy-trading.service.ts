@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CopyTradeStatus, TradeDirection } from '@prisma/client';
 import { TradeRiskService } from '../ai/trade-risk.service';
 import { RISK_PERCENT } from '../common/constants';
@@ -30,6 +30,29 @@ export type CopyMirrorInput = {
   orderKind?: string;
 };
 
+export type CopyTargetLeader = {
+  rank: number;
+  userId: string;
+  displayName: string;
+  score: number;
+  tier: string;
+  winRate: number;
+  profit: number;
+  source: 'pool' | 'auto';
+};
+
+export type CopyPoolTraderRow = {
+  userId: string;
+  displayName: string;
+  addedAt: string;
+  addedById: string | null;
+  rank: number | null;
+  tier: string | null;
+  score: number | null;
+  winRate: number | null;
+  profit: number | null;
+};
+
 @Injectable()
 export class CopyTradingService {
   private readonly logger = new Logger(CopyTradingService.name);
@@ -56,10 +79,147 @@ export class CopyTradingService {
     }));
   }
 
+  async getWeeklyLeaderboard(limit = 25) {
+    return this.getTopLeaders(limit);
+  }
+
+  async listPoolTraders(): Promise<CopyPoolTraderRow[]> {
+    const rows = await this.prisma.copyPoolTrader.findMany({
+      orderBy: { createdAt: 'asc' },
+      include: {
+        user: { select: { displayName: true } },
+      },
+    });
+    if (rows.length === 0) return [];
+
+    const { weekNumber, year } = currentWeekYear();
+    const leaderboard = await this.leaderboard.getLeaderboard(
+      weekNumber,
+      year,
+      100,
+    );
+    const leaderboardByUser = new Map(
+      leaderboard.map((row) => [row.userId, row]),
+    );
+
+    return rows.map((row) => {
+      const lb = leaderboardByUser.get(row.userId);
+      return {
+        userId: row.userId,
+        displayName: row.user.displayName,
+        addedAt: row.createdAt.toISOString(),
+        addedById: row.addedById,
+        rank: lb?.rank ?? null,
+        tier: lb?.tier ?? null,
+        score: lb?.score ?? null,
+        winRate: lb != null ? Number(lb.winRate) : null,
+        profit: lb != null ? Number(lb.profit) : null,
+      };
+    });
+  }
+
+  async addPoolTrader(userId: string, adminId?: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, displayName: true },
+    });
+    if (!user) {
+      throw new NotFoundException('Trader not found');
+    }
+
+    await this.prisma.copyPoolTrader.upsert({
+      where: { userId },
+      create: {
+        userId,
+        addedById: adminId ?? null,
+      },
+      update: {},
+    });
+
+    this.logger.log(`Copy pool: added ${user.displayName} (${userId})`);
+
+    return {
+      ok: true,
+      poolTraders: await this.listPoolTraders(),
+      leaders: await this.getActiveCopyTargets(),
+    };
+  }
+
+  async removePoolTrader(userId: string) {
+    const existing = await this.prisma.copyPoolTrader.findUnique({
+      where: { userId },
+      include: { user: { select: { displayName: true } } },
+    });
+    if (!existing) {
+      throw new NotFoundException('Trader is not in the copy pool');
+    }
+
+    await this.prisma.copyPoolTrader.delete({ where: { userId } });
+
+    this.logger.log(
+      `Copy pool: removed ${existing.user.displayName} (${userId})`,
+    );
+
+    return {
+      ok: true,
+      poolTraders: await this.listPoolTraders(),
+      leaders: await this.getActiveCopyTargets(),
+    };
+  }
+
+  async getActiveCopyTargets(): Promise<CopyTargetLeader[]> {
+    const pool = await this.prisma.copyPoolTrader.findMany({
+      orderBy: { createdAt: 'asc' },
+      include: { user: { select: { displayName: true } } },
+    });
+
+    if (pool.length > 0) {
+      const { weekNumber, year } = currentWeekYear();
+      const leaderboard = await this.leaderboard.getLeaderboard(
+        weekNumber,
+        year,
+        100,
+      );
+      const leaderboardByUser = new Map(
+        leaderboard.map((row) => [row.userId, row]),
+      );
+
+      return pool.map((entry, index) => {
+        const row = leaderboardByUser.get(entry.userId);
+        if (row) {
+          return {
+            rank: row.rank,
+            userId: entry.userId,
+            displayName: row.displayName,
+            score: row.score,
+            tier: row.tier,
+            winRate: Number(row.winRate),
+            profit: Number(row.profit),
+            source: 'pool' as const,
+          };
+        }
+
+        return {
+          rank: index + 1,
+          userId: entry.userId,
+          displayName: entry.user.displayName,
+          score: 0,
+          tier: '—',
+          winRate: 0,
+          profit: 0,
+          source: 'pool' as const,
+        };
+      });
+    }
+
+    const leaders = await this.getTopLeaders(3);
+    return leaders.map((leader) => ({ ...leader, source: 'auto' as const }));
+  }
+
   private async resolveSourceRank(
     userId: string,
   ): Promise<{ rank: number; displayName: string } | null> {
-    const leaders = await this.getTopLeaders(3);
+    const leaders = await this.getActiveCopyTargets();
     const match = leaders.find((l) => l.userId === userId);
     if (!match) return null;
     return { rank: match.rank, displayName: match.displayName };
@@ -77,7 +237,7 @@ export class CopyTradingService {
     const source = await this.resolveSourceRank(input.sourceUserId);
     if (!source) {
       this.logger.debug(
-        `Copy skip ${input.signalPublicId}: trader not in top 3 this week`,
+        `Copy skip ${input.signalPublicId}: trader not in copy pool`,
       );
       return;
     }
@@ -223,7 +383,12 @@ export class CopyTradingService {
   async getCopyDashboard() {
     const copyAccountId = await this.metaApi.resolveCopyAccountIdAsync();
     const explicitCopyId = this.metaApi.getConfiguredCopyAccountId();
-    const leaders = await this.getTopLeaders(3);
+    const [leaders, poolTraders, weeklyLeaderboard] = await Promise.all([
+      this.getActiveCopyTargets(),
+      this.listPoolTraders(),
+      this.getWeeklyLeaderboard(25),
+    ]);
+    const poolMode = poolTraders.length > 0 ? 'manual' : 'auto';
 
     if (!this.metaApi.isConfigured || !copyAccountId) {
       return {
@@ -231,6 +396,9 @@ export class CopyTradingService {
         copyAccountId: null,
         message:
           'No MetaAPI trading account available — connect an account in MetaAPI first',
+        poolMode,
+        poolTraders,
+        weeklyLeaderboard,
         leaders,
         terminal: null,
         journal: [],
@@ -299,6 +467,9 @@ export class CopyTradingService {
       configured: true,
       copyAccountId,
       copyAccountSource: explicitCopyId ? 'env' : 'auto',
+      poolMode,
+      poolTraders,
+      weeklyLeaderboard,
       riskPercent: RISK_PERCENT,
       leaders,
       terminal,

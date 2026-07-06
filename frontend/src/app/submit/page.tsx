@@ -17,6 +17,7 @@ import {
   SubmitReviewCard,
   type ReviewPayload,
 } from "@/components/submit/submit-review";
+import { SetupVerifyCard } from "@/components/submit/setup-verify";
 import { DuplicateRejectionCard } from "@/components/submit/duplicate-rejection";
 import { TradeExecutionNotice } from "@/components/trading/trade-execution-notice";
 import {
@@ -162,8 +163,11 @@ export default function SubmitSignalPage() {
   } | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
-  const [step, setStep] = useState<"edit" | "review">("edit");
+  const [step, setStep] = useState<"edit" | "verify" | "review">("edit");
   const [review, setReview] = useState<ReviewPayload | null>(null);
+  const [aiSuggestedDirection, setAiSuggestedDirection] = useState<
+    "BUY" | "SELL" | null
+  >(null);
   const [resumingDraftId, setResumingDraftId] = useState<string | null>(null);
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
   const [accountReady, setAccountReady] = useState<boolean | null>(null);
@@ -412,7 +416,13 @@ export default function SubmitSignalPage() {
         takeProfit: String(fixed.takeProfit),
         description: analysis.description,
       });
+      setAiSuggestedDirection(fixed.direction);
       setAiFilled(true);
+      setStep("verify");
+      setError("");
+      requestAnimationFrame(() => {
+        formCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
     } catch (err) {
       setError(
         err instanceof Error
@@ -430,6 +440,7 @@ export default function SubmitSignalPage() {
     setSetupPreview(null);
     setScreenshotUrl("");
     setAiFilled(false);
+    setAiSuggestedDirection(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -440,6 +451,7 @@ export default function SubmitSignalPage() {
     setError("");
     setDuplicateMatch(null);
     setAiFilled(false);
+    setAiSuggestedDirection(null);
     setSaveStatus("idle");
     setLiveQuote(null);
     setQuoteError(null);
@@ -538,15 +550,24 @@ export default function SubmitSignalPage() {
   }
 
   function buildReviewPayload(): ReviewPayload | null {
-    const fixed = normalizeSetupFields({
-      direction: form.direction,
-      entryMin,
-      entryMax,
-      stopLoss: sl,
-      takeProfit: tp,
-    });
+    const fixed = normalizeSetupFields(
+      {
+        direction: form.direction,
+        entryMin,
+        entryMax,
+        stopLoss: sl,
+        takeProfit: tp,
+      },
+      { preserveDirection: true },
+    );
 
-    const validationErr = setupValidationError(fixed);
+    const validationErr = setupValidationError({
+      direction: form.direction,
+      entryMin: fixed.entryMin,
+      entryMax: fixed.entryMax,
+      stopLoss: fixed.stopLoss,
+      takeProfit: fixed.takeProfit,
+    });
     if (validationErr) {
       setError(validationErr);
       return null;
@@ -572,26 +593,9 @@ export default function SubmitSignalPage() {
     const reward = Math.abs(fixed.takeProfit - mid);
     const rr = risk > 0 ? Math.round((reward / risk) * 100) / 100 : 0;
 
-    if (
-      fixed.direction !== form.direction ||
-      fixed.entryMin !== entryMin ||
-      fixed.entryMax !== entryMax ||
-      fixed.stopLoss !== sl ||
-      fixed.takeProfit !== tp
-    ) {
-      setForm({
-        ...form,
-        direction: fixed.direction,
-        entryMin: String(fixed.entryMin),
-        entryMax: String(fixed.entryMax),
-        stopLoss: String(fixed.stopLoss),
-        takeProfit: String(fixed.takeProfit),
-      });
-    }
-
     return {
       symbol: form.symbol.trim().toUpperCase(),
-      direction: fixed.direction,
+      direction: form.direction,
       entryMin: fixed.entryMin,
       entryMax: fixed.entryMax,
       stopLoss: fixed.stopLoss,
@@ -609,6 +613,37 @@ export default function SubmitSignalPage() {
       setError("Pay for weekly access to submit setups. KYC is only required for payouts.");
       return;
     }
+    setError("");
+
+    if (!screenshotUrl && !setupFile) {
+      setError("Upload your chart setup screenshot");
+      return;
+    }
+    if (!form.symbol.trim()) {
+      setError("Enter a trading symbol");
+      return;
+    }
+    if (!form.description.trim()) {
+      setError("Add a trade analysis description");
+      return;
+    }
+    if (
+      !Number.isFinite(entryMin) ||
+      !Number.isFinite(entryMax) ||
+      !Number.isFinite(sl) ||
+      !Number.isFinite(tp)
+    ) {
+      setError("Enter valid entry, stop loss, and take profit values");
+      return;
+    }
+
+    setStep("verify");
+    requestAnimationFrame(() => {
+      formCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  function handleVerifyConfirm() {
     setError("");
     const payload = buildReviewPayload();
     if (!payload) return;
@@ -962,11 +997,24 @@ export default function SubmitSignalPage() {
             loading={loading || uploading}
             error={error}
             onEdit={() => {
-              setStep("edit");
+              setStep("verify");
               setError("");
               setDuplicateMatch(null);
             }}
             onConfirm={() => void handleConfirmSubmit()}
+          />
+        ) : step === "verify" ? (
+          <SetupVerifyCard
+            form={form}
+            aiSuggestedDirection={aiSuggestedDirection}
+            previewUrl={setupPreview || screenshotUrl || null}
+            error={error}
+            onFormChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+            onBack={() => {
+              setStep("edit");
+              setError("");
+            }}
+            onConfirm={handleVerifyConfirm}
           />
         ) : (
         <Card>
@@ -1285,7 +1333,7 @@ export default function SubmitSignalPage() {
                   ? "Analyzing chart..."
                   : uploading
                     ? "Uploading setup..."
-                    : "Review setup before submit"}
+                    : "Confirm direction & levels"}
               </Button>
             </form>
           </CardContent>

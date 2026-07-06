@@ -181,6 +181,8 @@ export default function App() {
     useState<MetaApiTerminalState | null>(null);
   const [metaApiTerminalLoading, setMetaApiTerminalLoading] = useState(false);
   const [copyDashboard, setCopyDashboard] = useState<CopyTradingDashboard | null>(null);
+  const [copyPoolAddUserId, setCopyPoolAddUserId] = useState("");
+  const [copyPoolLoading, setCopyPoolLoading] = useState(false);
   const [selectedMetaApiAccountId, setSelectedMetaApiAccountId] = useState<
     string | null
   >(null);
@@ -2793,8 +2795,11 @@ export default function App() {
               <div>
                 <h2>MT5 Copy Pool</h2>
                 <p className="muted" style={{ margin: "0.35rem 0 0" }}>
-                  Second MetaAPI account mirroring top 3 weekly traders at{" "}
-                  {copyDashboard?.riskPercent ?? 5}% risk per trade.
+                  Second MetaAPI account mirroring{" "}
+                  {copyDashboard?.poolMode === "manual"
+                    ? "your selected traders"
+                    : "top 3 weekly traders (default)"}{" "}
+                  at {copyDashboard?.riskPercent ?? 5}% risk per trade.
                 </p>
               </div>
               <button
@@ -2808,16 +2813,171 @@ export default function App() {
 
             {!copyDashboard ? (
               <p className="muted">Loading copy pool…</p>
-            ) : !copyDashboard.configured ? (
-              <div className="kyc-card">
-                <p>{copyDashboard.message ?? "No MetaAPI account available."}</p>
-                <p className="muted" style={{ marginTop: "0.5rem" }}>
-                  Connect and deploy accounts in MetaAPI first. Optionally set{" "}
-                  <code>METAAPI_COPY_ACCOUNT_ID</code> to pin a specific pool account.
-                </p>
-              </div>
             ) : (
               <>
+                <div className="kyc-card" style={{ marginBottom: "1rem" }}>
+                  <div className="toolbar toolbar-wrap" style={{ marginBottom: "0.75rem" }}>
+                    <div>
+                      <h3 style={{ margin: 0 }}>Copy trader pool</h3>
+                      <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                        {copyDashboard.poolMode === "manual" ? (
+                          <>
+                            Manual pool —{" "}
+                            {copyDashboard.poolTraders?.length ?? 0} trader
+                            {(copyDashboard.poolTraders?.length ?? 0) === 1 ? "" : "s"}{" "}
+                            selected. Only these traders are mirrored.
+                          </>
+                        ) : (
+                          <>
+                            Auto mode — empty pool falls back to this week&apos;s top 3
+                            leaderboard. Add traders below to override.
+                          </>
+                        )}
+                      </p>
+                    </div>
+                    <span className={badgeClass(copyDashboard.poolMode === "manual" ? "approved" : "pending")}>
+                      {copyDashboard.poolMode === "manual" ? "Manual" : "Auto top 3"}
+                    </span>
+                  </div>
+
+                  <div className="toolbar toolbar-wrap" style={{ marginBottom: "1rem" }}>
+                    <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1 }}>
+                      <span className="muted">Add from weekly leaderboard</span>
+                      <select
+                        value={copyPoolAddUserId}
+                        onChange={(e) => setCopyPoolAddUserId(e.target.value)}
+                        disabled={copyPoolLoading}
+                      >
+                        <option value="">Select trader…</option>
+                        {(copyDashboard.weeklyLeaderboard ?? [])
+                          .filter(
+                            (leader) =>
+                              !(copyDashboard.poolTraders ?? []).some(
+                                (p) => p.userId === leader.userId,
+                              ),
+                          )
+                          .map((leader) => (
+                            <option key={leader.userId} value={leader.userId}>
+                              #{leader.rank} {leader.displayName} — {leader.tier}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      style={{ alignSelf: "flex-end" }}
+                      disabled={!copyPoolAddUserId || copyPoolLoading}
+                      onClick={() => {
+                        if (!copyPoolAddUserId) return;
+                        setCopyPoolLoading(true);
+                        void api
+                          .addCopyPoolTrader(copyPoolAddUserId)
+                          .then((res) => {
+                            setCopyDashboard((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    poolMode: "manual",
+                                    poolTraders: res.poolTraders,
+                                    leaders: res.leaders,
+                                  }
+                                : prev,
+                            );
+                            setCopyPoolAddUserId("");
+                            setMessage("Trader added to copy pool.");
+                          })
+                          .catch((err) =>
+                            setMessage(
+                              err instanceof Error ? err.message : "Could not add trader",
+                            ),
+                          )
+                          .finally(() => setCopyPoolLoading(false));
+                      }}
+                    >
+                      {copyPoolLoading ? "Saving…" : "Add trader"}
+                    </button>
+                  </div>
+
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Rank</th>
+                        <th>Trader</th>
+                        <th>Tier</th>
+                        <th>Score</th>
+                        <th>Added</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(copyDashboard.poolTraders ?? []).length === 0 ? (
+                        <tr>
+                          <td colSpan={6}>
+                            No manual selections — using weekly top 3 until you add traders.
+                          </td>
+                        </tr>
+                      ) : (
+                        (copyDashboard.poolTraders ?? []).map((trader) => (
+                          <tr key={trader.userId}>
+                            <td>{trader.rank != null ? `#${trader.rank}` : "—"}</td>
+                            <td>{trader.displayName}</td>
+                            <td>{trader.tier ?? "—"}</td>
+                            <td>{trader.score ?? "—"}</td>
+                            <td>{fmtDate(trader.addedAt)}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className="btn-secondary"
+                                disabled={copyPoolLoading}
+                                onClick={() => {
+                                  setCopyPoolLoading(true);
+                                  void api
+                                    .removeCopyPoolTrader(trader.userId)
+                                    .then((res) => {
+                                      setCopyDashboard((prev) =>
+                                        prev
+                                          ? {
+                                              ...prev,
+                                              poolMode:
+                                                res.poolTraders.length > 0 ? "manual" : "auto",
+                                              poolTraders: res.poolTraders,
+                                              leaders: res.leaders,
+                                            }
+                                          : prev,
+                                      );
+                                      setMessage("Trader removed from copy pool.");
+                                    })
+                                    .catch((err) =>
+                                      setMessage(
+                                        err instanceof Error
+                                          ? err.message
+                                          : "Could not remove trader",
+                                      ),
+                                    )
+                                    .finally(() => setCopyPoolLoading(false));
+                                }}
+                              >
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {!copyDashboard.configured ? (
+                  <div className="kyc-card">
+                    <p>{copyDashboard.message ?? "No MetaAPI account available."}</p>
+                    <p className="muted" style={{ marginTop: "0.5rem" }}>
+                      Connect and deploy accounts in MetaAPI first. Optionally set{" "}
+                      <code>METAAPI_COPY_ACCOUNT_ID</code> to pin a specific pool account.
+                    </p>
+                  </div>
+                ) : (
+                  <>
                 {"copyAccountSource" in copyDashboard &&
                   copyDashboard.copyAccountSource === "auto" && (
                     <p className="muted" style={{ marginBottom: "1rem" }}>
@@ -2864,7 +3024,11 @@ export default function App() {
                   </div>
                 </div>
 
-                <h3 style={{ marginTop: "1.5rem" }}>Top 3 traders copied</h3>
+                <h3 style={{ marginTop: "1.5rem" }}>
+                  {copyDashboard.poolMode === "manual"
+                    ? "Traders being copied"
+                    : "Top 3 traders copied (auto)"}
+                </h3>
                 <table>
                   <thead>
                     <tr>
@@ -2874,12 +3038,13 @@ export default function App() {
                       <th>Score</th>
                       <th>Win rate</th>
                       <th>Profit</th>
+                      <th>Source</th>
                     </tr>
                   </thead>
                   <tbody>
                     {copyDashboard.leaders.length === 0 ? (
                       <tr>
-                        <td colSpan={6}>No leaderboard data this week</td>
+                        <td colSpan={7}>No traders in copy pool</td>
                       </tr>
                     ) : (
                       copyDashboard.leaders.map((leader) => (
@@ -2890,6 +3055,7 @@ export default function App() {
                           <td>{leader.score}</td>
                           <td>{(leader.winRate * 100).toFixed(1)}%</td>
                           <td>{fmtMoney(leader.profit)}</td>
+                          <td>{leader.source === "pool" ? "Manual" : "Auto"}</td>
                         </tr>
                       ))
                     )}
@@ -2963,6 +3129,8 @@ export default function App() {
                     )}
                   </tbody>
                 </table>
+                  </>
+                )}
               </>
             )}
           </>

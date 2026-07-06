@@ -108,9 +108,9 @@ export default function Mt5Page() {
         <div>
           <h1 className="text-2xl font-bold text-white">MT5 Copy Pool</h1>
           <p className="mt-1 max-w-2xl text-sm text-gray-400">
-            Second live account — mirrors only the top 3 ranked traders each week
-            at {data?.riskPercent ?? RISK_PERCENT}% risk per trade on account
-            equity.
+            Second live account — mirrors traders in the admin copy pool (or top 3
+            weekly by default) at {data?.riskPercent ?? RISK_PERCENT}% risk per trade
+            on account equity.
           </p>
         </div>
         <Button variant="secondary" size="sm" onClick={() => void load()} className="gap-2">
@@ -199,7 +199,7 @@ export default function Mt5Page() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Crown className="h-4 w-4 text-amber-400" />
-            Copying this week&apos;s top 3
+            Traders being copied
           </CardTitle>
         </CardHeader>
         <CardContent>

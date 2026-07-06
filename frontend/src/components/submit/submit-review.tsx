@@ -40,8 +40,7 @@ export function SubmitReviewCard({
           <CardTitle>Review your setup</CardTitle>
         </div>
         <CardDescription>
-          Check everything below. You can go back and edit any field before confirming.
-          Once submitted, the setup is locked and cannot be changed.
+          Final check — then submit. Use “Edit setup” to go back and change direction or levels.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -118,7 +117,7 @@ export function SubmitReviewCard({
             disabled={loading}
           >
             <ArrowLeft className="h-4 w-4" />
-            Edit setup
+            Edit direction & levels
           </Button>
           <Button
             type="button"

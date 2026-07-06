@@ -10,6 +10,11 @@ export type SetupFields = {
   takeProfit: number;
 };
 
+export type NormalizeSetupOptions = {
+  /** When true, never infer or flip direction from price geometry — user's choice wins. */
+  preserveDirection?: boolean;
+};
+
 function isBuyValid(eMin: number, eMax: number, sl: number, tp: number) {
   return sl < eMin && tp > eMax;
 }
@@ -18,7 +23,10 @@ function isSellValid(eMin: number, eMax: number, sl: number, tp: number) {
   return sl > eMax && tp < eMin;
 }
 
-export function normalizeSetupFields(input: SetupFields): SetupFields {
+export function normalizeSetupFields(
+  input: SetupFields,
+  options?: NormalizeSetupOptions,
+): SetupFields {
   let { entryMin, entryMax, stopLoss, takeProfit, direction } = input;
 
   if (entryMin > entryMax) {
@@ -31,6 +39,10 @@ export function normalizeSetupFields(input: SetupFields): SetupFields {
     (direction === "SELL" &&
       isSellValid(entryMin, entryMax, stopLoss, takeProfit))
   ) {
+    return { direction, entryMin, entryMax, stopLoss, takeProfit };
+  }
+
+  if (options?.preserveDirection) {
     return { direction, entryMin, entryMax, stopLoss, takeProfit };
   }
 

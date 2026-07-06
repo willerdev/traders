@@ -300,6 +300,15 @@ export const api = {
 
   metaApiCopyDashboard: () =>
     request<CopyTradingDashboard>("/admin/hub/metaapi/copy-dashboard"),
+  addCopyPoolTrader: (userId: string) =>
+    request<CopyPoolMutationResult>("/admin/hub/metaapi/copy-pool", {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    }),
+  removeCopyPoolTrader: (userId: string) =>
+    request<CopyPoolMutationResult>(`/admin/hub/metaapi/copy-pool/${encodeURIComponent(userId)}`, {
+      method: "DELETE",
+    }),
 
   marketingSchedule: () =>
     request<MarketingSchedule>("/admin/marketing/schedule"),
@@ -793,6 +802,25 @@ export type CopyTradingLeader = {
   tier: string;
   winRate: number;
   profit: number;
+  source?: "pool" | "auto";
+};
+
+export type CopyPoolTraderRow = {
+  userId: string;
+  displayName: string;
+  addedAt: string;
+  addedById: string | null;
+  rank: number | null;
+  tier: string | null;
+  score: number | null;
+  winRate: number | null;
+  profit: number | null;
+};
+
+export type CopyPoolMutationResult = {
+  ok: boolean;
+  poolTraders: CopyPoolTraderRow[];
+  leaders: CopyTradingLeader[];
 };
 
 export type CopyTradeJournalEntry = {
@@ -820,6 +848,9 @@ export type CopyTradingDashboard = {
   copyAccountSource?: "env" | "auto";
   message?: string;
   riskPercent?: number;
+  poolMode?: "manual" | "auto";
+  poolTraders?: CopyPoolTraderRow[];
+  weeklyLeaderboard?: CopyTradingLeader[];
   leaders: CopyTradingLeader[];
   terminal: MetaApiTerminalState | null;
   journal: CopyTradeJournalEntry[];
