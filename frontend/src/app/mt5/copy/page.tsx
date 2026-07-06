@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import { api, type CopyTradingDashboard } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
+import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,15 +38,16 @@ function statusBadge(status: string) {
 
 export default function Mt5Page() {
   const router = useRouter();
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const hasHydrated = useAuthStore((s) => s.hasHydrated);
+  const { ready, hasHydrated } = useRequireAuth();
   const userRole = useAuthStore((s) => s.user?.role);
   const [data, setData] = useState<CopyTradingDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<"overview" | "positions" | "journal">(
+  const [tab, setTab] = useUrlTab("tab", "overview", [
     "overview",
-  );
+    "positions",
+    "journal",
+  ] as const);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -60,27 +63,16 @@ export default function Mt5Page() {
 
   useEffect(() => {
     if (!hasHydrated) return;
-    if (!isAuthenticated) {
-      router.replace("/login");
-      return;
-    }
+    if (!ready) return;
     if (userRole !== "ADMIN") {
       router.replace("/dashboard");
       return;
     }
     void load();
-  }, [hasHydrated, isAuthenticated, userRole, router, load]);
+  }, [hasHydrated, ready, userRole, router, load]);
 
-  if (!hasHydrated || (isAuthenticated && userRole !== "ADMIN")) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return null;
+  if (!hasHydrated || !ready) {
+    return <AuthLoadingScreen />;
   }
 
   if (loading && !data) {

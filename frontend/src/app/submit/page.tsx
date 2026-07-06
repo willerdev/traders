@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/stores/auth";
+import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { api, type SignalDraft, type MatchedDuplicateSignal, type HubQuote } from "@/lib/api";
 import { hasTradingAccess } from "@/lib/trading-access";
 import { normalizeSetupFields, setupValidationError } from "@/lib/chart-setup";
@@ -124,7 +126,7 @@ function setupPreviewUrl(screenshotUrl: string | null | undefined): string {
 
 export default function SubmitSignalPage() {
   const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
+  const { ready } = useRequireAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formCardRef = useRef<HTMLDivElement>(null);
   const skipAutoSave = useRef(false);
@@ -163,7 +165,7 @@ export default function SubmitSignalPage() {
   } | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
-  const [step, setStep] = useState<"edit" | "verify" | "review">("edit");
+  const [step, setStep] = useUrlTab("step", "edit", ["edit", "verify", "review"] as const);
   const [review, setReview] = useState<ReviewPayload | null>(null);
   const [aiSuggestedDirection, setAiSuggestedDirection] = useState<
     "BUY" | "SELL" | null
@@ -205,12 +207,14 @@ export default function SubmitSignalPage() {
   }, []);
 
   useEffect(() => {
-    if (!isAuthenticated) router.push("/login");
-    else {
-      void loadDrafts();
-      void refreshAccountStatus();
-    }
-  }, [isAuthenticated, router, loadDrafts, refreshAccountStatus]);
+    if (!ready) return;
+    void loadDrafts();
+    void refreshAccountStatus();
+  }, [ready, loadDrafts, refreshAccountStatus]);
+
+  useEffect(() => {
+    if (step === "review" && !review) setStep("edit");
+  }, [step, review, setStep]);
 
   useEffect(() => {
     if (!success || success.executionHub?.id) {
@@ -343,7 +347,7 @@ export default function SubmitSignalPage() {
   }, [buildDraftPayload, draftId, form, screenshotUrl]);
 
   useEffect(() => {
-    if (!isAuthenticated || success || step === "review") return;
+    if (!ready || success || step === "review") return;
     autoSaveTimerRef.current = setTimeout(() => {
       void saveDraftNow();
     }, 1500);
@@ -353,7 +357,7 @@ export default function SubmitSignalPage() {
         autoSaveTimerRef.current = null;
       }
     };
-  }, [form, screenshotUrl, aiFilled, isAuthenticated, success, step, saveDraftNow]);
+  }, [form, screenshotUrl, aiFilled, ready, success, step, saveDraftNow]);
 
   const entryMin = parseFloat(form.entryMin);
   const entryMax = parseFloat(form.entryMax);
@@ -882,6 +886,10 @@ export default function SubmitSignalPage() {
         </Card>
       </div>
     );
+  }
+
+  if (!ready) {
+    return <AuthLoadingScreen />;
   }
 
   return (

@@ -7,7 +7,7 @@ import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useAuthStore } from "@/stores/auth";
+import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { api, PayoutRecord, UserSettings, PayoutRewardStatus } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { Wallet, Info, ShieldAlert, Loader2 } from "lucide-react";
@@ -23,7 +23,7 @@ function payoutTitle(payout: PayoutRecord) {
 
 export default function PayoutsPage() {
   const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
+  const { ready } = useRequireAuth();
   const [payouts, setPayouts] = useState<PayoutRecord[]>([]);
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [rewardTier, setRewardTier] = useState<PayoutRewardStatus | null>(null);
@@ -44,12 +44,13 @@ export default function PayoutsPage() {
   }
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push("/login");
-      return;
-    }
+    if (!ready) return;
     reload().finally(() => setLoading(false));
-  }, [isAuthenticated, router]);
+  }, [ready]);
+
+  if (!ready) {
+    return <AuthLoadingScreen />;
+  }
 
   const statusVariant = (status: string) => {
     switch (status) {

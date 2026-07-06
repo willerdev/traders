@@ -7,7 +7,7 @@ import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useAuthStore } from "@/stores/auth";
+import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { api, type ClaimableTpSetup, type TpClaimRecord, type UserSettings } from "@/lib/api";
 import { cn, formatCurrency } from "@/lib/utils";
 import {
@@ -47,7 +47,7 @@ function fmtDate(iso: string) {
 
 export default function TpClaimsPage() {
   const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
+  const { ready } = useRequireAuth();
   const [claims, setClaims] = useState<TpClaimRecord[]>([]);
   const [claimable, setClaimable] = useState<ClaimableTpSetup[]>([]);
   const [settings, setSettings] = useState<UserSettings | null>(null);
@@ -86,9 +86,13 @@ export default function TpClaimsPage() {
   };
 
   useEffect(() => {
-    if (!isAuthenticated) router.push("/login");
-    else void load();
-  }, [isAuthenticated, router]);
+    if (!ready) return;
+    void load();
+  }, [ready]);
+
+  if (!ready) {
+    return <AuthLoadingScreen />;
+  }
 
   const pending = claims.filter((c) => c.status === "PENDING_REVIEW");
   const readyForPayout = claims.filter((c) => c.canRequestPayout);

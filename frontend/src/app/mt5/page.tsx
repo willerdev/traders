@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
   Loader2,
@@ -16,6 +15,8 @@ import {
 } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
 import { useMt5Terminal } from "@/hooks/use-mt5-terminal";
+import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { hasTradingAccess } from "@/lib/trading-access";
 import { WeeklyAccessGate } from "@/components/payments/weekly-access-gate";
 import { Button } from "@/components/ui/button";
@@ -75,13 +76,20 @@ function orderTypeLabel(row: UserMt5HistoryItem) {
 }
 
 export default function Mt5UserPage() {
-  const router = useRouter();
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const hasHydrated = useAuthStore((s) => s.hasHydrated);
+  const { ready, hasHydrated } = useRequireAuth();
   const userRole = useAuthStore((s) => s.user?.role);
   const userId = useAuthStore((s) => s.user?.id);
-  const [tab, setTab] = useState<Tab>("trades");
-  const [historySubTab, setHistorySubTab] = useState<HistorySubTab>("deals");
+  const [tab, setTab] = useUrlTab("tab", "trades", [
+    "quotes",
+    "setups",
+    "trades",
+    "history",
+  ] as const);
+  const [historySubTab, setHistorySubTab] = useUrlTab("history", "deals", [
+    "positions",
+    "orders",
+    "deals",
+  ] as const);
   const [selectedSetup, setSelectedSetup] = useState<SetupSummary | null>(null);
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [historyLoadingId, setHistoryLoadingId] = useState<string | null>(null);
@@ -111,16 +119,12 @@ export default function Mt5UserPage() {
     setError,
     load,
     loadRunning,
-  } = useMt5Terminal(userId, isAuthenticated, hasHydrated, tab, accessGranted);
+  } = useMt5Terminal(userId, ready, hasHydrated, tab, accessGranted);
 
   useEffect(() => {
-    if (!hasHydrated) return;
-    if (!isAuthenticated) {
-      router.replace("/login");
-      return;
-    }
+    if (!ready) return;
     void refreshTradingAccess();
-  }, [hasHydrated, isAuthenticated, router, refreshTradingAccess]);
+  }, [ready, refreshTradingAccess]);
 
   const setups = data?.setups.items ?? [];
   const history = data?.history.items ?? [];
@@ -298,12 +302,8 @@ export default function Mt5UserPage() {
     });
   }
 
-  if (!hasHydrated || !isAuthenticated) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+  if (!ready) {
+    return <AuthLoadingScreen />;
   }
 
   if (tradingAccess === null) {

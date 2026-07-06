@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/stores/auth";
+import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { useThemeStore } from "@/stores/theme";
 import { api, type UserSettings, type KycRecord, type MetaApiAccountRow } from "@/lib/api";
 import { validateDisplayName } from "@/lib/display-name";
@@ -130,7 +131,8 @@ function KycUploadField({
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { isAuthenticated, logout, setAuth, token } = useAuthStore();
+  const { ready } = useRequireAuth();
+  const { logout, setAuth, token } = useAuthStore();
   const { theme, setTheme } = useThemeStore();
 
   const [loading, setLoading] = useState(true);
@@ -179,12 +181,13 @@ export default function SettingsPage() {
   const [paymentSaving, setPaymentSaving] = useState(false);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.replace("/login");
-      return;
-    }
+    if (!ready) return;
     void loadSettings();
-  }, [isAuthenticated, router]);
+  }, [ready]);
+
+  if (!ready) {
+    return <AuthLoadingScreen />;
+  }
 
   async function loadSettings() {
     setLoading(true);

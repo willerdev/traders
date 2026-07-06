@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuthStore, useDashboardStore } from "@/stores/auth";
 import { api } from "@/lib/api";
+import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { formatCurrency } from "@/lib/utils";
 import { hasTradingAccess, formatAccessExpiry } from "@/lib/trading-access";
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
@@ -23,20 +24,19 @@ import { RISK_PERCENT, MAX_RISK_PER_TRADE } from "@/lib/platform-rules";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const { ready } = useRequireAuth();
   const { data, loading, error, fetchDashboard } = useDashboardStore();
 
   useEffect(() => {
+    if (!ready) return;
     const token = useAuthStore.getState().token;
     if (token) api.setToken(token);
-
-    if (!isAuthenticated) {
-      router.replace("/login");
-      return;
-    }
-
     fetchDashboard();
-  }, [isAuthenticated, router, fetchDashboard]);
+  }, [ready, fetchDashboard]);
+
+  if (!ready) {
+    return <AuthLoadingScreen />;
+  }
 
   async function handleRegistrationComplete() {
     await fetchDashboard();

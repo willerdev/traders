@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useAuthStore } from "@/stores/auth";
+import { resolveReturnTo } from "@/lib/return-to";
 
 const LOGIN_SESSION_KEY = "trp-login-session";
 const LOGIN_EMAIL_KEY = "trp-login-email";
@@ -58,9 +59,9 @@ function LoginForm() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      router.replace("/dashboard");
+      router.replace(resolveReturnTo(searchParams));
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, router, searchParams]);
 
   useEffect(() => {
     const saved = readSavedLoginSession();
@@ -94,7 +95,7 @@ function LoginForm() {
 
       if ("accessToken" in res && typeof res.accessToken === "string") {
         clearLoginSession();
-        router.replace("/dashboard");
+        router.replace(resolveReturnTo(searchParams));
         return;
       }
 
@@ -134,7 +135,7 @@ function LoginForm() {
     try {
       await verifyLoginOtp(sessionId, otp.trim());
       clearLoginSession();
-      router.replace("/dashboard");
+      router.replace(resolveReturnTo(searchParams));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invalid code");
     } finally {
