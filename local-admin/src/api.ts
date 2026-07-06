@@ -309,6 +309,14 @@ export const api = {
     ),
   runMarketing: () =>
     request<MarketingRunSummary>("/admin/marketing/run", { method: "POST" }),
+  sendMarketingTestEmail: (email?: string) =>
+    request<{ ok: boolean; to: string; message: string }>(
+      "/admin/marketing/test-email",
+      {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      },
+    ),
 
   referralSettings: () =>
     request<ReferralSettings>("/admin/referrals/settings"),
@@ -809,6 +817,7 @@ export type CopyTradeJournalEntry = {
 export type CopyTradingDashboard = {
   configured: boolean;
   copyAccountId: string | null;
+  copyAccountSource?: "env" | "auto";
   message?: string;
   riskPercent?: number;
   leaders: CopyTradingLeader[];

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
@@ -208,6 +208,35 @@ export class MarketingService {
       this.prisma.marketingEmail.count(),
     ]);
     return { items, count };
+  }
+
+  async sendTestEmail(to: string) {
+    const email = to.trim().toLowerCase();
+    if (!email.includes('@')) {
+      throw new BadRequestException('Invalid email address');
+    }
+
+    const html = this.email.layout(
+      'Email test — TraderRank Pro',
+      `<p>This is a test email from the TraderRank Pro marketing system.</p>
+      <p>If you received this, Resend is configured correctly and campaigns can be sent.</p>
+      <p style="color:#94a3b8;font-size:13px;">Sent at ${new Date().toISOString()}</p>`,
+    );
+
+    const ok = await this.email.send({
+      to: email,
+      subject: 'TraderRank Pro — email test',
+      html,
+      text: 'TraderRank Pro email test — if you received this, Resend is working.',
+    });
+
+    if (!ok) {
+      throw new BadRequestException(
+        'Email could not be sent — check RESEND_API_KEY and EMAIL_FROM on the API server',
+      );
+    }
+
+    return { ok: true, to: email, message: `Test email sent to ${email}` };
   }
 
   async runCampaign(trigger: 'cron' | 'manual'): Promise<RunSummary> {

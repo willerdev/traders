@@ -212,6 +212,8 @@ export default function App() {
     "unpaid_registration" | "inactive_trader"
   >("unpaid_registration");
   const [marketingRunLoading, setMarketingRunLoading] = useState(false);
+  const [marketingTestLoading, setMarketingTestLoading] = useState(false);
+  const [marketingTestEmail, setMarketingTestEmail] = useState("willeratmit12@gmail.com");
   const [referralSettings, setReferralSettings] =
     useState<ReferralSettings | null>(null);
   const [referrers, setReferrers] = useState<ReferrerRow[]>([]);
@@ -2336,8 +2338,27 @@ export default function App() {
                 </button>
                 <button
                   type="button"
+                  className="btn-secondary"
+                  disabled={marketingTestLoading}
+                  onClick={() => {
+                    setMarketingTestLoading(true);
+                    void api
+                      .sendMarketingTestEmail(marketingTestEmail.trim() || undefined)
+                      .then((res) => setMessage(res.message))
+                      .catch((err) =>
+                        setMessage(
+                          err instanceof Error ? err.message : "Test email failed",
+                        ),
+                      )
+                      .finally(() => setMarketingTestLoading(false));
+                  }}
+                >
+                  {marketingTestLoading ? "Sending…" : "Send test email"}
+                </button>
+                <button
+                  type="button"
                   className="primary"
-                  disabled={marketingRunLoading || !marketingSchedule?.emailConfigured}
+                  disabled={marketingRunLoading}
                   onClick={() => {
                     setMarketingRunLoading(true);
                     void api
@@ -2369,16 +2390,25 @@ export default function App() {
               </div>
             </div>
 
-            {marketingSchedule && !marketingSchedule.emailConfigured && (
-              <div className="kyc-card" style={{ marginBottom: "1rem" }}>
-                <p>
-                  <strong>Email sending is not configured.</strong> Set{" "}
-                  <code>RESEND_API_KEY</code> on the API server — the scheduler will
-                  skip runs until then. The recipient lists below still show who
-                  would receive each campaign.
-                </p>
-              </div>
-            )}
+            <div
+              className="kyc-card"
+              style={{ marginBottom: "1rem", maxWidth: 480, display: "flex", gap: "0.5rem", alignItems: "center" }}
+            >
+              <input
+                type="email"
+                value={marketingTestEmail}
+                onChange={(e) => setMarketingTestEmail(e.target.value)}
+                placeholder="Test recipient email"
+                style={{
+                  flex: 1,
+                  padding: "0.5rem",
+                  borderRadius: 6,
+                  border: "1px solid #334155",
+                  background: "#0b0f14",
+                  color: "#e8eaed",
+                }}
+              />
+            </div>
 
             {!marketingSchedule ? (
               <p className="muted">Loading schedule…</p>
@@ -2780,13 +2810,22 @@ export default function App() {
               <p className="muted">Loading copy pool…</p>
             ) : !copyDashboard.configured ? (
               <div className="kyc-card">
-                <p>{copyDashboard.message ?? "Copy account not configured."}</p>
+                <p>{copyDashboard.message ?? "No MetaAPI account available."}</p>
                 <p className="muted" style={{ marginTop: "0.5rem" }}>
-                  Set <code>METAAPI_COPY_ACCOUNT_ID</code> on traders-api and redeploy.
+                  Connect and deploy accounts in MetaAPI first. Optionally set{" "}
+                  <code>METAAPI_COPY_ACCOUNT_ID</code> to pin a specific pool account.
                 </p>
               </div>
             ) : (
               <>
+                {"copyAccountSource" in copyDashboard &&
+                  copyDashboard.copyAccountSource === "auto" && (
+                    <p className="muted" style={{ marginBottom: "1rem" }}>
+                      Using connected MetaAPI account{" "}
+                      <code>{copyDashboard.copyAccountId}</code> (auto-selected — set{" "}
+                      <code>METAAPI_COPY_ACCOUNT_ID</code> to override).
+                    </p>
+                  )}
                 <div className="cards">
                   <div className="card">
                     <div className="label">Balance</div>

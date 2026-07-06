@@ -246,8 +246,53 @@ export class MetaApiService {
     return this.configuredCopyAccountId || null;
   }
 
+  /** Sync fallback: explicit copy id, else platform default account. */
   resolveCopyAccountId(): string | null {
-    return this.configuredCopyAccountId || null;
+    return (
+      this.configuredCopyAccountId ||
+      this.configuredDefaultAccountId ||
+      null
+    );
+  }
+
+  private cachedAutoCopyAccountId: string | null | undefined;
+
+  /**
+   * Picks the copy-pool account: METAAPI_COPY_ACCOUNT_ID, else a connected
+   * account that is not the default (second pool), else default, else first connected.
+   */
+  async resolveCopyAccountIdAsync(): Promise<string | null> {
+    if (this.configuredCopyAccountId) return this.configuredCopyAccountId;
+    if (this.cachedAutoCopyAccountId !== undefined) {
+      return this.cachedAutoCopyAccountId;
+    }
+
+    let resolved = this.configuredDefaultAccountId || null;
+
+    if (this.isConfigured) {
+      try {
+        const { items } = await this.listAccounts({ limit: 50 });
+        const connected = items.filter(
+          (a) =>
+            a.connectionStatus === 'CONNECTED' &&
+            a.state === 'DEPLOYED' &&
+            a.id,
+        );
+        if (connected.length > 0) {
+          const dedicated = connected.find(
+            (a) => a.id !== this.configuredDefaultAccountId,
+          );
+          resolved = dedicated?.id ?? connected[0]?.id ?? resolved;
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Copy account auto-resolve failed: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+
+    this.cachedAutoCopyAccountId = resolved;
+    return resolved;
   }
 
   private headers(contentType = false) {

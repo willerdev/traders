@@ -66,7 +66,7 @@ export class CopyTradingService {
   }
 
   async maybeMirrorTrade(input: CopyMirrorInput): Promise<void> {
-    const copyAccountId = this.metaApi.resolveCopyAccountId();
+    const copyAccountId = await this.metaApi.resolveCopyAccountIdAsync();
     if (!this.metaApi.isConfigured || !copyAccountId) return;
 
     const existing = await this.prisma.copyTrade.findUnique({
@@ -221,7 +221,8 @@ export class CopyTradingService {
   }
 
   async getCopyDashboard() {
-    const copyAccountId = this.metaApi.resolveCopyAccountId();
+    const copyAccountId = await this.metaApi.resolveCopyAccountIdAsync();
+    const explicitCopyId = this.metaApi.getConfiguredCopyAccountId();
     const leaders = await this.getTopLeaders(3);
 
     if (!this.metaApi.isConfigured || !copyAccountId) {
@@ -229,7 +230,7 @@ export class CopyTradingService {
         configured: false,
         copyAccountId: null,
         message:
-          'Copy account not configured — set METAAPI_COPY_ACCOUNT_ID on the server',
+          'No MetaAPI trading account available — connect an account in MetaAPI first',
         leaders,
         terminal: null,
         journal: [],
@@ -297,6 +298,7 @@ export class CopyTradingService {
     return {
       configured: true,
       copyAccountId,
+      copyAccountSource: explicitCopyId ? 'env' : 'auto',
       riskPercent: RISK_PERCENT,
       leaders,
       terminal,
@@ -312,7 +314,7 @@ export class CopyTradingService {
 
   /** Sync open copy trades and credit profit-share commission when positions close. */
   async syncCopyTradeCommissions(): Promise<{ closed: number; credited: number }> {
-    const copyAccountId = this.metaApi.resolveCopyAccountId();
+    const copyAccountId = await this.metaApi.resolveCopyAccountIdAsync();
     if (!this.metaApi.isConfigured || !copyAccountId) {
       return { closed: 0, credited: 0 };
     }

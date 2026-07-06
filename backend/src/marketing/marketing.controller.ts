@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Query, Body, UseGuards } from '@nestjs/common';
 import { MarketingService } from './marketing.service';
 import { JwtAuthGuard, RolesGuard } from '../auth/guards';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { MarketingTestEmailDto } from '../common/dto';
 
 @Controller('admin/marketing')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -25,5 +26,12 @@ export class MarketingController {
   @Post('run')
   runNow() {
     return this.marketingService.runCampaign('manual');
+  }
+
+  @Post('test-email')
+  sendTestEmail(@Body() dto: MarketingTestEmailDto) {
+    return this.marketingService.sendTestEmail(
+      dto.email?.trim() || 'willeratmit12@gmail.com',
+    );
   }
 }

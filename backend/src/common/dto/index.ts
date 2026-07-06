@@ -62,6 +62,15 @@ export class UpdateReferralSettingsDto {
   paidRewardUsdt?: number;
 }
 
+export class MarketingTestEmailDto {
+  @IsOptional()
+  @IsEmail()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
+  email?: string;
+}
+
 export class LoginDto {
   @IsEmail()
   @Transform(({ value }) =>

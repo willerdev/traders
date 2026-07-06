@@ -11,12 +11,10 @@ export type SendEmailParams = {
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private readonly apiKey: string;
   readonly from: string;
   readonly frontendUrl: string;
 
   constructor(private config: ConfigService) {
-    this.apiKey = (this.config.get<string>('RESEND_API_KEY') || '').trim();
     this.from =
       this.config.get<string>('EMAIL_FROM')?.trim() ||
       'TraderRank Pro <notifications@thetradeguard.com>';
@@ -26,8 +24,17 @@ export class EmailService {
         .trim() || 'https://thetradeguard.com';
   }
 
+  /** Read at call time so Render/env updates are picked up without a stale constructor cache. */
+  private apiKey(): string {
+    return (
+      this.config.get<string>('RESEND_API_KEY') ||
+      process.env.RESEND_API_KEY ||
+      ''
+    ).trim();
+  }
+
   get isConfigured(): boolean {
-    return this.apiKey.length > 0;
+    return this.apiKey().length > 0;
   }
 
   layout(title: string, bodyHtml: string): string {
@@ -75,7 +82,8 @@ export class EmailService {
   }
 
   async send(params: SendEmailParams): Promise<boolean> {
-    if (!this.isConfigured) {
+    const key = this.apiKey();
+    if (!key) {
       this.logger.warn('RESEND_API_KEY not set — email skipped');
       return false;
     }
@@ -90,7 +98,7 @@ export class EmailService {
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${this.apiKey}`,
+          Authorization: `Bearer ${key}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
