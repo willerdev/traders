@@ -24,6 +24,7 @@ import { ProfitShareModule } from './profit-share/profit-share.module';
 import { MarketingModule } from './marketing/marketing.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { Mt5SyncModule } from './mt5-sync/mt5-sync.module';
+import { PublicModule } from './public/public.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { Mt5SyncModule } from './mt5-sync/mt5-sync.module';
     MarketingModule,
     ReferralsModule,
     Mt5SyncModule,
+    PublicModule,
   ],
 })
 export class AppModule {}

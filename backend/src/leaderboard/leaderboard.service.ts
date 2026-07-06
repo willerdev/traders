@@ -3,6 +3,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SignalHubService } from '../signals/signal-hub.service';
 import { currentWeekYear } from '../common/week.util';
 import { ensureDemoLeaderboardTraders } from './demo-leaderboard.seed';
+import { NotificationService } from '../email/notification.service';
+import { PlatformNotificationsService } from '../platform-notifications/platform-notifications.service';
+import { isDemoLeaderboardUser } from '../common/demo-user.util';
 
 @Injectable()
 export class LeaderboardService implements OnModuleInit {
@@ -11,6 +14,8 @@ export class LeaderboardService implements OnModuleInit {
   constructor(
     private prisma: PrismaService,
     private signalHub: SignalHubService,
+    private notifications: NotificationService,
+    private platformNotifications: PlatformNotificationsService,
   ) {}
 
   async onModuleInit() {
@@ -39,8 +44,18 @@ export class LeaderboardService implements OnModuleInit {
   }
 
   async refreshLeaderboard(weekNumber: number, year: number) {
+    const previousRows = await this.prisma.leaderboard.findMany({
+      where: { weekNumber, year },
+      select: { userId: true, rank: true },
+    });
+    const previousRankByUser = new Map(
+      previousRows.map((row) => [row.userId, row.rank]),
+    );
+
     const accounts = await this.prisma.virtualAccount.findMany({
-      include: { user: { select: { id: true, displayName: true } } },
+      include: {
+        user: { select: { id: true, displayName: true, email: true } },
+      },
       orderBy: [{ score: 'desc' }, { winRate: 'desc' }],
     });
 
@@ -64,7 +79,72 @@ export class LeaderboardService implements OnModuleInit {
       await this.prisma.leaderboard.createMany({ data: entries });
     }
 
+    if (previousRankByUser.size > 0) {
+      await this.notifyRankChanges(entries, previousRankByUser, weekNumber, year);
+    }
+
     return entries;
+  }
+
+  private async notifyRankChanges(
+    entries: Array<{ userId: string; rank: number; displayName: string }>,
+    previousRankByUser: Map<string, number>,
+    weekNumber: number,
+    year: number,
+  ) {
+    for (const entry of entries) {
+      const oldRank = previousRankByUser.get(entry.userId);
+      if (oldRank == null || oldRank === entry.rank) continue;
+
+      const account = await this.prisma.virtualAccount.findUnique({
+        where: { userId: entry.userId },
+        select: {
+          leaderboardLastEmailedRank: true,
+          user: { select: { email: true } },
+        },
+      });
+      if (!account || isDemoLeaderboardUser(account.user.email)) continue;
+      if (account.leaderboardLastEmailedRank === entry.rank) continue;
+
+      const payload = {
+        oldRank,
+        newRank: entry.rank,
+        weekNumber,
+        year,
+      };
+
+      if (entry.rank < oldRank) {
+        this.notifications.rankImproved(entry.userId, payload);
+        await this.platformNotifications.create({
+          userId: entry.userId,
+          type: 'RANK_IMPROVED',
+          title: `You moved up to #${entry.rank}`,
+          body: `Congratulations — you climbed from #${oldRank} to #${entry.rank} on this week's leaderboard.`,
+          linkUrl: '/leaderboard',
+        });
+      } else {
+        this.notifications.rankDropped(entry.userId, payload);
+        await this.platformNotifications.create({
+          userId: entry.userId,
+          type: 'RANK_DROPPED',
+          title: `Leaderboard update — now #${entry.rank}`,
+          body: `Your rank shifted from #${oldRank} to #${entry.rank}. Stay disciplined — you can climb back.`,
+          linkUrl: '/dashboard',
+        });
+      }
+
+      await this.prisma.virtualAccount.update({
+        where: { userId: entry.userId },
+        data: {
+          leaderboardLastEmailedRank: entry.rank,
+          leaderboardLastEmailedAt: new Date(),
+        },
+      });
+
+      this.logger.debug(
+        `Rank change notified ${entry.displayName}: #${oldRank} → #${entry.rank}`,
+      );
+    }
   }
 
   async getLeaderboard(weekNumber: number, year: number, limit = 50) {

@@ -11,6 +11,10 @@ import {
   resolvePayoutRewardTier,
 } from './payout-reward-tier.util';
 import { ProfitShareService } from '../profit-share/profit-share.service';
+import {
+  isDemoLeaderboardUser,
+  maskDisplayNameForPublic,
+} from '../common/demo-user.util';
 
 @Injectable()
 export class PayoutService {
@@ -404,6 +408,53 @@ export class PayoutService {
       where: { userId },
       orderBy: { requestedAt: 'desc' },
     });
+  }
+
+  async getRecentPublicPayouts(limit = 12) {
+    const take = Math.min(Math.max(limit, 1), 30);
+    const rows = await this.prisma.payout.findMany({
+      where: { status: 'PAID' },
+      orderBy: [{ processedAt: 'desc' }, { requestedAt: 'desc' }],
+      take: take * 2,
+      include: {
+        user: {
+          select: {
+            displayName: true,
+            email: true,
+            virtualAccount: { select: { tier: true } },
+          },
+        },
+      },
+    });
+
+    const items = rows
+      .filter((row) => !isDemoLeaderboardUser(row.user.email))
+      .slice(0, take)
+      .map((row) => ({
+        displayName: maskDisplayNameForPublic(row.user.displayName),
+        amount: Number(row.traderShare),
+        tier: row.user.virtualAccount?.tier ?? 'BRONZE',
+        source: row.source,
+        rewardTier: row.rewardTier,
+        weekNumber: row.weekNumber,
+        year: row.year,
+        paidAt:
+          row.processedAt?.toISOString() ??
+          row.requestedAt.toISOString(),
+      }));
+
+    const totalPaidAgg = await this.prisma.payout.aggregate({
+      where: { status: 'PAID' },
+      _sum: { traderShare: true },
+      _count: true,
+    });
+
+    return {
+      items,
+      totalPaid: Number(totalPaidAgg._sum.traderShare ?? 0),
+      payoutCount: totalPaidAgg._count,
+      refreshedAt: new Date().toISOString(),
+    };
   }
 
   async handlePayoutIpn(body: Record<string, unknown>) {

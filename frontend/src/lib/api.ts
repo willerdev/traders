@@ -514,6 +514,13 @@ class ApiClient {
     },
   };
 
+  public = {
+    recentPayouts: (limit = 12) =>
+      this.request<PublicPayoutFeed>(
+        `/public/recent-payouts?limit=${limit}`,
+      ),
+  };
+
   payments = {
     createRegistration: (network: string, promoCode?: string) =>
       this.request<{
@@ -775,6 +782,24 @@ export interface PayoutRewardStatus {
   winsToNextTier: number;
   tiers: PayoutRewardTierDef[];
   recentResults: ("W" | "L")[];
+}
+
+export interface PublicPayoutHighlight {
+  displayName: string;
+  amount: number;
+  tier: string;
+  source: string;
+  rewardTier: string | null;
+  weekNumber: number;
+  year: number;
+  paidAt: string;
+}
+
+export interface PublicPayoutFeed {
+  items: PublicPayoutHighlight[];
+  totalPaid: number;
+  payoutCount: number;
+  refreshedAt: string;
 }
 
 export interface ProfitShareStatus {

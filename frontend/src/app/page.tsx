@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { RecentPayoutsShowcase } from "@/components/marketing/recent-payouts-showcase";
 
 const features = [
   {
@@ -126,6 +127,8 @@ export default function HomePage() {
           ))}
         </motion.div>
       </section>
+
+      <RecentPayoutsShowcase />
 
       {/* Features */}
       <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6">

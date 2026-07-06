@@ -719,4 +719,88 @@ export class NotificationService {
       text: `Copy trade blocked for ${data.signalId}: ${data.reason}`,
     });
   }
+
+  rankImproved(
+    userId: string,
+    data: {
+      oldRank: number;
+      newRank: number;
+      weekNumber: number;
+      year: number;
+    },
+  ) {
+    this.dispatch(this.sendRankImproved(userId, data), 'Rank improved');
+  }
+
+  rankDropped(
+    userId: string,
+    data: {
+      oldRank: number;
+      newRank: number;
+      weekNumber: number;
+      year: number;
+    },
+  ) {
+    this.dispatch(this.sendRankDropped(userId, data), 'Rank dropped');
+  }
+
+  private async sendRankImproved(
+    userId: string,
+    data: {
+      oldRank: number;
+      newRank: number;
+      weekNumber: number;
+      year: number;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+
+    const delta = data.oldRank - data.newRank;
+    const html = this.email.layout(
+      'You moved up the leaderboard',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Great work — you climbed <strong>${delta}</strong> spot${delta === 1 ? '' : 's'} on the weekly leaderboard.</p>
+      <p>You are now <strong>#${data.newRank}</strong> (was #${data.oldRank}) for week ${data.weekNumber}, ${data.year}.</p>
+      <p>Keep submitting quality setups and protecting your risk. Momentum is on your side.</p>
+      ${this.email.button(`${this.email.frontendUrl}/leaderboard`, 'View leaderboard')}`,
+    );
+
+    return this.email.send({
+      to: user.email,
+      subject: `Congratulations — you are now #${data.newRank} on TraderRank`,
+      html,
+      text: `You moved from #${data.oldRank} to #${data.newRank} on the leaderboard.`,
+    });
+  }
+
+  private async sendRankDropped(
+    userId: string,
+    data: {
+      oldRank: number;
+      newRank: number;
+      weekNumber: number;
+      year: number;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+
+    const delta = data.newRank - data.oldRank;
+    const html = this.email.layout(
+      'Leaderboard update — time to push back',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your weekly rank shifted from <strong>#${data.oldRank}</strong> to <strong>#${data.newRank}</strong> (${delta} spot${delta === 1 ? '' : 's'}).</p>
+      <p>Every trader hits rough patches. Focus on your process: clear entries, disciplined stops, and one quality setup at a time.</p>
+      <p>The leaderboard refreshes throughout the week — you can climb back with your next wins.</p>
+      ${this.email.button(`${this.email.frontendUrl}/dashboard`, 'Open dashboard')}`,
+    );
+
+    return this.email.send({
+      to: user.email,
+      subject: `Keep pushing — leaderboard update (#${data.newRank})`,
+      html,
+      text: `Your rank moved from #${data.oldRank} to #${data.newRank}. Stay focused and keep trading your plan.`,
+    });
+  }
 }
