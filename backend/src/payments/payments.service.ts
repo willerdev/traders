@@ -20,7 +20,7 @@ import { SubscriptionPlan } from '@prisma/client';
 import { ProfitShareService } from '../profit-share/profit-share.service';
 import { resolveProfitShareConfig } from '../common/profit-share.util';
 import { ReferralsService } from '../referrals/referrals.service';
-import { Mt5SyncService } from '../mt5-sync/mt5-sync.service';
+import { Mt5SyncBillingService } from '../mt5-sync/mt5-sync-billing.service';
 
 @Injectable()
 export class PaymentsService {
@@ -40,7 +40,7 @@ export class PaymentsService {
     private blockchain: BlockchainScannerService,
     private profitShare: ProfitShareService,
     private referrals: ReferralsService,
-    private mt5Sync: Mt5SyncService,
+    private mt5SyncBilling: Mt5SyncBillingService,
   ) {}
 
   private ipnUrl() {
@@ -749,7 +749,7 @@ export class PaymentsService {
   }
 
   async getMt5SyncPaymentStatus(userId: string) {
-    const status = await this.mt5Sync.getStatus(userId);
+    const status = await this.mt5SyncBilling.getStatus(userId);
     const latestPayment = await this.prisma.payment.findFirst({
       where: { userId, purpose: 'mt5_sync' },
       orderBy: { createdAt: 'desc' },
@@ -809,7 +809,7 @@ export class PaymentsService {
       },
     });
 
-    await this.mt5Sync.activate(payment.userId);
+    await this.mt5SyncBilling.activate(payment.userId);
 
     this.logger.log(
       `MT5 Live Sync payment ${paymentId} confirmed via ${opts?.source ?? 'nowpayments'}`,

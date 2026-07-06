@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { Mt5SyncLinkStatus, TradeDirection } from '@prisma/client';
 import { TradeRiskService } from '../ai/trade-risk.service';
 import { normalizeChartSymbol } from '../ai/chart-setup.util';
@@ -7,12 +7,12 @@ import {
   hasActiveMt5Sync,
   isPlatformOriginatedClientId,
 } from '../common/mt5-sync.util';
-import { computeMt5SyncExpiry } from '../common/mt5-sync.util';
 import { MetaApiPosition, MetaApiService } from '../metaapi/metaapi.service';
 import { buildMetaApiTradeIdentifiers } from '../metaapi/metaapi-order.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { SignalsService } from '../signals/signals.service';
 import { PlatformNotificationsService } from '../platform-notifications/platform-notifications.service';
+import { Mt5SyncBillingService } from './mt5-sync-billing.service';
 
 @Injectable()
 export class Mt5SyncService {
@@ -21,82 +21,23 @@ export class Mt5SyncService {
   constructor(
     private prisma: PrismaService,
     private metaApi: MetaApiService,
+    @Inject(forwardRef(() => SignalsService))
     private signals: SignalsService,
     private tradeRisk: TradeRiskService,
     private platformNotifications: PlatformNotificationsService,
+    private billing: Mt5SyncBillingService,
   ) {}
 
-  async getStatus(userId: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        mt5SyncActive: true,
-        mt5SyncEnrolledAt: true,
-        mt5SyncExpiresAt: true,
-        mt5SyncEnabled: true,
-        metaApiAccountId: true,
-      },
-    });
-    if (!user) {
-      return {
-        active: false,
-        enabled: false,
-        enrolledAt: null,
-        expiresAt: null,
-        linkedAccountId: null,
-        openLinks: 0,
-      };
-    }
-
-    const openLinks = await this.prisma.mt5SyncLink.count({
-      where: { userId, status: Mt5SyncLinkStatus.OPEN },
-    });
-
-    const latestLink = await this.prisma.mt5SyncLink.findFirst({
-      where: { userId },
-      orderBy: { lastSyncedAt: 'desc' },
-      select: { lastSyncedAt: true },
-    });
-
-    return {
-      active: hasActiveMt5Sync(user),
-      enabled: user.mt5SyncEnabled,
-      enrolledAt: user.mt5SyncEnrolledAt?.toISOString() ?? null,
-      expiresAt: user.mt5SyncExpiresAt?.toISOString() ?? null,
-      linkedAccountId: user.metaApiAccountId,
-      openLinks,
-      lastSyncedAt: latestLink?.lastSyncedAt?.toISOString() ?? null,
-    };
+  getStatus(userId: string) {
+    return this.billing.getStatus(userId);
   }
 
-  async setEnabled(userId: string, enabled: boolean) {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { mt5SyncEnabled: enabled },
-    });
-    return this.getStatus(userId);
+  setEnabled(userId: string, enabled: boolean) {
+    return this.billing.setEnabled(userId, enabled);
   }
 
-  async activate(userId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new Error('User not found');
-
-    const expiresAt = computeMt5SyncExpiry(
-      new Date(),
-      user.mt5SyncExpiresAt,
-    );
-
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        mt5SyncActive: true,
-        mt5SyncEnrolledAt: user.mt5SyncEnrolledAt ?? new Date(),
-        mt5SyncExpiresAt: expiresAt,
-      },
-    });
-
-    this.logger.log(`MT5 Live Sync activated for user ${userId} until ${expiresAt.toISOString()}`);
-    return this.getStatus(userId);
+  activate(userId: string) {
+    return this.billing.activate(userId);
   }
 
   async deactivateExpired() {

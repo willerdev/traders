@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { Mt5SyncService } from './mt5-sync.service';
 import {
   AdminMt5SyncController,
@@ -10,9 +10,18 @@ import { SignalsModule } from '../signals/signals.module';
 import { PlatformNotificationsModule } from '../platform-notifications/platform-notifications.module';
 import { AiModule } from '../ai/ai.module';
 import { AuthModule } from '../auth/auth.module';
+import { Mt5SyncBillingModule } from './mt5-sync-billing.module';
 
 @Module({
-  imports: [PrismaModule, MetaApiModule, SignalsModule, AiModule, AuthModule, PlatformNotificationsModule],
+  imports: [
+    PrismaModule,
+    MetaApiModule,
+    forwardRef(() => SignalsModule),
+    AiModule,
+    AuthModule,
+    PlatformNotificationsModule,
+    Mt5SyncBillingModule,
+  ],
   controllers: [Mt5SyncController, AdminMt5SyncController],
   providers: [Mt5SyncService],
   exports: [Mt5SyncService],
