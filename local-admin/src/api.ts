@@ -298,8 +298,13 @@ export const api = {
     );
   },
 
-  metaApiCopyDashboard: () =>
-    request<CopyTradingDashboard>("/admin/hub/metaapi/copy-dashboard"),
+  metaApiCopyDashboard: (options?: { includeTerminal?: boolean }) => {
+    const q =
+      options?.includeTerminal === false ? "?includeTerminal=0" : "";
+    return request<CopyTradingDashboard>(
+      `/admin/hub/metaapi/copy-dashboard${q}`,
+    );
+  },
   addCopyPoolTrader: (userId: string) =>
     request<CopyPoolMutationResult>("/admin/hub/metaapi/copy-pool", {
       method: "POST",
@@ -822,6 +827,12 @@ export type CopyTradingLeader = {
   winRate: number;
   profit: number;
   source?: "pool" | "auto";
+  platformWinRate?: number;
+  platformTotalTrades?: number;
+  copyTradesTotal?: number;
+  copyTradesClosed?: number;
+  copyWinRate?: number | null;
+  copyTotalProfit?: number;
 };
 
 export type CopyPoolTraderRow = {

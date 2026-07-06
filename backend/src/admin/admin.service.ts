@@ -842,8 +842,8 @@ export class AdminService {
     return this.metaApi.getAccount(accountId);
   }
 
-  getCopyTradingDashboard() {
-    return this.signals.getCopyTradingDashboard();
+  getCopyTradingDashboard(includeTerminal = true) {
+    return this.signals.getCopyTradingDashboard(includeTerminal);
   }
 
   getMetaApiTerminal(accountId?: string) {

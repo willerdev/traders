@@ -125,7 +125,18 @@ export function useMt5Terminal(
     const timer = window.setTimeout(() => {
       void load({ background: Boolean(cached) });
     }, 0);
-    return () => window.clearTimeout(timer);
+    const slowTimer = window.setTimeout(() => {
+      if (!dataRef.current) {
+        setError(
+          "MT5 is taking longer than usual — the server may be waking up. Pull to refresh or wait a moment.",
+        );
+        setLoading(false);
+      }
+    }, 12000);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearTimeout(slowTimer);
+    };
   }, [hasHydrated, canLoad, userId, load]);
 
   const loadQuotes = useCallback(async () => {

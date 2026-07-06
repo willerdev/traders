@@ -44,6 +44,113 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleString();
 }
 
+function fmtPercent(value: number | null | undefined, asFraction = false) {
+  if (value == null || !Number.isFinite(value)) return "—";
+  const pct = asFraction ? value * 100 : value;
+  return `${pct.toFixed(1)}%`;
+}
+
+function SkeletonLine({
+  width = "100%",
+  className = "skeleton-line",
+}: {
+  width?: string;
+  className?: string;
+}) {
+  return <div className={`skeleton ${className}`} style={{ width }} />;
+}
+
+function Mt5CopyAccountSkeleton() {
+  return (
+    <>
+      <div className="cards">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="skeleton-card">
+            <SkeletonLine width="45%" />
+            <div style={{ marginTop: "0.75rem" }}>
+              <SkeletonLine width="70%" className="skeleton-line-lg" />
+            </div>
+          </div>
+        ))}
+      </div>
+      <h3 style={{ marginTop: "1.5rem" }}>Running trades</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Side</th>
+            <th>Volume</th>
+            <th>Open</th>
+            <th>Current</th>
+            <th>S/L</th>
+            <th>T/P</th>
+            <th>P/L</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <tr key={i} className="skeleton-table-row">
+              {Array.from({ length: 8 }).map((__, j) => (
+                <td key={j}>
+                  <SkeletonLine width={j === 0 ? "70%" : "55%"} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
+function Mt5CopySettingsSkeleton() {
+  return (
+    <>
+      <div className="kyc-card" style={{ marginBottom: "1rem" }}>
+        <SkeletonLine width="30%" className="skeleton-line-lg" />
+        <div style={{ marginTop: "1rem", display: "grid", gap: "0.75rem" }}>
+          <SkeletonLine width="100%" />
+          <SkeletonLine width="100%" />
+          <SkeletonLine width="8rem" />
+        </div>
+      </div>
+      <div className="kyc-card" style={{ marginBottom: "1rem" }}>
+        <SkeletonLine width="35%" className="skeleton-line-lg" />
+        <div style={{ marginTop: "1rem" }}>
+          <SkeletonLine width="100%" />
+        </div>
+        <table style={{ marginTop: "1rem" }}>
+          <tbody>
+            {Array.from({ length: 3 }).map((_, i) => (
+              <tr key={i} className="skeleton-table-row">
+                {Array.from({ length: 6 }).map((__, j) => (
+                  <td key={j}>
+                    <SkeletonLine width="60%" />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <SkeletonLine width="40%" className="skeleton-line-lg" />
+      <table style={{ marginTop: "0.75rem" }}>
+        <tbody>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <tr key={i} className="skeleton-table-row">
+              {Array.from({ length: 9 }).map((__, j) => (
+                <td key={j}>
+                  <SkeletonLine width="55%" />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
 function needsPaymentReview(u: UserRow) {
   return u.status === "PENDING_PAYMENT";
 }
@@ -187,6 +294,11 @@ export default function App() {
   const [copyRiskAmount, setCopyRiskAmount] = useState("");
   const [copyNotifyEmail, setCopyNotifyEmail] = useState("");
   const [copySettingsSaving, setCopySettingsSaving] = useState(false);
+  const [copySubTab, setCopySubTab] = useState<"account" | "settings">("account");
+  const [copyDashboardLoading, setCopyDashboardLoading] = useState(false);
+  const [copyTerminalLoading, setCopyTerminalLoading] = useState(false);
+  const copyLoadPromiseRef = useRef<Promise<void> | null>(null);
+  const copyPrefetchedRef = useRef(false);
   const [mt5SyncOverview, setMt5SyncOverview] = useState<Mt5SyncAdminOverview | null>(null);
   const [mt5SyncFeeInput, setMt5SyncFeeInput] = useState("5");
   const [mt5SyncSaving, setMt5SyncSaving] = useState(false);
@@ -281,6 +393,64 @@ export default function App() {
     }
   }, []);
 
+  const loadCopyDashboard = useCallback(
+    async (options?: { fastOnly?: boolean; terminalOnly?: boolean }) => {
+      const terminalOnly = options?.terminalOnly === true;
+      const fastOnly = options?.fastOnly === true;
+
+      if (!terminalOnly) {
+        setCopyDashboardLoading(true);
+        try {
+          const fast = await api.metaApiCopyDashboard({ includeTerminal: false });
+          setCopyDashboard((prev) => ({
+            ...fast,
+            terminal: prev?.terminal ?? null,
+            stats: prev?.terminal ? prev.stats : fast.stats,
+          }));
+          setCopyRiskAmount(
+            String(fast.copyRiskPercent ?? fast.riskPercent ?? 5),
+          );
+          setCopyNotifyEmail(fast.copyNotifyEmail ?? "willeratmit12@gmail.com");
+        } catch (err) {
+          setMessage(
+            err instanceof Error ? err.message : "Failed to load copy pool",
+          );
+        } finally {
+          setCopyDashboardLoading(false);
+        }
+      }
+
+      if (fastOnly) return;
+
+      setCopyTerminalLoading(true);
+      try {
+        const full = await api.metaApiCopyDashboard({ includeTerminal: true });
+        setCopyDashboard(full);
+      } catch {
+        /* keep fast snapshot if live account sync fails */
+      } finally {
+        setCopyTerminalLoading(false);
+      }
+    },
+    [],
+  );
+
+  const prefetchCopyDashboard = useCallback(async () => {
+    if (copyLoadPromiseRef.current) return copyLoadPromiseRef.current;
+
+    const run = (async () => {
+      await loadCopyDashboard({ fastOnly: true });
+      void loadCopyDashboard({ terminalOnly: true });
+    })();
+
+    copyLoadPromiseRef.current = run;
+    try {
+      await run;
+    } finally {
+      copyLoadPromiseRef.current = null;
+    }
+  }, [loadCopyDashboard]);
+
   const loadTab = useCallback(async (active: Tab) => {
     setLoading(true);
     setMessage("");
@@ -370,10 +540,12 @@ export default function App() {
         setRefPaidAmount(String(settings.paidRewardUsdt));
         setReferrers(list);
       } else if (active === "mt5Copy") {
-        const dashboard = await api.metaApiCopyDashboard();
-        setCopyDashboard(dashboard);
-        setCopyRiskAmount(String(dashboard.copyRiskPercent ?? dashboard.riskPercent ?? 5));
-        setCopyNotifyEmail(dashboard.copyNotifyEmail ?? "willeratmit12@gmail.com");
+        if (copyDashboard) {
+          void loadCopyDashboard({ terminalOnly: true });
+        } else {
+          await loadCopyDashboard({ fastOnly: true });
+          void loadCopyDashboard({ terminalOnly: true });
+        }
       } else if (active === "mt5Sync") {
         const overview = await api.mt5SyncOverview();
         setMt5SyncOverview(overview);
@@ -418,7 +590,13 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [suspiciousOnly, selectedMetaApiAccountId, loadMetaApiTerminal, setupFilter]);
+  }, [suspiciousOnly, selectedMetaApiAccountId, loadMetaApiTerminal, setupFilter, copyDashboard, loadCopyDashboard]);
+
+  useEffect(() => {
+    if (!authed || copyPrefetchedRef.current) return;
+    copyPrefetchedRef.current = true;
+    void prefetchCopyDashboard();
+  }, [authed, prefetchCopyDashboard]);
 
   useEffect(() => {
     if (tab !== "payouts" || !authed) return;
@@ -2820,14 +2998,184 @@ export default function App() {
               <button
                 type="button"
                 className="btn-secondary"
-                onClick={() => void loadTab("mt5Copy")}
+                onClick={() => {
+                  void loadCopyDashboard();
+                }}
+                disabled={copyDashboardLoading || copyTerminalLoading}
               >
-                Refresh
+                {copyDashboardLoading || copyTerminalLoading ? "Refreshing…" : "Refresh"}
               </button>
             </div>
 
-            {!copyDashboard ? (
-              <p className="muted">Loading copy pool…</p>
+            <div className="sub-tabs">
+              <button
+                type="button"
+                className={`sub-tab${copySubTab === "account" ? " active" : ""}`}
+                onClick={() => setCopySubTab("account")}
+              >
+                Account
+              </button>
+              <button
+                type="button"
+                className={`sub-tab${copySubTab === "settings" ? " active" : ""}`}
+                onClick={() => setCopySubTab("settings")}
+              >
+                Settings
+              </button>
+            </div>
+
+            {!copyDashboard && copyDashboardLoading ? (
+              copySubTab === "account" ? (
+                <Mt5CopyAccountSkeleton />
+              ) : (
+                <Mt5CopySettingsSkeleton />
+              )
+            ) : !copyDashboard ? (
+              <p className="muted">Could not load copy pool — try Refresh.</p>
+            ) : copySubTab === "account" ? (
+              <>
+                {!copyDashboard.configured ? (
+                  <div className="kyc-card">
+                    <p>{copyDashboard.message ?? "No MetaAPI account available."}</p>
+                    <p className="muted" style={{ marginTop: "0.5rem" }}>
+                      Connect and deploy accounts in MetaAPI first. Optionally set{" "}
+                      <code>METAAPI_COPY_ACCOUNT_ID</code> to pin a specific pool account.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {copyTerminalLoading && (
+                      <p className="copy-sync-hint">Syncing live MT5 account…</p>
+                    )}
+                    {"copyAccountSource" in copyDashboard &&
+                      copyDashboard.copyAccountSource === "auto" && (
+                        <p className="muted" style={{ marginBottom: "1rem" }}>
+                          Using connected MetaAPI account{" "}
+                          <code>{copyDashboard.copyAccountId}</code> (auto-selected — set{" "}
+                          <code>METAAPI_COPY_ACCOUNT_ID</code> to override).
+                        </p>
+                      )}
+                    <div className="cards">
+                      <div className="card">
+                        <div className="label">Balance</div>
+                        <div className="value">
+                          {copyTerminalLoading && !copyDashboard.terminal ? (
+                            <SkeletonLine width="5rem" className="skeleton-line-lg" />
+                          ) : (
+                            <>
+                              {fmtMoney(copyDashboard.terminal?.information?.balance ?? 0)}{" "}
+                              {copyDashboard.terminal?.information?.currency ?? "USD"}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div className="card">
+                        <div className="label">Equity</div>
+                        <div className="value">
+                          {copyTerminalLoading && !copyDashboard.terminal ? (
+                            <SkeletonLine width="5rem" className="skeleton-line-lg" />
+                          ) : (
+                            fmtMoney(copyDashboard.terminal?.information?.equity ?? 0)
+                          )}
+                        </div>
+                      </div>
+                      <div className="card">
+                        <div className="label">Floating P/L</div>
+                        <div className="value">
+                          {copyTerminalLoading && !copyDashboard.terminal ? (
+                            <SkeletonLine width="4rem" className="skeleton-line-lg" />
+                          ) : (
+                            fmtMoney(copyDashboard.stats.floatingProfit)
+                          )}
+                        </div>
+                      </div>
+                      <div className="card">
+                        <div className="label">Realized P/L</div>
+                        <div className="value">
+                          {fmtMoney(copyDashboard.stats.totalRealizedProfit)}
+                        </div>
+                      </div>
+                      <div className="card">
+                        <div className="label">Open copies</div>
+                        <div className="value">{copyDashboard.stats.openCount}</div>
+                      </div>
+                      <div className="card">
+                        <div className="label">Copy account</div>
+                        <div className="value" style={{ fontSize: "0.75rem" }}>
+                          {copyDashboard.copyAccountId ?? "—"}
+                        </div>
+                      </div>
+                    </div>
+
+                    <h3 style={{ marginTop: "1.5rem" }}>Running trades</h3>
+                    <p className="muted" style={{ margin: "0.35rem 0 0.75rem" }}>
+                      Live positions on the connected MT5 copy account.
+                    </p>
+                    {copyTerminalLoading && !copyDashboard.terminal ? (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Symbol</th>
+                            <th>Side</th>
+                            <th>Volume</th>
+                            <th>Open</th>
+                            <th>Current</th>
+                            <th>S/L</th>
+                            <th>T/P</th>
+                            <th>P/L</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Array.from({ length: 3 }).map((_, i) => (
+                            <tr key={i} className="skeleton-table-row">
+                              {Array.from({ length: 8 }).map((__, j) => (
+                                <td key={j}>
+                                  <SkeletonLine width={j === 0 ? "70%" : "55%"} />
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Symbol</th>
+                            <th>Side</th>
+                            <th>Volume</th>
+                            <th>Open</th>
+                            <th>Current</th>
+                            <th>S/L</th>
+                            <th>T/P</th>
+                            <th>P/L</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(copyDashboard.terminal?.positions ?? []).length === 0 ? (
+                            <tr>
+                              <td colSpan={8}>No open positions on copy account</td>
+                            </tr>
+                          ) : (
+                            (copyDashboard.terminal?.positions ?? []).map((p) => (
+                              <tr key={p.id}>
+                                <td>{p.symbol}</td>
+                                <td>{p.type.includes("BUY") ? "BUY" : "SELL"}</td>
+                                <td>{p.volume}</td>
+                                <td>{p.openPrice}</td>
+                                <td>{p.currentPrice}</td>
+                                <td>{p.stopLoss ?? "—"}</td>
+                                <td>{p.takeProfit ?? "—"}</td>
+                                <td>{fmtMoney(p.profit + p.unrealizedProfit)}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    )}
+                  </>
+                )}
+              </>
             ) : (
               <>
                 <div className="kyc-card" style={{ marginBottom: "1rem" }}>
@@ -3061,83 +3409,33 @@ export default function App() {
                   </table>
                 </div>
 
-                {!copyDashboard.configured ? (
-                  <div className="kyc-card">
-                    <p>{copyDashboard.message ?? "No MetaAPI account available."}</p>
-                    <p className="muted" style={{ marginTop: "0.5rem" }}>
-                      Connect and deploy accounts in MetaAPI first. Optionally set{" "}
-                      <code>METAAPI_COPY_ACCOUNT_ID</code> to pin a specific pool account.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                {"copyAccountSource" in copyDashboard &&
-                  copyDashboard.copyAccountSource === "auto" && (
-                    <p className="muted" style={{ marginBottom: "1rem" }}>
-                      Using connected MetaAPI account{" "}
-                      <code>{copyDashboard.copyAccountId}</code> (auto-selected — set{" "}
-                      <code>METAAPI_COPY_ACCOUNT_ID</code> to override).
-                    </p>
-                  )}
-                <div className="cards">
-                  <div className="card">
-                    <div className="label">Balance</div>
-                    <div className="value">
-                      {fmtMoney(copyDashboard.terminal?.information?.balance ?? 0)}{" "}
-                      {copyDashboard.terminal?.information?.currency ?? "USD"}
-                    </div>
-                  </div>
-                  <div className="card">
-                    <div className="label">Equity</div>
-                    <div className="value">
-                      {fmtMoney(copyDashboard.terminal?.information?.equity ?? 0)}
-                    </div>
-                  </div>
-                  <div className="card">
-                    <div className="label">Floating P/L</div>
-                    <div className="value">
-                      {fmtMoney(copyDashboard.stats.floatingProfit)}
-                    </div>
-                  </div>
-                  <div className="card">
-                    <div className="label">Realized P/L</div>
-                    <div className="value">
-                      {fmtMoney(copyDashboard.stats.totalRealizedProfit)}
-                    </div>
-                  </div>
-                  <div className="card">
-                    <div className="label">Open copies</div>
-                    <div className="value">{copyDashboard.stats.openCount}</div>
-                  </div>
-                  <div className="card">
-                    <div className="label">Copy account</div>
-                    <div className="value" style={{ fontSize: "0.75rem" }}>
-                      {copyDashboard.copyAccountId ?? "—"}
-                    </div>
-                  </div>
-                </div>
-
-                <h3 style={{ marginTop: "1.5rem" }}>
+                <h3 style={{ marginTop: "0.5rem" }}>
                   {copyDashboard.poolMode === "manual"
                     ? "Traders being copied"
                     : "Top 3 traders copied (auto)"}
                 </h3>
+                <p className="muted" style={{ margin: "0.35rem 0 0.75rem" }}>
+                  Weekly leaderboard stats plus historical win rates from mirrored copy
+                  trades on this account.
+                </p>
                 <table>
                   <thead>
                     <tr>
                       <th>Rank</th>
                       <th>Trader</th>
                       <th>Tier</th>
-                      <th>Score</th>
-                      <th>Win rate</th>
-                      <th>Profit</th>
+                      <th>Weekly win</th>
+                      <th>Platform win</th>
+                      <th>Copy win</th>
+                      <th>Copy trades</th>
+                      <th>Copy P/L</th>
                       <th>Source</th>
                     </tr>
                   </thead>
                   <tbody>
                     {copyDashboard.leaders.length === 0 ? (
                       <tr>
-                        <td colSpan={7}>No traders in copy pool</td>
+                        <td colSpan={9}>No traders in copy pool</td>
                       </tr>
                     ) : (
                       copyDashboard.leaders.map((leader) => (
@@ -3145,9 +3443,16 @@ export default function App() {
                           <td>#{leader.rank}</td>
                           <td>{leader.displayName}</td>
                           <td>{leader.tier}</td>
-                          <td>{leader.score}</td>
-                          <td>{(leader.winRate * 100).toFixed(1)}%</td>
-                          <td>{fmtMoney(leader.profit)}</td>
+                          <td>{fmtPercent(leader.winRate)}</td>
+                          <td>{fmtPercent(leader.platformWinRate)}</td>
+                          <td>{fmtPercent(leader.copyWinRate, true)}</td>
+                          <td>
+                            {leader.copyTradesClosed ?? 0} closed
+                            {(leader.copyTradesTotal ?? 0) > (leader.copyTradesClosed ?? 0)
+                              ? ` · ${leader.copyTradesTotal} total`
+                              : ""}
+                          </td>
+                          <td>{fmtMoney(leader.copyTotalProfit ?? 0)}</td>
                           <td>{leader.source === "pool" ? "Manual" : "Auto"}</td>
                         </tr>
                       ))
@@ -3155,39 +3460,10 @@ export default function App() {
                   </tbody>
                 </table>
 
-                <h3 style={{ marginTop: "1.5rem" }}>Live positions</h3>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Symbol</th>
-                      <th>Side</th>
-                      <th>Volume</th>
-                      <th>Open</th>
-                      <th>Current</th>
-                      <th>P/L</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(copyDashboard.terminal?.positions ?? []).length === 0 ? (
-                      <tr>
-                        <td colSpan={6}>No open positions on copy account</td>
-                      </tr>
-                    ) : (
-                      (copyDashboard.terminal?.positions ?? []).map((p) => (
-                        <tr key={p.id}>
-                          <td>{p.symbol}</td>
-                          <td>{p.type.includes("BUY") ? "BUY" : "SELL"}</td>
-                          <td>{p.volume}</td>
-                          <td>{p.openPrice}</td>
-                          <td>{p.currentPrice}</td>
-                          <td>{fmtMoney(p.profit)}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-
                 <h3 style={{ marginTop: "1.5rem" }}>Copy journal</h3>
+                <p className="muted" style={{ margin: "0.35rem 0 0.75rem" }}>
+                  Recent mirrored trades and outcomes on the copy account.
+                </p>
                 <table>
                   <thead>
                     <tr>
@@ -3222,8 +3498,6 @@ export default function App() {
                     )}
                   </tbody>
                 </table>
-                  </>
-                )}
               </>
             )}
           </>

@@ -437,6 +437,85 @@ th {
   gap: 0.75rem;
 }
 
+.sub-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid #262626;
+  padding-bottom: 0;
+}
+
+.sub-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #a3a3a3;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.625rem 1rem;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+}
+
+.sub-tab:hover {
+  color: #fafafa;
+}
+
+.sub-tab.active {
+  color: #fafafa;
+  border-bottom-color: #6366f1;
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #1f1f1f 0%, #2a2a2a 50%, #1f1f1f 100%);
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+.skeleton-line {
+  height: 0.875rem;
+}
+
+.skeleton-line-lg {
+  height: 1.5rem;
+}
+
+.skeleton-card {
+  min-height: 4.5rem;
+  padding: 1rem;
+  border-radius: 10px;
+  border: 1px solid #262626;
+  background: #111;
+}
+
+.skeleton-table-row td {
+  padding: 0.75rem 0.5rem;
+}
+
+.skeleton-pill {
+  height: 1.75rem;
+  width: 7rem;
+  border-radius: 999px;
+}
+
+.copy-sync-hint {
+  font-size: 0.75rem;
+  color: #737373;
+  margin: 0 0 0.75rem;
+}
+
 .filter-toggle {
   display: inline-flex;
   align-items: center;

@@ -268,8 +268,15 @@ export class AdminController {
   }
 
   @Get('hub/metaapi/copy-dashboard')
-  getCopyTradingDashboard() {
-    return this.adminService.getCopyTradingDashboard();
+  getCopyTradingDashboard(
+    @Query('includeTerminal') includeTerminal?: string,
+  ) {
+    const include =
+      includeTerminal === undefined ||
+      includeTerminal === '' ||
+      includeTerminal === '1' ||
+      includeTerminal === 'true';
+    return this.adminService.getCopyTradingDashboard(include);
   }
 
   @Get('hub/metaapi/terminal')

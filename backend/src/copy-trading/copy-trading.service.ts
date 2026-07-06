@@ -47,6 +47,12 @@ export type CopyTargetLeader = {
   winRate: number;
   profit: number;
   source: 'pool' | 'auto';
+  platformWinRate?: number;
+  platformTotalTrades?: number;
+  copyTradesTotal?: number;
+  copyTradesClosed?: number;
+  copyWinRate?: number | null;
+  copyTotalProfit?: number;
 };
 
 export type CopyPoolTraderRow = {
@@ -273,7 +279,10 @@ export class CopyTradingService {
     return {
       ok: true,
       poolTraders: await this.listPoolTraders(),
-      leaders: await this.getActiveCopyTargets(),
+      leaders: await this.enrichLeadersWithCopyStats(
+        await this.getActiveCopyTargets(),
+        await this.metaApi.resolveCopyAccountIdAsync(),
+      ),
     };
   }
 
@@ -295,7 +304,10 @@ export class CopyTradingService {
     return {
       ok: true,
       poolTraders: await this.listPoolTraders(),
-      leaders: await this.getActiveCopyTargets(),
+      leaders: await this.enrichLeadersWithCopyStats(
+        await this.getActiveCopyTargets(),
+        await this.metaApi.resolveCopyAccountIdAsync(),
+      ),
     };
   }
 
@@ -573,7 +585,82 @@ export class CopyTradingService {
     }
   }
 
-  async getCopyDashboard() {
+  private async enrichLeadersWithCopyStats(
+    leaders: CopyTargetLeader[],
+    copyAccountId: string | null,
+  ): Promise<CopyTargetLeader[]> {
+    if (leaders.length === 0) return leaders;
+
+    const userIds = leaders.map((l) => l.userId);
+    const [virtualAccounts, copyRows] = await Promise.all([
+      this.prisma.virtualAccount.findMany({
+        where: { userId: { in: userIds } },
+        select: {
+          userId: true,
+          winRate: true,
+          totalTrades: true,
+          winningTrades: true,
+        },
+      }),
+      copyAccountId
+        ? this.prisma.copyTrade.findMany({
+            where: {
+              copyAccountId,
+              sourceUserId: { in: userIds },
+            },
+            select: {
+              sourceUserId: true,
+              status: true,
+              profit: true,
+            },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const virtualByUser = new Map(
+      virtualAccounts.map((row) => [row.userId, row]),
+    );
+    const copyByUser = new Map<
+      string,
+      { total: number; closed: number; wins: number; profit: number }
+    >();
+
+    for (const row of copyRows) {
+      const bucket = copyByUser.get(row.sourceUserId) ?? {
+        total: 0,
+        closed: 0,
+        wins: 0,
+        profit: 0,
+      };
+      bucket.total += 1;
+      if (row.status === 'CLOSED') {
+        bucket.closed += 1;
+        const p = Number(row.profit ?? 0);
+        bucket.profit += p;
+        if (p > 0) bucket.wins += 1;
+      }
+      copyByUser.set(row.sourceUserId, bucket);
+    }
+
+    return leaders.map((leader) => {
+      const virtual = virtualByUser.get(leader.userId);
+      const copy = copyByUser.get(leader.userId);
+      return {
+        ...leader,
+        platformWinRate:
+          virtual != null ? Number(virtual.winRate) : undefined,
+        platformTotalTrades: virtual?.totalTrades,
+        copyTradesTotal: copy?.total ?? 0,
+        copyTradesClosed: copy?.closed ?? 0,
+        copyWinRate:
+          copy && copy.closed > 0 ? copy.wins / copy.closed : null,
+        copyTotalProfit: copy?.profit ?? 0,
+      };
+    });
+  }
+
+  async getCopyDashboard(options?: { includeTerminal?: boolean }) {
+    const includeTerminal = options?.includeTerminal !== false;
     const copyAccountId = await this.metaApi.resolveCopyAccountIdAsync();
     const explicitCopyId = this.metaApi.getConfiguredCopyAccountId();
     const [leaders, poolTraders, weeklyLeaderboard, copySettings] =
@@ -584,6 +671,10 @@ export class CopyTradingService {
       this.getCopySettings(),
     ]);
     const poolMode = poolTraders.length > 0 ? 'manual' : 'auto';
+    const leadersWithStats = await this.enrichLeadersWithCopyStats(
+      leaders,
+      copyAccountId,
+    );
 
     if (!this.metaApi.isConfigured || !copyAccountId) {
       return {
@@ -597,7 +688,7 @@ export class CopyTradingService {
         copyRiskPercent: copySettings.copyRiskPercent,
         copyNotifyEmail: copySettings.copyNotifyEmail,
         riskPercent: copySettings.copyRiskPercent,
-        leaders,
+        leaders: leadersWithStats,
         terminal: null,
         journal: [],
         stats: {
@@ -609,7 +700,6 @@ export class CopyTradingService {
       };
     }
 
-    const terminal = await this.metaApi.getTerminalState(copyAccountId);
     const journalRows = await this.prisma.copyTrade.findMany({
       where: { copyAccountId },
       orderBy: { createdAt: 'desc' },
@@ -619,6 +709,56 @@ export class CopyTradingService {
         signal: { select: { signalId: true, status: true } },
       },
     });
+
+    if (!includeTerminal) {
+      const journal = journalRows.map((row) => ({
+        id: row.id,
+        signalId: row.signal.signalId,
+        sourceRank: row.sourceRank,
+        sourceName: row.sourceUser.displayName,
+        symbol: row.symbol,
+        direction: row.direction,
+        volume: row.volume != null ? Number(row.volume) : null,
+        entryPrice: row.entryPrice != null ? Number(row.entryPrice) : null,
+        stopLoss: Number(row.stopLoss),
+        takeProfit: Number(row.takeProfit),
+        status: row.status,
+        profit: row.profit != null ? Number(row.profit) : null,
+        notes: row.notes,
+        executedAt: row.executedAt,
+        closedAt: row.closedAt,
+        createdAt: row.createdAt,
+      }));
+
+      const openCount = journal.filter((j) => j.status === 'OPEN').length;
+      const closedCount = journal.filter((j) => j.status === 'CLOSED').length;
+      const totalRealizedProfit = journal
+        .filter((j) => j.status === 'CLOSED' && j.profit != null)
+        .reduce((sum, j) => sum + (j.profit ?? 0), 0);
+
+      return {
+        configured: true,
+        copyAccountId,
+        copyAccountSource: explicitCopyId ? 'env' : 'auto',
+        poolMode,
+        poolTraders,
+        weeklyLeaderboard,
+        copyRiskPercent: copySettings.copyRiskPercent,
+        copyNotifyEmail: copySettings.copyNotifyEmail,
+        riskPercent: copySettings.copyRiskPercent,
+        leaders: leadersWithStats,
+        terminal: null,
+        journal,
+        stats: {
+          openCount,
+          closedCount,
+          totalRealizedProfit,
+          floatingProfit: 0,
+        },
+      };
+    }
+
+    const terminal = await this.metaApi.getTerminalState(copyAccountId);
 
     const positionProfitById = new Map(
       (terminal.positions ?? []).map((p) => [p.id, p.profit + p.unrealizedProfit]),
@@ -671,7 +811,7 @@ export class CopyTradingService {
       copyRiskPercent: copySettings.copyRiskPercent,
       copyNotifyEmail: copySettings.copyNotifyEmail,
       riskPercent: copySettings.copyRiskPercent,
-      leaders,
+      leaders: leadersWithStats,
       terminal,
       journal,
       stats: {

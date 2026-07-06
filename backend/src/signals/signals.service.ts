@@ -116,8 +116,8 @@ export class SignalsService {
     }
   }
 
-  getCopyTradingDashboard() {
-    return this.copyTrading.getCopyDashboard();
+  getCopyTradingDashboard(includeTerminal = true) {
+    return this.copyTrading.getCopyDashboard({ includeTerminal });
   }
 
   private validateEntryRange(dto: CreateSignalDto) {

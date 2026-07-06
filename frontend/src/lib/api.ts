@@ -19,6 +19,9 @@ function apiErrorMessage(body: unknown, statusText: string): string {
       if (msg === "Unauthorized") {
         return "Your session expired — log out and sign in again, then retry.";
       }
+      if (/validation failed/i.test(msg)) {
+        return "That MT5 account is no longer available. Retrying with another pool account — if this persists, contact support.";
+      }
       return msg;
     }
   }
@@ -53,9 +56,13 @@ class ApiClient {
     options: RequestInit = {},
   ): Promise<T> {
     const headers: Record<string, string> = {
-      "Content-Type": "application/json",
       ...(options.headers as Record<string, string>),
     };
+
+    const hasBody = options.body != null && options.body !== "";
+    if (hasBody && !headers["Content-Type"] && !headers["content-type"]) {
+      headers["Content-Type"] = "application/json";
+    }
 
     const token = this.getToken();
     if (token) {
@@ -104,7 +111,7 @@ class ApiClient {
     account: MetaApiAccountRow;
     settings?: UserSettings;
   }> {
-    const options = { method: "POST" as const, body: "{}" };
+    const options = { method: "POST" as const };
     try {
       return await this.request<{
         alreadyLinked: boolean;
