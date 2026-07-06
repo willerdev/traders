@@ -2,6 +2,16 @@ import { PrismaClient } from '@prisma/client';
 
 export const PAYOUT_REWARD_WINDOW = 10;
 
+export async function getWeeklyTierPayoutsEnabled(
+  prisma: PrismaClient,
+): Promise<boolean> {
+  const config = await prisma.platformConfig.findUnique({
+    where: { id: 'default' },
+    select: { weeklyTierPayoutsEnabled: true },
+  });
+  return config?.weeklyTierPayoutsEnabled ?? false;
+}
+
 export const PAYOUT_REWARD_TIERS = [
   {
     id: 'STARTER',

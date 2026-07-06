@@ -123,6 +123,16 @@ export class AdminController {
     return this.adminService.listPendingPayouts();
   }
 
+  @Get('payouts/weekly-tiers/settings')
+  getWeeklyTierPayoutSettings() {
+    return this.adminService.getWeeklyTierPayoutSettings();
+  }
+
+  @Post('payouts/weekly-tiers/settings')
+  updateWeeklyTierPayoutSettings(@Body('enabled') enabled: boolean) {
+    return this.adminService.setWeeklyTierPayoutsEnabled(Boolean(enabled));
+  }
+
   @Get('payouts/custody/wallet')
   getPayoutCustodyWallet() {
     return this.adminService.getNowPaymentsWallet();

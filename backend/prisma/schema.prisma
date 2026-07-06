@@ -686,6 +686,7 @@ model PlatformConfig {
   copyHealthMessage      String?
   copyHealthCheckedAt    DateTime?
   mt5SyncFeeUsdt         Decimal @default(5) @db.Decimal(10, 2)
+  weeklyTierPayoutsEnabled Boolean @default(false)
 
   @@map("platform_config")
 }

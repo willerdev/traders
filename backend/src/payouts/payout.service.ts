@@ -8,6 +8,7 @@ import { resolvePayoutDestination } from '../common/payout.util';
 import { TP_REWARD_USD } from '../common/constants';
 import {
   getPayoutRewardStatus,
+  getWeeklyTierPayoutsEnabled,
   resolvePayoutRewardTier,
 } from './payout-reward-tier.util';
 import { ProfitShareService } from '../profit-share/profit-share.service';
@@ -37,10 +38,31 @@ export class PayoutService {
   }
 
   async getRewardTier(userId: string) {
-    return getPayoutRewardStatus(this.prisma, userId);
+    const [status, weeklyPayoutsEnabled] = await Promise.all([
+      getPayoutRewardStatus(this.prisma, userId),
+      getWeeklyTierPayoutsEnabled(this.prisma),
+    ]);
+    return { ...status, weeklyPayoutsEnabled };
+  }
+
+  async isWeeklyTierPayoutsEnabled() {
+    return getWeeklyTierPayoutsEnabled(this.prisma);
+  }
+
+  async setWeeklyTierPayoutsEnabled(enabled: boolean) {
+    await this.prisma.platformConfig.upsert({
+      where: { id: 'default' },
+      create: { id: 'default', weeklyTierPayoutsEnabled: enabled },
+      update: { weeklyTierPayoutsEnabled: enabled },
+    });
+    return { weeklyTierPayoutsEnabled: enabled };
   }
 
   async calculateWeeklyPayouts(weekNumber: number, year: number) {
+    const weeklyTierPayoutsEnabled = await getWeeklyTierPayoutsEnabled(
+      this.prisma,
+    );
+
     const accounts = await this.prisma.virtualAccount.findMany({
       where: { weeklyProfit: { gt: 0 } },
       include: { user: true },
@@ -69,6 +91,10 @@ export class PayoutService {
         if (credited) {
           processedUserIds.push(account.userId);
         }
+        continue;
+      }
+
+      if (!weeklyTierPayoutsEnabled) {
         continue;
       }
 

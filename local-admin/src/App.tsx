@@ -263,6 +263,8 @@ export default function App() {
   const [tp1ApproveLoadingId, setTp1ApproveLoadingId] = useState<string | null>(null);
   const [kycQueue, setKycQueue] = useState<KycRow[]>([]);
   const [payouts, setPayouts] = useState<PayoutRow[]>([]);
+  const [weeklyTierPayoutsEnabled, setWeeklyTierPayoutsEnabled] = useState(false);
+  const [weeklyTierSaving, setWeeklyTierSaving] = useState(false);
   const [npWallet, setNpWallet] = useState<NowPaymentsWalletSummary | null>(null);
   const [custodyDeposits, setCustodyDeposits] = useState<CustodyDepositRow[]>([]);
   const [depositPendingCount, setDepositPendingCount] = useState(0);
@@ -483,16 +485,24 @@ export default function App() {
       } else if (active === "kyc") {
         setKycQueue(await api.kycPending());
       } else if (active === "payouts") {
-        const [payoutsRes, walletRes, depositsRes] = await Promise.allSettled([
+        const [payoutsRes, walletRes, depositsRes, tierSettingsRes] =
+          await Promise.allSettled([
           api.payouts(),
           api.nowPaymentsWallet(),
           api.custodyDeposits(20, false),
+          api.weeklyTierPayoutSettings(),
         ]);
 
         if (payoutsRes.status === "fulfilled") {
           setPayouts(payoutsRes.value.items);
         } else {
           throw payoutsRes.reason;
+        }
+
+        if (tierSettingsRes.status === "fulfilled") {
+          setWeeklyTierPayoutsEnabled(
+            tierSettingsRes.value.weeklyTierPayoutsEnabled,
+          );
         }
 
         if (walletRes.status === "fulfilled") {
@@ -1900,6 +1910,56 @@ export default function App() {
           <>
             <div className="toolbar">
               <h2>Payout requests</h2>
+            </div>
+
+            <div className="kyc-card" style={{ marginBottom: "1rem" }}>
+              <h3 style={{ margin: "0 0 0.5rem" }}>Weekly tier payouts</h3>
+              <p className="muted" style={{ margin: "0 0 0.75rem" }}>
+                When enabled, the Monday job creates $10 / $50 / $100 USDT payouts
+                based on each trader&apos;s last 10 setup results. TP reward payouts
+                are unaffected.
+              </p>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  cursor: weeklyTierSaving ? "not-allowed" : "pointer",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={weeklyTierPayoutsEnabled}
+                  disabled={weeklyTierSaving}
+                  onChange={(e) => {
+                    const enabled = e.target.checked;
+                    setWeeklyTierSaving(true);
+                    void api
+                      .updateWeeklyTierPayoutSettings(enabled)
+                      .then((res) => {
+                        setWeeklyTierPayoutsEnabled(res.weeklyTierPayoutsEnabled);
+                        setMessage(
+                          res.weeklyTierPayoutsEnabled
+                            ? "Weekly tier payouts enabled."
+                            : "Weekly tier payouts disabled.",
+                        );
+                      })
+                      .catch((err) => {
+                        setMessage(
+                          err instanceof Error
+                            ? err.message
+                            : "Could not update weekly tier payouts",
+                        );
+                      })
+                      .finally(() => setWeeklyTierSaving(false));
+                  }}
+                />
+                <span>
+                  {weeklyTierPayoutsEnabled
+                    ? "Enabled — weekly tier payouts will run"
+                    : "Disabled — no new weekly tier payouts"}
+                </span>
+              </label>
             </div>
 
             <div className="kyc-card" style={{ marginBottom: "1rem" }}>

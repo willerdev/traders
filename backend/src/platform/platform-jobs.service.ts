@@ -85,12 +85,13 @@ export class PlatformJobsService implements OnModuleInit {
     const year = prev.getFullYear();
 
     try {
+      const tierEnabled = await this.payouts.isWeeklyTierPayoutsEnabled();
       const created = await this.payouts.calculateWeeklyPayouts(
         weekNumber,
         year,
       );
       this.logger.log(
-        `Weekly payouts created: ${created.length} (week ${weekNumber}, ${year})`,
+        `Weekly payouts created: ${created.length} (week ${weekNumber}, ${year}, tier payouts ${tierEnabled ? 'enabled' : 'disabled'})`,
       );
     } catch (err) {
       this.logger.error(

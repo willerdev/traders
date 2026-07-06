@@ -76,7 +76,9 @@ export default function PayoutsPage() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-white">Payouts</h1>
           <p className="mt-1 text-gray-400">
-            Weekly USDT rewards by performance tier — $10 Starter, $50 Pro, $100 Elite
+            {rewardTier?.weeklyPayoutsEnabled === false
+              ? "Weekly tier payouts are paused — TP rewards and other payouts still apply."
+              : "Weekly USDT rewards by performance tier — $10 Starter, $50 Pro, $100 Elite"}
           </p>
         </div>
 

@@ -15,7 +15,7 @@ import { currentWeekYear } from '../common/week.util';
 import { assertAllowedDisplayName } from '../common/display-name.util';
 import { isValidTrc20Address } from '../common/payout.util';
 import { MetaApiService } from '../metaapi/metaapi.service';
-import { getPayoutRewardStatus } from '../payouts/payout-reward-tier.util';
+import { getPayoutRewardStatus, getWeeklyTierPayoutsEnabled } from '../payouts/payout-reward-tier.util';
 import {
   hasActiveTradingAccess,
   tradingAccessDaysRemaining,
@@ -66,8 +66,12 @@ export class UsersService {
       take: 10,
     });
 
-    const payoutReward = await getPayoutRewardStatus(this.prisma, userId);
-    const profitShare = await this.profitShare.getStatus(userId);
+    const [payoutRewardBase, weeklyPayoutsEnabled, profitShare] = await Promise.all([
+      getPayoutRewardStatus(this.prisma, userId),
+      getWeeklyTierPayoutsEnabled(this.prisma),
+      this.profitShare.getStatus(userId),
+    ]);
+    const payoutReward = { ...payoutRewardBase, weeklyPayoutsEnabled };
 
     return {
       user: {

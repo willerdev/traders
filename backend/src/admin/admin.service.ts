@@ -450,6 +450,16 @@ export class AdminService {
     });
   }
 
+  getWeeklyTierPayoutSettings() {
+    return this.payoutService.isWeeklyTierPayoutsEnabled().then(
+      (weeklyTierPayoutsEnabled) => ({ weeklyTierPayoutsEnabled }),
+    );
+  }
+
+  setWeeklyTierPayoutsEnabled(enabled: boolean) {
+    return this.payoutService.setWeeklyTierPayoutsEnabled(enabled);
+  }
+
   async listUsers(limit = 50, offset = 0, suspiciousOnly = false) {
     const take = Math.min(Math.max(limit, 1), 100);
     const skip = Math.max(offset, 0);

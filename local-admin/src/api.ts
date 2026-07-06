@@ -127,6 +127,18 @@ export const api = {
       `/admin/payouts?limit=50${status ? `&status=${status}` : ""}`,
     ),
   payoutsPending: () => request<PayoutRow[]>("/admin/payouts/pending"),
+  weeklyTierPayoutSettings: () =>
+    request<{ weeklyTierPayoutsEnabled: boolean }>(
+      "/admin/payouts/weekly-tiers/settings",
+    ),
+  updateWeeklyTierPayoutSettings: (enabled: boolean) =>
+    request<{ weeklyTierPayoutsEnabled: boolean }>(
+      "/admin/payouts/weekly-tiers/settings",
+      {
+        method: "POST",
+        body: JSON.stringify({ enabled }),
+      },
+    ),
 
   approveKyc: (userId: string) =>
     request(`/admin/kyc/${userId}/approve`, { method: "POST" }),

@@ -26,12 +26,18 @@ export function PayoutRewardTiersCard({ reward, compact }: Props) {
               <CardTitle className="text-lg">Payout reward tiers</CardTitle>
             </div>
             <CardDescription className="mt-1">
-              Weekly USDT rewards based on your last {reward.windowSize} resolved setups
+              {reward.weeklyPayoutsEnabled === false ? (
+                <>Weekly USDT tier rewards are currently paused by the platform.</>
+              ) : (
+                <>Weekly USDT rewards based on your last {reward.windowSize} resolved setups</>
+              )}
             </CardDescription>
           </div>
-          <Badge variant="gold" className="shrink-0">
-            You: ${reward.currentRewardUsdt} USDT
-          </Badge>
+          {reward.weeklyPayoutsEnabled !== false && (
+            <Badge variant="gold" className="shrink-0">
+              You: ${reward.currentRewardUsdt} USDT
+            </Badge>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -88,14 +94,17 @@ export function PayoutRewardTiersCard({ reward, compact }: Props) {
         {!compact && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/5 pt-4">
             <p className="text-xs text-gray-500">
-              Paid weekly when you have profitable activity. Complete KYC and add payout details
-              to withdraw.
+              {reward.weeklyPayoutsEnabled === false
+                ? "Tier amounts are shown for reference only until the platform re-enables weekly payouts."
+                : "Paid weekly when you have profitable activity. Complete KYC and add payout details to withdraw."}
             </p>
-            <Link href="/payouts">
-              <Button size="sm" variant="secondary">
-                Go to payouts
-              </Button>
-            </Link>
+            {reward.weeklyPayoutsEnabled !== false && (
+              <Link href="/payouts">
+                <Button size="sm" variant="secondary">
+                  Go to payouts
+                </Button>
+              </Link>
+            )}
           </div>
         )}
       </CardContent>

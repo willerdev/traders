@@ -847,6 +847,7 @@ export interface PayoutRewardStatus {
   winsToNextTier: number;
   tiers: PayoutRewardTierDef[];
   recentResults: ("W" | "L")[];
+  weeklyPayoutsEnabled?: boolean;
 }
 
 export interface PublicPayoutHighlight {
