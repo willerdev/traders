@@ -163,7 +163,11 @@ export function UserDetailModal({
             }
           : prev,
       );
-      setPermissionsMessage("Permissions saved.");
+      setPermissionsMessage(
+        updated.emailSent
+          ? "Permissions saved. The user was emailed about their new role."
+          : "Permissions saved.",
+      );
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not update staff permissions",

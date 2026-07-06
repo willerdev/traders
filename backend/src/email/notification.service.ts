@@ -980,4 +980,55 @@ export class NotificationService {
       text: `Your rank moved from #${data.oldRank} to #${data.newRank}. Stay focused and keep trading your plan.`,
     });
   }
+
+  staffHubRolesGranted(
+    userId: string,
+    roles: string[],
+    hubUrl: string,
+  ) {
+    if (roles.length === 0) return;
+    this.dispatch(
+      this.sendStaffHubRolesGranted(userId, roles, hubUrl),
+      'Staff hub roles granted',
+    );
+  }
+
+  private async sendStaffHubRolesGranted(
+    userId: string,
+    roles: string[],
+    hubUrl: string,
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+
+    const roleItems = roles
+      .map((role) => `<li>${this.escape(role)}</li>`)
+      .join('\n');
+
+    const html = this.email.layout(
+      'You have a new staff role on TraderRank',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>You have been appointed to help manage the platform. These review responsibilities were added to your account:</p>
+      <ul style="margin:16px 0;padding-left:20px;color:#e8eaed;">${roleItems}</ul>
+      <p>Sign in to the <strong>TraderRank Admin Hub</strong> with your usual TraderRank email and password. Staff accounts skip the email OTP step.</p>
+      <p style="color:#94a3b8;font-size:14px;">You will only see the menu sections matching your assigned roles (for example Setups, KYC, Payouts, or TP Claims).</p>
+      ${this.email.button(hubUrl, 'Open Admin Hub')}`,
+    );
+
+    const text = [
+      `Hi ${user.name},`,
+      '',
+      'You have been appointed to help manage TraderRank. New responsibilities:',
+      ...roles.map((role) => `- ${role}`),
+      '',
+      `Sign in at ${hubUrl} with your TraderRank email and password.`,
+    ].join('\n');
+
+    return this.email.send({
+      to: user.email,
+      subject: 'New staff role — TraderRank Admin Hub access',
+      html,
+      text,
+    });
+  }
 }

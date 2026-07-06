@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PayoutStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PayoutService } from '../payouts/payout.service';
@@ -41,6 +42,7 @@ export class AdminService {
     private messages: MessagesService,
     private referrals: ReferralsService,
     private notifications: NotificationService,
+    private config: ConfigService,
   ) {}
 
   private async getPaymentProjection() {
@@ -492,19 +494,23 @@ export class AdminService {
     userId: string,
     dto: UpdateStaffPermissionsDto,
   ) {
-    const user = await this.prisma.user.findUnique({
+    const existing = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
         id: true,
         role: true,
         displayName: true,
         email: true,
+        adminCanApproveKyc: true,
+        adminCanApprovePayouts: true,
+        adminCanApproveTpClaims: true,
+        adminCanManageSetups: true,
       },
     });
-    if (!user) {
+    if (!existing) {
       throw new NotFoundException('User not found');
     }
-    if (user.role === 'ADMIN') {
+    if (existing.role === 'ADMIN') {
       throw new BadRequestException(
         'Admin accounts already have full access — assign permissions to non-admin users',
       );
@@ -547,9 +553,33 @@ export class AdminService {
       },
     });
 
+    const newlyGranted: string[] = [];
+    if (updated.adminCanApproveKyc && !existing.adminCanApproveKyc) {
+      newlyGranted.push('KYC approver — review identity documents');
+    }
+    if (updated.adminCanApprovePayouts && !existing.adminCanApprovePayouts) {
+      newlyGranted.push('Payout approver — review withdrawal requests');
+    }
+    if (updated.adminCanApproveTpClaims && !existing.adminCanApproveTpClaims) {
+      newlyGranted.push('TP claim approver — review take-profit evidence');
+    }
+    if (updated.adminCanManageSetups && !existing.adminCanManageSetups) {
+      newlyGranted.push(
+        'Setup reviewer — view trader setups and send to MT5 Copy',
+      );
+    }
+
+    if (newlyGranted.length > 0) {
+      const hubUrl =
+        this.config.get<string>('ADMIN_HUB_URL')?.trim() ||
+        'http://localhost:3099';
+      this.notifications.staffHubRolesGranted(userId, newlyGranted, hubUrl);
+    }
+
     return {
       ...updated,
       permissions: resolveAdminPermissions(updated),
+      emailSent: newlyGranted.length > 0,
     };
   }
 

@@ -176,6 +176,7 @@ export const api = {
       adminCanApproveTpClaims: boolean;
       adminCanManageSetups: boolean;
       permissions: AdminPermissionsView;
+      emailSent?: boolean;
     }>(`/admin/users/${userId}/staff-permissions`, {
       method: "PATCH",
       body: JSON.stringify(body),
