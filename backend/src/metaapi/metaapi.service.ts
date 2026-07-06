@@ -6,6 +6,12 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TradeDirection } from '@prisma/client';
+import { NotificationService } from '../email/notification.service';
+import {
+  classifyBrokerError,
+  humanizeBrokerError,
+  isPlatformLimitError,
+} from '../common/broker-error.util';
 import { normalizeChartSymbol } from '../ai/chart-setup.util';
 import {
   getDerivDisplayName,
@@ -171,8 +177,12 @@ export class MetaApiService {
     string,
     { symbols: string[]; expiresAt: number }
   >();
+  private readonly lastLimitAlertAt = new Map<string, number>();
 
-  constructor(private config: ConfigService) {
+  constructor(
+    private config: ConfigService,
+    private notifications: NotificationService,
+  ) {
     this.provisioningUrl =
       this.config.get<string>('METAAPI_PROVISIONING_URL') ||
       'https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai';
@@ -183,6 +193,45 @@ export class MetaApiService {
       this.config.get<string>('METAAPI_COPY_ACCOUNT_ID')?.trim() || '';
     const vol = Number(this.config.get<string>('METAAPI_TRADE_VOLUME') || '0.01');
     this.defaultVolume = Number.isFinite(vol) && vol > 0 ? vol : 0.01;
+  }
+
+  /**
+   * Logs the raw broker error, alerts admins for platform-level limit issues
+   * (throttled), and throws a trader-friendly BadRequestException.
+   */
+  private raiseBrokerError(raw: string, context: string, fallback?: string): never {
+    this.logger.error(`MetaAPI ${context} failed: ${raw.slice(0, 500)}`);
+    const kind = classifyBrokerError(raw);
+    if (isPlatformLimitError(kind)) {
+      this.alertAdminsOfLimit(kind, raw, context);
+    }
+    throw new BadRequestException(humanizeBrokerError(raw, fallback));
+  }
+
+  /** Email admins at most once every 6h per limit type. */
+  private alertAdminsOfLimit(kind: string, raw: string, context: string) {
+    const now = Date.now();
+    const last = this.lastLimitAlertAt.get(kind) ?? 0;
+    if (now - last < 6 * 60 * 60 * 1000) return;
+    this.lastLimitAlertAt.set(kind, now);
+
+    const titles: Record<string, string> = {
+      rate_limit: 'MetaAPI rate limit hit — trades and price checks are failing',
+      position_limit: 'MT5 max open positions reached — new orders are being rejected',
+      no_money: 'MT5 account is out of free margin — orders are failing',
+    };
+    void this.notifications
+      .adminSystemAlert(titles[kind] ?? 'MT5 platform limit warning', [
+        `Traders are currently hitting a platform limit (<strong>${kind}</strong>) during: ${context}.`,
+        `Raw broker response: <code>${raw.slice(0, 400)}</code>`,
+        kind === 'rate_limit'
+          ? 'Action: wait for the MetaAPI CPU-credit window to reset, or contact MetaAPI support to extend the quota.'
+          : kind === 'position_limit'
+            ? 'Action: close or reduce open positions on the MT5 account, or raise the broker position limit.'
+            : 'Action: top up the MT5 account or reduce exposure so new orders can be placed.',
+        'You will not receive another email about this limit for 6 hours.',
+      ])
+      .catch(() => undefined);
   }
 
   get isConfigured(): boolean {
@@ -469,9 +518,10 @@ export class MetaApiService {
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
 
     if (!res.ok) {
-      throw new BadRequestException(
-        (body.message as string) ||
-          `Could not get price for ${brokerSymbol} (${res.status})`,
+      this.raiseBrokerError(
+        String(body.message ?? `status ${res.status}`),
+        `price check for ${brokerSymbol}`,
+        `Could not get a live price for ${brokerSymbol} right now. Please try again in a few minutes.`,
       );
     }
 
@@ -498,9 +548,10 @@ export class MetaApiService {
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
 
     if (!res.ok) {
-      throw new BadRequestException(
-        (body.message as string) ||
-          `Could not read account balance (${res.status})`,
+      this.raiseBrokerError(
+        String(body.message ?? `status ${res.status}`),
+        'account information read',
+        'Could not read the trading account right now. Please try again in a few minutes.',
       );
     }
 
@@ -549,9 +600,10 @@ export class MetaApiService {
 
     if (!res.ok) {
       const err = body as Record<string, unknown>;
-      throw new BadRequestException(
-        (err.message as string) ||
-          `Could not read open positions (${res.status})`,
+      this.raiseBrokerError(
+        String(err.message ?? `status ${res.status}`),
+        'open positions read',
+        'Could not read open positions right now. Please try again in a few minutes.',
       );
     }
 
@@ -587,9 +639,10 @@ export class MetaApiService {
 
     if (!res.ok) {
       const err = body as Record<string, unknown>;
-      throw new BadRequestException(
-        (err.message as string) ||
-          `Could not read open orders (${res.status})`,
+      this.raiseBrokerError(
+        String(err.message ?? `status ${res.status}`),
+        'open orders read',
+        'Could not read pending orders right now. Please try again in a few minutes.',
       );
     }
 
@@ -699,9 +752,10 @@ export class MetaApiService {
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
 
     if (!res.ok) {
-      throw new BadRequestException(
-        (body.message as string) ||
-          `Could not read symbol spec for ${brokerSymbol} (${res.status})`,
+      this.raiseBrokerError(
+        String(body.message ?? `status ${res.status}`),
+        `symbol spec for ${brokerSymbol}`,
+        `Could not load trading details for ${brokerSymbol} right now. Please try again in a few minutes.`,
       );
     }
 
@@ -824,13 +878,19 @@ export class MetaApiService {
       this.logger.error(
         `MetaAPI trade failed (${res.status}): ${JSON.stringify(body).slice(0, 600)}`,
       );
-      throw new BadRequestException(message);
+      this.raiseBrokerError(
+        message,
+        'trade request',
+        'The broker rejected this order. Please review your levels and try again.',
+      );
     }
 
     const stringCode = String(body.stringCode ?? '');
     if (stringCode && stringCode !== 'TRADE_RETCODE_DONE') {
-      throw new BadRequestException(
-        String(body.message ?? stringCode ?? 'Trade rejected by broker'),
+      this.raiseBrokerError(
+        `${stringCode}: ${String(body.message ?? '')}`,
+        'trade execution',
+        'The broker rejected this order. Please review your levels and try again.',
       );
     }
 

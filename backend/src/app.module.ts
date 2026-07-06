@@ -21,6 +21,8 @@ import { PlatformNotificationsModule } from './platform-notifications/platform-n
 import { FeedsModule } from './feeds/feeds.module';
 import { AssistantModule } from './assistant/assistant.module';
 import { ProfitShareModule } from './profit-share/profit-share.module';
+import { MarketingModule } from './marketing/marketing.module';
+import { ReferralsModule } from './referrals/referrals.module';
 
 @Module({
   imports: [
@@ -46,6 +48,8 @@ import { ProfitShareModule } from './profit-share/profit-share.module';
     FeedsModule,
     AssistantModule,
     ProfitShareModule,
+    MarketingModule,
+    ReferralsModule,
   ],
 })
 export class AppModule {}

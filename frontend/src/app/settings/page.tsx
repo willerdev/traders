@@ -29,6 +29,7 @@ import { api, type UserSettings, type KycRecord, type MetaApiAccountRow } from "
 import { validateDisplayName } from "@/lib/display-name";
 import { cn } from "@/lib/utils";
 import { AuthenticatedImage } from "@/components/ui/authenticated-image";
+import { ReferralCard } from "@/components/settings/referral-card";
 
 const KYC_STATUS: Record<
   KycRecord["status"],
@@ -886,6 +887,9 @@ export default function SettingsPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Referral program */}
+        <ReferralCard />
 
         {/* Account */}
         <Card>

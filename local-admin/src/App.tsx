@@ -21,6 +21,10 @@ import {
   type CustodyDepositCreated,
   type PaymentForecast,
   type CopyTradingDashboard,
+  type MarketingSchedule,
+  type MarketingEmailRow,
+  type ReferralSettings,
+  type ReferrerRow,
 } from "./api";
 import { AdminImage } from "./AdminImage";
 import { Sidebar, type Tab, isAdminTab } from "./Sidebar";
@@ -200,6 +204,21 @@ export default function App() {
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [banLoadingId, setBanLoadingId] = useState<string | null>(null);
   const [bulkBanLoading, setBulkBanLoading] = useState(false);
+  const [marketingSchedule, setMarketingSchedule] =
+    useState<MarketingSchedule | null>(null);
+  const [marketingHistory, setMarketingHistory] = useState<MarketingEmailRow[]>([]);
+  const [marketingHistoryCount, setMarketingHistoryCount] = useState(0);
+  const [marketingAudienceView, setMarketingAudienceView] = useState<
+    "unpaid_registration" | "inactive_trader"
+  >("unpaid_registration");
+  const [marketingRunLoading, setMarketingRunLoading] = useState(false);
+  const [referralSettings, setReferralSettings] =
+    useState<ReferralSettings | null>(null);
+  const [referrers, setReferrers] = useState<ReferrerRow[]>([]);
+  const [refKycAmount, setRefKycAmount] = useState("");
+  const [refPaidAmount, setRefPaidAmount] = useState("");
+  const [refSaving, setRefSaving] = useState(false);
+  const [expandedReferrerId, setExpandedReferrerId] = useState<string | null>(null);
 
   useEffect(() => {
     const onHash = () => setTab(tabFromHash());
@@ -322,6 +341,23 @@ export default function App() {
         setTpClaims(await api.tpClaimsPending());
       } else if (active === "promos") {
         setPromoCodes(await api.promoCodes());
+      } else if (active === "marketing") {
+        const [schedule, history] = await Promise.all([
+          api.marketingSchedule(),
+          api.marketingHistory(100),
+        ]);
+        setMarketingSchedule(schedule);
+        setMarketingHistory(history.items);
+        setMarketingHistoryCount(history.count);
+      } else if (active === "referrals") {
+        const [settings, list] = await Promise.all([
+          api.referralSettings(),
+          api.referrers(),
+        ]);
+        setReferralSettings(settings);
+        setRefKycAmount(String(settings.kycRewardUsdt));
+        setRefPaidAmount(String(settings.paidRewardUsdt));
+        setReferrers(list);
       } else if (active === "mt5Copy") {
         setCopyDashboard(await api.metaApiCopyDashboard());
       } else if (active === "hub") {
@@ -2276,6 +2312,448 @@ export default function App() {
                 )}
               </tbody>
             </table>
+          </>
+        )}
+
+        {tab === "marketing" && (
+          <>
+            <div className="toolbar toolbar-wrap">
+              <div>
+                <h2>Email marketing</h2>
+                <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                  {marketingSchedule?.cadence ??
+                    "Twice weekly — Monday and Thursday at 10:00 UTC"}
+                  . Reminds unpaid users to activate and idle traders to submit setups.
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => void loadTab("marketing")}
+                >
+                  Refresh
+                </button>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={marketingRunLoading || !marketingSchedule?.emailConfigured}
+                  onClick={() => {
+                    setMarketingRunLoading(true);
+                    void api
+                      .runMarketing()
+                      .then((summary) => {
+                        const totals = Object.values(summary.audiences).reduce(
+                          (acc, a) => ({
+                            sent: acc.sent + a.sent,
+                            skipped: acc.skipped + a.skipped,
+                            failed: acc.failed + a.failed,
+                          }),
+                          { sent: 0, skipped: 0, failed: 0 },
+                        );
+                        setMessage(
+                          `Campaign sent: ${totals.sent} emails (${totals.skipped} skipped, ${totals.failed} failed)`,
+                        );
+                        return loadTab("marketing");
+                      })
+                      .catch((err) =>
+                        setMessage(
+                          err instanceof Error ? err.message : "Campaign run failed",
+                        ),
+                      )
+                      .finally(() => setMarketingRunLoading(false));
+                  }}
+                >
+                  {marketingRunLoading ? "Sending…" : "Send campaign now"}
+                </button>
+              </div>
+            </div>
+
+            {marketingSchedule && !marketingSchedule.emailConfigured && (
+              <div className="kyc-card" style={{ marginBottom: "1rem" }}>
+                <p>
+                  <strong>Email sending is not configured.</strong> Set{" "}
+                  <code>RESEND_API_KEY</code> on the API server — the scheduler will
+                  skip runs until then. The recipient lists below still show who
+                  would receive each campaign.
+                </p>
+              </div>
+            )}
+
+            {!marketingSchedule ? (
+              <p className="muted">Loading schedule…</p>
+            ) : (
+              <>
+                <div className="cards">
+                  {marketingSchedule.nextRuns.slice(0, 2).map((run) => (
+                    <div className="card" key={run.runsAt}>
+                      <div className="label">Next: {run.label}</div>
+                      <div className="value" style={{ fontSize: "1rem" }}>
+                        {fmtDate(run.runsAt)}
+                      </div>
+                    </div>
+                  ))}
+                  <div className="card">
+                    <div className="label">Unpaid registrations</div>
+                    <div className="value">
+                      {marketingSchedule.audiences.unpaid_registration.count}
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="label">
+                      Idle traders ({marketingSchedule.inactiveAfterDays}d+)
+                    </div>
+                    <div className="value">
+                      {marketingSchedule.audiences.inactive_trader.count}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="toolbar" style={{ marginTop: "1.25rem" }}>
+                  <h3 style={{ margin: 0 }}>Recipients — next campaign</h3>
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <button
+                      type="button"
+                      className={
+                        marketingAudienceView === "unpaid_registration"
+                          ? "primary"
+                          : "btn-secondary"
+                      }
+                      onClick={() => setMarketingAudienceView("unpaid_registration")}
+                    >
+                      Unpaid (
+                      {marketingSchedule.audiences.unpaid_registration.count})
+                    </button>
+                    <button
+                      type="button"
+                      className={
+                        marketingAudienceView === "inactive_trader"
+                          ? "primary"
+                          : "btn-secondary"
+                      }
+                      onClick={() => setMarketingAudienceView("inactive_trader")}
+                    >
+                      Idle traders (
+                      {marketingSchedule.audiences.inactive_trader.count})
+                    </button>
+                  </div>
+                </div>
+                <p className="muted" style={{ margin: "0.35rem 0 0.75rem" }}>
+                  {marketingSchedule.audiences[marketingAudienceView].description}.
+                  Users emailed in the last 48 hours are skipped automatically.
+                </p>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Trader</th>
+                      <th>Email</th>
+                      <th>Status</th>
+                      <th>Joined</th>
+                      <th>Last setup</th>
+                      <th>Last marketing email</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {marketingSchedule.audiences[marketingAudienceView].recipients
+                      .length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="muted">
+                          No recipients in this audience
+                        </td>
+                      </tr>
+                    ) : (
+                      marketingSchedule.audiences[
+                        marketingAudienceView
+                      ].recipients.map((r) => (
+                        <tr key={r.userId}>
+                          <td>{r.displayName}</td>
+                          <td>{r.email}</td>
+                          <td>
+                            <span className={badgeClass(r.status)}>{r.status}</span>
+                          </td>
+                          <td>{fmtDate(r.createdAt)}</td>
+                          <td>{r.lastSignalAt ? fmtDate(r.lastSignalAt) : "Never"}</td>
+                          <td>
+                            {r.lastMarketingAt ? fmtDate(r.lastMarketingAt) : "Never"}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+
+                <div className="toolbar" style={{ marginTop: "1.5rem" }}>
+                  <h3 style={{ margin: 0 }}>
+                    Sent history ({marketingHistoryCount})
+                  </h3>
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Sent</th>
+                      <th>Trader</th>
+                      <th>Email</th>
+                      <th>Audience</th>
+                      <th>Subject</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {marketingHistory.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="muted">
+                          No marketing emails sent yet
+                        </td>
+                      </tr>
+                    ) : (
+                      marketingHistory.map((m) => (
+                        <tr key={m.id}>
+                          <td>{fmtDate(m.sentAt)}</td>
+                          <td>{m.user?.displayName ?? "—"}</td>
+                          <td>{m.email}</td>
+                          <td>
+                            {m.audience === "unpaid_registration"
+                              ? "Unpaid"
+                              : "Idle trader"}
+                          </td>
+                          <td>{m.subject}</td>
+                          <td>
+                            <span
+                              className={badgeClass(
+                                m.status === "SENT" ? "approved" : "rejected",
+                              )}
+                            >
+                              {m.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </>
+            )}
+          </>
+        )}
+
+        {tab === "referrals" && (
+          <>
+            <div className="toolbar toolbar-wrap">
+              <div>
+                <h2>Referral program</h2>
+                <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                  Traders share a personal link. They earn USDT when invited users
+                  complete KYC and when they pay their subscription.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => void loadTab("referrals")}
+              >
+                Refresh
+              </button>
+            </div>
+
+            {!referralSettings ? (
+              <p className="muted">Loading referral data…</p>
+            ) : (
+              <>
+                <div className="cards">
+                  <div className="card">
+                    <div className="label">Referred users</div>
+                    <div className="value">{referralSettings.totalReferredUsers}</div>
+                  </div>
+                  <div className="card">
+                    <div className="label">Rewards paid</div>
+                    <div className="value">
+                      {fmtMoney(referralSettings.totalRewardsPaidUsdt)}
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="label">Reward payouts</div>
+                    <div className="value">{referralSettings.totalRewardsCount}</div>
+                  </div>
+                </div>
+
+                <div
+                  className="kyc-card"
+                  style={{ margin: "1.25rem 0 1.5rem", maxWidth: 480 }}
+                >
+                  <h3 style={{ marginTop: 0 }}>Reward amounts (USDT)</h3>
+                  <div
+                    style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}
+                  >
+                    <label style={{ fontSize: "0.85rem" }}>
+                      Reward when referred user completes KYC
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.1}
+                        value={refKycAmount}
+                        onChange={(e) => setRefKycAmount(e.target.value)}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          marginTop: 4,
+                          padding: "0.5rem",
+                          borderRadius: 6,
+                          border: "1px solid #334155",
+                          background: "#0b0f14",
+                          color: "#e8eaed",
+                        }}
+                      />
+                    </label>
+                    <label style={{ fontSize: "0.85rem" }}>
+                      Reward when referred user pays subscription
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.1}
+                        value={refPaidAmount}
+                        onChange={(e) => setRefPaidAmount(e.target.value)}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          marginTop: 4,
+                          padding: "0.5rem",
+                          borderRadius: 6,
+                          border: "1px solid #334155",
+                          background: "#0b0f14",
+                          color: "#e8eaed",
+                        }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={refSaving}
+                      onClick={() => {
+                        setRefSaving(true);
+                        void api
+                          .updateReferralSettings({
+                            kycRewardUsdt: Number(refKycAmount),
+                            paidRewardUsdt: Number(refPaidAmount),
+                          })
+                          .then((updated) => {
+                            setReferralSettings(updated);
+                            setMessage(
+                              `Saved — KYC reward $${updated.kycRewardUsdt}, subscription reward $${updated.paidRewardUsdt}`,
+                            );
+                          })
+                          .catch((err) =>
+                            setMessage(
+                              err instanceof Error ? err.message : "Save failed",
+                            ),
+                          )
+                          .finally(() => setRefSaving(false));
+                      }}
+                    >
+                      {refSaving ? "Saving…" : "Save reward amounts"}
+                    </button>
+                    <p className="muted" style={{ margin: 0, fontSize: "0.78rem" }}>
+                      Applies immediately to all future referral rewards. Already-paid
+                      rewards are not changed.
+                    </p>
+                  </div>
+                </div>
+
+                <h3 style={{ margin: "0 0 0.5rem" }}>Referrers ({referrers.length})</h3>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Trader</th>
+                      <th>Code</th>
+                      <th>Invited</th>
+                      <th>KYC done</th>
+                      <th>Subscribed</th>
+                      <th>Earned</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {referrers.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="muted">
+                          No referrals yet
+                        </td>
+                      </tr>
+                    ) : (
+                      referrers.map((r) => (
+                        <Fragment key={r.userId}>
+                          <tr>
+                            <td>
+                              {r.displayName}
+                              <div className="muted" style={{ fontSize: "0.75rem" }}>
+                                {r.email ?? "—"}
+                              </div>
+                            </td>
+                            <td>
+                              <code>{r.referralCode ?? "—"}</code>
+                            </td>
+                            <td>{r.totalReferred}</td>
+                            <td>{r.kycCompleted}</td>
+                            <td>{r.subscribed}</td>
+                            <td>{fmtMoney(r.totalEarnedUsdt)}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className="btn-secondary"
+                                onClick={() =>
+                                  setExpandedReferrerId(
+                                    expandedReferrerId === r.userId ? null : r.userId,
+                                  )
+                                }
+                              >
+                                {expandedReferrerId === r.userId ? "Hide" : "Details"}
+                              </button>
+                            </td>
+                          </tr>
+                          {expandedReferrerId === r.userId && (
+                            <tr>
+                              <td colSpan={7}>
+                                <div style={{ padding: "0.5rem 0" }}>
+                                  {r.referrals.map((x, i) => (
+                                    <div
+                                      key={`${x.displayName}-${i}`}
+                                      style={{
+                                        display: "flex",
+                                        gap: "1rem",
+                                        padding: "0.35rem 0",
+                                        fontSize: "0.85rem",
+                                      }}
+                                    >
+                                      <span style={{ minWidth: 180 }}>{x.displayName}</span>
+                                      <span className="muted">
+                                        joined {fmtDate(x.joinedAt)}
+                                      </span>
+                                      <span
+                                        className={badgeClass(
+                                          x.kycCompleted ? "approved" : "pending",
+                                        )}
+                                      >
+                                        {x.kycCompleted ? "KYC ✓" : "KYC pending"}
+                                      </span>
+                                      <span
+                                        className={badgeClass(
+                                          x.subscribed ? "approved" : "pending",
+                                        )}
+                                      >
+                                        {x.subscribed ? "Subscribed" : "Not subscribed"}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </>
+            )}
           </>
         )}
 

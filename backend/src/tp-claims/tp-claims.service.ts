@@ -128,9 +128,11 @@ export class TpClaimsService {
     if (claim.status !== 'REJECTED') {
       throw new BadRequestException('Only rejected claims can be resubmitted');
     }
-    if (claim.signal.status !== 'OPEN') {
+    // OPEN setups and ARCHIVED (auto-expired) setups can be re-claimed —
+    // admins can still verify and credit the reward after expiry.
+    if (!['OPEN', 'ARCHIVED'].includes(claim.signal.status)) {
       throw new BadRequestException(
-        'This setup is no longer open — you cannot resubmit this claim',
+        'This setup was already resolved — you cannot resubmit this claim',
       );
     }
     if (!claim.signal.trade) {
@@ -215,7 +217,9 @@ export class TpClaimsService {
     return claims.map((c) => ({
       ...this.formatClaim(c),
       rewardAmount,
-      canResubmit: c.status === 'REJECTED' && c.signal.status === 'OPEN',
+      canResubmit:
+        c.status === 'REJECTED' &&
+        ['OPEN', 'ARCHIVED'].includes(c.signal.status ?? ''),
       canRequestPayout: c.status === 'APPROVED' && !c.payout,
       payout: c.payout
         ? {
@@ -324,7 +328,11 @@ export class TpClaimsService {
     const isRr1 = claim.claimType === 'RR_1_TO_1';
     const reward = isRr1 ? Math.round(fullReward * 50) / 100 : fullReward;
 
-    const result = await this.wallet.creditTpReward(
+    let result: {
+      reward: number;
+      newBalance: number;
+      signalId: string;
+    } | null = await this.wallet.creditTpReward(
       claim.userId,
       claim.signalId,
       exitPrice,
@@ -335,9 +343,23 @@ export class TpClaimsService {
       },
     );
 
+    // Setup already resolved (e.g. closed manually by an admin or auto-expired)
+    // — the trader still earned the TP, so credit the reward directly.
+    if (!result) {
+      result = await this.wallet.creditTpRewardForResolvedSetup(
+        claim.userId,
+        claim.signalId,
+        exitPrice,
+        {
+          reward,
+          rewardLabel: isRr1 ? '1:1 RR TP reward' : 'TP reward',
+        },
+      );
+    }
+
     if (!result) {
       throw new BadRequestException(
-        'Could not credit TP — setup may already be resolved',
+        'Could not credit TP — a reward for this setup was already paid out',
       );
     }
 

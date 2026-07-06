@@ -41,6 +41,25 @@ export class RegisterDto {
   @IsBoolean()
   @Equals(true, { message: 'You must accept the terms and risk disclosure' })
   acceptTerms: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  referralCode?: string;
+}
+
+export class UpdateReferralSettingsDto {
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  kycRewardUsdt?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  paidRewardUsdt?: number;
 }
 
 export class LoginDto {

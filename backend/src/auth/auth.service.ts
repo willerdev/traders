@@ -32,6 +32,7 @@ import {
 import { randomBytes, randomInt, createHash } from 'crypto';
 import { verifyMessage } from 'viem';
 import { NotificationService } from '../email/notification.service';
+import { ReferralsService } from '../referrals/referrals.service';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
@@ -47,6 +48,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private notifications: NotificationService,
+    private referrals: ReferralsService,
   ) {}
 
   async register(dto: RegisterDto, ip?: string) {
@@ -80,6 +82,12 @@ export class AuthService {
         status: 'PENDING_PAYMENT',
       },
     });
+
+    if (dto.referralCode) {
+      await this.referrals
+        .attachReferral(user.id, dto.referralCode)
+        .catch(() => undefined);
+    }
 
     return {
       user: this.sanitizeUser(user),

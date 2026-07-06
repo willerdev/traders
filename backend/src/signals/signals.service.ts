@@ -1685,6 +1685,8 @@ export class SignalsService {
       where: {
         status: 'OPEN',
         submittedAt: { lte: cutoff },
+        // Setups with a claim awaiting review stay open until an admin decides.
+        tpClaims: { none: { status: 'PENDING_REVIEW' } },
       },
       include: {
         trade: true,
@@ -3469,14 +3471,6 @@ export class SignalsService {
             }),
           ]
         : []),
-      this.prisma.tpClaim.updateMany({
-        where: { signalId: signal.id, status: 'PENDING_REVIEW' },
-        data: {
-          status: 'REJECTED',
-          adminNote: reason,
-          reviewedAt: now,
-        },
-      }),
     ]);
 
     await this.platformNotifications.create({

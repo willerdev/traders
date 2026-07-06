@@ -20,7 +20,7 @@ interface AuthState {
   startLogin: (email: string, password: string) => Promise<LoginResponse>;
   verifyLoginOtp: (loginSessionId: string, code: string) => Promise<void>;
   resendLoginOtp: (loginSessionId: string) => Promise<{ loginSessionId: string }>;
-  register: (email: string, password: string, displayName: string, acceptTerms?: boolean) => Promise<void>;
+  register: (email: string, password: string, displayName: string, acceptTerms?: boolean, referralCode?: string) => Promise<void>;
   logout: () => void;
   setAuth: (token: string, user: User) => void;
   setHasHydrated: (value: boolean) => void;
@@ -65,8 +65,14 @@ export const useAuthStore = create<AuthState>()(
         return { loginSessionId: res.loginSessionId };
       },
 
-      register: async (email, password, displayName, acceptTerms = true) => {
-        await api.auth.register({ email, password, displayName, acceptTerms });
+      register: async (email, password, displayName, acceptTerms = true, referralCode) => {
+        await api.auth.register({
+          email,
+          password,
+          displayName,
+          acceptTerms,
+          ...(referralCode ? { referralCode } : {}),
+        });
       },
 
       logout: () => {

@@ -300,6 +300,27 @@ export const api = {
 
   metaApiCopyDashboard: () =>
     request<CopyTradingDashboard>("/admin/hub/metaapi/copy-dashboard"),
+
+  marketingSchedule: () =>
+    request<MarketingSchedule>("/admin/marketing/schedule"),
+  marketingHistory: (limit = 100, offset = 0) =>
+    request<{ items: MarketingEmailRow[]; count: number }>(
+      `/admin/marketing/history?limit=${limit}&offset=${offset}`,
+    ),
+  runMarketing: () =>
+    request<MarketingRunSummary>("/admin/marketing/run", { method: "POST" }),
+
+  referralSettings: () =>
+    request<ReferralSettings>("/admin/referrals/settings"),
+  updateReferralSettings: (data: {
+    kycRewardUsdt?: number;
+    paidRewardUsdt?: number;
+  }) =>
+    request<ReferralSettings>("/admin/referrals/settings", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  referrers: () => request<ReferrerRow[]>("/admin/referrals"),
 };
 
 export type PaymentForecast = {
@@ -799,6 +820,80 @@ export type CopyTradingDashboard = {
     totalRealizedProfit: number;
     floatingProfit: number;
   };
+};
+
+export type MarketingRecipient = {
+  userId: string;
+  email: string;
+  displayName: string;
+  status: string;
+  createdAt: string;
+  lastSignalAt: string | null;
+  lastMarketingAt: string | null;
+};
+
+export type MarketingAudienceInfo = {
+  description: string;
+  count: number;
+  recipients: MarketingRecipient[];
+};
+
+export type MarketingSchedule = {
+  emailConfigured: boolean;
+  cadence: string;
+  inactiveAfterDays: number;
+  nextRuns: { runsAt: string; label: string }[];
+  audiences: {
+    unpaid_registration: MarketingAudienceInfo;
+    inactive_trader: MarketingAudienceInfo;
+  };
+};
+
+export type MarketingEmailRow = {
+  id: string;
+  userId: string;
+  email: string;
+  audience: string;
+  subject: string;
+  status: string;
+  detail: string | null;
+  sentAt: string;
+  user: { id: string; displayName: string; status: string };
+};
+
+export type MarketingRunSummary = {
+  trigger: string;
+  startedAt: string;
+  emailConfigured: boolean;
+  audiences: Record<
+    string,
+    { targeted: number; sent: number; skipped: number; failed: number }
+  >;
+};
+
+export type ReferralSettings = {
+  kycRewardUsdt: number;
+  paidRewardUsdt: number;
+  totalReferredUsers: number;
+  totalRewardsPaidUsdt: number;
+  totalRewardsCount: number;
+};
+
+export type ReferrerRow = {
+  userId: string;
+  displayName: string;
+  email: string | null;
+  referralCode: string | null;
+  totalReferred: number;
+  kycCompleted: number;
+  subscribed: number;
+  totalEarnedUsdt: number;
+  referrals: Array<{
+    displayName: string;
+    joinedAt: string;
+    kycCompleted: boolean;
+    subscribed: boolean;
+  }>;
 };
 
 export type DirectMessage = {

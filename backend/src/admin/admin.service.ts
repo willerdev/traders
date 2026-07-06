@@ -19,6 +19,7 @@ import { PaymentsService } from '../payments/payments.service';
 import { hasActiveTradingAccess } from '../common/weekly-access.util';
 import { MessagesService } from '../messages/messages.service';
 import { NotificationService } from '../email/notification.service';
+import { ReferralsService } from '../referrals/referrals.service';
 import { CreatePromoCodeDto, SendMessageDto } from '../common/dto';
 import { assessEmail } from '../common/email-quality.util';
 
@@ -37,6 +38,7 @@ export class AdminService {
     private auth: AuthService,
     private payments: PaymentsService,
     private messages: MessagesService,
+    private referrals: ReferralsService,
     private notifications: NotificationService,
   ) {}
 
@@ -403,6 +405,7 @@ export class AdminService {
 
     await this.logAction(adminId, 'KYC_APPROVED', userId);
     this.notifications.kycApproved(userId);
+    await this.referrals.rewardForKyc(userId).catch(() => undefined);
     return updated;
   }
 

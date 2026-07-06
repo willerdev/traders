@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -22,6 +22,12 @@ export default function RegisterPage() {
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
+  const [referralCode, setReferralCode] = useState("");
+
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    if (ref) setReferralCode(ref.trim().toUpperCase());
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -37,7 +43,7 @@ export default function RegisterPage() {
     }
     setLoading(true);
     try {
-      await register(email, password, displayName, true);
+      await register(email, password, displayName, true, referralCode || undefined);
       setSuccess(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
@@ -137,6 +143,12 @@ export default function RegisterPage() {
                   guarantee real profits.
                 </span>
               </label>
+              {referralCode && (
+                <p className="text-xs text-success">
+                  Referral code <span className="font-mono">{referralCode}</span> applied
+                  — you were invited by a friend.
+                </p>
+              )}
               {error && <p className="text-sm text-danger">{error}</p>}
               <Button type="submit" className="w-full" disabled={loading || !acceptTerms}>
                 {loading ? "Creating account..." : "Create Account"}

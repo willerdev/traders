@@ -19,6 +19,7 @@ import { NotificationService } from '../email/notification.service';
 import { SubscriptionPlan } from '@prisma/client';
 import { ProfitShareService } from '../profit-share/profit-share.service';
 import { resolveProfitShareConfig } from '../common/profit-share.util';
+import { ReferralsService } from '../referrals/referrals.service';
 
 @Injectable()
 export class PaymentsService {
@@ -37,6 +38,7 @@ export class PaymentsService {
     private notifications: NotificationService,
     private blockchain: BlockchainScannerService,
     private profitShare: ProfitShareService,
+    private referrals: ReferralsService,
   ) {}
 
   private ipnUrl() {
@@ -70,6 +72,9 @@ export class PaymentsService {
         accessExpiresAt,
       },
     });
+
+    // First-time subscription referral reward (idempotent).
+    await this.referrals.rewardForPaidRegistration(userId).catch(() => undefined);
 
     return accessExpiresAt;
   }

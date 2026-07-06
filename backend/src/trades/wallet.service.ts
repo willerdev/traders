@@ -104,6 +104,93 @@ export class WalletService {
     return { reward, newBalance, signalId: signal.signalId, scoring };
   }
 
+  /**
+   * Credits a TP reward for a setup that is no longer OPEN — e.g. the position
+   * was manually closed by an admin or the setup auto-expired before the claim
+   * was reviewed. Marks the setup WON and pays the reward, but never twice.
+   */
+  async creditTpRewardForResolvedSetup(
+    userId: string,
+    signalId: string,
+    exitPrice: number,
+    options?: { reward?: number; rewardLabel?: string },
+  ) {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    const reward =
+      options?.reward ?? Number(config?.tpRewardUsd ?? TP_REWARD_USD);
+    const rewardLabel = options?.rewardLabel ?? 'TP reward';
+
+    const signal = await this.prisma.signal.findUnique({
+      where: { id: signalId },
+      include: { trade: true },
+    });
+    if (!signal || !signal.trade || signal.status === 'OPEN') return null;
+
+    const priorReward = await this.prisma.walletTransaction.findFirst({
+      where: { userId, type: 'TP_REWARD', referenceId: signal.signalId },
+      select: { id: true },
+    });
+    if (priorReward) return null;
+
+    const account = await this.prisma.virtualAccount.findUnique({
+      where: { userId },
+    });
+    if (!account) return null;
+
+    const newBalance = Number(account.balance) + reward;
+    const newWeekly = Number(account.weeklyProfit) + reward;
+    const newTotal = Number(account.totalProfit) + reward;
+
+    await this.prisma.$transaction([
+      this.prisma.signal.update({
+        where: { id: signalId },
+        data: {
+          status: 'WON',
+          resolvedAt: signal.resolvedAt ?? new Date(),
+          pnl: reward,
+        },
+      }),
+      this.prisma.trade.update({
+        where: { id: signal.trade.id },
+        data: {
+          isWin: true,
+          exitPrice,
+          pnl: reward,
+          closedAt: signal.trade.closedAt ?? new Date(),
+          entryPrice:
+            signal.trade.entryPrice ??
+            (Number(signal.entryMin) + Number(signal.entryMax)) / 2,
+        },
+      }),
+      this.prisma.virtualAccount.update({
+        where: { userId },
+        data: {
+          balance: newBalance,
+          weeklyProfit: newWeekly,
+          totalProfit: newTotal,
+        },
+      }),
+      this.prisma.walletTransaction.create({
+        data: {
+          userId,
+          amount: reward,
+          type: 'TP_REWARD',
+          referenceId: signal.signalId,
+          description: `$${reward} ${rewardLabel} (setup closed before review) — ${signal.symbol}`,
+          balanceAfter: newBalance,
+        },
+      }),
+    ]);
+
+    this.logger.log(
+      `TP reward on resolved setup: ${signal.symbol} — $${reward} credited to ${userId}`,
+    );
+
+    return { reward, newBalance, signalId: signal.signalId, scoring: null };
+  }
+
   async resolveAsLoss(userId: string, signalId: string, exitPrice: number) {
     const signal = await this.prisma.signal.findUnique({
       where: { id: signalId },

@@ -87,7 +87,7 @@ class ApiClient {
   }
 
   auth = {
-    register: (data: { email: string; password: string; displayName: string; acceptTerms: boolean }) =>
+    register: (data: { email: string; password: string; displayName: string; acceptTerms: boolean; referralCode?: string }) =>
       this.request("/auth/register", { method: "POST", body: JSON.stringify(data) }),
     login: (data: { email: string; password: string }) =>
       this.request<LoginResponse>(
@@ -659,6 +659,10 @@ class ApiClient {
       }),
   };
 
+  referrals = {
+    me: () => this.request<ReferralInfo>("/referrals/me"),
+  };
+
   admin = {
     overview: () => this.request<AdminOverview>("/admin/overview"),
     pendingKyc: () => this.request<AdminKycItem[]>("/admin/kyc/pending"),
@@ -673,6 +677,22 @@ class ApiClient {
     approvePayout: (payoutId: string) =>
       this.request(`/admin/payouts/${payoutId}/approve`, { method: "POST" }),
   };
+}
+
+export interface ReferralInfo {
+  code: string;
+  link: string;
+  rewards: { kycRewardUsdt: number; paidRewardUsdt: number };
+  totalEarnedUsdt: number;
+  totalReferred: number;
+  referrals: Array<{
+    displayName: string;
+    joinedAt: string;
+    kycCompleted: boolean;
+    subscribed: boolean;
+    kycRewarded: boolean;
+    paidRewarded: boolean;
+  }>;
 }
 
 export interface LoginStartResponse {

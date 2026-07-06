@@ -32,6 +32,33 @@ export class NotificationService {
     return this.sendLoginOtp(email, code);
   }
 
+  /** Email every admin about a platform-level issue (broker limits, quotas). */
+  async adminSystemAlert(subject: string, bodyLines: string[]) {
+    const admins = await this.prisma.user.findMany({
+      where: { role: 'ADMIN', email: { not: null } },
+      select: { email: true },
+    });
+    if (admins.length === 0) return false;
+
+    const html = this.email.layout(
+      subject,
+      bodyLines.map((line) => `<p>${line}</p>`).join('\n'),
+    );
+    const text = bodyLines.join('\n');
+
+    let sent = false;
+    for (const admin of admins) {
+      const ok = await this.email.send({
+        to: admin.email as string,
+        subject: `[TraderRank alert] ${subject}`,
+        html,
+        text,
+      });
+      sent = sent || ok;
+    }
+    return sent;
+  }
+
   passwordReset(email: string, token: string) {
     return this.sendPasswordReset(email, token);
   }

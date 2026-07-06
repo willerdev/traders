@@ -10,6 +10,8 @@ export type Tab =
   | "payouts"
   | "tpClaims"
   | "promos"
+  | "marketing"
+  | "referrals"
   | "mt5Copy"
   | "hub";
 
@@ -25,6 +27,8 @@ export const ADMIN_TABS: Tab[] = [
   "payouts",
   "tpClaims",
   "promos",
+  "marketing",
+  "referrals",
   "mt5Copy",
   "hub",
 ];
@@ -43,6 +47,8 @@ const NAV_ITEMS: NavItem[] = [
   { id: "payouts", label: "Payouts", icon: "payouts" },
   { id: "tpClaims", label: "TP Claims", icon: "tpClaims" },
   { id: "promos", label: "Promo codes", icon: "promos" },
+  { id: "marketing", label: "Email marketing", icon: "marketing" },
+  { id: "referrals", label: "Referrals", icon: "referrals" },
   { id: "mt5Copy", label: "MT5 Copy", icon: "mt5Copy" },
   { id: "hub", label: "Hub MT5", icon: "hub" },
 ];
@@ -104,6 +110,20 @@ const icons = {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
       <path d="M4 9l8-5 8 5v6l-8 5-8-5V9z" strokeLinejoin="round" />
       <circle cx="12" cy="12" r="2" />
+    </svg>
+  ),
+  marketing: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M3 8l9 6 9-6" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+    </svg>
+  ),
+  referrals: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M20 12v8H4v-8" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="2" y="8" width="20" height="4" rx="1" />
+      <path d="M12 8v12" strokeLinecap="round" />
+      <path d="M12 8c-2.5 0-4.5-1.3-4.5-3S9.5 3.5 12 8zM12 8c2.5 0 4.5-1.3 4.5-3S14.5 3.5 12 8z" strokeLinejoin="round" />
     </svg>
   ),
   hub: (
