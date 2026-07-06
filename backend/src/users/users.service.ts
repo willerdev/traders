@@ -180,6 +180,12 @@ export class UsersService {
     return this.getSettings(userId);
   }
 
+  async claimTradingAccount(userId: string) {
+    const result = await this.mt5Pool.claimAccount(userId);
+    const settings = await this.getSettings(userId);
+    return { ...result, settings };
+  }
+
   async updateProfile(userId: string, dto: UpdateProfileDto) {
     const userUpdate: { displayName?: string } = {};
     if (dto.displayName?.trim()) {

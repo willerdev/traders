@@ -145,6 +145,13 @@ class ApiClient {
         method: "PATCH",
         body: JSON.stringify({ metaApiAccountId }),
       }),
+    claimTradingAccount: () =>
+      this.request<{
+        alreadyLinked: boolean;
+        accountId: string;
+        account: MetaApiAccountRow;
+        settings: UserSettings;
+      }>("/users/trading-account/claim", { method: "POST" }),
     getKyc: () => this.request<KycRecord>("/users/kyc"),
     submitKyc: (data: SubmitKycInput) =>
       this.request<KycRecord>("/users/kyc/submit", {
@@ -628,12 +635,7 @@ class ApiClient {
     status: () => this.request<Mt5SyncStatus>("/mt5-sync/status"),
     poolAccounts: () =>
       this.request<MetaApiAccountsResult>("/mt5-sync/pool-accounts"),
-    claimAccount: () =>
-      this.request<{
-        alreadyLinked: boolean;
-        accountId: string;
-        account: MetaApiAccountRow;
-      }>("/mt5-sync/claim-account", { method: "POST" }),
+    claimAccount: () => this.users.claimTradingAccount(),
   };
 
   tpClaims = {

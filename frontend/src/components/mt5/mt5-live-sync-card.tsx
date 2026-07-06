@@ -27,6 +27,7 @@ export function Mt5LiveSyncCard({
   const [showCheckout, setShowCheckout] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [claiming, setClaiming] = useState(false);
+  const [connectError, setConnectError] = useState("");
   const [localLinkedId, setLocalLinkedId] = useState<string | null>(
     linkedAccountId ?? null,
   );
@@ -64,13 +65,16 @@ export function Mt5LiveSyncCard({
 
   async function connectAccount() {
     setClaiming(true);
+    setConnectError("");
     try {
-      const result = await api.mt5Sync.claimAccount();
+      const result = await api.users.claimTradingAccount();
       setLocalLinkedId(result.accountId);
       await refresh();
       onAccountLinked?.();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Could not connect MT5 account");
+      setConnectError(
+        err instanceof Error ? err.message : "Could not connect MT5 account",
+      );
     } finally {
       setClaiming(false);
     }
@@ -106,6 +110,9 @@ export function Mt5LiveSyncCard({
           >
             {claiming ? "Connecting…" : "Connect MT5 account"}
           </Button>
+          {connectError && (
+            <p className="text-destructive">{connectError}</p>
+          )}
         </div>
       )}
 

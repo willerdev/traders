@@ -330,7 +330,7 @@ export default function SettingsPage() {
     setError("");
     setMessage("");
     try {
-      const result = await api.mt5Sync.claimAccount();
+      const result = await api.users.claimTradingAccount();
       setTradingAccountId(result.accountId);
       const updated = await api.users.settings();
       setSettings(updated);

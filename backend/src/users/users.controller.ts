@@ -69,6 +69,11 @@ export class UsersController {
     return this.usersService.updateTradingAccount(req.user.id, dto);
   }
 
+  @Post('trading-account/claim')
+  claimTradingAccount(@Request() req: { user: { id: string } }) {
+    return this.usersService.claimTradingAccount(req.user.id);
+  }
+
   @Get('kyc')
   getKyc(@Request() req: { user: { id: string } }) {
     return this.usersService.getKyc(req.user.id);
