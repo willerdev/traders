@@ -30,7 +30,7 @@ import {
   type Mt5SyncAdminOverview,
 } from "./api";
 import { AdminImage } from "./AdminImage";
-import { Sidebar, type Tab, isAdminTab, tabsForPermissions, defaultTabForPermissions, type AdminPermissions } from "./Sidebar";
+import { Sidebar, type Tab, isAdminTab, tabsForPermissions, resolveTabForPermissions, staffRoleSummary, type AdminPermissions } from "./Sidebar";
 import { UserDetailModal } from "./UserDetailModal";
 
 function badgeClass(status: string) {
@@ -259,6 +259,7 @@ export default function App() {
   const [otpCode, setOtpCode] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [adminSession, setAdminSession] = useState<AdminSession | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(Boolean(getToken()));
   const [tab, setTab] = useState<Tab>(tabFromHash);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -364,47 +365,73 @@ export default function App() {
   const [expandedReferrerId, setExpandedReferrerId] = useState<string | null>(null);
 
   useEffect(() => {
-    const onHash = () => setTab(tabFromHash());
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, []);
-
-  const allowedTabs = tabsForPermissions(adminSession?.permissions ?? null);
-  const isFullAdmin = Boolean(adminSession?.permissions.fullAdmin);
-  const canManageSetups =
-    isFullAdmin || Boolean(adminSession?.permissions.setup);
-
-  useEffect(() => {
-    if (!authed || !getToken()) return;
-    void api
-      .adminSession()
-      .then((session) => {
-        setAdminSession(session);
-        const tabs = tabsForPermissions(session.permissions);
-        if (tabs.length > 0 && !tabs.includes(tab)) {
-          setTab(defaultTabForPermissions(session.permissions));
-        }
-      })
-      .catch(() => {
-        setAuthed(false);
-        setAdminSession(null);
-      });
-  }, [authed]);
-
-  useEffect(() => {
-    if (!adminSession) return;
-    const tabs = tabsForPermissions(adminSession.permissions);
-    if (tabs.length > 0 && !tabs.includes(tab)) {
-      setTab(defaultTabForPermissions(adminSession.permissions));
-    }
-  }, [adminSession, tab]);
-
-  useEffect(() => {
     const next = `#${tab}`;
     if (window.location.hash !== next) {
       window.history.replaceState(null, "", next);
     }
   }, [tab]);
+
+  const allowedTabs = tabsForPermissions(adminSession?.permissions ?? null);
+  const isFullAdmin = Boolean(adminSession?.permissions.fullAdmin);
+  const canManageSetups =
+    isFullAdmin || Boolean(adminSession?.permissions.setup);
+  const staffSummary = staffRoleSummary(adminSession?.permissions ?? null);
+
+  const loadAdminSession = useCallback(async () => {
+    const session = await api.adminSession();
+    setAdminSession(session);
+    setTab((current) =>
+      resolveTabForPermissions(session.permissions, current),
+    );
+    return session;
+  }, []);
+
+  useEffect(() => {
+    if (!authed || !getToken()) {
+      setSessionLoading(false);
+      setAdminSession(null);
+      return;
+    }
+
+    let cancelled = false;
+    setSessionLoading(true);
+    void loadAdminSession()
+      .catch(() => {
+        if (!cancelled) {
+          setAuthed(false);
+          setAdminSession(null);
+          setToken(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setSessionLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authed, loadAdminSession]);
+
+  useEffect(() => {
+    if (!authed) return;
+    const refreshSession = () => {
+      void loadAdminSession().catch(() => {
+        /* keep current session on background refresh failure */
+      });
+    };
+    window.addEventListener("focus", refreshSession);
+    return () => window.removeEventListener("focus", refreshSession);
+  }, [authed, loadAdminSession]);
+
+  useEffect(() => {
+    if (!adminSession) return;
+    const onHash = () => {
+      const hashTab = tabFromHash();
+      setTab(resolveTabForPermissions(adminSession.permissions, hashTab));
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, [adminSession]);
 
   const changeTab = useCallback((next: Tab) => {
     if (allowedTabs.length > 0 && !allowedTabs.includes(next)) return;
@@ -903,12 +930,10 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!authed) return;
-    if (!adminSession) return;
-    const tabs = tabsForPermissions(adminSession.permissions);
-    if (tabs.length > 0 && !tabs.includes(tab)) return;
+    if (!authed || sessionLoading || !adminSession) return;
+    if (!allowedTabs.includes(tab)) return;
     void loadTab(tab);
-  }, [authed, tab, loadTab, adminSession]);
+  }, [authed, tab, loadTab, adminSession, sessionLoading, allowedTabs]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -928,9 +953,7 @@ export default function App() {
           setEmail(res.user.email);
           setLoginStep("credentials");
           setAuthed(true);
-          const session = await api.adminSession();
-          setAdminSession(session);
-          setTab(defaultTabForPermissions(session.permissions));
+          await loadAdminSession();
           return;
         }
         const sessionId = res.loginSessionId?.trim();
@@ -962,9 +985,7 @@ export default function App() {
       setAdminEmail(res.user.email);
       setEmail(res.user.email);
       setAuthed(true);
-      const session = await api.adminSession();
-      setAdminSession(session);
-      setTab(defaultTabForPermissions(session.permissions));
+      await loadAdminSession();
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -976,6 +997,7 @@ export default function App() {
     setToken(null);
     setAdminEmail(null);
     setAdminSession(null);
+    setSessionLoading(false);
     sessionStorage.removeItem("admin-login-session");
     setAuthed(false);
   }
@@ -1179,7 +1201,9 @@ export default function App() {
     <div className="app">
       <Sidebar
         tab={tab}
-        allowedTabs={allowedTabs.length > 0 ? allowedTabs : ["overview"]}
+        allowedTabs={allowedTabs}
+        sessionLoading={sessionLoading}
+        staffSummary={staffSummary}
         onTabChange={changeTab}
         adminEmail={email || getAdminEmail() || "admin"}
         onRefresh={() => void refresh()}
@@ -1187,7 +1211,19 @@ export default function App() {
       />
 
       <main className="main">
-        {message && (
+        {sessionLoading && (
+          <p className="muted">Loading your admin access…</p>
+        )}
+        {!sessionLoading && allowedTabs.length === 0 && (
+          <div className="page-empty">
+            <h2>No review queues assigned</h2>
+            <p className="muted">
+              A full admin must grant you KYC, payout, TP claim, or setup
+              reviewer permissions. After that, sign out and sign in again here.
+            </p>
+          </div>
+        )}
+        {!sessionLoading && allowedTabs.length > 0 && message && (
           <div
             className={`message${isErrorMessage(message) ? " error" : ""}`}
           >

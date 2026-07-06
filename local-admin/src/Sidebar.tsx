@@ -65,6 +65,26 @@ export function defaultTabForPermissions(permissions: AdminPermissions | null): 
   return tabs[0] ?? "signals";
 }
 
+export function staffRoleSummary(permissions: AdminPermissions | null): string {
+  if (!permissions || permissions.fullAdmin) return "";
+  const roles: string[] = [];
+  if (permissions.setup) roles.push("Setups");
+  if (permissions.kyc) roles.push("KYC");
+  if (permissions.payout) roles.push("Payouts");
+  if (permissions.tpClaim) roles.push("TP Claims");
+  return roles.join(" · ");
+}
+
+export function resolveTabForPermissions(
+  permissions: AdminPermissions | null,
+  preferred?: Tab,
+): Tab {
+  const tabs = tabsForPermissions(permissions);
+  if (tabs.length === 0) return preferred ?? "signals";
+  if (preferred && tabs.includes(preferred)) return preferred;
+  return defaultTabForPermissions(permissions);
+}
+
 const NAV_ITEMS: NavItem[] = [
   { id: "overview", label: "Overview", icon: "overview" },
   { id: "paymentForecast", label: "Payment forecast", icon: "forecast" },
@@ -213,6 +233,8 @@ function truncateEmail(email: string, max = 22) {
 type SidebarProps = {
   tab: Tab;
   allowedTabs: Tab[];
+  sessionLoading?: boolean;
+  staffSummary?: string;
   onTabChange: (tab: Tab) => void;
   adminEmail: string;
   onRefresh: () => void;
@@ -222,6 +244,8 @@ type SidebarProps = {
 export function Sidebar({
   tab,
   allowedTabs,
+  sessionLoading = false,
+  staffSummary = "",
   onTabChange,
   adminEmail,
   onRefresh,
@@ -248,11 +272,27 @@ export function Sidebar({
           TR
         </div>
         <span className="sidebar-brand-name">TraderRank</span>
-        <span className="sidebar-brand-badge">Admin</span>
+        <span className="sidebar-brand-badge">
+          {staffSummary ? "Staff" : "Admin"}
+        </span>
       </div>
 
+      {staffSummary && (
+        <p className="sidebar-staff-summary" title="Your assigned review queues">
+          {staffSummary}
+        </p>
+      )}
+
       <nav className="sidebar-nav" aria-label="Admin navigation">
-        {NAV_ITEMS.filter((item) => allowedTabs.includes(item.id)).map((item) => (
+        {sessionLoading ? (
+          <p className="sidebar-loading muted">Loading your menu…</p>
+        ) : allowedTabs.length === 0 ? (
+          <p className="sidebar-loading muted">
+            No review queues assigned yet. Ask a full admin to grant permissions,
+            then sign out and back in.
+          </p>
+        ) : (
+          NAV_ITEMS.filter((item) => allowedTabs.includes(item.id)).map((item) => (
           <button
             key={item.id}
             type="button"
@@ -262,7 +302,8 @@ export function Sidebar({
             <span className="sidebar-nav-icon">{icons[item.icon]}</span>
             <span className="sidebar-nav-label">{item.label}</span>
           </button>
-        ))}
+        ))
+        )}
       </nav>
 
       <div className="sidebar-footer" ref={menuRef}>
