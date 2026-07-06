@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,17 +13,27 @@ type Props = {
   tradingActive: boolean;
   linkedAccountId?: string | null;
   compact?: boolean;
+  onAccountLinked?: () => void;
 };
 
 export function Mt5LiveSyncCard({
   tradingActive,
   linkedAccountId,
   compact = false,
+  onAccountLinked,
 }: Props) {
   const [status, setStatus] = useState<Mt5SyncStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCheckout, setShowCheckout] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [claiming, setClaiming] = useState(false);
+  const [localLinkedId, setLocalLinkedId] = useState<string | null>(
+    linkedAccountId ?? null,
+  );
+
+  useEffect(() => {
+    setLocalLinkedId(linkedAccountId ?? null);
+  }, [linkedAccountId]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -46,10 +55,26 @@ export function Mt5LiveSyncCard({
   if (!tradingActive) return null;
 
   const hasLinkedAccount = Boolean(
-    linkedAccountId?.trim() || status?.linkedAccountId?.trim(),
+    localLinkedId?.trim() ||
+      linkedAccountId?.trim() ||
+      status?.linkedAccountId?.trim(),
   );
   const active = status?.active ?? false;
   const feeUsdt = status?.feeUsdt ?? 5;
+
+  async function connectAccount() {
+    setClaiming(true);
+    try {
+      const result = await api.mt5Sync.claimAccount();
+      setLocalLinkedId(result.accountId);
+      await refresh();
+      onAccountLinked?.();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not connect MT5 account");
+    } finally {
+      setClaiming(false);
+    }
+  }
 
   async function toggleEnabled(enabled: boolean) {
     setToggling(true);
@@ -69,13 +94,19 @@ export function Mt5LiveSyncCard({
       </p>
 
       {!hasLinkedAccount && (
-        <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-          Link your MT5 trading account in{" "}
-          <Link href="/settings" className="font-medium underline">
-            Settings
-          </Link>{" "}
-          before subscribing.
-        </p>
+        <div className="space-y-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-xs text-amber-200">
+          <p>
+            Connect a dedicated MT5 account from the platform pool before
+            subscribing.
+          </p>
+          <Button
+            size="sm"
+            onClick={() => void connectAccount()}
+            disabled={claiming}
+          >
+            {claiming ? "Connecting…" : "Connect MT5 account"}
+          </Button>
+        </div>
       )}
 
       {status && (
@@ -183,6 +214,16 @@ export function Mt5LiveSyncCard({
             onClick={() => setShowCheckout(true)}
           >
             Enable — {formatCurrency(feeUsdt)}/week
+          </Button>
+        )}
+        {!active && !hasLinkedAccount && (
+          <Button
+            size="sm"
+            className="w-full"
+            onClick={() => void connectAccount()}
+            disabled={claiming}
+          >
+            {claiming ? "Connecting…" : "Connect MT5 to subscribe"}
           </Button>
         )}
         {showCheckout && (

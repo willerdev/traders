@@ -626,6 +626,14 @@ class ApiClient {
         body: JSON.stringify({ enabled }),
       }),
     status: () => this.request<Mt5SyncStatus>("/mt5-sync/status"),
+    poolAccounts: () =>
+      this.request<MetaApiAccountsResult>("/mt5-sync/pool-accounts"),
+    claimAccount: () =>
+      this.request<{
+        alreadyLinked: boolean;
+        accountId: string;
+        account: MetaApiAccountRow;
+      }>("/mt5-sync/claim-account", { method: "POST" }),
   };
 
   tpClaims = {

@@ -21,6 +21,7 @@ import {
   tradingAccessDaysRemaining,
 } from '../common/weekly-access.util';
 import { ProfitShareService } from '../profit-share/profit-share.service';
+import { Mt5PoolService } from '../mt5-sync/mt5-pool.service';
 
 @Injectable()
 export class UsersService {
@@ -28,6 +29,7 @@ export class UsersService {
     private prisma: PrismaService,
     private metaApi: MetaApiService,
     private profitShare: ProfitShareService,
+    private mt5Pool: Mt5PoolService,
   ) {}
 
   async getDashboard(userId: string) {
@@ -166,6 +168,7 @@ export class UsersService {
       if (!this.metaApi.isConfigured) {
         throw new BadRequestException('Live trading is not available yet');
       }
+      await this.mt5Pool.assertAccountLinkable(userId, nextId);
       await this.metaApi.getAccount(nextId);
     }
 

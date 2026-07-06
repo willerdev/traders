@@ -11,6 +11,7 @@ import { PlatformNotificationsModule } from '../platform-notifications/platform-
 import { AiModule } from '../ai/ai.module';
 import { AuthModule } from '../auth/auth.module';
 import { Mt5SyncBillingModule } from './mt5-sync-billing.module';
+import { Mt5PoolModule } from './mt5-pool.module';
 
 @Module({
   imports: [
@@ -21,9 +22,10 @@ import { Mt5SyncBillingModule } from './mt5-sync-billing.module';
     AuthModule,
     PlatformNotificationsModule,
     Mt5SyncBillingModule,
+    Mt5PoolModule,
   ],
   controllers: [Mt5SyncController, AdminMt5SyncController],
   providers: [Mt5SyncService],
-  exports: [Mt5SyncService],
+  exports: [Mt5SyncService, Mt5PoolModule],
 })
 export class Mt5SyncModule {}

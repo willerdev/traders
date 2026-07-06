@@ -146,6 +146,7 @@ export default function SettingsPage() {
   const [metaApiAccounts, setMetaApiAccounts] = useState<MetaApiAccountRow[]>([]);
   const [tradingAccountId, setTradingAccountId] = useState<string>("");
   const [tradingSaving, setTradingSaving] = useState(false);
+  const [claimingAccount, setClaimingAccount] = useState(false);
 
   const [profileForm, setProfileForm] = useState({
     displayName: "",
@@ -231,10 +232,15 @@ export default function SettingsPage() {
       setTradingAccountId(data.user.metaApiAccountId ?? "");
       if (data.metaApi?.configured) {
         try {
-          const accounts = await api.signals.metaApiAccounts();
+          const accounts = await api.mt5Sync.poolAccounts();
           setMetaApiAccounts(accounts.items ?? []);
         } catch {
-          setMetaApiAccounts([]);
+          try {
+            const accounts = await api.signals.metaApiAccounts();
+            setMetaApiAccounts(accounts.items ?? []);
+          } catch {
+            setMetaApiAccounts([]);
+          }
         }
       } else {
         setMetaApiAccounts([]);
@@ -316,6 +322,31 @@ export default function SettingsPage() {
       setError(err instanceof Error ? err.message : "Failed to save payout details");
     } finally {
       setPaymentSaving(false);
+    }
+  }
+
+  async function claimTradingAccount() {
+    setClaimingAccount(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await api.mt5Sync.claimAccount();
+      setTradingAccountId(result.accountId);
+      const updated = await api.users.settings();
+      setSettings(updated);
+      const accounts = await api.mt5Sync.poolAccounts();
+      setMetaApiAccounts(accounts.items ?? []);
+      setMessage(
+        result.alreadyLinked
+          ? "MT5 account already linked"
+          : "MT5 account connected — you can subscribe to Live Sync",
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not connect MT5 account",
+      );
+    } finally {
+      setClaimingAccount(false);
     }
   }
 
@@ -853,13 +884,30 @@ export default function SettingsPage() {
               <p className="text-sm text-muted">
                 Live trading is not enabled on this platform yet.
               </p>
-            ) : metaApiAccounts.length === 0 ? (
-              <p className="text-sm text-muted">
-                No connected trading accounts found. Contact your administrator
-                to link a broker account.
-              </p>
+            ) : metaApiAccounts.length === 0 && !tradingAccountId ? (
+              <div className="space-y-3">
+                <p className="text-sm text-muted">
+                  Get a dedicated MT5 account from the platform pool — required
+                  for MT5 Live Sync and personal trade tracking.
+                </p>
+                <Button
+                  type="button"
+                  onClick={() => void claimTradingAccount()}
+                  disabled={claimingAccount}
+                >
+                  {claimingAccount ? "Connecting…" : "Connect MT5 account"}
+                </Button>
+              </div>
             ) : (
               <>
+                {tradingAccountId && metaApiAccounts.length === 0 && (
+                  <p className="text-sm text-muted">
+                    Linked account:{" "}
+                    <span className="font-mono text-foreground">
+                      {tradingAccountId}
+                    </span>
+                  </p>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="metaApiAccount">Connected account</Label>
                   <select
@@ -869,8 +917,8 @@ export default function SettingsPage() {
                     className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-foreground"
                   >
                     <option value="">
-                      {settings.metaApi?.defaultAccountId
-                        ? "Use platform default account"
+                      {tradingAccountId
+                        ? "Change linked account…"
                         : "Select an account…"}
                     </option>
                     {metaApiAccounts.map((a) => (
@@ -880,13 +928,25 @@ export default function SettingsPage() {
                     ))}
                   </select>
                 </div>
-                <Button
-                  type="button"
-                  onClick={() => void saveTradingAccount()}
-                  disabled={tradingSaving}
-                >
-                  {tradingSaving ? "Saving…" : "Save trading account"}
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => void saveTradingAccount()}
+                    disabled={tradingSaving}
+                  >
+                    {tradingSaving ? "Saving…" : "Save trading account"}
+                  </Button>
+                  {!tradingAccountId && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => void claimTradingAccount()}
+                      disabled={claimingAccount}
+                    >
+                      {claimingAccount ? "Connecting…" : "Auto-connect account"}
+                    </Button>
+                  )}
+                </div>
               </>
             )}
           </CardContent>

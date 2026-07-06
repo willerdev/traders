@@ -52,6 +52,8 @@ import {
   MT5_SYNC_PLACEHOLDER_SCREENSHOT,
 } from '../common/mt5-sync.util';
 import { CopyTradingService } from '../copy-trading/copy-trading.service';
+import { Mt5PoolService } from '../mt5-sync/mt5-pool.service';
+import { Mt5PoolModule } from '../mt5-sync/mt5-pool.module';
 
 @Injectable()
 export class SignalsService {
@@ -70,6 +72,7 @@ export class SignalsService {
     private metaApi: MetaApiService,
     private tradeRisk: TradeRiskService,
     private copyTrading: CopyTradingService,
+    private mt5Pool: Mt5PoolService,
   ) {}
 
   private async mirrorToCopyPool(input: {
@@ -568,8 +571,8 @@ export class SignalsService {
     );
   }
 
-  async listMetaApiAccountsForUser() {
-    return this.metaApi.listAccounts({ limit: 100, deploymentStatus: 'deployed' });
+  async listMetaApiAccountsForUser(userId: string) {
+    return this.mt5Pool.listLinkableAccounts(userId);
   }
 
   async placeTrade(userId: string, signalId: string) {

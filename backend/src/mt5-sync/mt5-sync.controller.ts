@@ -11,6 +11,7 @@ import { IsBoolean, IsNotEmpty, IsNumber, IsString } from 'class-validator';
 import { JwtAuthGuard, RolesGuard } from '../auth/guards';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Mt5SyncService } from './mt5-sync.service';
+import { Mt5PoolService } from './mt5-pool.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 class SetMt5SyncEnabledDto {
@@ -32,11 +33,24 @@ class DeactivateMt5SyncUserDto {
 @Controller('mt5-sync')
 @UseGuards(JwtAuthGuard)
 export class Mt5SyncController {
-  constructor(private sync: Mt5SyncService) {}
+  constructor(
+    private sync: Mt5SyncService,
+    private pool: Mt5PoolService,
+  ) {}
 
   @Get('status')
   getStatus(@Request() req: { user: { id: string } }) {
     return this.sync.getStatus(req.user.id);
+  }
+
+  @Get('pool-accounts')
+  listPoolAccounts(@Request() req: { user: { id: string } }) {
+    return this.pool.listLinkableAccounts(req.user.id);
+  }
+
+  @Post('claim-account')
+  claimAccount(@Request() req: { user: { id: string } }) {
+    return this.pool.claimAccount(req.user.id);
   }
 
   @Post('enabled')

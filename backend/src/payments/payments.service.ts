@@ -21,6 +21,7 @@ import { ProfitShareService } from '../profit-share/profit-share.service';
 import { resolveProfitShareConfig } from '../common/profit-share.util';
 import { ReferralsService } from '../referrals/referrals.service';
 import { Mt5SyncBillingService } from '../mt5-sync/mt5-sync-billing.service';
+import { Mt5PoolService } from '../mt5-sync/mt5-pool.service';
 
 @Injectable()
 export class PaymentsService {
@@ -41,6 +42,7 @@ export class PaymentsService {
     private profitShare: ProfitShareService,
     private referrals: ReferralsService,
     private mt5SyncBilling: Mt5SyncBillingService,
+    private mt5Pool: Mt5PoolService,
   ) {}
 
   private ipnUrl() {
@@ -685,9 +687,15 @@ export class PaymentsService {
       );
     }
     if (!user.metaApiAccountId?.trim()) {
-      throw new BadRequestException(
-        'Link your MT5 trading account in Settings before enabling MT5 Live Sync',
-      );
+      try {
+        await this.mt5Pool.claimAccount(userId);
+      } catch (err) {
+        throw new BadRequestException(
+          err instanceof BadRequestException
+            ? err.message
+            : 'Link your MT5 trading account in Settings before enabling MT5 Live Sync',
+        );
+      }
     }
 
     const amount = await this.mt5SyncFee();

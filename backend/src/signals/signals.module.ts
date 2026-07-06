@@ -12,6 +12,7 @@ import { EmailModule } from '../email/email.module';
 import { PlatformNotificationsModule } from '../platform-notifications/platform-notifications.module';
 import { CopyTradingModule } from '../copy-trading/copy-trading.module';
 import { LeaderboardModule } from '../leaderboard/leaderboard.module';
+import { Mt5PoolModule } from '../mt5-sync/mt5-pool.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { LeaderboardModule } from '../leaderboard/leaderboard.module';
     PlatformNotificationsModule,
     CopyTradingModule,
     LeaderboardModule,
+    Mt5PoolModule,
   ],
   controllers: [SignalsController],
   providers: [

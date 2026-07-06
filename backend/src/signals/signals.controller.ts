@@ -333,8 +333,8 @@ export class SignalsController {
 
   @Get('metaapi/accounts')
   @UseGuards(JwtAuthGuard)
-  listMetaApiAccounts() {
-    return this.signalsService.listMetaApiAccountsForUser();
+  listMetaApiAccounts(@Request() req: { user: { id: string } }) {
+    return this.signalsService.listMetaApiAccountsForUser(req.user.id);
   }
 
   @Get('metaapi/copy-dashboard')
