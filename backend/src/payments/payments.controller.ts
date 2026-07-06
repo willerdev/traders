@@ -18,6 +18,7 @@ import { CreatePaymentDto,
   ApplyPromoDto,
   CreateSetupPlanPaymentDto,
   CreateProfitSharePaymentDto,
+  CreateMt5SyncPaymentDto,
 } from '../common/dto';
 import { JwtAuthGuard } from '../auth/guards';
 import { NowPaymentsService } from './nowpayments.service';
@@ -73,6 +74,24 @@ export class PaymentsController {
   @UseGuards(JwtAuthGuard)
   getProfitShareStatus(@Request() req: { user: { id: string } }) {
     return this.paymentsService.getProfitSharePaymentStatus(req.user.id);
+  }
+
+  @Post('mt5-sync')
+  @UseGuards(JwtAuthGuard)
+  createMt5SyncPayment(
+    @Request() req: { user: { id: string } },
+    @Body() dto: CreateMt5SyncPaymentDto,
+  ) {
+    return this.paymentsService.createMt5SyncPayment(
+      req.user.id,
+      dto.network,
+    );
+  }
+
+  @Get('mt5-sync/status')
+  @UseGuards(JwtAuthGuard)
+  getMt5SyncStatus(@Request() req: { user: { id: string } }) {
+    return this.paymentsService.getMt5SyncPaymentStatus(req.user.id);
   }
 
   @Get('setup-plan/status')

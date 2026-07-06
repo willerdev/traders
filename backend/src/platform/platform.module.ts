@@ -4,9 +4,10 @@ import { LeaderboardModule } from '../leaderboard/leaderboard.module';
 import { PayoutsModule } from '../payouts/payouts.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { CopyTradingModule } from '../copy-trading/copy-trading.module';
+import { Mt5SyncModule } from '../mt5-sync/mt5-sync.module';
 
 @Module({
-  imports: [LeaderboardModule, PayoutsModule, PrismaModule, CopyTradingModule],
+  imports: [LeaderboardModule, PayoutsModule, PrismaModule, CopyTradingModule, Mt5SyncModule],
   providers: [PlatformJobsService],
 })
 export class PlatformModule {}

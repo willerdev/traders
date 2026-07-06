@@ -249,6 +249,12 @@ export class CreateProfitSharePaymentDto {
   network: string;
 }
 
+export class CreateMt5SyncPaymentDto {
+  @IsString()
+  @IsNotEmpty()
+  network: string;
+}
+
 export class ApplyPromoDto {
   @IsString()
   @IsNotEmpty()

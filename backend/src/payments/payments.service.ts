@@ -20,6 +20,7 @@ import { SubscriptionPlan } from '@prisma/client';
 import { ProfitShareService } from '../profit-share/profit-share.service';
 import { resolveProfitShareConfig } from '../common/profit-share.util';
 import { ReferralsService } from '../referrals/referrals.service';
+import { Mt5SyncService } from '../mt5-sync/mt5-sync.service';
 
 @Injectable()
 export class PaymentsService {
@@ -39,6 +40,7 @@ export class PaymentsService {
     private blockchain: BlockchainScannerService,
     private profitShare: ProfitShareService,
     private referrals: ReferralsService,
+    private mt5Sync: Mt5SyncService,
   ) {}
 
   private ipnUrl() {
@@ -245,11 +247,22 @@ export class PaymentsService {
     return purpose === 'profit_share';
   }
 
+  private isMt5SyncPurpose(purpose: string | null | undefined) {
+    return purpose === 'mt5_sync';
+  }
+
   private async profitShareFee(): Promise<number> {
     const config = await this.prisma.platformConfig.findUnique({
       where: { id: 'default' },
     });
     return resolveProfitShareConfig(config).feeUsdt;
+  }
+
+  private async mt5SyncFee(): Promise<number> {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    return Number(config?.mt5SyncFeeUsdt ?? 5);
   }
 
   private async activateSetupPlanSubscription(
@@ -663,6 +676,148 @@ export class PaymentsService {
     return { status: 'confirmed', paymentId: payment.id, profitShare: true };
   }
 
+  async createMt5SyncPayment(userId: string, network: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (!hasActiveTradingAccess(user)) {
+      throw new BadRequestException(
+        'Complete weekly payment before enrolling in MT5 Live Sync',
+      );
+    }
+    if (!user.metaApiAccountId?.trim()) {
+      throw new BadRequestException(
+        'Link your MT5 trading account in Settings before enabling MT5 Live Sync',
+      );
+    }
+
+    const amount = await this.mt5SyncFee();
+    const purpose = 'mt5_sync';
+    const payment = await this.prisma.payment.create({
+      data: {
+        userId,
+        amount,
+        currency: 'USDT',
+        network,
+        purpose,
+        gatewayId: `pending_${Date.now()}`,
+      },
+    });
+
+    if (!this.nowPayments.isConfigured) {
+      return {
+        paymentId: payment.id,
+        amount,
+        currency: 'USDT',
+        network,
+        purpose,
+        message: 'NOWPayments not configured — set NOWPAYMENTS_API_KEY',
+      };
+    }
+
+    const npPayment = await this.nowPayments.createPayment({
+      amount,
+      orderId: payment.id,
+      network,
+      description: 'TraderRank MT5 Live Sync — weekly add-on',
+      ipnCallbackUrl: this.ipnUrl(),
+    });
+
+    await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        gatewayId: String(npPayment.payment_id),
+        gatewayResponse: npPayment as object,
+        payAddress: npPayment.pay_address,
+        payAmount: npPayment.pay_amount,
+      },
+    });
+
+    return {
+      paymentId: payment.id,
+      amount,
+      currency: 'USDT',
+      network,
+      purpose,
+      payCurrency: npPayment.pay_currency,
+      payAmount: npPayment.pay_amount,
+      payAddress: npPayment.pay_address,
+      gatewayPaymentId: npPayment.payment_id,
+      liveStatus: npPayment.payment_status,
+      gateway: 'NOWPayments',
+      orderId: payment.id,
+    };
+  }
+
+  async getMt5SyncPaymentStatus(userId: string) {
+    const status = await this.mt5Sync.getStatus(userId);
+    const latestPayment = await this.prisma.payment.findFirst({
+      where: { userId, purpose: 'mt5_sync' },
+      orderBy: { createdAt: 'desc' },
+    });
+    const feeUsdt = await this.mt5SyncFee();
+    return {
+      ...status,
+      feeUsdt,
+      latestPayment: latestPayment
+        ? {
+            id: latestPayment.id,
+            status: latestPayment.status,
+            amount: Number(latestPayment.amount),
+            confirmedAt: latestPayment.confirmedAt?.toISOString() ?? null,
+          }
+        : null,
+    };
+  }
+
+  async confirmMt5SyncPayment(
+    paymentId: string,
+    gatewayPayload: object,
+    opts?: {
+      gatewayId?: string;
+      txHash?: string;
+      source?: 'ipn' | 'nowpayments' | 'blockchain' | 'manual';
+    },
+  ) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+    });
+    if (!payment) throw new NotFoundException('Payment not found');
+
+    if (!this.isMt5SyncPurpose(payment.purpose)) {
+      throw new BadRequestException('Payment is not an MT5 Live Sync subscription');
+    }
+
+    if (payment.status === 'CONFIRMED') {
+      return { alreadyConfirmed: true, paymentId: payment.id };
+    }
+
+    await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: 'CONFIRMED',
+        gatewayId: opts?.gatewayId ?? payment.gatewayId ?? undefined,
+        gatewayResponse: {
+          ...(payment.gatewayResponse &&
+          typeof payment.gatewayResponse === 'object'
+            ? (payment.gatewayResponse as object)
+            : {}),
+          ...gatewayPayload,
+          confirmationSource: opts?.source ?? 'nowpayments',
+        },
+        txHash: opts?.txHash ?? undefined,
+        confirmedAt: new Date(),
+      },
+    });
+
+    await this.mt5Sync.activate(payment.userId);
+
+    this.logger.log(
+      `MT5 Live Sync payment ${paymentId} confirmed via ${opts?.source ?? 'nowpayments'}`,
+    );
+
+    return { status: 'confirmed', paymentId: payment.id, mt5Sync: true };
+  }
+
   async syncAllPendingRegistrationPayments() {
     const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const pending = await this.prisma.payment.findMany({
@@ -796,6 +951,14 @@ export class PaymentsService {
 
     if (this.isProfitSharePurpose(payment.purpose)) {
       return this.confirmProfitSharePayment(payment.id, gatewayPayload, {
+        gatewayId,
+        txHash: opts?.txHash,
+        source: opts?.source ?? 'ipn',
+      });
+    }
+
+    if (this.isMt5SyncPurpose(payment.purpose)) {
+      return this.confirmMt5SyncPayment(payment.id, gatewayPayload, {
         gatewayId,
         txHash: opts?.txHash,
         source: opts?.source ?? 'ipn',

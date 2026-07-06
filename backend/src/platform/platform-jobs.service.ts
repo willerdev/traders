@@ -4,6 +4,7 @@ import { LeaderboardService } from '../leaderboard/leaderboard.service';
 import { PayoutService } from '../payouts/payout.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CopyTradingService } from '../copy-trading/copy-trading.service';
+import { Mt5SyncService } from '../mt5-sync/mt5-sync.service';
 import { currentWeekYear, getWeekNumber } from '../common/week.util';
 import { WEEKLY_ACCESS_MS } from '../common/weekly-access.util';
 
@@ -16,6 +17,7 @@ export class PlatformJobsService implements OnModuleInit {
     private payouts: PayoutService,
     private prisma: PrismaService,
     private copyTrading: CopyTradingService,
+    private mt5Sync: Mt5SyncService,
   ) {}
 
   async onModuleInit() {
@@ -103,6 +105,33 @@ export class PlatformJobsService implements OnModuleInit {
     } catch (err) {
       this.logger.error(
         `Copy trade commission sync failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async deactivateExpiredMt5SyncJob() {
+    try {
+      await this.mt5Sync.deactivateExpired();
+    } catch (err) {
+      this.logger.error(
+        `MT5 sync expiry job failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  @Cron('*/30 * * * * *')
+  async pollMt5SyncJob() {
+    try {
+      const result = await this.mt5Sync.syncAllActiveUsers();
+      if (result.users > 0) {
+        this.logger.debug(
+          `MT5 sync poll: ${result.users} user(s), +${result.imported} imported, ${result.closed} closed, ${result.modified} modified`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `MT5 sync poll failed: ${err instanceof Error ? err.message : err}`,
       );
     }
   }

@@ -25,6 +25,7 @@ import {
   type MarketingEmailRow,
   type ReferralSettings,
   type ReferrerRow,
+  type Mt5SyncAdminOverview,
 } from "./api";
 import { AdminImage } from "./AdminImage";
 import { Sidebar, type Tab, isAdminTab } from "./Sidebar";
@@ -186,6 +187,9 @@ export default function App() {
   const [copyRiskAmount, setCopyRiskAmount] = useState("");
   const [copyNotifyEmail, setCopyNotifyEmail] = useState("");
   const [copySettingsSaving, setCopySettingsSaving] = useState(false);
+  const [mt5SyncOverview, setMt5SyncOverview] = useState<Mt5SyncAdminOverview | null>(null);
+  const [mt5SyncFeeInput, setMt5SyncFeeInput] = useState("5");
+  const [mt5SyncSaving, setMt5SyncSaving] = useState(false);
   const [selectedMetaApiAccountId, setSelectedMetaApiAccountId] = useState<
     string | null
   >(null);
@@ -370,6 +374,10 @@ export default function App() {
         setCopyDashboard(dashboard);
         setCopyRiskAmount(String(dashboard.copyRiskPercent ?? dashboard.riskPercent ?? 5));
         setCopyNotifyEmail(dashboard.copyNotifyEmail ?? "willeratmit12@gmail.com");
+      } else if (active === "mt5Sync") {
+        const overview = await api.mt5SyncOverview();
+        setMt5SyncOverview(overview);
+        setMt5SyncFeeInput(String(overview.feeUsdt));
       } else if (active === "hub") {
         setMetaApiLoadError(null);
         const [reportResult, accountsResult] = await Promise.allSettled([
@@ -3216,6 +3224,167 @@ export default function App() {
                 </table>
                   </>
                 )}
+              </>
+            )}
+          </>
+        )}
+
+        {tab === "mt5Sync" && (
+          <>
+            <div className="toolbar toolbar-wrap">
+              <div>
+                <h2>MT5 Live Sync</h2>
+                <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                  Weekly add-on — subscribers trade on a linked pool account; the platform
+                  auto-creates setups and mirrors on the default MT5 account.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => void loadTab("mt5Sync")}
+              >
+                Refresh
+              </button>
+            </div>
+
+            {!mt5SyncOverview ? (
+              <p className="muted">Loading MT5 Live Sync…</p>
+            ) : (
+              <>
+                <div className="kyc-card" style={{ marginBottom: "1rem" }}>
+                  <h3 style={{ marginTop: 0 }}>Billing &amp; subscribers</h3>
+                  <div className="toolbar toolbar-wrap">
+                    <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                      <span className="muted">Weekly fee (USDT)</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="1000"
+                        step="0.01"
+                        value={mt5SyncFeeInput}
+                        onChange={(e) => setMt5SyncFeeInput(e.target.value)}
+                        disabled={mt5SyncSaving}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      disabled={mt5SyncSaving}
+                      onClick={() => {
+                        const fee = Number(mt5SyncFeeInput);
+                        if (!Number.isFinite(fee) || fee <= 0) {
+                          setMessage("Enter a valid fee");
+                          return;
+                        }
+                        setMt5SyncSaving(true);
+                        api
+                          .updateMt5SyncFee(fee)
+                          .then((res) => {
+                            setMt5SyncOverview((prev) =>
+                              prev ? { ...prev, feeUsdt: res.feeUsdt } : prev,
+                            );
+                            setMessage("MT5 Live Sync fee updated.");
+                          })
+                          .catch((err) =>
+                            setMessage(
+                              err instanceof Error ? err.message : "Could not update fee",
+                            ),
+                          )
+                          .finally(() => setMt5SyncSaving(false));
+                      }}
+                    >
+                      {mt5SyncSaving ? "Saving…" : "Save fee"}
+                    </button>
+                  </div>
+                  <p className="muted" style={{ marginTop: "1rem" }}>
+                    Active subscribers: <strong>{mt5SyncOverview.activeSubscribers}</strong>
+                    {" · "}
+                    Open sync links: <strong>{mt5SyncOverview.openLinks}</strong>
+                  </p>
+                </div>
+
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>User</th>
+                        <th>Symbol</th>
+                        <th>Signal</th>
+                        <th>Status</th>
+                        <th>Last sync</th>
+                        <th>Error</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mt5SyncOverview.recentLinks.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="muted">
+                            No sync links yet.
+                          </td>
+                        </tr>
+                      ) : (
+                        mt5SyncOverview.recentLinks.map((row) => (
+                          <tr key={row.id}>
+                            <td>
+                              {row.user}
+                              {row.email ? (
+                                <div className="muted" style={{ fontSize: "0.85em" }}>
+                                  {row.email}
+                                </div>
+                              ) : null}
+                            </td>
+                            <td>{row.symbol}</td>
+                            <td>
+                              <code>{row.signalId.slice(0, 8)}…</code>
+                              <div className="muted" style={{ fontSize: "0.85em" }}>
+                                {row.signalStatus}
+                              </div>
+                            </td>
+                            <td>
+                              <span className={badgeClass(row.status)}>{row.status}</span>
+                            </td>
+                            <td>{fmtDate(row.lastSyncedAt)}</td>
+                            <td className="muted">{row.lastError ?? "—"}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className="btn-secondary btn-sm"
+                                onClick={() => {
+                                  if (
+                                    !confirm(
+                                      `Deactivate MT5 Live Sync for ${row.user}?`,
+                                    )
+                                  ) {
+                                    return;
+                                  }
+                                  setMt5SyncSaving(true);
+                                  api
+                                    .deactivateMt5SyncUser(row.userId)
+                                    .then(() => {
+                                      setMessage("MT5 Live Sync deactivated.");
+                                      void loadTab("mt5Sync");
+                                    })
+                                    .catch((err) =>
+                                      setMessage(
+                                        err instanceof Error
+                                          ? err.message
+                                          : "Could not deactivate",
+                                      ),
+                                    )
+                                    .finally(() => setMt5SyncSaving(false));
+                                }}
+                              >
+                                Deactivate
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </>
             )}
           </>

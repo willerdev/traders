@@ -125,6 +125,12 @@ enum CopyTradeStatus {
   SKIPPED
 }
 
+enum Mt5SyncLinkStatus {
+  OPEN
+  CLOSED
+  FAILED
+}
+
 model User {
   id                String     @id @default(cuid())
   email             String?    @unique
@@ -148,6 +154,10 @@ model User {
   termsAcceptedAt   DateTime?
   lastLoginIp       String?
   metaApiAccountId  String?
+  mt5SyncActive       Boolean    @default(false)
+  mt5SyncEnrolledAt   DateTime?
+  mt5SyncExpiresAt    DateTime?
+  mt5SyncEnabled      Boolean    @default(true)
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 
@@ -176,6 +186,7 @@ model User {
   copyPoolEntry      CopyPoolTrader? @relation("CopyPoolTrader")
   copyPoolAdds       CopyPoolTrader[] @relation("CopyPoolAddedBy")
   marketingEmails    MarketingEmail[]
+  mt5SyncLinks       Mt5SyncLink[]
   referredBy         User?   @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
   referrals          User[]  @relation("UserReferrals")
 
@@ -330,12 +341,14 @@ model Signal {
   metaApiOrderId   String?
   metaApiPositionId String?
   metaApiExecutedAt DateTime?
+  source            String         @default("manual")
 
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   trade      Trade?
   tradeScore TradeScore?
   tpClaims   TpClaim[]
   copyTrade  CopyTrade?
+  mt5SyncLink Mt5SyncLink?
 
   @@index([userId])
   @@index([symbol, direction])
@@ -657,6 +670,7 @@ model PlatformConfig {
   referralPaidRewardUsdt Decimal @default(1) @db.Decimal(10, 2)
   copyRiskPercent        Decimal @default(5) @db.Decimal(5, 2)
   copyNotifyEmail        String  @default("willeratmit12@gmail.com")
+  mt5SyncFeeUsdt         Decimal @default(5) @db.Decimal(10, 2)
 
   @@map("platform_config")
 }
@@ -748,6 +762,30 @@ model CopyPoolTrader {
 
   @@index([createdAt])
   @@map("copy_pool_traders")
+}
+
+model Mt5SyncLink {
+  id               String            @id @default(cuid())
+  userId           String
+  signalId         String            @unique
+  userAccountId    String
+  userPositionId   String
+  userOrderId      String?
+  systemAccountId  String
+  systemPositionId String?
+  systemOrderId    String?
+  status           Mt5SyncLinkStatus @default(OPEN)
+  lastSyncedAt     DateTime          @default(now())
+  lastError        String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  signal Signal @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  @@unique([userAccountId, userPositionId])
+  @@index([userId, status])
+  @@map("mt5_sync_links")
 }
 
 model CopyTrade {

@@ -317,6 +317,18 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  mt5SyncOverview: () => request<Mt5SyncAdminOverview>("/admin/mt5-sync"),
+  updateMt5SyncFee: (feeUsdt: number) =>
+    request<{ feeUsdt: number }>("/admin/mt5-sync/fee", {
+      method: "POST",
+      body: JSON.stringify({ feeUsdt }),
+    }),
+  deactivateMt5SyncUser: (userId: string) =>
+    request<{ ok: boolean; userId: string }>("/admin/mt5-sync/deactivate", {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    }),
+
   marketingSchedule: () =>
     request<MarketingSchedule>("/admin/marketing/schedule"),
   marketingHistory: (limit = 100, offset = 0) =>
@@ -874,6 +886,25 @@ export type CopyTradingDashboard = {
     totalRealizedProfit: number;
     floatingProfit: number;
   };
+};
+
+export type Mt5SyncAdminOverview = {
+  feeUsdt: number;
+  activeSubscribers: number;
+  openLinks: number;
+  recentLinks: {
+    id: string;
+    userId: string;
+    user: string;
+    email: string | null;
+    signalId: string;
+    symbol: string;
+    signalStatus: string;
+    status: string;
+    createdAt: string;
+    lastSyncedAt: string;
+    lastError: string | null;
+  }[];
 };
 
 export type MarketingRecipient = {

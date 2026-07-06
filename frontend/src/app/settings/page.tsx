@@ -31,6 +31,7 @@ import { validateDisplayName } from "@/lib/display-name";
 import { cn } from "@/lib/utils";
 import { AuthenticatedImage } from "@/components/ui/authenticated-image";
 import { ReferralCard } from "@/components/settings/referral-card";
+import { Mt5LiveSyncCard } from "@/components/mt5/mt5-live-sync-card";
 
 const KYC_STATUS: Record<
   KycRecord["status"],
@@ -890,6 +891,11 @@ export default function SettingsPage() {
             )}
           </CardContent>
         </Card>
+
+        <Mt5LiveSyncCard
+          tradingActive={settings?.user.status === "ACTIVE"}
+          linkedAccountId={tradingAccountId || settings?.user.metaApiAccountId}
+        />
 
         {/* Referral program */}
         <ReferralCard />

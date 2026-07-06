@@ -591,6 +591,34 @@ class ApiClient {
       }),
     profitShareStatus: () =>
       this.request<ProfitShareStatus>("/payments/profit-share/status"),
+    createMt5Sync: (network: string) =>
+      this.request<{
+        paymentId?: string;
+        amount?: number;
+        currency?: string;
+        network?: string;
+        payAddress?: string;
+        payAmount?: number;
+        payCurrency?: string;
+        gatewayPaymentId?: number;
+        liveStatus?: string;
+        gateway?: string;
+        message?: string;
+      }>("/payments/mt5-sync", {
+        method: "POST",
+        body: JSON.stringify({ network }),
+      }),
+    mt5SyncStatus: () =>
+      this.request<Mt5SyncStatus>("/payments/mt5-sync/status"),
+  };
+
+  mt5Sync = {
+    setEnabled: (enabled: boolean) =>
+      this.request<Mt5SyncStatus>("/mt5-sync/enabled", {
+        method: "POST",
+        body: JSON.stringify({ enabled }),
+      }),
+    status: () => this.request<Mt5SyncStatus>("/mt5-sync/status"),
   };
 
   tpClaims = {
@@ -762,6 +790,23 @@ export interface ProfitShareStatus {
   amountToWithdraw: number;
   remainingToWithdraw: number;
   initialInvestmentBasis: number;
+}
+
+export interface Mt5SyncStatus {
+  active: boolean;
+  enabled: boolean;
+  enrolledAt: string | null;
+  expiresAt: string | null;
+  linkedAccountId: string | null;
+  openLinks: number;
+  lastSyncedAt?: string | null;
+  feeUsdt?: number;
+  latestPayment?: {
+    id: string;
+    status: string;
+    amount: number;
+    confirmedAt: string | null;
+  } | null;
 }
 
 export interface DashboardData {

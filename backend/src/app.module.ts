@@ -23,6 +23,7 @@ import { AssistantModule } from './assistant/assistant.module';
 import { ProfitShareModule } from './profit-share/profit-share.module';
 import { MarketingModule } from './marketing/marketing.module';
 import { ReferralsModule } from './referrals/referrals.module';
+import { Mt5SyncModule } from './mt5-sync/mt5-sync.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { ReferralsModule } from './referrals/referrals.module';
     ProfitShareModule,
     MarketingModule,
     ReferralsModule,
+    Mt5SyncModule,
   ],
 })
 export class AppModule {}

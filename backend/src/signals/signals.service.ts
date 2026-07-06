@@ -47,6 +47,10 @@ import {
 } from '../common/setup-execution.util';
 import { RISK_PERCENT, MAX_RISK_PER_TRADE, MAX_BREAKEVEN_RETRIES, SETUP_MAX_AGE_MS } from '../common/constants';
 import { hasActiveTradingAccess } from '../common/weekly-access.util';
+import {
+  hasActiveMt5Sync,
+  MT5_SYNC_PLACEHOLDER_SCREENSHOT,
+} from '../common/mt5-sync.util';
 import { CopyTradingService } from '../copy-trading/copy-trading.service';
 
 @Injectable()
@@ -334,6 +338,182 @@ export class SignalsService {
       forwardResult,
       'accepted',
     );
+  }
+
+  async createFromMt5Sync(
+    userId: string,
+    input: {
+      symbol: string;
+      direction: TradeDirection;
+      openPrice: number;
+      entryMin: number;
+      entryMax: number;
+      stopLoss: number;
+      takeProfit: number;
+      userAccountId: string;
+      userPositionId: string;
+      volume: number;
+    },
+  ) {
+    await this.compliance.requireActiveTrader(userId);
+    await this.enforceSetupQuota(userId);
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { virtualAccount: true },
+    });
+    if (!user?.virtualAccount) {
+      throw new ForbiddenException('Virtual account not found');
+    }
+
+    const dto: CreateSignalDto = {
+      symbol: input.symbol,
+      direction: input.direction,
+      entryMin: input.entryMin,
+      entryMax: input.entryMax,
+      stopLoss: input.stopLoss,
+      takeProfit: input.takeProfit,
+      riskRewardRatio: 0,
+      description: `MT5 Live Sync — ${input.symbol} ${input.direction}`,
+      screenshotUrl: MT5_SYNC_PLACEHOLDER_SCREENSHOT,
+    };
+
+    this.validateEntryRange(dto);
+
+    const risk = Math.abs(input.openPrice - input.stopLoss);
+    const reward = Math.abs(input.takeProfit - input.openPrice);
+    dto.riskRewardRatio =
+      risk > 0 ? Number((reward / risk).toFixed(2)) : 0;
+
+    const { isDuplicate, matchedSignal } =
+      await this.duplicateDetection.checkDuplicate(userId, dto);
+    if (isDuplicate && matchedSignal) {
+      this.logger.warn(
+        `MT5 sync duplicate entry for ${userId} near @${matchedSignal.traderName} — importing anyway`,
+      );
+    }
+
+    const screenshotHash = createHash('sha256')
+      .update(`mt5-sync:${input.userPositionId}`)
+      .digest('hex');
+
+    const signal = await this.prisma.signal.create({
+      data: {
+        userId,
+        symbol: input.symbol,
+        direction: input.direction,
+        entryMin: input.entryMin,
+        entryMax: input.entryMax,
+        stopLoss: input.stopLoss,
+        takeProfit: input.takeProfit,
+        riskRewardRatio: dto.riskRewardRatio,
+        description: dto.description,
+        screenshotUrl: MT5_SYNC_PLACEHOLDER_SCREENSHOT,
+        screenshotHash,
+        source: 'mt5_sync',
+        status: 'OPEN',
+      },
+    });
+
+    const trade = await this.prisma.trade.create({
+      data: {
+        signalId: signal.id,
+        userId,
+        symbol: input.symbol,
+        direction: input.direction,
+        entryMin: input.entryMin,
+        entryMax: input.entryMax,
+        stopLoss: input.stopLoss,
+        takeProfit: input.takeProfit,
+      },
+    });
+
+    await this.priceMonitor.ensureTradeActivated(
+      trade,
+      signal,
+      input.openPrice,
+    );
+
+    await this.mirrorToCopyPool({
+      signal,
+      user,
+      openPrice: input.openPrice,
+      pending: false,
+    });
+
+    this.logger.log(
+      `MT5 sync setup ${signal.signalId} created from position ${input.userPositionId}`,
+    );
+
+    return {
+      signalDbId: signal.id,
+      signalPublicId: signal.signalId,
+      symbol: input.symbol,
+    };
+  }
+
+  async resolveSyncedSetupClosed(userId: string, signalPublicId: string) {
+    const signal = await this.prisma.signal.findFirst({
+      where: { signalId: signalPublicId, userId, status: 'OPEN' },
+      include: { trade: true },
+    });
+    if (!signal?.trade) {
+      return { status: 'skipped' as const, signalId: signalPublicId };
+    }
+
+    const entryMin = Number(signal.entryMin);
+    const entryMax = Number(signal.entryMax);
+    const sl = Number(signal.stopLoss);
+    const tp = Number(signal.takeProfit);
+    let exitPrice = computeEntryMid(entryMin, entryMax);
+
+    const accountId =
+      signal.metaApiAccountId ??
+      this.metaApi.getConfiguredDefaultAccountId();
+    if (accountId && this.metaApi.isConfigured) {
+      try {
+        const account = await this.metaApi.ensureAccountReady(accountId);
+        const quote = await this.metaApi.getSymbolPrice(account, signal.symbol);
+        exitPrice = signal.direction === 'BUY' ? quote.bid : quote.ask;
+      } catch {
+        /* keep entry mid */
+      }
+    }
+
+    await this.priceMonitor.ensureTradeActivated(signal.trade, signal, exitPrice);
+
+    const outcome = this.priceMonitor.outcomeAtPrice(
+      signal.direction,
+      tp,
+      sl,
+      exitPrice,
+    );
+
+    if (outcome === 'tp' || outcome === 'sl') {
+      return this.applySetupOutcome(signal, outcome, exitPrice, 'webhook');
+    }
+
+    const oneToOnePrice = computeOneToOnePrice(
+      signal.direction,
+      entryMin,
+      entryMax,
+      sl,
+    );
+    const manualOutcome = classifyManualCloseOutcome(
+      signal.direction,
+      entryMin,
+      entryMax,
+      oneToOnePrice,
+      exitPrice,
+    );
+
+    if (manualOutcome === 'tp') {
+      return this.wallet.resolveAsManualWin(userId, signal.id, exitPrice);
+    }
+    if (manualOutcome === 'sl') {
+      return this.wallet.resolveAsLoss(userId, signal.id, exitPrice);
+    }
+    return this.wallet.resolveAsEven(userId, signal.id, exitPrice);
   }
 
   async resendToHub(userId: string, signalId: string) {
@@ -4513,6 +4693,42 @@ export class SignalsService {
   }
 
   /** User MT5 hub — their submitted setups on the platform MT5 account. */
+  private async loadMt5SyncPositionMap(userId: string) {
+    const links = await this.prisma.mt5SyncLink.findMany({
+      where: { userId, status: 'OPEN' },
+      include: { signal: { select: { signalId: true } } },
+    });
+    const map = new Map<string, string>();
+    for (const link of links) {
+      map.set(link.userPositionId, link.signal.signalId);
+    }
+    return map;
+  }
+
+  private async resolveUserMt5TerminalContext(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        displayName: true,
+        metaApiAccountId: true,
+        mt5SyncActive: true,
+        mt5SyncExpiresAt: true,
+        mt5SyncEnabled: true,
+      },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const syncActive = hasActiveMt5Sync(user);
+    const platformAccountId = this.metaApi.getConfiguredDefaultAccountId();
+    const terminalAccountId =
+      syncActive && user.metaApiAccountId?.trim()
+        ? user.metaApiAccountId.trim()
+        : platformAccountId;
+
+    return { user, syncActive, platformAccountId, terminalAccountId };
+  }
+
+  /** User MT5 hub — their submitted setups on the platform MT5 account. */
   private async buildMt5UserAccountSummary(
     userId: string,
     floatingProfit: number,
@@ -4546,14 +4762,13 @@ export class SignalsService {
   async getUserMt5Terminal(userId: string) {
     await this.compliance.requireActiveTrader(userId);
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { displayName: true },
-    });
-    if (!user) throw new NotFoundException('User not found');
+    const { user, syncActive, platformAccountId, terminalAccountId } =
+      await this.resolveUserMt5TerminalContext(userId);
 
-    const platformAccountId = this.metaApi.getConfiguredDefaultAccountId();
-    const platformTrader = { displayName: user.displayName, metaApiAccountId: null };
+    const platformTrader = {
+      displayName: user.displayName,
+      metaApiAccountId: syncActive ? user.metaApiAccountId : null,
+    };
 
     const [openSetups, history] = await Promise.all([
       this.getOpenSignalsWithResolution(userId),
@@ -4722,27 +4937,39 @@ export class SignalsService {
     let terminalError: string | undefined;
     if (!this.metaApi.isConfigured) {
       terminalError = 'Live trading is not configured on the platform.';
-    } else if (!platformAccountId) {
-      terminalError = 'Platform MT5 account is not configured.';
+    } else if (!terminalAccountId) {
+      terminalError = syncActive
+        ? 'Link your MT5 trading account in Settings to use MT5 Live Sync.'
+        : 'Platform MT5 account is not configured.';
     } else {
       try {
-        const account = await this.metaApi.getAccount(platformAccountId);
-        const [pendingOrders, openPositions] = await Promise.all([
-          this.metaApi.findUserPendingOrders(
-            account,
-            user.displayName,
-            userId,
-          ),
-          this.metaApi.findUserOpenPositions(
-            account,
-            user.displayName,
-            userId,
-          ),
-        ]);
+        const account = await this.metaApi.getAccount(terminalAccountId);
+        const syncPositionMap = syncActive
+          ? await this.loadMt5SyncPositionMap(userId)
+          : new Map<string, string>();
+
+        const [pendingOrders, openPositions] = syncActive
+          ? await Promise.all([
+              this.metaApi.getOrders(account),
+              this.metaApi.getPositions(account),
+            ])
+          : await Promise.all([
+              this.metaApi.findUserPendingOrders(
+                account,
+                user.displayName,
+                userId,
+              ),
+              this.metaApi.findUserOpenPositions(
+                account,
+                user.displayName,
+                userId,
+              ),
+            ]);
 
         for (const order of pendingOrders) {
           const signalId =
             signalByOrderId.get(order.id) ??
+            (syncActive ? syncPositionMap.get(order.id) ?? null : null) ??
             openSignals.find(
               (s) => clientIdBySignalId.get(s.signalId) === order.clientId,
             )?.signalId ??
@@ -4770,13 +4997,16 @@ export class SignalsService {
             orderId: order.id,
             orderType: order.type,
             canClose: true,
-            executionLabel: 'Limit order on platform MT5',
+            executionLabel: syncActive
+              ? 'Limit order on your linked MT5'
+              : 'Limit order on platform MT5',
           });
         }
 
         for (const pos of openPositions) {
           const signalId =
             signalByPositionId.get(pos.id) ??
+            (syncActive ? syncPositionMap.get(pos.id) ?? null : null) ??
             openSignals.find(
               (s) => clientIdBySignalId.get(s.signalId) === pos.clientId,
             )?.signalId ??
@@ -4818,7 +5048,9 @@ export class SignalsService {
               ? Boolean(linked.trade.tp1BreakevenAt)
               : undefined,
             canPartialClose: pos.volume > 0,
-            executionLabel: 'Running on platform MT5',
+            executionLabel: syncActive
+              ? 'Running on your linked MT5'
+              : 'Running on platform MT5',
           });
         }
       } catch (err) {
@@ -4841,7 +5073,8 @@ export class SignalsService {
     );
 
     return {
-      configured: this.metaApi.isConfigured && Boolean(platformAccountId),
+      configured: this.metaApi.isConfigured && Boolean(terminalAccountId),
+      syncActive,
       message: terminalError,
       account: accountLedger,
       setups: {
@@ -4866,19 +5099,16 @@ export class SignalsService {
   async getUserMt5RunningTrades(userId: string) {
     await this.compliance.requireActiveTrader(userId);
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { displayName: true },
-    });
-    if (!user) throw new NotFoundException('User not found');
+    const { user, syncActive, terminalAccountId } =
+      await this.resolveUserMt5TerminalContext(userId);
 
-    const platformAccountId = this.metaApi.getConfiguredDefaultAccountId();
-    if (!this.metaApi.isConfigured || !platformAccountId) {
+    if (!this.metaApi.isConfigured || !terminalAccountId) {
       const accountLedger = await this.buildMt5UserAccountSummary(userId, 0);
       return {
         trades: [],
         account: accountLedger,
         stats: { runningCount: 0, floatingProfit: 0 },
+        syncActive,
         refreshedAt: new Date().toISOString(),
       };
     }
@@ -4903,15 +5133,25 @@ export class SignalsService {
       clientIdBySignalId.set(s.signalId, clientId);
     }
 
-    const account = await this.metaApi.getAccount(platformAccountId);
-    const positions = await this.metaApi.findUserOpenPositions(
-      account,
-      user.displayName,
-      userId,
-    );
+    const syncPositionMap = syncActive
+      ? await this.loadMt5SyncPositionMap(userId)
+      : new Map<string, string>();
+
+    const account = await this.metaApi.getAccount(terminalAccountId);
+    const positions = syncActive
+      ? await this.metaApi.getPositions(account)
+      : await this.metaApi.findUserOpenPositions(
+          account,
+          user.displayName,
+          userId,
+        );
 
     const trades = positions.map((pos) => {
+      const linkedBySync = syncActive
+        ? openSignals.find((s) => syncPositionMap.get(pos.id) === s.signalId)
+        : null;
       const linked =
+        linkedBySync ??
         signalByPositionId.get(pos.id) ??
         openSignals.find(
           (s) => clientIdBySignalId.get(s.signalId) === pos.clientId,
@@ -4947,7 +5187,9 @@ export class SignalsService {
           ? Boolean(linked.trade.tp1BreakevenAt)
           : false,
         canPartialClose: pos.volume > 0 && Boolean(linked),
-        executionLabel: 'Running on platform MT5',
+        executionLabel: syncActive
+          ? 'Running on your linked MT5'
+          : 'Running on platform MT5',
       };
     });
 
@@ -4965,6 +5207,7 @@ export class SignalsService {
         runningCount: trades.length,
         floatingProfit,
       },
+      syncActive,
       refreshedAt: new Date().toISOString(),
     };
   }

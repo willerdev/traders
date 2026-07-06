@@ -13,6 +13,7 @@ export type Tab =
   | "marketing"
   | "referrals"
   | "mt5Copy"
+  | "mt5Sync"
   | "hub";
 
 type NavItem = { id: Tab; label: string; icon: keyof typeof icons };
@@ -30,6 +31,7 @@ export const ADMIN_TABS: Tab[] = [
   "marketing",
   "referrals",
   "mt5Copy",
+  "mt5Sync",
   "hub",
 ];
 
@@ -50,6 +52,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "marketing", label: "Email marketing", icon: "marketing" },
   { id: "referrals", label: "Referrals", icon: "referrals" },
   { id: "mt5Copy", label: "MT5 Copy", icon: "mt5Copy" },
+  { id: "mt5Sync", label: "MT5 Sync", icon: "mt5Sync" },
   { id: "hub", label: "Hub MT5", icon: "hub" },
 ];
 
@@ -139,6 +142,14 @@ const icons = {
       <path d="M8 7h12M8 12h12M8 17h8" strokeLinecap="round" />
       <path d="M4 7h.01M4 12h.01M4 17h.01" strokeLinecap="round" />
       <path d="M3 5v14" strokeLinecap="round" />
+    </svg>
+  ),
+  mt5Sync: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M12 3v4M12 17v4" strokeLinecap="round" />
+      <path d="M3 12h4M17 12h4" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="4" />
+      <path d="M8 8l8 8" strokeLinecap="round" opacity="0.5" />
     </svg>
   ),
   refresh: (

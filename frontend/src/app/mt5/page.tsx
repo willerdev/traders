@@ -43,6 +43,7 @@ import {
   useMt5Expand,
 } from "@/components/mt5/mt5-ui";
 import { Mt5Assistant } from "@/components/mt5/mt5-assistant";
+import { Mt5LiveSyncCard } from "@/components/mt5/mt5-live-sync-card";
 
 type Tab = "quotes" | "setups" | "trades" | "history";
 type HistorySubTab = "positions" | "orders" | "deals";
@@ -346,6 +347,7 @@ export default function Mt5UserPage() {
 
   return (
     <div className="mt5-shell mx-auto flex min-h-[calc(100dvh-5.75rem-env(safe-area-inset-bottom,0px))] max-w-lg flex-col bg-[var(--mt5-bg)] text-[var(--mt5-text)] md:min-h-[calc(100dvh-1rem)] md:max-w-2xl">
+      <Mt5LiveSyncCard tradingActive compact />
       {/* MT5-style header */}
       <div className="sticky top-0 z-20 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)]">
         <div className="flex items-center justify-between px-4 py-3">

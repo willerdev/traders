@@ -1,0 +1,208 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { api } from "@/lib/api";
+import { cn, formatCurrency } from "@/lib/utils";
+import {
+  CheckCircle2,
+  Copy,
+  Loader2,
+  QrCode,
+  RefreshCw,
+} from "lucide-react";
+
+const NETWORKS = [
+  { id: "TRC20", label: "TRC20 (Tron)", hint: "Lowest fees" },
+  { id: "BEP20", label: "BEP20 (BSC)", hint: "Fast" },
+  { id: "ERC20", label: "ERC20 (ETH)", hint: "Higher gas" },
+] as const;
+
+type Progress = "waiting" | "confirming" | "partial" | "complete" | "failed" | "expired";
+
+const PROGRESS_LABEL: Record<Progress, string> = {
+  waiting: "Waiting for your transfer",
+  confirming: "Payment detected — confirming on chain",
+  partial: "Partial payment received",
+  complete: "Payment confirmed",
+  failed: "Payment failed",
+  expired: "Payment expired",
+};
+
+export function Mt5LiveSyncPaymentPanel({
+  feeUsdt,
+  onComplete,
+}: {
+  feeUsdt: number;
+  onComplete?: () => void;
+}) {
+  const [network, setNetwork] = useState<string>("TRC20");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [paymentId, setPaymentId] = useState<string | null>(null);
+  const [payAddress, setPayAddress] = useState("");
+  const [payAmount, setPayAmount] = useState<number | null>(null);
+  const [payCurrency, setPayCurrency] = useState("");
+  const [progress, setProgress] = useState<Progress>("waiting");
+  const [actuallyPaid, setActuallyPaid] = useState<number | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const pollStatus = useCallback(async () => {
+    if (!paymentId) return;
+    try {
+      const status = await api.payments.getStatus(paymentId);
+      setProgress((status.progress as Progress) || "waiting");
+      if (status.actuallyPaid != null) setActuallyPaid(status.actuallyPaid);
+      if (status.payAddress) setPayAddress(status.payAddress);
+      if (status.payAmount != null) setPayAmount(status.payAmount);
+      if (status.confirmed) onComplete?.();
+    } catch {
+      /* keep polling */
+    }
+  }, [paymentId, onComplete]);
+
+  useEffect(() => {
+    if (!paymentId || progress === "complete") return;
+    const id = setInterval(pollStatus, 8000);
+    pollStatus();
+    return () => clearInterval(id);
+  }, [paymentId, progress, pollStatus]);
+
+  async function startPayment() {
+    setLoading(true);
+    setError("");
+    try {
+      const result = await api.payments.createMt5Sync(network);
+      if (!result.payAddress || !result.paymentId) {
+        throw new Error(result.message || "Could not create payment");
+      }
+      setPaymentId(result.paymentId);
+      setPayAddress(result.payAddress);
+      setPayAmount(result.payAmount ?? result.amount ?? null);
+      setPayCurrency(result.payCurrency || "usdt");
+      setProgress("waiting");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Payment failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function copyAddress() {
+    if (!payAddress) return;
+    await navigator.clipboard.writeText(payAddress);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  if (!paymentId) {
+    return (
+      <div className="space-y-4 rounded-lg border border-[var(--color-border)] bg-foreground/[0.02] p-4">
+        <p className="text-sm text-muted">
+          Pay <strong className="text-foreground">{formatCurrency(feeUsdt)}</strong>{" "}
+          per week for MT5 Live Sync.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {NETWORKS.map((n) => (
+            <button
+              key={n.id}
+              type="button"
+              onClick={() => setNetwork(n.id)}
+              className={cn(
+                "rounded-lg border px-3 py-2 text-left text-sm transition-colors",
+                network === n.id
+                  ? "border-primary bg-primary/10 text-foreground"
+                  : "border-[var(--color-border)] text-muted hover:border-primary/40",
+              )}
+            >
+              <span className="font-medium">{n.label}</span>
+              <span className="mt-0.5 block text-xs opacity-70">{n.hint}</span>
+            </button>
+          ))}
+        </div>
+        {error && <p className="text-sm text-danger">{error}</p>}
+        <Button onClick={startPayment} disabled={loading} className="w-full sm:w-auto">
+          {loading ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Creating payment…
+            </>
+          ) : (
+            "Generate payment address"
+          )}
+        </Button>
+      </div>
+    );
+  }
+
+  const qrUrl = payAddress
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(payAddress)}`
+    : null;
+
+  return (
+    <div className="space-y-4 rounded-lg border border-primary/30 bg-primary/5 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Badge
+          variant={
+            progress === "complete"
+              ? "success"
+              : progress === "failed" || progress === "expired"
+                ? "danger"
+                : "gold"
+          }
+        >
+          {PROGRESS_LABEL[progress]}
+        </Badge>
+        <Button size="sm" variant="ghost" onClick={pollStatus} className="gap-1 text-muted">
+          <RefreshCw className="h-3.5 w-3.5" />
+          Refresh
+        </Button>
+      </div>
+
+      {progress === "complete" ? (
+        <div className="flex items-center gap-2 text-success">
+          <CheckCircle2 className="h-5 w-5" />
+          <span className="text-sm font-medium">MT5 Live Sync activated.</span>
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-[auto_1fr]">
+            {qrUrl && (
+              <div className="mx-auto rounded-lg bg-white p-2 sm:mx-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={qrUrl} alt="Payment QR code" width={180} height={180} className="rounded" />
+              </div>
+            )}
+            <div className="space-y-3 text-sm">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted">Send exactly</p>
+                <p className="text-xl font-bold text-foreground">
+                  {payAmount ?? "—"} {payCurrency.toUpperCase()}
+                </p>
+                <p className="text-xs text-muted">Network: {network}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted">To address</p>
+                <p className="mt-1 break-all font-mono text-xs text-foreground">{payAddress}</p>
+                <Button size="sm" variant="secondary" className="mt-2 gap-1" onClick={copyAddress}>
+                  <Copy className="h-3.5 w-3.5" />
+                  {copied ? "Copied!" : "Copy address"}
+                </Button>
+              </div>
+              {actuallyPaid != null && actuallyPaid > 0 && (
+                <p className="text-xs text-muted">
+                  Received: {actuallyPaid} {payCurrency.toUpperCase()}
+                </p>
+              )}
+            </div>
+          </div>
+          <p className="flex items-start gap-2 text-xs text-muted">
+            <QrCode className="mt-0.5 h-4 w-4 shrink-0" />
+            We check every 8 seconds and activate MT5 Live Sync when payment confirms.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
