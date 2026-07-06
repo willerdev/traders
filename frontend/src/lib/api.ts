@@ -86,6 +86,36 @@ class ApiClient {
     }
   }
 
+  private isMissingRouteError(err: unknown): boolean {
+    if (!(err instanceof Error)) return false;
+    const msg = err.message.toLowerCase();
+    return msg.includes("cannot post") || msg.includes("not found");
+  }
+
+  private async claimTradingAccountRequest(): Promise<{
+    alreadyLinked: boolean;
+    accountId: string;
+    account: MetaApiAccountRow;
+    settings?: UserSettings;
+  }> {
+    const options = { method: "POST" as const };
+    try {
+      return await this.request<{
+        alreadyLinked: boolean;
+        accountId: string;
+        account: MetaApiAccountRow;
+        settings: UserSettings;
+      }>("/users/trading-account/claim", options);
+    } catch (err) {
+      if (!this.isMissingRouteError(err)) throw err;
+      return await this.request<{
+        alreadyLinked: boolean;
+        accountId: string;
+        account: MetaApiAccountRow;
+      }>("/mt5-sync/claim-account", options);
+    }
+  }
+
   auth = {
     register: (data: { email: string; password: string; displayName: string; acceptTerms: boolean; referralCode?: string }) =>
       this.request("/auth/register", { method: "POST", body: JSON.stringify(data) }),
@@ -145,13 +175,7 @@ class ApiClient {
         method: "PATCH",
         body: JSON.stringify({ metaApiAccountId }),
       }),
-    claimTradingAccount: () =>
-      this.request<{
-        alreadyLinked: boolean;
-        accountId: string;
-        account: MetaApiAccountRow;
-        settings: UserSettings;
-      }>("/users/trading-account/claim", { method: "POST" }),
+    claimTradingAccount: () => this.claimTradingAccountRequest(),
     getKyc: () => this.request<KycRecord>("/users/kyc"),
     submitKyc: (data: SubmitKycInput) =>
       this.request<KycRecord>("/users/kyc/submit", {
@@ -635,7 +659,7 @@ class ApiClient {
     status: () => this.request<Mt5SyncStatus>("/mt5-sync/status"),
     poolAccounts: () =>
       this.request<MetaApiAccountsResult>("/mt5-sync/pool-accounts"),
-    claimAccount: () => this.users.claimTradingAccount(),
+    claimAccount: () => this.claimTradingAccountRequest(),
   };
 
   tpClaims = {
