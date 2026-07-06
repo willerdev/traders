@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { resolvePublicAppUrl } from '../common/public-app-url.util';
 
 export type SendEmailParams = {
   to: string;
@@ -18,10 +19,10 @@ export class EmailService {
     this.from =
       this.config.get<string>('EMAIL_FROM')?.trim() ||
       'TraderRank Pro <notifications@thetradeguard.com>';
-    this.frontendUrl =
-      (this.config.get<string>('FRONTEND_URL') || 'https://thetradeguard.com')
-        .split(',')[0]
-        .trim() || 'https://thetradeguard.com';
+    this.frontendUrl = resolvePublicAppUrl({
+      PUBLIC_APP_URL: this.config.get<string>('PUBLIC_APP_URL'),
+      FRONTEND_URL: this.config.get<string>('FRONTEND_URL'),
+    });
   }
 
   /** Read at call time so Render/env updates are picked up without a stale constructor cache. */

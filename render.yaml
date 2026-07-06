@@ -16,7 +16,10 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: FRONTEND_URL
+        value: https://thetradeguard.com
         sync: false
+      - key: PUBLIC_APP_URL
+        value: https://thetradeguard.com
       - key: API_PUBLIC_URL
         sync: false
       - key: NOWPAYMENTS_API_KEY
