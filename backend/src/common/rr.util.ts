@@ -16,6 +16,18 @@ export function computeOneToOnePrice(
   return direction === 'BUY' ? mid + risk : mid - risk;
 }
 
+/** Price where reward is 2× initial risk (1:2 RR from mid entry). */
+export function computeTwoToOnePrice(
+  direction: TradeDirection | 'BUY' | 'SELL',
+  entryMin: number,
+  entryMax: number,
+  stopLoss: number,
+): number {
+  const mid = computeEntryMid(entryMin, entryMax);
+  const risk = Math.abs(mid - stopLoss);
+  return direction === 'BUY' ? mid + risk * 2 : mid - risk * 2;
+}
+
 /** True when the setup's stated TP is at or beyond the 1:1 level (RR ≥ 1). */
 export function isOneToOneClaimValidForSetup(
   direction: TradeDirection | 'BUY' | 'SELL',

@@ -75,6 +75,14 @@ export class UpdateCopySettingsDto {
     typeof value === 'string' ? value.trim().toLowerCase() : value,
   )
   copyNotifyEmail?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  copyUseTwoToOneRr?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  copyAutoBreakevenEnabled?: boolean;
 }
 
 export class MarketingTestEmailDto {

@@ -36,6 +36,7 @@ export class PlatformJobsService implements OnModuleInit {
         `Backfilled weekly access expiry for ${backfill.count} active trader(s)`,
       );
     }
+    void this.copyTrading.runCopyPoolHealthCheck();
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
@@ -94,6 +95,36 @@ export class PlatformJobsService implements OnModuleInit {
     } catch (err) {
       this.logger.error(
         `Weekly payout job failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  @Cron('*/2 * * * *')
+  async checkCopyPoolHealthJob() {
+    try {
+      const health = await this.copyTrading.runCopyPoolHealthCheck();
+      if (!health.ready) {
+        this.logger.warn(`Copy pool health: ${health.message}`);
+      }
+    } catch (err) {
+      this.logger.error(
+        `Copy pool health check failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async manageCopyTradeBreakevenJob() {
+    try {
+      const result = await this.copyTrading.manageCopyTradeBreakeven();
+      if (result.applied > 0) {
+        this.logger.log(
+          `Copy breakeven: ${result.applied}/${result.checked} position(s) moved to even`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Copy breakeven job failed: ${err instanceof Error ? err.message : err}`,
       );
     }
   }

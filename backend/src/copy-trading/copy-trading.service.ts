@@ -7,6 +7,12 @@ import {
 import { CopyTradeStatus, TradeDirection } from '@prisma/client';
 import { RISK_PERCENT } from '../common/constants';
 import { currentWeekYear } from '../common/week.util';
+import {
+  computeEntryMid,
+  computeOneToOnePrice,
+  computeTwoToOnePrice,
+  priceReachedOneToOne,
+} from '../common/rr.util';
 import { NotificationService } from '../email/notification.service';
 import { LeaderboardService } from '../leaderboard/leaderboard.service';
 import {
@@ -67,6 +73,16 @@ export type CopyPoolTraderRow = {
   profit: number | null;
 };
 
+export type CopyPoolHealth = {
+  ready: boolean;
+  message: string;
+  checkedAt: string;
+  copyAccountId: string | null;
+  accountConnected: boolean;
+  tradeAllowed: boolean;
+  leaderCount: number;
+};
+
 @Injectable()
 export class CopyTradingService {
   private readonly logger = new Logger(CopyTradingService.name);
@@ -83,7 +99,15 @@ export class CopyTradingService {
   private async getCopyConfig() {
     const config = await this.prisma.platformConfig.findUnique({
       where: { id: 'default' },
-      select: { copyRiskPercent: true, copyNotifyEmail: true },
+      select: {
+        copyRiskPercent: true,
+        copyNotifyEmail: true,
+        copyUseTwoToOneRr: true,
+        copyAutoBreakevenEnabled: true,
+        copyHealthReady: true,
+        copyHealthMessage: true,
+        copyHealthCheckedAt: true,
+      },
     });
     const riskPercent = Number(config?.copyRiskPercent ?? RISK_PERCENT);
     const notifyEmail =
@@ -94,24 +118,38 @@ export class CopyTradingService {
           ? riskPercent
           : RISK_PERCENT,
       notifyEmail,
+      copyUseTwoToOneRr: config?.copyUseTwoToOneRr ?? true,
+      copyAutoBreakevenEnabled: config?.copyAutoBreakevenEnabled ?? true,
+      copyHealthReady: config?.copyHealthReady ?? false,
+      copyHealthMessage: config?.copyHealthMessage ?? null,
+      copyHealthCheckedAt: config?.copyHealthCheckedAt?.toISOString() ?? null,
     };
   }
 
   async getCopySettings() {
-    const { riskPercent, notifyEmail } = await this.getCopyConfig();
+    const cfg = await this.getCopyConfig();
     return {
-      copyRiskPercent: riskPercent,
-      copyNotifyEmail: notifyEmail,
+      copyRiskPercent: cfg.riskPercent,
+      copyNotifyEmail: cfg.notifyEmail,
+      copyUseTwoToOneRr: cfg.copyUseTwoToOneRr,
+      copyAutoBreakevenEnabled: cfg.copyAutoBreakevenEnabled,
+      copyHealthReady: cfg.copyHealthReady,
+      copyHealthMessage: cfg.copyHealthMessage,
+      copyHealthCheckedAt: cfg.copyHealthCheckedAt,
     };
   }
 
   async updateCopySettings(input: {
     copyRiskPercent?: number;
     copyNotifyEmail?: string;
+    copyUseTwoToOneRr?: boolean;
+    copyAutoBreakevenEnabled?: boolean;
   }) {
     const data: {
       copyRiskPercent?: number;
       copyNotifyEmail?: string;
+      copyUseTwoToOneRr?: boolean;
+      copyAutoBreakevenEnabled?: boolean;
     } = {};
 
     if (input.copyRiskPercent !== undefined) {
@@ -129,6 +167,12 @@ export class CopyTradingService {
       }
       data.copyNotifyEmail = email;
     }
+    if (input.copyUseTwoToOneRr !== undefined) {
+      data.copyUseTwoToOneRr = input.copyUseTwoToOneRr;
+    }
+    if (input.copyAutoBreakevenEnabled !== undefined) {
+      data.copyAutoBreakevenEnabled = input.copyAutoBreakevenEnabled;
+    }
     if (Object.keys(data).length === 0) {
       throw new BadRequestException('Nothing to update');
     }
@@ -140,6 +184,244 @@ export class CopyTradingService {
     });
 
     return this.getCopySettings();
+  }
+
+  async evaluateCopyPoolHealth(): Promise<CopyPoolHealth> {
+    const checkedAt = new Date().toISOString();
+    const leaders = await this.getActiveCopyTargets();
+
+    if (!this.metaApi.isConfigured) {
+      return {
+        ready: false,
+        message: 'MetaAPI is not configured',
+        checkedAt,
+        copyAccountId: null,
+        accountConnected: false,
+        tradeAllowed: false,
+        leaderCount: leaders.length,
+      };
+    }
+
+    const copyAccountId = await this.metaApi.resolveCopyAccountIdAsync();
+    if (!copyAccountId) {
+      return {
+        ready: false,
+        message: 'No copy MT5 account is available',
+        checkedAt,
+        copyAccountId: null,
+        accountConnected: false,
+        tradeAllowed: false,
+        leaderCount: leaders.length,
+      };
+    }
+
+    if (leaders.length === 0) {
+      return {
+        ready: false,
+        message: 'No traders in the copy pool — add traders or wait for weekly top 3',
+        checkedAt,
+        copyAccountId,
+        accountConnected: false,
+        tradeAllowed: false,
+        leaderCount: 0,
+      };
+    }
+
+    try {
+      const account = await this.metaApi.getAccount(copyAccountId);
+      const connected =
+        account.state === 'DEPLOYED' &&
+        account.connectionStatus === 'CONNECTED';
+
+      if (!connected) {
+        return {
+          ready: false,
+          message: `Copy account not connected (${account.connectionStatus}, ${account.state})`,
+          checkedAt,
+          copyAccountId,
+          accountConnected: false,
+          tradeAllowed: false,
+          leaderCount: leaders.length,
+        };
+      }
+
+      const terminal = await this.metaApi.getTerminalState(copyAccountId);
+      const tradeAllowed = terminal.information?.tradeAllowed ?? false;
+
+      if (!tradeAllowed) {
+        return {
+          ready: false,
+          message: 'Copy account is connected but trading is disabled by the broker',
+          checkedAt,
+          copyAccountId,
+          accountConnected: true,
+          tradeAllowed: false,
+          leaderCount: leaders.length,
+        };
+      }
+
+      if (terminal.error) {
+        return {
+          ready: false,
+          message: terminal.error,
+          checkedAt,
+          copyAccountId,
+          accountConnected: true,
+          tradeAllowed: false,
+          leaderCount: leaders.length,
+        };
+      }
+
+      return {
+        ready: true,
+        message: `Ready — ${leaders.length} trader(s) mirrored at ${copyAccountId.slice(0, 8)}…`,
+        checkedAt,
+        copyAccountId,
+        accountConnected: true,
+        tradeAllowed: true,
+        leaderCount: leaders.length,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        ready: false,
+        message,
+        checkedAt,
+        copyAccountId,
+        accountConnected: false,
+        tradeAllowed: false,
+        leaderCount: leaders.length,
+      };
+    }
+  }
+
+  async runCopyPoolHealthCheck(): Promise<CopyPoolHealth> {
+    const previous = await this.getCopyConfig();
+    const health = await this.evaluateCopyPoolHealth();
+
+    await this.prisma.platformConfig.upsert({
+      where: { id: 'default' },
+      create: {
+        id: 'default',
+        copyHealthReady: health.ready,
+        copyHealthMessage: health.message,
+        copyHealthCheckedAt: new Date(health.checkedAt),
+      },
+      update: {
+        copyHealthReady: health.ready,
+        copyHealthMessage: health.message,
+        copyHealthCheckedAt: new Date(health.checkedAt),
+      },
+    });
+
+    if (previous.copyHealthReady && !health.ready) {
+      this.notifications.copyTradeBlocked(previous.notifyEmail, {
+        signalId: 'health-check',
+        sourceName: 'Copy pool',
+        symbol: '—',
+        direction: '—',
+        reason: `Copy pool is NOT ready to receive trades: ${health.message}`,
+        riskPercent: previous.riskPercent,
+      });
+      this.logger.warn(`Copy pool health degraded: ${health.message}`);
+    } else if (!previous.copyHealthReady && health.ready) {
+      this.logger.log(`Copy pool health restored: ${health.message}`);
+    } else if (!health.ready) {
+      this.logger.debug(`Copy pool not ready: ${health.message}`);
+    }
+
+    return health;
+  }
+
+  async manageCopyTradeBreakeven(): Promise<{ checked: number; applied: number }> {
+    const { copyAutoBreakevenEnabled } = await this.getCopyConfig();
+    if (!copyAutoBreakevenEnabled) return { checked: 0, applied: 0 };
+
+    const copyAccountId = await this.metaApi.resolveCopyAccountIdAsync();
+    if (!this.metaApi.isConfigured || !copyAccountId) {
+      return { checked: 0, applied: 0 };
+    }
+
+    const openRows = await this.prisma.copyTrade.findMany({
+      where: {
+        copyAccountId,
+        status: CopyTradeStatus.OPEN,
+        breakevenApplied: false,
+        metaApiPositionId: { not: null },
+      },
+      include: {
+        signal: {
+          select: { entryMin: true, entryMax: true, signalId: true },
+        },
+      },
+    });
+    if (openRows.length === 0) return { checked: 0, applied: 0 };
+
+    let account;
+    try {
+      account = await this.metaApi.ensureAccountReady(copyAccountId);
+    } catch (err) {
+      this.logger.warn(
+        `Copy breakeven skipped — account not ready: ${err instanceof Error ? err.message : err}`,
+      );
+      return { checked: 0, applied: 0 };
+    }
+
+    let applied = 0;
+    for (const row of openRows) {
+      try {
+        const entryMin = Number(row.signal.entryMin);
+        const entryMax = Number(row.signal.entryMax);
+        const sl = Number(row.stopLoss);
+        const tp1 =
+          row.tp1Price != null
+            ? Number(row.tp1Price)
+            : computeOneToOnePrice(row.direction, entryMin, entryMax, sl);
+
+        const price = await this.metaApi.getSymbolPrice(account, row.symbol);
+        const mark = row.direction === 'BUY' ? price.bid : price.ask;
+        if (!priceReachedOneToOne(row.direction, tp1, mark)) continue;
+
+        const breakeven =
+          row.entryPrice != null
+            ? Number(row.entryPrice)
+            : computeEntryMid(entryMin, entryMax);
+
+        const spec = await this.metaApi.getSymbolSpecification(
+          account,
+          row.symbol,
+        );
+        const digits = spec.digits ?? 5;
+        const roundedBe = roundToSymbolDigits(breakeven, digits);
+
+        await this.metaApi.modifyPositionStops(account, {
+          positionId: row.metaApiPositionId!,
+          stopLoss: roundedBe,
+          specDigits: digits,
+        });
+
+        await this.prisma.copyTrade.update({
+          where: { id: row.id },
+          data: {
+            breakevenApplied: true,
+            notes: `${row.notes ?? ''} | TP1 (1:1) hit — SL moved to breakeven @ ${roundedBe}`.slice(
+              0,
+              500,
+            ),
+          },
+        });
+        applied += 1;
+        this.logger.log(
+          `Copy breakeven set for ${row.signal.signalId} @ ${roundedBe}`,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Copy breakeven failed for ${row.signal.signalId}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+
+    return { checked: openRows.length, applied };
   }
 
   private async failCopyMirror(input: {
@@ -373,7 +655,16 @@ export class CopyTradingService {
     const copyAccountId = await this.metaApi.resolveCopyAccountIdAsync();
     if (!this.metaApi.isConfigured || !copyAccountId) return;
 
-    const { riskPercent, notifyEmail } = await this.getCopyConfig();
+    const health = await this.evaluateCopyPoolHealth();
+    if (!health.ready) {
+      this.logger.debug(
+        `Copy skip ${input.signalPublicId}: pool not ready — ${health.message}`,
+      );
+      return;
+    }
+
+    const { riskPercent, notifyEmail, copyUseTwoToOneRr } =
+      await this.getCopyConfig();
 
     const existing = await this.prisma.copyTrade.findUnique({
       where: { signalId: input.signalDbId },
@@ -394,7 +685,20 @@ export class CopyTradingService {
     }
 
     const sl = input.stopLoss;
-    const tp = input.takeProfit;
+    const tp1 = computeOneToOnePrice(
+      input.direction,
+      input.entryMin,
+      input.entryMax,
+      sl,
+    );
+    const tp = copyUseTwoToOneRr
+      ? computeTwoToOnePrice(
+          input.direction,
+          input.entryMin,
+          input.entryMax,
+          sl,
+        )
+      : input.takeProfit;
     const openPrice = input.openPrice;
 
     let journal = existing;
@@ -445,9 +749,10 @@ export class CopyTradingService {
           direction: input.direction,
           stopLoss: sl,
           takeProfit: tp,
+          tp1Price: tp1,
           entryPrice: openPrice,
           status: CopyTradeStatus.PENDING,
-          notes: `Mirroring #${source.rank} ${source.displayName} (max ${riskPercent}% risk)`,
+          notes: `Mirroring #${source.rank} ${source.displayName} (max ${riskPercent}% risk${copyUseTwoToOneRr ? ', 1:2 RR TP' : ''})`,
         },
       });
     } else {
@@ -455,7 +760,9 @@ export class CopyTradingService {
         where: { id: journal.id },
         data: {
           status: CopyTradeStatus.PENDING,
-          notes: `Retry mirroring #${source.rank} ${source.displayName} (max ${riskPercent}% risk)`,
+          takeProfit: tp,
+          tp1Price: tp1,
+          notes: `Retry mirroring #${source.rank} ${source.displayName} (max ${riskPercent}% risk${copyUseTwoToOneRr ? ', 1:2 RR TP' : ''})`,
         },
       });
     }
@@ -467,6 +774,7 @@ export class CopyTradingService {
         input.symbol,
       );
       const digits = spec.digits ?? 5;
+      const roundedTp = roundToSymbolDigits(tp, digits);
       const marketPrice =
         input.direction === 'BUY' ? price.ask : price.bid;
 
@@ -495,7 +803,7 @@ export class CopyTradingService {
           openPrice: roundedPrice,
           volume: sizing.volume,
           stopLoss: sl,
-          takeProfit: tp,
+          takeProfit: roundedTp,
           comment,
           clientId,
           price,
@@ -509,7 +817,7 @@ export class CopyTradingService {
           direction: input.direction,
           volume: sizing.volume,
           stopLoss: sl,
-          takeProfit: tp,
+          takeProfit: roundedTp,
           entryMin: input.entryMin,
           entryMax: input.entryMax,
           comment,
@@ -687,6 +995,13 @@ export class CopyTradingService {
         weeklyLeaderboard,
         copyRiskPercent: copySettings.copyRiskPercent,
         copyNotifyEmail: copySettings.copyNotifyEmail,
+        copyUseTwoToOneRr: copySettings.copyUseTwoToOneRr,
+        copyAutoBreakevenEnabled: copySettings.copyAutoBreakevenEnabled,
+        copyHealth: {
+          ready: copySettings.copyHealthReady,
+          message: copySettings.copyHealthMessage,
+          checkedAt: copySettings.copyHealthCheckedAt,
+        },
         riskPercent: copySettings.copyRiskPercent,
         leaders: leadersWithStats,
         terminal: null,
@@ -745,6 +1060,13 @@ export class CopyTradingService {
         weeklyLeaderboard,
         copyRiskPercent: copySettings.copyRiskPercent,
         copyNotifyEmail: copySettings.copyNotifyEmail,
+        copyUseTwoToOneRr: copySettings.copyUseTwoToOneRr,
+        copyAutoBreakevenEnabled: copySettings.copyAutoBreakevenEnabled,
+        copyHealth: {
+          ready: copySettings.copyHealthReady,
+          message: copySettings.copyHealthMessage,
+          checkedAt: copySettings.copyHealthCheckedAt,
+        },
         riskPercent: copySettings.copyRiskPercent,
         leaders: leadersWithStats,
         terminal: null,
@@ -810,6 +1132,13 @@ export class CopyTradingService {
       weeklyLeaderboard,
       copyRiskPercent: copySettings.copyRiskPercent,
       copyNotifyEmail: copySettings.copyNotifyEmail,
+      copyUseTwoToOneRr: copySettings.copyUseTwoToOneRr,
+      copyAutoBreakevenEnabled: copySettings.copyAutoBreakevenEnabled,
+      copyHealth: {
+        ready: copySettings.copyHealthReady,
+        message: copySettings.copyHealthMessage,
+        checkedAt: copySettings.copyHealthCheckedAt,
+      },
       riskPercent: copySettings.copyRiskPercent,
       leaders: leadersWithStats,
       terminal,

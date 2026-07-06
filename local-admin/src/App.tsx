@@ -293,6 +293,8 @@ export default function App() {
   const [copyPoolLoading, setCopyPoolLoading] = useState(false);
   const [copyRiskAmount, setCopyRiskAmount] = useState("");
   const [copyNotifyEmail, setCopyNotifyEmail] = useState("");
+  const [copyUseTwoToOneRr, setCopyUseTwoToOneRr] = useState(true);
+  const [copyAutoBreakeven, setCopyAutoBreakeven] = useState(true);
   const [copySettingsSaving, setCopySettingsSaving] = useState(false);
   const [copySubTab, setCopySubTab] = useState<"account" | "settings">("account");
   const [copyDashboardLoading, setCopyDashboardLoading] = useState(false);
@@ -411,6 +413,8 @@ export default function App() {
             String(fast.copyRiskPercent ?? fast.riskPercent ?? 5),
           );
           setCopyNotifyEmail(fast.copyNotifyEmail ?? "willeratmit12@gmail.com");
+        setCopyUseTwoToOneRr(fast.copyUseTwoToOneRr ?? true);
+        setCopyAutoBreakeven(fast.copyAutoBreakevenEnabled ?? true);
         } catch (err) {
           setMessage(
             err instanceof Error ? err.message : "Failed to load copy pool",
@@ -3034,6 +3038,45 @@ export default function App() {
               <p className="muted">Could not load copy pool — try Refresh.</p>
             ) : copySubTab === "account" ? (
               <>
+                {copyDashboard.copyHealth && (
+                  <div
+                    className="kyc-card"
+                    style={{
+                      marginBottom: "1rem",
+                      borderColor: copyDashboard.copyHealth.ready
+                        ? "rgba(34,197,94,0.35)"
+                        : "rgba(239,68,68,0.35)",
+                    }}
+                  >
+                    <div className="toolbar toolbar-wrap">
+                      <div>
+                        <h3 style={{ margin: 0 }}>
+                          Copy pool health —{" "}
+                          {copyDashboard.copyHealth.ready ? "Ready" : "Not ready"}
+                        </h3>
+                        <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                          {copyDashboard.copyHealth.message ??
+                            "Waiting for first health check…"}
+                        </p>
+                        {copyDashboard.copyHealth.checkedAt && (
+                          <p className="muted" style={{ margin: "0.25rem 0 0", fontSize: "0.75rem" }}>
+                            Last checked{" "}
+                            {fmtDate(copyDashboard.copyHealth.checkedAt)}
+                          </p>
+                        )}
+                      </div>
+                      <span
+                        className={badgeClass(
+                          copyDashboard.copyHealth.ready ? "approved" : "rejected",
+                        )}
+                      >
+                        {copyDashboard.copyHealth.ready
+                          ? "Can receive trades"
+                          : "Blocked"}
+                      </span>
+                    </div>
+                  </div>
+                )}
                 {!copyDashboard.configured ? (
                   <div className="kyc-card">
                     <p>{copyDashboard.message ?? "No MetaAPI account available."}</p>
@@ -3207,6 +3250,26 @@ export default function App() {
                         disabled={copySettingsSaving}
                       />
                     </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", width: "100%" }}>
+                      <input
+                        type="checkbox"
+                        checked={copyUseTwoToOneRr}
+                        onChange={(e) => setCopyUseTwoToOneRr(e.target.checked)}
+                        disabled={copySettingsSaving}
+                      />
+                      <span className="muted">Target 1:2 RR on copied trades (TP at 2× risk)</span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", width: "100%" }}>
+                      <input
+                        type="checkbox"
+                        checked={copyAutoBreakeven}
+                        onChange={(e) => setCopyAutoBreakeven(e.target.checked)}
+                        disabled={copySettingsSaving}
+                      />
+                      <span className="muted">
+                        Auto breakeven at TP1 (1:1) — move SL to entry when first target hits
+                      </span>
+                    </label>
                     <button
                       type="button"
                       className="btn-primary"
@@ -3227,16 +3290,23 @@ export default function App() {
                           .updateCopySettings({
                             copyRiskPercent,
                             copyNotifyEmail: copyNotifyEmail.trim(),
+                            copyUseTwoToOneRr,
+                            copyAutoBreakevenEnabled: copyAutoBreakeven,
                           })
                           .then((updated) => {
                             setCopyRiskAmount(String(updated.copyRiskPercent));
                             setCopyNotifyEmail(updated.copyNotifyEmail);
+                            setCopyUseTwoToOneRr(updated.copyUseTwoToOneRr ?? true);
+                            setCopyAutoBreakeven(updated.copyAutoBreakevenEnabled ?? true);
                             setCopyDashboard((prev) =>
                               prev
                                 ? {
                                     ...prev,
                                     copyRiskPercent: updated.copyRiskPercent,
                                     copyNotifyEmail: updated.copyNotifyEmail,
+                                    copyUseTwoToOneRr: updated.copyUseTwoToOneRr,
+                                    copyAutoBreakevenEnabled:
+                                      updated.copyAutoBreakevenEnabled,
                                     riskPercent: updated.copyRiskPercent,
                                   }
                                 : prev,

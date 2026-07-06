@@ -856,6 +856,11 @@ export type CopyPoolMutationResult = {
 export type CopySettings = {
   copyRiskPercent: number;
   copyNotifyEmail: string;
+  copyUseTwoToOneRr?: boolean;
+  copyAutoBreakevenEnabled?: boolean;
+  copyHealthReady?: boolean;
+  copyHealthMessage?: string | null;
+  copyHealthCheckedAt?: string | null;
 };
 
 export type CopyTradeJournalEntry = {
@@ -888,6 +893,13 @@ export type CopyTradingDashboard = {
   weeklyLeaderboard?: CopyTradingLeader[];
   copyRiskPercent?: number;
   copyNotifyEmail?: string;
+  copyUseTwoToOneRr?: boolean;
+  copyAutoBreakevenEnabled?: boolean;
+  copyHealth?: {
+    ready: boolean;
+    message?: string | null;
+    checkedAt?: string | null;
+  };
   leaders: CopyTradingLeader[];
   terminal: MetaApiTerminalState | null;
   journal: CopyTradeJournalEntry[];
