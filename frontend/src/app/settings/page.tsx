@@ -329,6 +329,8 @@ export default function SettingsPage() {
     setClaimingAccount(true);
     setError("");
     setMessage("");
+    const token = useAuthStore.getState().token ?? api.getToken();
+    if (token) api.setToken(token);
     try {
       const result = await api.users.claimTradingAccount();
       setTradingAccountId(result.accountId);
@@ -897,6 +899,9 @@ export default function SettingsPage() {
                 >
                   {claimingAccount ? "Connecting…" : "Connect MT5 account"}
                 </Button>
+                {error && (
+                  <p className="text-sm text-danger">{error}</p>
+                )}
               </div>
             ) : (
               <>

@@ -15,7 +15,12 @@ function apiErrorMessage(body: unknown, statusText: string): string {
   if (body && typeof body === "object") {
     const msg = (body as { message?: unknown }).message;
     if (Array.isArray(msg)) return msg.join(", ");
-    if (typeof msg === "string" && msg.trim()) return msg;
+    if (typeof msg === "string" && msg.trim()) {
+      if (msg === "Unauthorized") {
+        return "Your session expired — log out and sign in again, then retry.";
+      }
+      return msg;
+    }
   }
   return statusText || "Request failed";
 }
@@ -52,8 +57,9 @@ class ApiClient {
       ...(options.headers as Record<string, string>),
     };
 
-    if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`;
+    const token = this.getToken();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
     }
 
     let res: Response;
@@ -98,7 +104,7 @@ class ApiClient {
     account: MetaApiAccountRow;
     settings?: UserSettings;
   }> {
-    const options = { method: "POST" as const };
+    const options = { method: "POST" as const, body: "{}" };
     try {
       return await this.request<{
         alreadyLinked: boolean;
