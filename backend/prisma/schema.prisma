@@ -674,6 +674,7 @@ model PlatformConfig {
   copyNotifyEmail        String  @default("willeratmit12@gmail.com")
   copyUseTwoToOneRr      Boolean @default(true)
   copyAutoBreakevenEnabled Boolean @default(true)
+  copyEmailAlertsEnabled   Boolean @default(true)
   copyHealthReady        Boolean @default(false)
   copyHealthMessage      String?
   copyHealthCheckedAt    DateTime?

@@ -83,6 +83,10 @@ export class UpdateCopySettingsDto {
   @IsOptional()
   @IsBoolean()
   copyAutoBreakevenEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  copyEmailAlertsEnabled?: boolean;
 }
 
 export class MarketingTestEmailDto {

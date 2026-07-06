@@ -295,6 +295,7 @@ export default function App() {
   const [copyNotifyEmail, setCopyNotifyEmail] = useState("");
   const [copyUseTwoToOneRr, setCopyUseTwoToOneRr] = useState(true);
   const [copyAutoBreakeven, setCopyAutoBreakeven] = useState(true);
+  const [copyEmailAlerts, setCopyEmailAlerts] = useState(true);
   const [copySettingsSaving, setCopySettingsSaving] = useState(false);
   const [copySubTab, setCopySubTab] = useState<"account" | "settings">("account");
   const [copyDashboardLoading, setCopyDashboardLoading] = useState(false);
@@ -415,6 +416,7 @@ export default function App() {
           setCopyNotifyEmail(fast.copyNotifyEmail ?? "willeratmit12@gmail.com");
         setCopyUseTwoToOneRr(fast.copyUseTwoToOneRr ?? true);
         setCopyAutoBreakeven(fast.copyAutoBreakevenEnabled ?? true);
+        setCopyEmailAlerts(fast.copyEmailAlertsEnabled ?? true);
         } catch (err) {
           setMessage(
             err instanceof Error ? err.message : "Failed to load copy pool",
@@ -3270,6 +3272,17 @@ export default function App() {
                         Auto breakeven at TP1 (1:1) — move SL to entry when first target hits
                       </span>
                     </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", width: "100%" }}>
+                      <input
+                        type="checkbox"
+                        checked={copyEmailAlerts}
+                        onChange={(e) => setCopyEmailAlerts(e.target.checked)}
+                        disabled={copySettingsSaving}
+                      />
+                      <span className="muted">
+                        Email alerts on trade opened, BE hit (TP1), and TP hit — sent to notify email above
+                      </span>
+                    </label>
                     <button
                       type="button"
                       className="btn-primary"
@@ -3292,12 +3305,14 @@ export default function App() {
                             copyNotifyEmail: copyNotifyEmail.trim(),
                             copyUseTwoToOneRr,
                             copyAutoBreakevenEnabled: copyAutoBreakeven,
+                            copyEmailAlertsEnabled: copyEmailAlerts,
                           })
                           .then((updated) => {
                             setCopyRiskAmount(String(updated.copyRiskPercent));
                             setCopyNotifyEmail(updated.copyNotifyEmail);
                             setCopyUseTwoToOneRr(updated.copyUseTwoToOneRr ?? true);
                             setCopyAutoBreakeven(updated.copyAutoBreakevenEnabled ?? true);
+                            setCopyEmailAlerts(updated.copyEmailAlertsEnabled ?? true);
                             setCopyDashboard((prev) =>
                               prev
                                 ? {
@@ -3307,6 +3322,8 @@ export default function App() {
                                     copyUseTwoToOneRr: updated.copyUseTwoToOneRr,
                                     copyAutoBreakevenEnabled:
                                       updated.copyAutoBreakevenEnabled,
+                                    copyEmailAlertsEnabled:
+                                      updated.copyEmailAlertsEnabled,
                                     riskPercent: updated.copyRiskPercent,
                                   }
                                 : prev,

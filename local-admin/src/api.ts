@@ -858,6 +858,7 @@ export type CopySettings = {
   copyNotifyEmail: string;
   copyUseTwoToOneRr?: boolean;
   copyAutoBreakevenEnabled?: boolean;
+  copyEmailAlertsEnabled?: boolean;
   copyHealthReady?: boolean;
   copyHealthMessage?: string | null;
   copyHealthCheckedAt?: string | null;
@@ -895,6 +896,7 @@ export type CopyTradingDashboard = {
   copyNotifyEmail?: string;
   copyUseTwoToOneRr?: boolean;
   copyAutoBreakevenEnabled?: boolean;
+  copyEmailAlertsEnabled?: boolean;
   copyHealth?: {
     ready: boolean;
     message?: string | null;

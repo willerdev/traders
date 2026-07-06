@@ -630,6 +630,36 @@ export class NotificationService {
     this.dispatch(this.sendCopyTradeBlocked(toEmail, data), 'Copy trade blocked');
   }
 
+  copyBreakevenHit(
+    toEmail: string,
+    data: {
+      signalId: string;
+      symbol: string;
+      direction: string;
+      entryPrice: number;
+      tp1Price: number;
+      breakevenStop: number;
+      volume: number | null;
+    },
+  ) {
+    this.dispatch(this.sendCopyBreakevenHit(toEmail, data), 'Copy breakeven hit');
+  }
+
+  copyTakeProfitHit(
+    toEmail: string,
+    data: {
+      signalId: string;
+      symbol: string;
+      direction: string;
+      entryPrice: number | null;
+      takeProfit: number;
+      profit: number;
+      volume: number | null;
+    },
+  ) {
+    this.dispatch(this.sendCopyTakeProfitHit(toEmail, data), 'Copy TP hit');
+  }
+
   private async sendCopyTradePlaced(
     toEmail: string,
     data: {
@@ -717,6 +747,88 @@ export class NotificationService {
       subject: `Copy trade blocked — ${data.symbol} (${data.reason.slice(0, 60)})`,
       html,
       text: `Copy trade blocked for ${data.signalId}: ${data.reason}`,
+    });
+  }
+
+  private async sendCopyBreakevenHit(
+    toEmail: string,
+    data: {
+      signalId: string;
+      symbol: string;
+      direction: string;
+      entryPrice: number;
+      tp1Price: number;
+      breakevenStop: number;
+      volume: number | null;
+    },
+  ) {
+    const to = toEmail.trim().toLowerCase();
+    if (!to) return false;
+
+    const volumeLabel =
+      data.volume != null ? `${data.volume} lots` : '—';
+
+    const html = this.email.layout(
+      'Copy trade — breakeven (TP1) hit',
+      `<p>TP1 (1:1) was reached on a mirrored copy trade. Stop loss was moved to breakeven.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">Setup</td><td style="padding:6px 0;"><strong>${this.escape(data.signalId)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Symbol</td><td style="padding:6px 0;"><strong>${this.escape(data.symbol)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Direction</td><td style="padding:6px 0;"><strong>${this.escape(data.direction)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Volume</td><td style="padding:6px 0;"><strong>${this.escape(volumeLabel)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Entry</td><td style="padding:6px 0;"><strong>${data.entryPrice}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">TP1 (1:1)</td><td style="padding:6px 0;"><strong>${data.tp1Price}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">New stop (BE)</td><td style="padding:6px 0;"><strong>${data.breakevenStop}</strong></td></tr>
+      </table>`,
+    );
+
+    return this.email.send({
+      to,
+      subject: `Copy BE hit — ${data.symbol} ${data.direction} (TP1 @ ${data.tp1Price})`,
+      html,
+      text: `Copy breakeven: ${data.signalId} ${data.symbol} ${data.direction}. TP1 ${data.tp1Price}, SL moved to ${data.breakevenStop}.`,
+    });
+  }
+
+  private async sendCopyTakeProfitHit(
+    toEmail: string,
+    data: {
+      signalId: string;
+      symbol: string;
+      direction: string;
+      entryPrice: number | null;
+      takeProfit: number;
+      profit: number;
+      volume: number | null;
+    },
+  ) {
+    const to = toEmail.trim().toLowerCase();
+    if (!to) return false;
+
+    const volumeLabel =
+      data.volume != null ? `${data.volume} lots` : '—';
+    const entryLabel =
+      data.entryPrice != null ? String(data.entryPrice) : '—';
+
+    const html = this.email.layout(
+      'Copy trade — take profit hit',
+      `<p>A mirrored copy trade closed in profit at take profit.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">Setup</td><td style="padding:6px 0;"><strong>${this.escape(data.signalId)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Symbol</td><td style="padding:6px 0;"><strong>${this.escape(data.symbol)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Direction</td><td style="padding:6px 0;"><strong>${this.escape(data.direction)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Volume</td><td style="padding:6px 0;"><strong>${this.escape(volumeLabel)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Entry</td><td style="padding:6px 0;"><strong>${entryLabel}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Take profit</td><td style="padding:6px 0;"><strong>${data.takeProfit}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Realized P/L</td><td style="padding:6px 0;"><strong style="color:#22c55e;">+${data.profit.toFixed(2)}</strong></td></tr>
+      </table>`,
+    );
+
+    return this.email.send({
+      to,
+      subject: `Copy TP hit — ${data.symbol} ${data.direction} (+${data.profit.toFixed(2)})`,
+      html,
+      text: `Copy TP hit: ${data.signalId} ${data.symbol} ${data.direction}. Profit +${data.profit.toFixed(2)}.`,
     });
   }
 

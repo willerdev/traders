@@ -104,6 +104,7 @@ export class CopyTradingService {
         copyNotifyEmail: true,
         copyUseTwoToOneRr: true,
         copyAutoBreakevenEnabled: true,
+        copyEmailAlertsEnabled: true,
         copyHealthReady: true,
         copyHealthMessage: true,
         copyHealthCheckedAt: true,
@@ -120,6 +121,7 @@ export class CopyTradingService {
       notifyEmail,
       copyUseTwoToOneRr: config?.copyUseTwoToOneRr ?? true,
       copyAutoBreakevenEnabled: config?.copyAutoBreakevenEnabled ?? true,
+      copyEmailAlertsEnabled: config?.copyEmailAlertsEnabled ?? true,
       copyHealthReady: config?.copyHealthReady ?? false,
       copyHealthMessage: config?.copyHealthMessage ?? null,
       copyHealthCheckedAt: config?.copyHealthCheckedAt?.toISOString() ?? null,
@@ -133,6 +135,7 @@ export class CopyTradingService {
       copyNotifyEmail: cfg.notifyEmail,
       copyUseTwoToOneRr: cfg.copyUseTwoToOneRr,
       copyAutoBreakevenEnabled: cfg.copyAutoBreakevenEnabled,
+      copyEmailAlertsEnabled: cfg.copyEmailAlertsEnabled,
       copyHealthReady: cfg.copyHealthReady,
       copyHealthMessage: cfg.copyHealthMessage,
       copyHealthCheckedAt: cfg.copyHealthCheckedAt,
@@ -144,12 +147,14 @@ export class CopyTradingService {
     copyNotifyEmail?: string;
     copyUseTwoToOneRr?: boolean;
     copyAutoBreakevenEnabled?: boolean;
+    copyEmailAlertsEnabled?: boolean;
   }) {
     const data: {
       copyRiskPercent?: number;
       copyNotifyEmail?: string;
       copyUseTwoToOneRr?: boolean;
       copyAutoBreakevenEnabled?: boolean;
+      copyEmailAlertsEnabled?: boolean;
     } = {};
 
     if (input.copyRiskPercent !== undefined) {
@@ -172,6 +177,9 @@ export class CopyTradingService {
     }
     if (input.copyAutoBreakevenEnabled !== undefined) {
       data.copyAutoBreakevenEnabled = input.copyAutoBreakevenEnabled;
+    }
+    if (input.copyEmailAlertsEnabled !== undefined) {
+      data.copyEmailAlertsEnabled = input.copyEmailAlertsEnabled;
     }
     if (Object.keys(data).length === 0) {
       throw new BadRequestException('Nothing to update');
@@ -334,7 +342,8 @@ export class CopyTradingService {
   }
 
   async manageCopyTradeBreakeven(): Promise<{ checked: number; applied: number }> {
-    const { copyAutoBreakevenEnabled } = await this.getCopyConfig();
+    const { copyAutoBreakevenEnabled, notifyEmail, copyEmailAlertsEnabled } =
+      await this.getCopyConfig();
     if (!copyAutoBreakevenEnabled) return { checked: 0, applied: 0 };
 
     const copyAccountId = await this.metaApi.resolveCopyAccountIdAsync();
@@ -414,6 +423,18 @@ export class CopyTradingService {
         this.logger.log(
           `Copy breakeven set for ${row.signal.signalId} @ ${roundedBe}`,
         );
+
+        if (copyEmailAlertsEnabled) {
+          this.notifications.copyBreakevenHit(notifyEmail, {
+            signalId: row.signal.signalId,
+            symbol: row.symbol,
+            direction: row.direction,
+            entryPrice: breakeven,
+            tp1Price: tp1,
+            breakevenStop: roundedBe,
+            volume: row.volume != null ? Number(row.volume) : null,
+          });
+        }
       } catch (err) {
         this.logger.warn(
           `Copy breakeven failed for ${row.signal.signalId}: ${err instanceof Error ? err.message : err}`,
@@ -663,7 +684,7 @@ export class CopyTradingService {
       return;
     }
 
-    const { riskPercent, notifyEmail, copyUseTwoToOneRr } =
+    const { riskPercent, notifyEmail, copyUseTwoToOneRr, copyEmailAlertsEnabled } =
       await this.getCopyConfig();
 
     const existing = await this.prisma.copyTrade.findUnique({
@@ -857,23 +878,25 @@ export class CopyTradingService {
         },
       });
 
-      this.notifications.copyTradePlaced(notifyEmail, {
-        signalId: input.signalPublicId,
-        sourceName: source.displayName,
-        sourceRank: source.rank,
-        symbol: input.symbol,
-        direction: input.direction,
-        volume: sizing.volume,
-        entryPrice: openPrice,
-        stopLoss: sl,
-        takeProfit: tp,
-        riskPercent,
-        riskCapAmount: sizing.riskCapAmount,
-        estimatedLossAtSl: sizing.estimatedLossAtSl,
-        currency: sizing.currency,
-        orderType,
-        pairAdjustments: sizing.pairAdjustments,
-      });
+      if (copyEmailAlertsEnabled) {
+        this.notifications.copyTradePlaced(notifyEmail, {
+          signalId: input.signalPublicId,
+          sourceName: source.displayName,
+          sourceRank: source.rank,
+          symbol: input.symbol,
+          direction: input.direction,
+          volume: sizing.volume,
+          entryPrice: openPrice,
+          stopLoss: sl,
+          takeProfit: tp,
+          riskPercent,
+          riskCapAmount: sizing.riskCapAmount,
+          estimatedLossAtSl: sizing.estimatedLossAtSl,
+          currency: sizing.currency,
+          orderType,
+          pairAdjustments: sizing.pairAdjustments,
+        });
+      }
 
       this.logger.log(
         `Copy trade placed for ${input.signalPublicId} from rank #${source.rank} (${sizing.volume} lots, ${riskPercent}% cap)`,
@@ -997,6 +1020,7 @@ export class CopyTradingService {
         copyNotifyEmail: copySettings.copyNotifyEmail,
         copyUseTwoToOneRr: copySettings.copyUseTwoToOneRr,
         copyAutoBreakevenEnabled: copySettings.copyAutoBreakevenEnabled,
+        copyEmailAlertsEnabled: copySettings.copyEmailAlertsEnabled,
         copyHealth: {
           ready: copySettings.copyHealthReady,
           message: copySettings.copyHealthMessage,
@@ -1062,6 +1086,7 @@ export class CopyTradingService {
         copyNotifyEmail: copySettings.copyNotifyEmail,
         copyUseTwoToOneRr: copySettings.copyUseTwoToOneRr,
         copyAutoBreakevenEnabled: copySettings.copyAutoBreakevenEnabled,
+        copyEmailAlertsEnabled: copySettings.copyEmailAlertsEnabled,
         copyHealth: {
           ready: copySettings.copyHealthReady,
           message: copySettings.copyHealthMessage,
@@ -1134,6 +1159,7 @@ export class CopyTradingService {
       copyNotifyEmail: copySettings.copyNotifyEmail,
       copyUseTwoToOneRr: copySettings.copyUseTwoToOneRr,
       copyAutoBreakevenEnabled: copySettings.copyAutoBreakevenEnabled,
+      copyEmailAlertsEnabled: copySettings.copyEmailAlertsEnabled,
       copyHealth: {
         ready: copySettings.copyHealthReady,
         message: copySettings.copyHealthMessage,
@@ -1158,6 +1184,8 @@ export class CopyTradingService {
     if (!this.metaApi.isConfigured || !copyAccountId) {
       return { closed: 0, credited: 0 };
     }
+
+    const { notifyEmail, copyEmailAlertsEnabled } = await this.getCopyConfig();
 
     const openRows = await this.prisma.copyTrade.findMany({
       where: {
@@ -1209,6 +1237,18 @@ export class CopyTradingService {
         },
       });
       closed += 1;
+
+      if (finalProfit > 0 && copyEmailAlertsEnabled) {
+        this.notifications.copyTakeProfitHit(notifyEmail, {
+          signalId: row.signal.signalId,
+          symbol: row.symbol,
+          direction: row.direction,
+          entryPrice: row.entryPrice != null ? Number(row.entryPrice) : null,
+          takeProfit: Number(row.takeProfit),
+          profit: finalProfit,
+          volume: row.volume != null ? Number(row.volume) : null,
+        });
+      }
 
       if (finalProfit > 0) {
         const result = await this.profitShare.creditEarning(
