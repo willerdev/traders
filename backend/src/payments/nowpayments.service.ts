@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'crypto';
 
@@ -7,6 +7,17 @@ const NETWORK_CURRENCY: Record<string, string> = {
   BEP20: 'usdtbsc',
   ERC20: 'usdterc20',
 };
+
+export class NowPaymentsApiError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode?: number,
+    readonly details?: unknown,
+  ) {
+    super(message);
+    this.name = 'NowPaymentsApiError';
+  }
+}
 
 @Injectable()
 export class NowPaymentsService {
@@ -39,18 +50,47 @@ export class NowPaymentsService {
     path: string,
     options: RequestInit = {},
   ): Promise<T> {
-    const res = await fetch(`${this.apiUrl}${path}`, options);
-    const body = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      this.logger.error(`NOWPayments error ${path}: ${JSON.stringify(body)}`);
-      throw new Error(
-        (body as { message?: string }).message ||
-          `NOWPayments request failed (${res.status})`,
+    let res: Response;
+    try {
+      res = await fetch(`${this.apiUrl}${path}`, options);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Network request failed';
+      this.logger.error(`NOWPayments network error ${path}: ${message}`);
+      throw new NowPaymentsApiError(
+        'Could not reach NOWPayments — try again in a moment',
+        503,
       );
     }
 
+    const body = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      const payload = body as {
+        message?: string;
+        status?: boolean;
+        code?: string;
+      };
+      const message =
+        payload.message ||
+        payload.code ||
+        `NOWPayments request failed (${res.status})`;
+      this.logger.error(`NOWPayments error ${path}: ${JSON.stringify(body)}`);
+      throw new NowPaymentsApiError(message, res.status, body);
+    }
+
     return body as T;
+  }
+
+  private normalizeAmount(amount: number): number {
+    const rounded = Math.round(amount * 100) / 100;
+    if (!Number.isFinite(rounded) || rounded <= 0) {
+      throw new HttpException(
+        'Payment amount must be greater than zero',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return rounded;
   }
 
   mapNetworkToCurrency(network: string): string {
@@ -65,31 +105,55 @@ export class NowPaymentsService {
     ipnCallbackUrl?: string;
   }) {
     const payCurrency = this.mapNetworkToCurrency(params.network);
+    const priceAmount = this.normalizeAmount(params.amount);
 
-    return this.request<{
-      payment_id: number;
-      payment_status: string;
-      pay_address: string;
-      pay_amount: number;
-      pay_currency: string;
-      price_amount: number;
-      price_currency: string;
-      order_id: string;
-      invoice_url?: string;
-    }>('/payment', {
-      method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify({
-        price_amount: params.amount,
-        price_currency: 'usd',
+    const buildPayload = (priceCurrency: string) => {
+      const payload: Record<string, unknown> = {
+        price_amount: priceAmount,
+        price_currency: priceCurrency,
         pay_currency: payCurrency,
         order_id: params.orderId,
         order_description: params.description || 'TraderRank Pro payment',
-        ipn_callback_url: params.ipnCallbackUrl,
-        is_fixed_rate: true,
+        is_fixed_rate: false,
         is_fee_paid_by_user: false,
-      }),
-    });
+      };
+      if (params.ipnCallbackUrl) {
+        payload.ipn_callback_url = params.ipnCallbackUrl;
+      }
+      return payload;
+    };
+
+    const post = (priceCurrency: string) =>
+      this.request<{
+        payment_id: number;
+        payment_status: string;
+        pay_address: string;
+        pay_amount: number;
+        pay_currency: string;
+        price_amount: number;
+        price_currency: string;
+        order_id: string;
+        invoice_url?: string;
+      }>('/payment', {
+        method: 'POST',
+        headers: this.headers(),
+        body: JSON.stringify(buildPayload(priceCurrency)),
+      });
+
+    try {
+      return await post('usdt');
+    } catch (err) {
+      if (
+        err instanceof NowPaymentsApiError &&
+        /currency|usdt|not allowed|invalid/i.test(err.message)
+      ) {
+        this.logger.warn(
+          'NOWPayments rejected USDT price currency — retrying with USD',
+        );
+        return post('usd');
+      }
+      throw err;
+    }
   }
 
   async createInvoice(params: {
@@ -111,15 +175,17 @@ export class NowPaymentsService {
       method: 'POST',
       headers: this.headers(),
       body: JSON.stringify({
-        price_amount: params.amount,
-        price_currency: 'usd',
+        price_amount: this.normalizeAmount(params.amount),
+        price_currency: 'usdt',
         pay_currency: payCurrency,
         order_id: params.orderId,
         order_description: params.description || 'TraderRank Pro payment',
         success_url: params.successUrl,
         cancel_url: params.cancelUrl,
-        ipn_callback_url: params.ipnCallbackUrl,
-        is_fixed_rate: true,
+        ...(params.ipnCallbackUrl
+          ? { ipn_callback_url: params.ipnCallbackUrl }
+          : {}),
+        is_fixed_rate: false,
       }),
     });
   }

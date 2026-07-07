@@ -2,15 +2,23 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  ServiceUnavailableException,
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
-import { NowPaymentsService } from './nowpayments.service';
+import {
+  NowPaymentsApiError,
+  NowPaymentsService,
+} from './nowpayments.service';
 import { PromoService } from './promo.service';
 import { BlockchainScannerService } from './blockchain-scanner.service';
 import { REGISTRATION_FEE_USDT } from '../common/constants';
+import {
+  isPublicHttpsUrl,
+  resolvePublicApiBaseUrl,
+} from '../common/public-url.util';
 import {
   computeWeeklyAccessExpiry,
   hasActiveTradingAccess,
@@ -44,10 +52,65 @@ export class PaymentsService {
   ) {}
 
   private ipnUrl() {
-    const base =
-      this.config.get<string>('API_PUBLIC_URL') ||
-      `http://localhost:${this.config.get('PORT') || 4000}`;
-    return `${base}/api/v1/payments/ipn`;
+    const base = resolvePublicApiBaseUrl(this.config);
+    const url = `${base}/api/v1/payments/ipn`;
+    if (process.env.NODE_ENV === 'production' && !isPublicHttpsUrl(url)) {
+      this.logger.warn(
+        `NOWPayments IPN URL is not public HTTPS (${url}). Set API_PUBLIC_URL on Render.`,
+      );
+      return undefined;
+    }
+    return url;
+  }
+
+  private async createGatewayPayment(input: {
+    paymentId: string;
+    amount: number;
+    network: string;
+    description: string;
+    promoMeta?: Record<string, unknown>;
+  }) {
+    if (!this.nowPayments.isConfigured) {
+      throw new ServiceUnavailableException(
+        'Crypto payments are not configured — contact support',
+      );
+    }
+
+    try {
+      const npPayment = await this.nowPayments.createPayment({
+        amount: input.amount,
+        orderId: input.paymentId,
+        network: input.network,
+        description: input.description,
+        ipnCallbackUrl: this.ipnUrl(),
+      });
+
+      await this.prisma.payment.update({
+        where: { id: input.paymentId },
+        data: {
+          gatewayId: String(npPayment.payment_id),
+          gatewayResponse: {
+            ...(npPayment as object),
+            ...(input.promoMeta ?? {}),
+          } as object,
+          payAddress: npPayment.pay_address,
+          payAmount: npPayment.pay_amount,
+        },
+      });
+
+      return npPayment;
+    } catch (err) {
+      await this.prisma.payment
+        .delete({ where: { id: input.paymentId } })
+        .catch(() => undefined);
+
+      if (err instanceof NowPaymentsApiError) {
+        throw new BadRequestException(
+          err.message || 'NOWPayments could not create this payment',
+        );
+      }
+      throw err;
+    }
   }
 
   private async registrationFee(): Promise<number> {
@@ -218,31 +281,20 @@ export class PaymentsService {
       };
     }
 
-    const npPayment = await this.nowPayments.createPayment({
+    const promoMeta = appliedPromo
+      ? {
+          promoCode: appliedPromo.code,
+          discountPercent: appliedPromo.discountPercent,
+          originalAmount: fee,
+        }
+      : undefined;
+
+    const npPayment = await this.createGatewayPayment({
+      paymentId: payment.id,
       amount,
-      orderId: payment.id,
       network,
       description: 'TraderRank Pro weekly trading access (7 days)',
-      ipnCallbackUrl: this.ipnUrl(),
-    });
-
-    await this.prisma.payment.update({
-      where: { id: payment.id },
-      data: {
-        gatewayId: String(npPayment.payment_id),
-        gatewayResponse: {
-          ...(npPayment as object),
-          ...(appliedPromo
-            ? {
-                promoCode: appliedPromo.code,
-                discountPercent: appliedPromo.discountPercent,
-                originalAmount: fee,
-              }
-            : {}),
-        },
-        payAddress: npPayment.pay_address,
-        payAmount: npPayment.pay_amount,
-      },
+      promoMeta,
     });
 
     return {

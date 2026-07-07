@@ -21,6 +21,7 @@ services:
       - key: PUBLIC_APP_URL
         value: https://thetradeguard.com
       - key: API_PUBLIC_URL
+        value: https://traders-c53s.onrender.com
         sync: false
       - key: NOWPAYMENTS_API_KEY
         sync: false

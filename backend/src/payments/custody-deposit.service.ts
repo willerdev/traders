@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { NowPaymentsService } from './nowpayments.service';
 import { BlockchainScannerService } from './blockchain-scanner.service';
+import { resolvePublicApiBaseUrl } from '../common/public-url.util';
 
 const CUSTODY_ORDER_PREFIX = 'custody:';
 
@@ -20,10 +21,7 @@ export class CustodyDepositService {
   ) {}
 
   private ipnUrl() {
-    const base =
-      this.config.get<string>('API_PUBLIC_URL') ||
-      `http://localhost:${this.config.get('PORT') || 4000}`;
-    return `${base}/api/v1/payments/ipn`;
+    return `${resolvePublicApiBaseUrl(this.config)}/api/v1/payments/ipn`;
   }
 
   custodyOrderId(depositId: string) {
