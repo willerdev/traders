@@ -81,6 +81,7 @@ export type CopyPoolHealth = {
   accountConnected: boolean;
   tradeAllowed: boolean;
   leaderCount: number;
+  paused?: boolean;
 };
 
 @Injectable()
@@ -160,6 +161,9 @@ export class CopyTradingService {
       copyAutoBreakevenEnabled?: boolean;
       copyEmailAlertsEnabled?: boolean;
       copyTradesEnabled?: boolean;
+      copyHealthReady?: boolean;
+      copyHealthMessage?: string;
+      copyHealthCheckedAt?: Date;
     } = {};
 
     if (input.copyRiskPercent !== undefined) {
@@ -188,6 +192,11 @@ export class CopyTradingService {
     }
     if (input.copyTradesEnabled !== undefined) {
       data.copyTradesEnabled = input.copyTradesEnabled;
+      if (!input.copyTradesEnabled) {
+        data.copyHealthReady = false;
+        data.copyHealthMessage = 'Copy trading paused by admin';
+        data.copyHealthCheckedAt = new Date();
+      }
     }
     if (Object.keys(data).length === 0) {
       throw new BadRequestException('Nothing to update');
@@ -199,12 +208,31 @@ export class CopyTradingService {
       update: data,
     });
 
+    if (input.copyTradesEnabled === true) {
+      await this.runCopyPoolHealthCheck();
+    }
+
     return this.getCopySettings();
   }
 
   async evaluateCopyPoolHealth(): Promise<CopyPoolHealth> {
     const checkedAt = new Date().toISOString();
+    const cfg = await this.getCopyConfig();
     const leaders = await this.getActiveCopyTargets();
+    const copyAccountId = await this.metaApi.resolveCopyAccountIdAsync();
+
+    if (!cfg.copyTradesEnabled) {
+      return {
+        ready: false,
+        message: 'Copy trading paused by admin',
+        checkedAt,
+        copyAccountId: copyAccountId ?? null,
+        accountConnected: false,
+        tradeAllowed: false,
+        leaderCount: leaders.length,
+        paused: true,
+      };
+    }
 
     if (!this.metaApi.isConfigured) {
       return {
@@ -218,7 +246,6 @@ export class CopyTradingService {
       };
     }
 
-    const copyAccountId = await this.metaApi.resolveCopyAccountIdAsync();
     if (!copyAccountId) {
       return {
         ready: false,
@@ -330,7 +357,7 @@ export class CopyTradingService {
       },
     });
 
-    if (previous.copyHealthReady && !health.ready) {
+    if (previous.copyHealthReady && !health.ready && !health.paused) {
       this.notifications.copyTradeBlocked(previous.notifyEmail, {
         signalId: 'health-check',
         sourceName: 'Copy pool',

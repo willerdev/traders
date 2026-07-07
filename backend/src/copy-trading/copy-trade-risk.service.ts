@@ -167,11 +167,17 @@ export class CopyTradeRiskService {
       throw new BadRequestException('Copy account trading is not allowed');
     }
 
-    const equity =
-      accountInfo.equity > 0 ? accountInfo.equity : accountInfo.balance;
+    const balance = Number(accountInfo.balance ?? 0);
+    const reportedEquity = Number(accountInfo.equity ?? 0);
+    const equity = Math.max(
+      reportedEquity > 0 ? reportedEquity : 0,
+      balance > 0 ? balance : 0,
+    );
     const riskCapAmount = equity * (input.riskPercent / 100);
     if (riskCapAmount <= 0) {
-      throw new BadRequestException('Copy account equity is too low to size a trade');
+      throw new BadRequestException(
+        `Copy account equity is too low to size a trade (balance ${balance.toFixed(2)}, equity ${reportedEquity.toFixed(2)} ${accountInfo.currency})`,
+      );
     }
 
     const slDistance = Math.abs(input.entryPrice - input.stopLoss);
@@ -200,32 +206,40 @@ export class CopyTradeRiskService {
       spec.maxVolume,
     );
 
+    let estimatedLossAtSl = 0;
+    let usedMinLotOverride = false;
     if (volume == null) {
-      throw new BadRequestException(
-        `Minimum lot ${spec.minVolume} on ${spec.symbol} would risk more than ${input.riskPercent}% — copy skipped`,
-      );
-    }
-
-    let estimatedLossAtSl = volume * perLot;
-    while (
-      estimatedLossAtSl > riskCapAmount &&
-      volume > spec.minVolume
-    ) {
-      const next = this.roundVolumeDown(
-        volume - spec.volumeStep,
-        spec.volumeStep,
-        spec.minVolume,
-        spec.maxVolume,
-      );
-      if (next == null || next >= volume) break;
-      volume = next;
+      if (spec.minVolume > 0 && equity > 0) {
+        volume = spec.minVolume;
+        estimatedLossAtSl = volume * perLot;
+        usedMinLotOverride = true;
+      } else {
+        throw new BadRequestException(
+          `Minimum lot ${spec.minVolume} on ${spec.symbol} would risk more than ${input.riskPercent}% — copy skipped`,
+        );
+      }
+    } else {
       estimatedLossAtSl = volume * perLot;
-    }
+      while (
+        estimatedLossAtSl > riskCapAmount &&
+        volume > spec.minVolume
+      ) {
+        const next = this.roundVolumeDown(
+          volume - spec.volumeStep,
+          spec.volumeStep,
+          spec.minVolume,
+          spec.maxVolume,
+        );
+        if (next == null || next >= volume) break;
+        volume = next;
+        estimatedLossAtSl = volume * perLot;
+      }
 
-    if (estimatedLossAtSl > riskCapAmount * 1.002) {
-      throw new BadRequestException(
-        `Could not size ${spec.symbol} within ${input.riskPercent}% risk cap (est. loss ${estimatedLossAtSl.toFixed(2)} ${accountInfo.currency})`,
-      );
+      if (estimatedLossAtSl > riskCapAmount * 1.002) {
+        throw new BadRequestException(
+          `Could not size ${spec.symbol} within ${input.riskPercent}% risk cap (est. loss ${estimatedLossAtSl.toFixed(2)} ${accountInfo.currency})`,
+        );
+      }
     }
 
     const pairNotes = this.pairAdjustments(
@@ -234,6 +248,11 @@ export class CopyTradeRiskService {
       slDistance,
       slDistancePips,
     );
+    if (usedMinLotOverride) {
+      pairNotes.push(
+        `Using broker minimum ${volume} lots — exceeds ${input.riskPercent}% cap (${riskCapAmount.toFixed(2)} ${accountInfo.currency}); est. loss ${estimatedLossAtSl.toFixed(2)}`,
+      );
+    }
     pairNotes.push(
       `Capped at ${input.riskPercent}% = ${riskCapAmount.toFixed(2)} ${accountInfo.currency}; ${volume} lots est. loss ${estimatedLossAtSl.toFixed(2)}`,
     );

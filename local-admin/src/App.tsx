@@ -525,7 +525,9 @@ export default function App() {
         setCopyUseTwoToOneRr(fast.copyUseTwoToOneRr ?? true);
         setCopyAutoBreakeven(fast.copyAutoBreakevenEnabled ?? true);
         setCopyEmailAlerts(fast.copyEmailAlertsEnabled ?? true);
-        setCopyTradesEnabled(fast.copyTradesEnabled ?? true);
+        if (typeof fast.copyTradesEnabled === "boolean") {
+          setCopyTradesEnabled(fast.copyTradesEnabled);
+        }
         } catch (err) {
           setMessage(
             err instanceof Error ? err.message : "Failed to load copy pool",
@@ -541,6 +543,9 @@ export default function App() {
       try {
         const full = await api.metaApiCopyDashboard({ includeTerminal: true });
         setCopyDashboard(full);
+        if (typeof full.copyTradesEnabled === "boolean") {
+          setCopyTradesEnabled(full.copyTradesEnabled);
+        }
       } catch {
         /* keep fast snapshot if live account sync fails */
       } finally {
@@ -3832,11 +3837,25 @@ export default function App() {
               <p className="muted">Could not load copy pool — try Refresh.</p>
             ) : copySubTab === "account" ? (
               <>
+                {(() => {
+                  const copyActive =
+                    copyDashboard.copyTradesEnabled ?? copyTradesEnabled;
+                  const copyBalance =
+                    copyDashboard.terminal?.information?.balance ?? 0;
+                  const copyEquity =
+                    copyDashboard.terminal?.information?.equity ?? 0;
+                  const recentSkipped = copyDashboard.journal.filter(
+                    (row) =>
+                      row.status === "SKIPPED" &&
+                      row.notes?.toLowerCase().includes("equity is too low"),
+                  ).length;
+                  return (
+                    <>
                 <div
                   className="kyc-card"
                   style={{
                     marginBottom: "1rem",
-                    borderColor: copyTradesEnabled
+                    borderColor: copyActive
                       ? "rgba(34,197,94,0.35)"
                       : "rgba(245,158,11,0.45)",
                   }}
@@ -3845,30 +3864,46 @@ export default function App() {
                     <div>
                       <h3 style={{ margin: 0 }}>
                         Copy trading —{" "}
-                        {copyTradesEnabled ? "Active" : "Paused"}
+                        {copyActive ? "Active" : "Paused"}
                       </h3>
                       <p className="muted" style={{ margin: "0.35rem 0 0" }}>
-                        {copyTradesEnabled
+                        {copyActive
                           ? "New setups from pool traders are mirrored to the copy MT5 account."
                           : "No new copy trades will open. Existing open positions are still managed (breakeven, close sync)."}
                       </p>
                     </div>
                     <button
                       type="button"
-                      className={copyTradesEnabled ? "danger" : "primary"}
+                      className={copyActive ? "danger" : "primary"}
                       disabled={copyPauseSaving || copySettingsSaving}
                       onClick={() => {
-                        const next = !copyTradesEnabled;
+                        const next = !copyActive;
                         setCopyPauseSaving(true);
                         setMessage("");
                         void api
                           .updateCopySettings({ copyTradesEnabled: next })
                           .then((updated) => {
-                            const enabled = updated.copyTradesEnabled ?? true;
+                            const enabled =
+                              typeof updated.copyTradesEnabled === "boolean"
+                                ? updated.copyTradesEnabled
+                                : next;
                             setCopyTradesEnabled(enabled);
                             setCopyDashboard((prev) =>
                               prev
-                                ? { ...prev, copyTradesEnabled: enabled }
+                                ? {
+                                    ...prev,
+                                    copyTradesEnabled: enabled,
+                                    copyHealth: {
+                                      ready: enabled
+                                        ? (prev.copyHealth?.ready ?? false)
+                                        : false,
+                                      message: enabled
+                                        ? prev.copyHealth?.message
+                                        : "Copy trading paused by admin",
+                                      checkedAt:
+                                        prev.copyHealth?.checkedAt ?? null,
+                                    },
+                                  }
                                 : prev,
                             );
                             setMessage(
@@ -3876,6 +3911,8 @@ export default function App() {
                                 ? "Copy trading resumed — new trades will be mirrored."
                                 : "Copy trading paused — no new trades will open.",
                             );
+                            if (!enabled) return;
+                            void loadCopyDashboard({ terminalOnly: true });
                           })
                           .catch((err: Error) => setMessage(err.message))
                           .finally(() => setCopyPauseSaving(false));
@@ -3883,7 +3920,7 @@ export default function App() {
                     >
                       {copyPauseSaving
                         ? "Saving…"
-                        : copyTradesEnabled
+                        : copyActive
                           ? "Pause new trades"
                           : "Resume copy trading"}
                     </button>
@@ -3894,23 +3931,25 @@ export default function App() {
                     className="kyc-card"
                     style={{
                       marginBottom: "1rem",
-                      borderColor: copyDashboard.copyHealth.ready
-                        ? "rgba(34,197,94,0.35)"
-                        : "rgba(239,68,68,0.35)",
+                      borderColor: !copyActive
+                        ? "rgba(245,158,11,0.45)"
+                        : copyDashboard.copyHealth.ready
+                          ? "rgba(34,197,94,0.35)"
+                          : "rgba(239,68,68,0.35)",
                     }}
                   >
                     <div className="toolbar toolbar-wrap">
                       <div>
                         <h3 style={{ margin: 0 }}>
                           Copy pool health —{" "}
-                          {!copyTradesEnabled
+                          {!copyActive
                             ? "Paused"
                             : copyDashboard.copyHealth.ready
                               ? "Ready"
                               : "Not ready"}
                         </h3>
                         <p className="muted" style={{ margin: "0.35rem 0 0" }}>
-                          {!copyTradesEnabled
+                          {!copyActive
                             ? "Copy trading is paused by admin — resume to allow new mirrored trades."
                             : (copyDashboard.copyHealth.message ??
                               "Waiting for first health check…")}
@@ -3924,14 +3963,14 @@ export default function App() {
                       </div>
                       <span
                         className={badgeClass(
-                          !copyTradesEnabled
+                          !copyActive
                             ? "pending"
                             : copyDashboard.copyHealth.ready
                               ? "approved"
                               : "rejected",
                         )}
                       >
-                        {!copyTradesEnabled
+                        {!copyActive
                           ? "Paused"
                           : copyDashboard.copyHealth.ready
                             ? "Can receive trades"
@@ -3961,6 +4000,26 @@ export default function App() {
                           <code>METAAPI_COPY_ACCOUNT_ID</code> to override).
                         </p>
                       )}
+                    {(copyBalance <= 0 || copyEquity <= 0) && (
+                      <div
+                        className="kyc-card"
+                        style={{
+                          marginBottom: "1rem",
+                          borderColor: "rgba(239,68,68,0.45)",
+                        }}
+                      >
+                        <p style={{ margin: 0 }}>
+                          <strong>Copy account has no funds</strong>
+                        </p>
+                        <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                          New mirrors are skipped until you fund the MT5 copy account
+                          (balance {fmtMoney(copyBalance)}, equity {fmtMoney(copyEquity)}).
+                          {recentSkipped > 0
+                            ? ` ${recentSkipped} recent journal entries were skipped for low equity.`
+                            : ""}
+                        </p>
+                      </div>
+                    )}
                     <div className="cards">
                       <div className="card">
                         <div className="label">Balance</div>
@@ -4081,6 +4140,9 @@ export default function App() {
                     )}
                   </>
                 )}
+                    </>
+                  );
+                })()}
               </>
             ) : (
               <>
@@ -4186,7 +4248,11 @@ export default function App() {
                             setCopyUseTwoToOneRr(updated.copyUseTwoToOneRr ?? true);
                             setCopyAutoBreakeven(updated.copyAutoBreakevenEnabled ?? true);
                             setCopyEmailAlerts(updated.copyEmailAlertsEnabled ?? true);
-                            setCopyTradesEnabled(updated.copyTradesEnabled ?? true);
+                            setCopyTradesEnabled(
+                              typeof updated.copyTradesEnabled === "boolean"
+                                ? updated.copyTradesEnabled
+                                : copyTradesEnabled,
+                            );
                             setCopyDashboard((prev) =>
                               prev
                                 ? {
