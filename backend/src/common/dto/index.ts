@@ -87,6 +87,10 @@ export class UpdateCopySettingsDto {
   @IsOptional()
   @IsBoolean()
   copyEmailAlertsEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  copyTradesEnabled?: boolean;
 }
 
 export class LinkMt5AccountDto {

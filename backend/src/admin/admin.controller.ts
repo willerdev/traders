@@ -53,6 +53,20 @@ export class AdminController {
     return this.adminService.listPendingKyc();
   }
 
+  @Get('kyc/list')
+  @RequireAdminPermission('kyc')
+  listKyc(
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.adminService.listKyc(
+      limit ? Number(limit) : 50,
+      offset ? Number(offset) : 0,
+      status,
+    );
+  }
+
   @Post('kyc/:userId/approve')
   @RequireAdminPermission('kyc')
   approveKyc(

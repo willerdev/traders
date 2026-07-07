@@ -689,6 +689,7 @@ model PlatformConfig {
   copyUseTwoToOneRr      Boolean @default(true)
   copyAutoBreakevenEnabled Boolean @default(true)
   copyEmailAlertsEnabled   Boolean @default(true)
+  copyTradesEnabled        Boolean @default(true)
   copyHealthReady        Boolean @default(false)
   copyHealthMessage      String?
   copyHealthCheckedAt    DateTime?

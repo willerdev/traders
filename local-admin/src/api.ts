@@ -209,6 +209,14 @@ export const api = {
       },
     ),
   kycPending: () => request<KycRow[]>("/admin/kyc/pending"),
+  kycList: (offset = 0, status?: string) =>
+    request<{
+      items: KycRow[];
+      count: number;
+      counts: { pending: number; approved: number; rejected: number };
+    }>(
+      `/admin/kyc/list?limit=50&offset=${offset}${status ? `&status=${encodeURIComponent(status)}` : ""}`,
+    ),
   payouts: (status?: string) =>
     request<{ items: PayoutRow[]; count: number }>(
       `/admin/payouts?limit=50${status ? `&status=${status}` : ""}`,
@@ -715,7 +723,9 @@ export type KycRow = {
   documentFrontUrl?: string | null;
   documentBackUrl?: string | null;
   selfieUrl?: string | null;
+  rejectionReason?: string | null;
   submittedAt?: string | null;
+  reviewedAt?: string | null;
   user: { id?: string; displayName: string; email: string | null };
 };
 
@@ -1011,6 +1021,7 @@ export type CopySettings = {
   copyUseTwoToOneRr?: boolean;
   copyAutoBreakevenEnabled?: boolean;
   copyEmailAlertsEnabled?: boolean;
+  copyTradesEnabled?: boolean;
   copyHealthReady?: boolean;
   copyHealthMessage?: string | null;
   copyHealthCheckedAt?: string | null;
@@ -1049,6 +1060,7 @@ export type CopyTradingDashboard = {
   copyUseTwoToOneRr?: boolean;
   copyAutoBreakevenEnabled?: boolean;
   copyEmailAlertsEnabled?: boolean;
+  copyTradesEnabled?: boolean;
   copyHealth?: {
     ready: boolean;
     message?: string | null;

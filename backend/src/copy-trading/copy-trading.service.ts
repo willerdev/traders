@@ -105,6 +105,7 @@ export class CopyTradingService {
         copyUseTwoToOneRr: true,
         copyAutoBreakevenEnabled: true,
         copyEmailAlertsEnabled: true,
+        copyTradesEnabled: true,
         copyHealthReady: true,
         copyHealthMessage: true,
         copyHealthCheckedAt: true,
@@ -122,6 +123,7 @@ export class CopyTradingService {
       copyUseTwoToOneRr: config?.copyUseTwoToOneRr ?? true,
       copyAutoBreakevenEnabled: config?.copyAutoBreakevenEnabled ?? true,
       copyEmailAlertsEnabled: config?.copyEmailAlertsEnabled ?? true,
+      copyTradesEnabled: config?.copyTradesEnabled ?? true,
       copyHealthReady: config?.copyHealthReady ?? false,
       copyHealthMessage: config?.copyHealthMessage ?? null,
       copyHealthCheckedAt: config?.copyHealthCheckedAt?.toISOString() ?? null,
@@ -136,6 +138,7 @@ export class CopyTradingService {
       copyUseTwoToOneRr: cfg.copyUseTwoToOneRr,
       copyAutoBreakevenEnabled: cfg.copyAutoBreakevenEnabled,
       copyEmailAlertsEnabled: cfg.copyEmailAlertsEnabled,
+      copyTradesEnabled: cfg.copyTradesEnabled,
       copyHealthReady: cfg.copyHealthReady,
       copyHealthMessage: cfg.copyHealthMessage,
       copyHealthCheckedAt: cfg.copyHealthCheckedAt,
@@ -148,6 +151,7 @@ export class CopyTradingService {
     copyUseTwoToOneRr?: boolean;
     copyAutoBreakevenEnabled?: boolean;
     copyEmailAlertsEnabled?: boolean;
+    copyTradesEnabled?: boolean;
   }) {
     const data: {
       copyRiskPercent?: number;
@@ -155,6 +159,7 @@ export class CopyTradingService {
       copyUseTwoToOneRr?: boolean;
       copyAutoBreakevenEnabled?: boolean;
       copyEmailAlertsEnabled?: boolean;
+      copyTradesEnabled?: boolean;
     } = {};
 
     if (input.copyRiskPercent !== undefined) {
@@ -180,6 +185,9 @@ export class CopyTradingService {
     }
     if (input.copyEmailAlertsEnabled !== undefined) {
       data.copyEmailAlertsEnabled = input.copyEmailAlertsEnabled;
+    }
+    if (input.copyTradesEnabled !== undefined) {
+      data.copyTradesEnabled = input.copyTradesEnabled;
     }
     if (Object.keys(data).length === 0) {
       throw new BadRequestException('Nothing to update');
@@ -676,6 +684,14 @@ export class CopyTradingService {
     const copyAccountId = await this.metaApi.resolveCopyAccountIdAsync();
     if (!this.metaApi.isConfigured || !copyAccountId) return;
 
+    const cfg = await this.getCopyConfig();
+    if (!cfg.copyTradesEnabled) {
+      this.logger.debug(
+        `Copy skip ${input.signalPublicId}: copy trading paused by admin`,
+      );
+      return;
+    }
+
     const health = await this.evaluateCopyPoolHealth();
     if (!health.ready) {
       this.logger.debug(
@@ -685,7 +701,7 @@ export class CopyTradingService {
     }
 
     const { riskPercent, notifyEmail, copyUseTwoToOneRr, copyEmailAlertsEnabled } =
-      await this.getCopyConfig();
+      cfg;
 
     const existing = await this.prisma.copyTrade.findUnique({
       where: { signalId: input.signalDbId },
@@ -1021,6 +1037,7 @@ export class CopyTradingService {
         copyUseTwoToOneRr: copySettings.copyUseTwoToOneRr,
         copyAutoBreakevenEnabled: copySettings.copyAutoBreakevenEnabled,
         copyEmailAlertsEnabled: copySettings.copyEmailAlertsEnabled,
+        copyTradesEnabled: copySettings.copyTradesEnabled,
         copyHealth: {
           ready: copySettings.copyHealthReady,
           message: copySettings.copyHealthMessage,
@@ -1087,6 +1104,7 @@ export class CopyTradingService {
         copyUseTwoToOneRr: copySettings.copyUseTwoToOneRr,
         copyAutoBreakevenEnabled: copySettings.copyAutoBreakevenEnabled,
         copyEmailAlertsEnabled: copySettings.copyEmailAlertsEnabled,
+        copyTradesEnabled: copySettings.copyTradesEnabled,
         copyHealth: {
           ready: copySettings.copyHealthReady,
           message: copySettings.copyHealthMessage,
@@ -1160,6 +1178,7 @@ export class CopyTradingService {
       copyUseTwoToOneRr: copySettings.copyUseTwoToOneRr,
       copyAutoBreakevenEnabled: copySettings.copyAutoBreakevenEnabled,
       copyEmailAlertsEnabled: copySettings.copyEmailAlertsEnabled,
+      copyTradesEnabled: copySettings.copyTradesEnabled,
       copyHealth: {
         ready: copySettings.copyHealthReady,
         message: copySettings.copyHealthMessage,

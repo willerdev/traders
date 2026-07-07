@@ -1798,6 +1798,23 @@ export class SignalsService {
       throw new BadRequestException('This trade is already closed');
     }
 
+    const copySettings = await this.copyTrading.getCopySettings();
+    if (copySettings.copyTradesEnabled === false) {
+      return {
+        ok: false,
+        signalId,
+        mirrored: false,
+        copyStatus: null as string | null,
+        entryPrice:
+          signal.trade?.activatedAt && signal.trade.entryPrice != null
+            ? Number(signal.trade.entryPrice)
+            : signal.direction === 'BUY'
+              ? Number(signal.entryMin)
+              : Number(signal.entryMax),
+        message: 'Copy trading is paused — resume in MT5 Copy settings to mirror new trades',
+      };
+    }
+
     const entryMin = Number(signal.entryMin);
     const entryMax = Number(signal.entryMax);
     const limitEntry =
@@ -1827,7 +1844,7 @@ export class SignalsService {
         copyStatus: null as string | null,
         entryPrice: openPrice,
         message:
-          'Copy mirror skipped — trader may not be in the pool, copy account unavailable, or pool not ready',
+          'Copy mirror skipped — copy trading may be paused, trader may not be in the pool, copy account unavailable, or pool not ready',
       };
     }
 

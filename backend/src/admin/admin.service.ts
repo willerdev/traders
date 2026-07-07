@@ -367,34 +367,72 @@ export class AdminService {
   }
 
   async listPendingKyc() {
-    const rows = await this.prisma.kycVerification.findMany({
-      where: { status: 'PENDING' },
-      orderBy: { submittedAt: 'asc' },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            displayName: true,
-            status: true,
-            profile: true,
-          },
-        },
-      },
-    });
+    const { items } = await this.listKyc(100, 0, 'PENDING');
+    return items;
+  }
 
-    return rows.map((row) => ({
-      id: row.id,
-      userId: row.userId,
-      status: row.status,
-      documentType: row.documentType,
-      documentNumber: row.documentNumber,
-      documentFrontUrl: row.documentFrontUrl,
-      documentBackUrl: row.documentBackUrl,
-      selfieUrl: row.selfieUrl,
-      submittedAt: row.submittedAt?.toISOString() ?? null,
-      user: row.user,
-    }));
+  async listKyc(limit = 50, offset = 0, status?: string) {
+    const take = Math.min(Math.max(limit, 1), 100);
+    const skip = Math.max(offset, 0);
+    const normalized = status?.trim().toUpperCase();
+    const submittedStatuses = ['PENDING', 'APPROVED', 'REJECTED'] as const;
+    const where =
+      normalized && submittedStatuses.includes(normalized as never)
+        ? { status: normalized as (typeof submittedStatuses)[number] }
+        : { status: { in: [...submittedStatuses] } };
+
+    const [rows, count, pendingCount, approvedCount, rejectedCount] =
+      await Promise.all([
+        this.prisma.kycVerification.findMany({
+          where,
+          take,
+          skip,
+          orderBy: [{ submittedAt: 'desc' }, { reviewedAt: 'desc' }],
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                displayName: true,
+                status: true,
+                profile: true,
+              },
+            },
+          },
+        }),
+        this.prisma.kycVerification.count({ where }),
+        this.prisma.kycVerification.count({ where: { status: 'PENDING' } }),
+        this.prisma.kycVerification.count({ where: { status: 'APPROVED' } }),
+        this.prisma.kycVerification.count({ where: { status: 'REJECTED' } }),
+      ]);
+
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        userId: row.userId,
+        status: row.status,
+        documentType: row.documentType,
+        documentNumber: row.documentNumber,
+        documentFrontUrl: row.documentFrontUrl,
+        documentBackUrl: row.documentBackUrl,
+        selfieUrl: row.selfieUrl,
+        rejectionReason: row.rejectionReason,
+        submittedAt: row.submittedAt?.toISOString() ?? null,
+        reviewedAt: row.reviewedAt?.toISOString() ?? null,
+        user: row.user,
+      })),
+      count,
+      limit: take,
+      offset: skip,
+      status: normalized && submittedStatuses.includes(normalized as never)
+        ? normalized
+        : null,
+      counts: {
+        pending: pendingCount,
+        approved: approvedCount,
+        rejected: rejectedCount,
+      },
+    };
   }
 
   async approveKyc(userId: string, adminId: string) {

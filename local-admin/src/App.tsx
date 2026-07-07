@@ -196,6 +196,19 @@ function tabFromHash(): Tab {
 }
 
 const USERS_PAGE_SIZE = 50;
+const SIGNAL_PAGE_SIZE = 50;
+const KYC_PAGE_SIZE = 50;
+
+const SETUP_STATUS_FILTERS: { value: string | undefined; label: string }[] = [
+  { value: undefined, label: "All statuses" },
+  { value: "OPEN", label: "Open" },
+  { value: "PENDING", label: "Pending" },
+  { value: "WON", label: "Won" },
+  { value: "LOST", label: "Lost" },
+  { value: "ARCHIVED", label: "Archived" },
+  { value: "CANCELLED", label: "Cancelled" },
+  { value: "REJECTED_DUPLICATE", label: "Rejected dup" },
+];
 
 function setupCanSetLimit(signal: SignalRow) {
   if (signal.status !== "OPEN") return false;
@@ -273,11 +286,24 @@ export default function App() {
   const [userCount, setUserCount] = useState(0);
   const [signals, setSignals] = useState<SignalRow[]>([]);
   const [signalCount, setSignalCount] = useState(0);
-  const [setupFilter, setSetupFilter] = useState<"pending" | "all">("pending");
+  const [signalPage, setSignalPage] = useState(0);
+  const [setupStatusFilter, setSetupStatusFilter] = useState<string | undefined>(
+    undefined,
+  );
   const [setLimitLoadingId, setSetLimitLoadingId] = useState<string | null>(null);
   const [copyMirrorLoadingId, setCopyMirrorLoadingId] = useState<string | null>(null);
   const [tp1ApproveLoadingId, setTp1ApproveLoadingId] = useState<string | null>(null);
   const [kycQueue, setKycQueue] = useState<KycRow[]>([]);
+  const [kycCount, setKycCount] = useState(0);
+  const [kycPage, setKycPage] = useState(0);
+  const [kycStatusFilter, setKycStatusFilter] = useState<
+    "all" | "PENDING" | "APPROVED" | "REJECTED"
+  >("all");
+  const [kycCounts, setKycCounts] = useState({
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+  });
   const [payouts, setPayouts] = useState<PayoutRow[]>([]);
   const [weeklyTierPayoutsEnabled, setWeeklyTierPayoutsEnabled] = useState(false);
   const [weeklyTierSaving, setWeeklyTierSaving] = useState(false);
@@ -315,6 +341,8 @@ export default function App() {
   const [copyUseTwoToOneRr, setCopyUseTwoToOneRr] = useState(true);
   const [copyAutoBreakeven, setCopyAutoBreakeven] = useState(true);
   const [copyEmailAlerts, setCopyEmailAlerts] = useState(true);
+  const [copyTradesEnabled, setCopyTradesEnabled] = useState(true);
+  const [copyPauseSaving, setCopyPauseSaving] = useState(false);
   const [copySettingsSaving, setCopySettingsSaving] = useState(false);
   const [copySubTab, setCopySubTab] = useState<"account" | "settings">("account");
   const [copyDashboardLoading, setCopyDashboardLoading] = useState(false);
@@ -497,6 +525,7 @@ export default function App() {
         setCopyUseTwoToOneRr(fast.copyUseTwoToOneRr ?? true);
         setCopyAutoBreakeven(fast.copyAutoBreakevenEnabled ?? true);
         setCopyEmailAlerts(fast.copyEmailAlertsEnabled ?? true);
+        setCopyTradesEnabled(fast.copyTradesEnabled ?? true);
         } catch (err) {
           setMessage(
             err instanceof Error ? err.message : "Failed to load copy pool",
@@ -573,11 +602,20 @@ export default function App() {
           setActiveChatUserId(res.items[0].userId);
         }
       } else if (active === "signals") {
-        const res = await api.signals(0, setupFilter === "pending" ? "OPEN" : undefined);
+        const res = await api.signals(
+          signalPage * SIGNAL_PAGE_SIZE,
+          setupStatusFilter,
+        );
         setSignals(res.items);
         setSignalCount(res.count);
       } else if (active === "kyc") {
-        setKycQueue(await api.kycPending());
+        const res = await api.kycList(
+          kycPage * KYC_PAGE_SIZE,
+          kycStatusFilter === "all" ? undefined : kycStatusFilter,
+        );
+        setKycQueue(res.items);
+        setKycCount(res.count);
+        setKycCounts(res.counts);
       } else if (active === "payouts") {
         const [payoutsRes, walletRes, depositsRes, tierSettingsRes] =
           await Promise.allSettled([
@@ -705,7 +743,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [suspiciousOnly, selectedMetaApiAccountId, loadMetaApiTerminal, setupFilter, copyDashboard, loadCopyDashboard, loadUsersPage, userPage, userSearch]);
+  }, [suspiciousOnly, selectedMetaApiAccountId, loadMetaApiTerminal, setupStatusFilter, signalPage, kycStatusFilter, kycPage, copyDashboard, loadCopyDashboard, loadUsersPage, userPage, userSearch]);
 
   useEffect(() => {
     if (!authed || copyPrefetchedRef.current) return;
@@ -2071,31 +2109,31 @@ export default function App() {
           <>
             <div className="toolbar toolbar-wrap">
               <h2>
-                {setupFilter === "pending"
-                  ? `Pending setups (${signalCount})`
-                  : `All setups (${signalCount})`}
+                Setups ({signalCount})
+                {setupStatusFilter ? ` · ${setupStatusFilter}` : ""}
               </h2>
-              <div className="toolbar-actions">
-                <button
-                  type="button"
-                  className={setupFilter === "pending" ? "primary" : "secondary"}
-                  onClick={() => setSetupFilter("pending")}
-                >
-                  Pending (OPEN)
-                </button>
-                <button
-                  type="button"
-                  className={setupFilter === "all" ? "primary" : "secondary"}
-                  onClick={() => setSetupFilter("all")}
-                >
-                  All statuses
-                </button>
+              <div className="toolbar-actions" style={{ flexWrap: "wrap", gap: "0.35rem" }}>
+                {SETUP_STATUS_FILTERS.map((opt) => (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    className={
+                      setupStatusFilter === opt.value ? "primary" : "secondary"
+                    }
+                    onClick={() => {
+                      setSetupStatusFilter(opt.value);
+                      setSignalPage(0);
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
             </div>
             {signals.length === 0 ? (
               <p className="muted">
-                {setupFilter === "pending"
-                  ? "No open setups awaiting resolution."
+                {setupStatusFilter
+                  ? `No setups with status ${setupStatusFilter}.`
                   : "No setups submitted yet."}
               </p>
             ) : (
@@ -2216,32 +2254,138 @@ export default function App() {
                 ))}
               </div>
             )}
+            {signalCount > SIGNAL_PAGE_SIZE && (
+              <div
+                className="toolbar"
+                style={{ marginTop: "1rem", justifyContent: "space-between" }}
+              >
+                <span className="muted">
+                  Showing {signalPage * SIGNAL_PAGE_SIZE + 1}–
+                  {Math.min((signalPage + 1) * SIGNAL_PAGE_SIZE, signalCount)} of{" "}
+                  {signalCount}
+                </span>
+                <div className="toolbar-actions">
+                  <button
+                    type="button"
+                    disabled={signalPage <= 0 || loading}
+                    onClick={() => setSignalPage((p) => Math.max(0, p - 1))}
+                  >
+                    Previous
+                  </button>
+                  <span className="muted">
+                    Page {signalPage + 1} of{" "}
+                    {Math.max(1, Math.ceil(signalCount / SIGNAL_PAGE_SIZE))}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={
+                      loading ||
+                      signalPage + 1 >= Math.ceil(signalCount / SIGNAL_PAGE_SIZE)
+                    }
+                    onClick={() => setSignalPage((p) => p + 1)}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
 
         {tab === "kyc" && (
           <>
-            <div className="toolbar">
-              <h2>KYC review ({kycQueue.length} pending)</h2>
+            <div className="toolbar toolbar-wrap">
+              <h2>
+                KYC submissions ({kycCount})
+                {kycStatusFilter !== "all" ? ` · ${kycStatusFilter}` : ""}
+              </h2>
+              <div className="toolbar-actions">
+                <button
+                  type="button"
+                  className={kycStatusFilter === "all" ? "primary" : "secondary"}
+                  onClick={() => {
+                    setKycStatusFilter("all");
+                    setKycPage(0);
+                  }}
+                >
+                  All (
+                  {kycCounts.pending + kycCounts.approved + kycCounts.rejected})
+                </button>
+                <button
+                  type="button"
+                  className={kycStatusFilter === "PENDING" ? "primary" : "secondary"}
+                  onClick={() => {
+                    setKycStatusFilter("PENDING");
+                    setKycPage(0);
+                  }}
+                >
+                  Pending ({kycCounts.pending})
+                </button>
+                <button
+                  type="button"
+                  className={kycStatusFilter === "APPROVED" ? "primary" : "secondary"}
+                  onClick={() => {
+                    setKycStatusFilter("APPROVED");
+                    setKycPage(0);
+                  }}
+                >
+                  Approved ({kycCounts.approved})
+                </button>
+                <button
+                  type="button"
+                  className={kycStatusFilter === "REJECTED" ? "primary" : "secondary"}
+                  onClick={() => {
+                    setKycStatusFilter("REJECTED");
+                    setKycPage(0);
+                  }}
+                >
+                  Rejected ({kycCounts.rejected})
+                </button>
+              </div>
             </div>
             <div className="kyc-grid">
               {kycQueue.length === 0 ? (
-                <p className="muted">No pending KYC submissions</p>
+                <p className="muted">
+                  {kycStatusFilter === "PENDING"
+                    ? "No pending KYC submissions"
+                    : kycStatusFilter === "APPROVED"
+                      ? "No approved KYC submissions"
+                      : kycStatusFilter === "REJECTED"
+                        ? "No rejected KYC submissions"
+                        : "No KYC submissions yet"}
+                </p>
               ) : (
                 kycQueue.map((item) => {
                   const busy = kycActionUserId === item.userId;
+                  const isPending = item.status === "PENDING";
                   return (
                   <div key={item.id} className="kyc-card">
                     <p>
                       <strong>{item.user.displayName}</strong> —{" "}
                       {item.user.email ?? "No email"}
+                      {" · "}
+                      <span className={badgeClass(item.status.toLowerCase())}>
+                        {item.status}
+                      </span>
                     </p>
                     <p className="muted">
                       {item.documentType ?? "Document"}
+                      {item.documentNumber ? ` · ${item.documentNumber}` : ""}
                       {item.submittedAt
-                        ? ` · ${fmtDate(item.submittedAt)}`
+                        ? ` · Submitted ${fmtDate(item.submittedAt)}`
+                        : ""}
+                      {item.reviewedAt
+                        ? ` · Reviewed ${fmtDate(item.reviewedAt)}`
                         : ""}
                     </p>
+                    {item.rejectionReason && (
+                      <p className="muted" style={{ color: "#f87171" }}>
+                        Rejection reason: {item.rejectionReason}
+                      </p>
+                    )}
+                    {(item.documentFrontUrl ||
+                      item.documentBackUrl ||
+                      item.selfieUrl) && (
                     <div style={{ margin: "0.5rem 0", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                       {item.documentFrontUrl && (
                         <AdminImage src={item.documentFrontUrl} alt="ID front" />
@@ -2253,6 +2397,9 @@ export default function App() {
                         <AdminImage src={item.selfieUrl} alt="Selfie" />
                       )}
                     </div>
+                    )}
+                    {isPending && (
+                    <>
                     <input
                       placeholder="Rejection reason (if rejecting)"
                       value={rejectReason[item.userId] || ""}
@@ -2295,11 +2442,56 @@ export default function App() {
                         {busy ? "…" : "Reject"}
                       </button>
                     </div>
+                    </>
+                    )}
+                    {!isPending && item.user.id && isFullAdmin && (
+                      <div className="row-actions">
+                        <button
+                          type="button"
+                          onClick={() => setUserDetailId(item.user.id!)}
+                        >
+                          View trader
+                        </button>
+                      </div>
+                    )}
                   </div>
                   );
                 })
               )}
             </div>
+            {kycCount > KYC_PAGE_SIZE && (
+              <div
+                className="toolbar"
+                style={{ marginTop: "1rem", justifyContent: "space-between" }}
+              >
+                <span className="muted">
+                  Showing {kycPage * KYC_PAGE_SIZE + 1}–
+                  {Math.min((kycPage + 1) * KYC_PAGE_SIZE, kycCount)} of {kycCount}
+                </span>
+                <div className="toolbar-actions">
+                  <button
+                    type="button"
+                    disabled={kycPage <= 0 || loading}
+                    onClick={() => setKycPage((p) => Math.max(0, p - 1))}
+                  >
+                    Previous
+                  </button>
+                  <span className="muted">
+                    Page {kycPage + 1} of{" "}
+                    {Math.max(1, Math.ceil(kycCount / KYC_PAGE_SIZE))}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={
+                      loading || kycPage + 1 >= Math.ceil(kycCount / KYC_PAGE_SIZE)
+                    }
+                    onClick={() => setKycPage((p) => p + 1)}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
 
@@ -3640,6 +3832,63 @@ export default function App() {
               <p className="muted">Could not load copy pool — try Refresh.</p>
             ) : copySubTab === "account" ? (
               <>
+                <div
+                  className="kyc-card"
+                  style={{
+                    marginBottom: "1rem",
+                    borderColor: copyTradesEnabled
+                      ? "rgba(34,197,94,0.35)"
+                      : "rgba(245,158,11,0.45)",
+                  }}
+                >
+                  <div className="toolbar toolbar-wrap">
+                    <div>
+                      <h3 style={{ margin: 0 }}>
+                        Copy trading —{" "}
+                        {copyTradesEnabled ? "Active" : "Paused"}
+                      </h3>
+                      <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                        {copyTradesEnabled
+                          ? "New setups from pool traders are mirrored to the copy MT5 account."
+                          : "No new copy trades will open. Existing open positions are still managed (breakeven, close sync)."}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className={copyTradesEnabled ? "danger" : "primary"}
+                      disabled={copyPauseSaving || copySettingsSaving}
+                      onClick={() => {
+                        const next = !copyTradesEnabled;
+                        setCopyPauseSaving(true);
+                        setMessage("");
+                        void api
+                          .updateCopySettings({ copyTradesEnabled: next })
+                          .then((updated) => {
+                            const enabled = updated.copyTradesEnabled ?? true;
+                            setCopyTradesEnabled(enabled);
+                            setCopyDashboard((prev) =>
+                              prev
+                                ? { ...prev, copyTradesEnabled: enabled }
+                                : prev,
+                            );
+                            setMessage(
+                              enabled
+                                ? "Copy trading resumed — new trades will be mirrored."
+                                : "Copy trading paused — no new trades will open.",
+                            );
+                          })
+                          .catch((err: Error) => setMessage(err.message))
+                          .finally(() => setCopyPauseSaving(false));
+                      }}
+                    >
+                      {copyPauseSaving
+                        ? "Saving…"
+                        : copyTradesEnabled
+                          ? "Pause new trades"
+                          : "Resume copy trading"}
+                    </button>
+                  </div>
+                </div>
                 {copyDashboard.copyHealth && (
                   <div
                     className="kyc-card"
@@ -3654,11 +3903,17 @@ export default function App() {
                       <div>
                         <h3 style={{ margin: 0 }}>
                           Copy pool health —{" "}
-                          {copyDashboard.copyHealth.ready ? "Ready" : "Not ready"}
+                          {!copyTradesEnabled
+                            ? "Paused"
+                            : copyDashboard.copyHealth.ready
+                              ? "Ready"
+                              : "Not ready"}
                         </h3>
                         <p className="muted" style={{ margin: "0.35rem 0 0" }}>
-                          {copyDashboard.copyHealth.message ??
-                            "Waiting for first health check…"}
+                          {!copyTradesEnabled
+                            ? "Copy trading is paused by admin — resume to allow new mirrored trades."
+                            : (copyDashboard.copyHealth.message ??
+                              "Waiting for first health check…")}
                         </p>
                         {copyDashboard.copyHealth.checkedAt && (
                           <p className="muted" style={{ margin: "0.25rem 0 0", fontSize: "0.75rem" }}>
@@ -3669,12 +3924,18 @@ export default function App() {
                       </div>
                       <span
                         className={badgeClass(
-                          copyDashboard.copyHealth.ready ? "approved" : "rejected",
+                          !copyTradesEnabled
+                            ? "pending"
+                            : copyDashboard.copyHealth.ready
+                              ? "approved"
+                              : "rejected",
                         )}
                       >
-                        {copyDashboard.copyHealth.ready
-                          ? "Can receive trades"
-                          : "Blocked"}
+                        {!copyTradesEnabled
+                          ? "Paused"
+                          : copyDashboard.copyHealth.ready
+                            ? "Can receive trades"
+                            : "Blocked"}
                       </span>
                     </div>
                   </div>
@@ -3875,6 +4136,17 @@ export default function App() {
                     <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", width: "100%" }}>
                       <input
                         type="checkbox"
+                        checked={copyTradesEnabled}
+                        onChange={(e) => setCopyTradesEnabled(e.target.checked)}
+                        disabled={copySettingsSaving || copyPauseSaving}
+                      />
+                      <span className="muted">
+                        Allow new copy trades (uncheck to pause mirroring new setups)
+                      </span>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", width: "100%" }}>
+                      <input
+                        type="checkbox"
                         checked={copyEmailAlerts}
                         onChange={(e) => setCopyEmailAlerts(e.target.checked)}
                         disabled={copySettingsSaving}
@@ -3906,6 +4178,7 @@ export default function App() {
                             copyUseTwoToOneRr,
                             copyAutoBreakevenEnabled: copyAutoBreakeven,
                             copyEmailAlertsEnabled: copyEmailAlerts,
+                            copyTradesEnabled,
                           })
                           .then((updated) => {
                             setCopyRiskAmount(String(updated.copyRiskPercent));
@@ -3913,6 +4186,7 @@ export default function App() {
                             setCopyUseTwoToOneRr(updated.copyUseTwoToOneRr ?? true);
                             setCopyAutoBreakeven(updated.copyAutoBreakevenEnabled ?? true);
                             setCopyEmailAlerts(updated.copyEmailAlertsEnabled ?? true);
+                            setCopyTradesEnabled(updated.copyTradesEnabled ?? true);
                             setCopyDashboard((prev) =>
                               prev
                                 ? {
@@ -3924,6 +4198,7 @@ export default function App() {
                                       updated.copyAutoBreakevenEnabled,
                                     copyEmailAlertsEnabled:
                                       updated.copyEmailAlertsEnabled,
+                                    copyTradesEnabled: updated.copyTradesEnabled,
                                     riskPercent: updated.copyRiskPercent,
                                   }
                                 : prev,
