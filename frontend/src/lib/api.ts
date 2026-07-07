@@ -569,6 +569,14 @@ class ApiClient {
       }),
   };
 
+  presence = {
+    heartbeat: (path: string) =>
+      this.request<{ ok: boolean }>("/presence/heartbeat", {
+        method: "POST",
+        body: JSON.stringify({ path }),
+      }),
+  };
+
   messages = {
     getThread: (since?: string) => {
       const qs = since ? `?since=${encodeURIComponent(since)}` : "";

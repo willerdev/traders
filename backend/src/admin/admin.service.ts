@@ -24,6 +24,7 @@ import { ReferralsService } from '../referrals/referrals.service';
 import { CreatePromoCodeDto, SendMessageDto, UpdateStaffPermissionsDto } from '../common/dto';
 import { assessEmail } from '../common/email-quality.util';
 import { resolveAdminPermissions } from './admin-permissions.util';
+import { PresenceService } from '../presence/presence.service';
 
 @Injectable()
 export class AdminService {
@@ -43,7 +44,12 @@ export class AdminService {
     private referrals: ReferralsService,
     private notifications: NotificationService,
     private config: ConfigService,
+    private presence: PresenceService,
   ) {}
+
+  getLivePresence() {
+    return this.presence.getLiveSnapshot();
+  }
 
   private async getPaymentProjection() {
     const now = new Date();

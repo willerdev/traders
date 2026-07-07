@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Navbar, MainContent } from "@/components/layout/navbar";
 import { AuthHydrator } from "@/components/auth-hydrator";
+import { PresenceTracker } from "@/components/presence-tracker";
 import { ThemeProvider } from "@/components/theme-provider";
 
 const geistSans = Geist({
@@ -35,6 +36,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <ThemeProvider />
         <AuthHydrator />
+        <PresenceTracker />
         <Navbar />
         <MainContent>{children}</MainContent>
       </body>

@@ -25,6 +25,7 @@ import { MarketingModule } from './marketing/marketing.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { Mt5SyncModule } from './mt5-sync/mt5-sync.module';
 import { PublicModule } from './public/public.module';
+import { PresenceModule } from './presence/presence.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { PublicModule } from './public/public.module';
     ReferralsModule,
     Mt5SyncModule,
     PublicModule,
+    PresenceModule,
   ],
 })
 export class AppModule {}

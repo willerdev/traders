@@ -11,6 +11,7 @@ import { AuthModule } from '../auth/auth.module';
 import { MessagesModule } from '../messages/messages.module';
 import { UploadsModule } from '../uploads/uploads.module';
 import { MetaApiModule } from '../metaapi/metaapi.module';
+import { PresenceModule } from '../presence/presence.module';
 import { AdminPermissionGuard } from '../auth/guards/admin-permission.guard';
 
 @Module({
@@ -25,6 +26,7 @@ import { AdminPermissionGuard } from '../auth/guards/admin-permission.guard';
     AuthModule,
     MessagesModule,
     UploadsModule,
+    PresenceModule,
   ],
   controllers: [AdminController],
   providers: [AdminService, AdminPermissionGuard],

@@ -163,6 +163,8 @@ model User {
   accessExpiresAt   DateTime?
   termsAcceptedAt   DateTime?
   lastLoginIp       String?
+  presenceLastSeenAt DateTime?
+  presencePath       String?
   metaApiAccountId  String?
   mt5SyncActive       Boolean    @default(false)
   mt5SyncEnrolledAt   DateTime?

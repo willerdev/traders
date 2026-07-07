@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 export type Tab =
   | "overview"
   | "paymentForecast"
+  | "live"
   | "users"
   | "messages"
   | "signals"
@@ -21,6 +22,7 @@ type NavItem = { id: Tab; label: string; icon: keyof typeof icons };
 export const ADMIN_TABS: Tab[] = [
   "overview",
   "paymentForecast",
+  "live",
   "users",
   "messages",
   "signals",
@@ -88,6 +90,7 @@ export function resolveTabForPermissions(
 const NAV_ITEMS: NavItem[] = [
   { id: "overview", label: "Overview", icon: "overview" },
   { id: "paymentForecast", label: "Payment forecast", icon: "forecast" },
+  { id: "live", label: "Live activity", icon: "live" },
   { id: "users", label: "Users", icon: "users" },
   { id: "messages", label: "Messages", icon: "messages" },
   { id: "signals", label: "Setups", icon: "setups" },
@@ -114,6 +117,13 @@ const icons = {
       <path d="M4 19V5" strokeLinecap="round" />
       <path d="M4 19h16" strokeLinecap="round" />
       <path d="M8 16v-4M12 16V8M16 16v-6" strokeLinecap="round" />
+    </svg>
+  ),
+  live: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2v2M12 20v2M2 12h2M20 12h2" strokeLinecap="round" />
+      <path d="M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4" strokeLinecap="round" />
     </svg>
   ),
   users: (

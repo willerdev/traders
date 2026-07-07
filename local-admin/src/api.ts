@@ -139,6 +139,7 @@ export const api = {
     ),
 
   overview: () => request<Record<string, unknown>>("/admin/overview"),
+  livePresence: () => request<LivePresenceSnapshot>("/admin/presence/live"),
   paymentForecast: () => request<PaymentForecast>("/admin/payment-forecast"),
   users: (params?: {
     offset?: number;
@@ -839,6 +840,28 @@ export type TpClaimRow = {
   takeProfit: number;
   originalScreenshotUrl?: string;
   user: { id: string; displayName: string; email: string | null };
+};
+
+export type LivePresenceRow = {
+  userId: string;
+  displayName: string;
+  email: string | null;
+  status: string;
+  registrationPaid: boolean;
+  currentPath: string;
+  pathLabel: string;
+  lastSeenAt: string;
+  secondsAgo: number;
+  online: boolean;
+};
+
+export type LivePresenceSnapshot = {
+  onlineCount: number;
+  recentOfflineCount: number;
+  onlineThresholdSeconds: number;
+  polledAt: string;
+  online: LivePresenceRow[];
+  recentOffline: LivePresenceRow[];
 };
 
 export type PromoCodeRow = {

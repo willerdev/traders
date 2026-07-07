@@ -37,6 +37,11 @@ export class AdminController {
     return this.adminService.getOverview();
   }
 
+  @Get('presence/live')
+  getLivePresence() {
+    return this.adminService.getLivePresence();
+  }
+
   @Get('payment-forecast')
   getPaymentForecast() {
     return this.adminService.getPaymentForecast();

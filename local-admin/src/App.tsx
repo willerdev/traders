@@ -23,6 +23,7 @@ import {
   type CustodyDepositRow,
   type CustodyDepositCreated,
   type PaymentForecast,
+  type LivePresenceSnapshot,
   type CopyTradingDashboard,
   type MarketingSchedule,
   type MarketingEmailRow,
@@ -267,6 +268,7 @@ export default function App() {
 
   const [overview, setOverview] = useState<Record<string, unknown> | null>(null);
   const [paymentForecast, setPaymentForecast] = useState<PaymentForecast | null>(null);
+  const [livePresence, setLivePresence] = useState<LivePresenceSnapshot | null>(null);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [userCount, setUserCount] = useState(0);
   const [signals, setSignals] = useState<SignalRow[]>([]);
@@ -560,6 +562,8 @@ export default function App() {
         setOverview(await api.overview());
       } else if (active === "paymentForecast") {
         setPaymentForecast(await api.paymentForecast());
+      } else if (active === "live") {
+        setLivePresence(await api.livePresence());
       } else if (active === "users") {
         await loadUsersPage(userPage, userSearch);
       } else if (active === "messages") {
@@ -843,6 +847,14 @@ export default function App() {
       setChatLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!authed || tab !== "live") return;
+    const timer = setInterval(() => {
+      void api.livePresence().then(setLivePresence).catch(() => undefined);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [authed, tab]);
 
   useEffect(() => {
     if (!authed) return;
@@ -1599,6 +1611,136 @@ export default function App() {
           <div className="page-empty">
             Could not load payment forecast. Check that the API is running and refresh.
           </div>
+        )}
+
+        {tab === "live" && (
+          <>
+            <div className="toolbar toolbar-wrap">
+              <div>
+                <h2>Live activity</h2>
+                <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                  Online users and the page they are on — refreshes every 5 seconds.
+                  {livePresence?.polledAt && (
+                    <> Last update {fmtDate(livePresence.polledAt)}.</>
+                  )}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() =>
+                  void api.livePresence().then(setLivePresence).catch((err) =>
+                    setMessage(
+                      err instanceof Error ? err.message : "Refresh failed",
+                    ),
+                  )
+                }
+              >
+                Refresh now
+              </button>
+            </div>
+
+            <div className="cards" style={{ marginBottom: "1rem" }}>
+              <div className="card">
+                <div className="label">Online now</div>
+                <div className="value">{livePresence?.onlineCount ?? 0}</div>
+              </div>
+              <div className="card">
+                <div className="label">Recently offline (30 min)</div>
+                <div className="value">
+                  {livePresence?.recentOfflineCount ?? 0}
+                </div>
+              </div>
+              <div className="card">
+                <div className="label">Online window</div>
+                <div className="value">
+                  {livePresence?.onlineThresholdSeconds ?? 45}s
+                </div>
+              </div>
+            </div>
+
+            <h3 style={{ marginTop: 0 }}>Online</h3>
+            <table style={{ marginBottom: "1.5rem" }}>
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Email</th>
+                  <th>Page</th>
+                  <th>Status</th>
+                  <th>Last seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!livePresence || livePresence.online.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="muted">
+                      No users online right now
+                    </td>
+                  </tr>
+                ) : (
+                  livePresence.online.map((row) => (
+                    <tr key={row.userId}>
+                      <td>{row.displayName}</td>
+                      <td className="muted">{row.email ?? "—"}</td>
+                      <td>
+                        <code>{row.pathLabel}</code>
+                        <span className="muted"> ({row.currentPath})</span>
+                      </td>
+                      <td>
+                        <span className={badgeClass("approved")}>ONLINE</span>
+                      </td>
+                      <td>{row.secondsAgo}s ago</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+
+            <h3>Recently offline</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Email</th>
+                  <th>Last page</th>
+                  <th>Account</th>
+                  <th>Last seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!livePresence || livePresence.recentOffline.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="muted">
+                      No recent activity in the last 30 minutes
+                    </td>
+                  </tr>
+                ) : (
+                  livePresence.recentOffline.map((row) => (
+                    <tr key={row.userId}>
+                      <td>{row.displayName}</td>
+                      <td className="muted">{row.email ?? "—"}</td>
+                      <td>
+                        <code>{row.pathLabel}</code>
+                      </td>
+                      <td>
+                        <span className={badgeClass(row.status.toLowerCase())}>
+                          {row.status}
+                        </span>
+                        {!row.registrationPaid && (
+                          <span className="muted"> · unpaid</span>
+                        )}
+                      </td>
+                      <td>
+                        {row.secondsAgo < 60
+                          ? `${row.secondsAgo}s ago`
+                          : `${Math.round(row.secondsAgo / 60)}m ago`}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </>
         )}
 
         {tab === "users" && (
