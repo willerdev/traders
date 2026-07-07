@@ -289,6 +289,7 @@ export const api = {
     }),
 
   promoCodes: () => request<PromoCodeRow[]>("/admin/promo-codes"),
+  promoUsage: () => request<PromoUsageRow[]>("/admin/promo-codes/usage"),
   createPromoCode: (data: {
     code: string;
     discountPercent?: number;
@@ -850,6 +851,19 @@ export type PromoCodeRow = {
   expired: boolean;
   valid: boolean;
   createdAt: string;
+};
+
+export type PromoUsageRow = {
+  paymentId: string;
+  code: string;
+  discountPercent: number | null;
+  originalAmount: number | null;
+  amountPaid: number;
+  status: string;
+  usedAt: string;
+  confirmedAt: string | null;
+  user: { id: string; displayName: string; email: string };
+  referredBy: { id: string; displayName: string; email: string } | null;
 };
 
 export type HubSenderStat = {

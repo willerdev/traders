@@ -12,6 +12,7 @@ import {
   type SignalRow,
   type UserRow,
   type PromoCodeRow,
+  type PromoUsageRow,
   type HubSenderReport,
   type MetaApiAccountsResult,
   type MetaApiTerminalState,
@@ -296,6 +297,7 @@ export default function App() {
   const [approvePayoutLoading, setApprovePayoutLoading] = useState(false);
   const [tpClaims, setTpClaims] = useState<TpClaimRow[]>([]);
   const [promoCodes, setPromoCodes] = useState<PromoCodeRow[]>([]);
+  const [promoUsage, setPromoUsage] = useState<PromoUsageRow[]>([]);
   const [hubReport, setHubReport] = useState<HubSenderReport | null>(null);
   const [metaApiAccounts, setMetaApiAccounts] =
     useState<MetaApiAccountsResult | null>(null);
@@ -625,7 +627,12 @@ export default function App() {
       } else if (active === "tpClaims") {
         setTpClaims(await api.tpClaimsPending());
       } else if (active === "promos") {
-        setPromoCodes(await api.promoCodes());
+        const [codes, usage] = await Promise.all([
+          api.promoCodes(),
+          api.promoUsage().catch(() => []),
+        ]);
+        setPromoCodes(codes);
+        setPromoUsage(usage);
       } else if (active === "marketing") {
         const [schedule, history] = await Promise.all([
           api.marketingSchedule(),
@@ -2781,6 +2788,7 @@ export default function App() {
                 <tr>
                   <th>Code</th>
                   <th>Discount</th>
+                  <th>Used</th>
                   <th>Expires</th>
                   <th>Status</th>
                   <th />
@@ -2789,7 +2797,7 @@ export default function App() {
               <tbody>
                 {promoCodes.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="muted">
+                    <td colSpan={6} className="muted">
                       No promo codes yet
                     </td>
                   </tr>
@@ -2800,6 +2808,9 @@ export default function App() {
                         <code>{p.code}</code>
                       </td>
                       <td>{p.discountPercent}%</td>
+                      <td>
+                        {promoUsage.filter((u) => u.code === p.code).length}
+                      </td>
                       <td>{fmtDate(p.expiresAt)}</td>
                       <td>
                         <span
@@ -2833,6 +2844,87 @@ export default function App() {
                           </button>
                         )}
                       </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+
+            <h3 style={{ marginTop: "2rem" }}>
+              Usage history ({promoUsage.length})
+            </h3>
+            <p className="muted" style={{ margin: "0.35rem 0 0.75rem" }}>
+              Who redeemed each code, what they paid, and who referred them.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>User</th>
+                  <th>Email</th>
+                  <th>Referred by</th>
+                  <th>Discount</th>
+                  <th>Paid</th>
+                  <th>Status</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {promoUsage.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="muted">
+                      No promo code usage yet
+                    </td>
+                  </tr>
+                ) : (
+                  promoUsage.map((u) => (
+                    <tr key={u.paymentId}>
+                      <td>
+                        <code>{u.code}</code>
+                      </td>
+                      <td>{u.user.displayName}</td>
+                      <td className="muted">{u.user.email}</td>
+                      <td>
+                        {u.referredBy ? (
+                          <>
+                            {u.referredBy.displayName}
+                            <span className="muted">
+                              {" "}
+                              ({u.referredBy.email})
+                            </span>
+                          </>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
+                      <td>
+                        {u.discountPercent != null
+                          ? `${u.discountPercent}%`
+                          : u.amountPaid === 0
+                            ? "100%"
+                            : "—"}
+                      </td>
+                      <td>
+                        {u.amountPaid} USDT
+                        {u.originalAmount != null &&
+                          u.originalAmount !== u.amountPaid && (
+                            <span className="muted"> of {u.originalAmount}</span>
+                          )}
+                      </td>
+                      <td>
+                        <span
+                          className={badgeClass(
+                            u.status === "CONFIRMED"
+                              ? "approved"
+                              : u.status === "PENDING"
+                                ? "pending"
+                                : "rejected",
+                          )}
+                        >
+                          {u.status}
+                        </span>
+                      </td>
+                      <td>{fmtDate(u.usedAt)}</td>
                     </tr>
                   ))
                 )}

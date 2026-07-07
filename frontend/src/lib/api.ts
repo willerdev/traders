@@ -663,6 +663,18 @@ class ApiClient {
         method: "POST",
         body: JSON.stringify({ code }),
       }),
+    featuredPromo: () =>
+      this.request<{
+        registrationFeeUsdt: number;
+        promo: {
+          code: string;
+          discountPercent: number;
+          description: string;
+          originalAmount: number;
+          finalAmount: number;
+          expiresAt: string;
+        } | null;
+      }>("/payments/promo/featured"),
     validatePromo: (code: string) =>
       this.request<{
         valid: boolean;

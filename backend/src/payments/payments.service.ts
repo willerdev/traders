@@ -508,6 +508,43 @@ export class PaymentsService {
     };
   }
 
+  /**
+   * Public: the promo currently showcased on the landing page.
+   * Only partial-discount codes are featured — 100% codes are private
+   * invites and must never be shown publicly. Picks the newest active,
+   * non-expired code so replacing a code updates the site automatically.
+   */
+  async getFeaturedPromo() {
+    const fee = await this.registrationFee();
+    const promo = await this.prisma.promoCode.findFirst({
+      where: {
+        active: true,
+        expiresAt: { gt: new Date() },
+        discountPercent: { gt: 0, lt: 100 },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!promo) {
+      return { registrationFeeUsdt: fee, promo: null };
+    }
+
+    const finalAmount =
+      Math.round(fee * (1 - promo.discountPercent / 100) * 100) / 100;
+
+    return {
+      registrationFeeUsdt: fee,
+      promo: {
+        code: promo.code,
+        discountPercent: promo.discountPercent,
+        description: promo.description,
+        originalAmount: fee,
+        finalAmount,
+        expiresAt: promo.expiresAt.toISOString(),
+      },
+    };
+  }
+
   async validatePromoCode(code: string) {
     const fee = await this.registrationFee();
     const validation = await this.promo.validate(code, fee);

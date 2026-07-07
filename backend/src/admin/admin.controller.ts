@@ -298,6 +298,11 @@ export class AdminController {
     return this.adminService.listPromoCodes();
   }
 
+  @Get('promo-codes/usage')
+  listPromoUsage() {
+    return this.adminService.listPromoUsage();
+  }
+
   @Post('promo-codes')
   createPromoCode(
     @Request() req: { user: { id: string } },

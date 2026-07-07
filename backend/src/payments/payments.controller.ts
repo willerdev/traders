@@ -109,6 +109,11 @@ export class PaymentsController {
     return this.paymentsService.applyPromoCode(req.user.id, dto.code);
   }
 
+  @Get('promo/featured')
+  getFeaturedPromo() {
+    return this.paymentsService.getFeaturedPromo();
+  }
+
   @Get('promo/validate')
   @UseGuards(JwtAuthGuard)
   validatePromo(@Query('code') code: string) {

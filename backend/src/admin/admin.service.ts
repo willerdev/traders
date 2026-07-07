@@ -306,6 +306,10 @@ export class AdminService {
     return this.promo.listAll();
   }
 
+  listPromoUsage() {
+    return this.promo.listUsage();
+  }
+
   createPromoCode(adminId: string, dto: CreatePromoCodeDto) {
     return this.promo.create(adminId, dto);
   }

@@ -63,6 +63,73 @@ export class PromoService {
     return rows.map((p) => this.formatPromo(p, now));
   }
 
+  /**
+   * Payments where a promo code was used. Covers both 100% invite codes
+   * (gatewayId "promo_<code>") and partial-discount checkouts
+   * (promoCode stored in gatewayResponse).
+   */
+  async listUsage(limit = 200) {
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        OR: [
+          { gatewayId: { startsWith: 'promo_' } },
+          { gatewayResponse: { path: ['promoCode'], string_contains: '' } },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      include: {
+        user: {
+          select: {
+            id: true,
+            displayName: true,
+            email: true,
+            referredBy: {
+              select: { id: true, displayName: true, email: true },
+            },
+          },
+        },
+      },
+    });
+
+    return payments.map((p) => {
+      const stored = (p.gatewayResponse ?? {}) as Record<string, unknown>;
+      const code =
+        (typeof stored.promoCode === 'string' ? stored.promoCode : null) ??
+        (p.gatewayId?.startsWith('promo_')
+          ? p.gatewayId.slice('promo_'.length)
+          : 'unknown');
+      return {
+        paymentId: p.id,
+        code,
+        discountPercent:
+          typeof stored.discountPercent === 'number'
+            ? stored.discountPercent
+            : null,
+        originalAmount:
+          typeof stored.originalAmount === 'number'
+            ? stored.originalAmount
+            : null,
+        amountPaid: Number(p.amount),
+        status: p.status,
+        usedAt: p.createdAt.toISOString(),
+        confirmedAt: p.confirmedAt?.toISOString() ?? null,
+        user: {
+          id: p.user.id,
+          displayName: p.user.displayName,
+          email: p.user.email,
+        },
+        referredBy: p.user.referredBy
+          ? {
+              id: p.user.referredBy.id,
+              displayName: p.user.referredBy.displayName,
+              email: p.user.referredBy.email,
+            }
+          : null,
+      };
+    });
+  }
+
   async create(
     adminId: string,
     input: {

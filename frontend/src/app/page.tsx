@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
@@ -16,6 +17,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RecentPayoutsShowcase } from "@/components/marketing/recent-payouts-showcase";
+import { api } from "@/lib/api";
+
+type FeaturedPromo = {
+  code: string;
+  discountPercent: number;
+  originalAmount: number;
+  finalAmount: number;
+};
 
 const features = [
   {
@@ -65,6 +74,19 @@ const tiers = [
 ];
 
 export default function HomePage() {
+  const [fee, setFee] = useState(5);
+  const [promo, setPromo] = useState<FeaturedPromo | null>(null);
+
+  useEffect(() => {
+    api.payments
+      .featuredPromo()
+      .then((res) => {
+        setFee(res.registrationFeeUsdt);
+        setPromo(res.promo);
+      })
+      .catch(() => setPromo(null));
+  }, []);
+
   return (
     <div className="relative overflow-hidden">
       <div className="gradient-orb -top-40 -left-40 h-96 w-96 bg-primary/20 animate-pulse-glow" />
@@ -78,26 +100,29 @@ export default function HomePage() {
           transition={{ duration: 0.6 }}
           className="text-center"
         >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.15, duration: 0.4 }}
-            className="mb-6 flex justify-center"
-          >
-            <div className="inline-flex flex-wrap items-center justify-center gap-2 rounded-full border border-rank-gold/40 bg-rank-gold/10 px-4 py-2 text-sm">
-              <Tag className="h-4 w-4 shrink-0 text-rank-gold" />
-              <span className="font-semibold text-rank-gold">
-                Limited offer: 40% OFF
-              </span>
-              <span className="text-gray-300">
-                — use code{" "}
-                <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono font-bold text-white">
-                  TRADE40
-                </code>{" "}
-                at checkout and pay 3 USDT instead of 5
-              </span>
-            </div>
-          </motion.div>
+          {promo && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.4 }}
+              className="mb-6 flex justify-center"
+            >
+              <div className="inline-flex flex-wrap items-center justify-center gap-2 rounded-full border border-rank-gold/40 bg-rank-gold/10 px-4 py-2 text-sm">
+                <Tag className="h-4 w-4 shrink-0 text-rank-gold" />
+                <span className="font-semibold text-rank-gold">
+                  Limited offer: {promo.discountPercent}% OFF
+                </span>
+                <span className="text-gray-300">
+                  — use code{" "}
+                  <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono font-bold uppercase text-white">
+                    {promo.code}
+                  </code>{" "}
+                  at checkout and pay {promo.finalAmount} USDT instead of{" "}
+                  {promo.originalAmount}
+                </span>
+              </div>
+            </motion.div>
+          )}
           <Badge variant="gold" className="mb-6">
             Trader Talent Discovery Platform
           </Badge>
@@ -114,7 +139,9 @@ export default function HomePage() {
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Link href="/register">
               <Button size="lg" className="gap-2">
-                Start Trading — 3 USDT with TRADE40
+                {promo
+                  ? `Start Trading — ${promo.finalAmount} USDT with ${promo.code.toUpperCase()}`
+                  : `Start Trading — ${fee} USDT`}
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
@@ -227,13 +254,25 @@ export default function HomePage() {
             Ready to Prove Yourself?
           </h2>
           <p className="mx-auto mt-3 max-w-lg text-gray-400">
-            Register for{" "}
-            <span className="font-semibold text-rank-gold">3 USDT</span>{" "}
-            <span className="line-through opacity-60">5 USDT</span> with code{" "}
-            <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono font-bold text-white">
-              TRADE40
-            </code>
-            . Get your $1,000 virtual account. Start submitting signals today.
+            {promo ? (
+              <>
+                Register for{" "}
+                <span className="font-semibold text-rank-gold">
+                  {promo.finalAmount} USDT
+                </span>{" "}
+                <span className="line-through opacity-60">
+                  {promo.originalAmount} USDT
+                </span>{" "}
+                with code{" "}
+                <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono font-bold uppercase text-white">
+                  {promo.code}
+                </code>
+                .
+              </>
+            ) : (
+              <>Register for {fee} USDT.</>
+            )}{" "}
+            Get your $1,000 virtual account. Start submitting signals today.
           </p>
           <Link href="/register" className="mt-8 inline-block">
             <Button size="lg" variant="gold" className="gap-2">
