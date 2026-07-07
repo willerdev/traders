@@ -22,6 +22,8 @@ export type TradeRiskInput = {
   takeProfit: number;
   riskPercent?: number;
   maxRiskAmount?: number;
+  /** Skip DeepSeek volume review for faster order placement on submit. */
+  skipAiReview?: boolean;
 };
 
 export type TradeRiskResult = {
@@ -266,19 +268,21 @@ Rules:
     ];
     let aiManaged = false;
 
-    const ai = await this.aiReviewVolume({
-      symbol: spec.symbol,
-      direction: input.direction,
-      entryPrice: input.entryPrice,
-      stopLoss: input.stopLoss,
-      takeProfit: input.takeProfit,
-      equity,
-      currency: accountInfo.currency,
-      riskPercent,
-      calculatedVolume: volume,
-      estimatedLossAtSl,
-      spec,
-    });
+    const ai = input.skipAiReview
+      ? null
+      : await this.aiReviewVolume({
+          symbol: spec.symbol,
+          direction: input.direction,
+          entryPrice: input.entryPrice,
+          stopLoss: input.stopLoss,
+          takeProfit: input.takeProfit,
+          equity,
+          currency: accountInfo.currency,
+          riskPercent,
+          calculatedVolume: volume,
+          estimatedLossAtSl,
+          spec,
+        });
 
     if (ai) {
       aiManaged = true;

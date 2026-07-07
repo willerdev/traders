@@ -178,6 +178,10 @@ export class MetaApiService {
     string,
     { symbols: string[]; expiresAt: number }
   >();
+  private readonly accountReadyCache = new Map<
+    string,
+    { account: MetaApiAccount; expiresAt: number }
+  >();
   private readonly lastLimitAlertAt = new Map<string, number>();
 
   constructor(
@@ -528,6 +532,11 @@ export class MetaApiService {
   }
 
   async ensureAccountReady(accountId: string): Promise<MetaApiAccount> {
+    const cached = this.accountReadyCache.get(accountId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.account;
+    }
+
     let account = await this.getAccount(accountId);
     if (account.state !== 'DEPLOYED') {
       await this.deployAccount(accountId);
@@ -535,6 +544,11 @@ export class MetaApiService {
     } else if (account.connectionStatus !== 'CONNECTED') {
       account = await this.waitForConnection(accountId);
     }
+
+    this.accountReadyCache.set(accountId, {
+      account,
+      expiresAt: Date.now() + 60_000,
+    });
     return account;
   }
 

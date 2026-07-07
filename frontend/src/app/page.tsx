@@ -10,6 +10,8 @@ import {
   Zap,
   TrendingUp,
   Users,
+  Tag,
+  Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -76,6 +78,26 @@ export default function HomePage() {
           transition={{ duration: 0.6 }}
           className="text-center"
         >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.15, duration: 0.4 }}
+            className="mb-6 flex justify-center"
+          >
+            <div className="inline-flex flex-wrap items-center justify-center gap-2 rounded-full border border-rank-gold/40 bg-rank-gold/10 px-4 py-2 text-sm">
+              <Tag className="h-4 w-4 shrink-0 text-rank-gold" />
+              <span className="font-semibold text-rank-gold">
+                Limited offer: 40% OFF
+              </span>
+              <span className="text-gray-300">
+                — use code{" "}
+                <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono font-bold text-white">
+                  TRADE40
+                </code>{" "}
+                at checkout and pay 3 USDT instead of 5
+              </span>
+            </div>
+          </motion.div>
           <Badge variant="gold" className="mb-6">
             Trader Talent Discovery Platform
           </Badge>
@@ -92,7 +114,7 @@ export default function HomePage() {
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Link href="/register">
               <Button size="lg" className="gap-2">
-                Start Trading — 5 USDT
+                Start Trading — 3 USDT with TRADE40
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
@@ -102,6 +124,10 @@ export default function HomePage() {
               </Button>
             </Link>
           </div>
+          <p className="mt-4 flex items-center justify-center gap-1.5 text-sm text-gray-500">
+            <Wallet className="h-4 w-4" />
+            Pay with crypto (USDT) — local payment methods coming soon
+          </p>
         </motion.div>
 
         {/* Stats bar */}
@@ -201,8 +227,13 @@ export default function HomePage() {
             Ready to Prove Yourself?
           </h2>
           <p className="mx-auto mt-3 max-w-lg text-gray-400">
-            Register for 5 USDT. Get your $1,000 virtual account. Start
-            submitting signals today.
+            Register for{" "}
+            <span className="font-semibold text-rank-gold">3 USDT</span>{" "}
+            <span className="line-through opacity-60">5 USDT</span> with code{" "}
+            <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono font-bold text-white">
+              TRADE40
+            </code>
+            . Get your $1,000 virtual account. Start submitting signals today.
           </p>
           <Link href="/register" className="mt-8 inline-block">
             <Button size="lg" variant="gold" className="gap-2">
@@ -210,6 +241,10 @@ export default function HomePage() {
               <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
+          <p className="mt-4 text-xs text-gray-500">
+            Payments in USDT (TRC20, BEP20, ERC20) · Local payment methods
+            coming soon
+          </p>
         </div>
       </section>
     </div>

@@ -321,26 +321,105 @@ export class SignalsService {
       where: { signalId: signal.id },
     });
 
-    const forwardResult = await this.queueSetupLimitExecution({
-      signal: { ...signal, trade },
-      user,
+    this.queueSetupExecutionInBackground({
+      signalId: signal.id,
       userId,
       dto,
     });
 
-    if (forwardResult.forwarded) {
-      await this.maybeNotifyHubOrderPlaced(signal, userId, forwardResult);
-    }
-
-    return this.buildForwardResponse(
+    return this.buildPendingForwardResponse(
       signal.signalId,
       signal.submittedAt,
       dto,
-      user.displayName,
-      userId,
-      forwardResult,
-      'accepted',
     );
+  }
+
+  /** Fire-and-forget MT5/Hub execution after the HTTP response is sent. */
+  private queueSetupExecutionInBackground(input: {
+    signalId: string;
+    userId: string;
+    dto: CreateSignalDto;
+  }) {
+    void this.runSetupLimitExecutionSafe(input).catch((err) => {
+      this.logger.error(
+        `Background execution failed for signal ${input.signalId}: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    });
+  }
+
+  private async runSetupLimitExecutionSafe(input: {
+    signalId: string;
+    userId: string;
+    dto: CreateSignalDto;
+  }) {
+    const signal = await this.prisma.signal.findUnique({
+      where: { id: input.signalId },
+      include: { trade: true },
+    });
+    if (!signal?.trade) return;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: input.userId },
+      include: { virtualAccount: true },
+    });
+    if (!user?.virtualAccount) return;
+
+    const forwardResult = await this.queueSetupLimitExecution({
+      signal: { ...signal, trade: signal.trade },
+      user,
+      userId: input.userId,
+      dto: input.dto,
+    });
+
+    if (forwardResult.forwarded) {
+      await this.maybeNotifyHubOrderPlaced(signal, input.userId, forwardResult);
+    }
+  }
+
+  private buildPendingForwardResponse(
+    signalId: string,
+    submittedAt: Date,
+    dto: CreateSignalDto,
+  ) {
+    return {
+      status: 'accepted' as const,
+      signalId,
+      submittedAt,
+      entryRange: { min: dto.entryMin, max: dto.entryMax },
+      execution: {
+        status: 'pending' as const,
+        forwarded: false,
+      },
+      executionHub: null,
+      executionValidation: null,
+    };
+  }
+
+  async warmupExecution(userId: string) {
+    if (!this.metaApi.isConfigured) {
+      return { ready: false, message: 'MetaAPI not configured' };
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { metaApiAccountId: true },
+    });
+    const accountId = this.metaApi.resolveAccountId(user?.metaApiAccountId);
+    if (!accountId) {
+      return { ready: false, message: 'No trading account configured' };
+    }
+
+    try {
+      await this.metaApi.ensureAccountReady(accountId);
+      return { ready: true, accountId };
+    } catch (err) {
+      return {
+        ready: false,
+        message: err instanceof Error ? err.message : 'Connection failed',
+      };
+    }
   }
 
   async createFromMt5Sync(
@@ -1342,6 +1421,7 @@ export class SignalsService {
       riskPercent: Math.max(riskPercent, RISK_PERCENT),
       maxRiskAmount,
       entryPrice: openPrice,
+      skipAiReview: true,
     });
 
     const { trade } = await this.metaApi.placePendingOrder({
@@ -1797,8 +1877,9 @@ export class SignalsService {
     const candidates = await this.prisma.signal.findMany({
       where: {
         status: 'OPEN',
+        limitAutoPlaceDisabled: false,
         trade: { is: { closedAt: null } },
-        submittedAt: { lte: new Date(Date.now() - 45 * 1000) },
+        submittedAt: { lte: new Date(Date.now() - 15 * 1000) },
         user: { status: 'ACTIVE', registrationPaid: true },
       },
       include: {
@@ -3757,6 +3838,117 @@ export class SignalsService {
 
     this.logger.log(`Setup auto-expired: ${signal.signalId} (user ${user.id})`);
     return true;
+  }
+
+  /**
+   * User-initiated delete of a pending limit they placed.
+   * Cancels the broker pending order (MetaAPI) and any Hub pending record,
+   * then stops the platform from auto-re-placing it. The setup stays OPEN
+   * so the trader keeps the record, but no order will be placed again.
+   */
+  async deleteSetupLimit(userId: string, signalId: string) {
+    await this.compliance.requireActiveTrader(userId);
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const signal = await this.prisma.signal.findFirst({
+      where: { signalId, userId, status: 'OPEN' },
+      include: { trade: true },
+    });
+    if (!signal) throw new NotFoundException('Open setup not found');
+
+    let cancelledMetaApi = false;
+    let hubWarning: string | undefined;
+
+    // Cancel MetaAPI pending order if one exists — refuse if a live position is open.
+    if (this.metaApi.isConfigured) {
+      const accountId = this.metaApi.resolveAccountId(
+        signal.metaApiAccountId ?? user.metaApiAccountId,
+      );
+      if (accountId && (signal.metaApiOrderId || signal.metaApiPositionId)) {
+        const account = await this.metaApi.ensureAccountReady(accountId);
+        const { clientId } = this.metaApi.buildIdentifiersForUser(
+          user.displayName,
+          userId,
+          signal.signalId,
+          signal.symbol,
+        );
+        const live = await this.metaApi.findLiveTradeForSignal(account, {
+          positionId: signal.metaApiPositionId,
+          orderId: signal.metaApiOrderId,
+          clientId,
+          displayName: user.displayName,
+          userId,
+          symbol: signal.symbol,
+          activated: Boolean(signal.trade?.activatedAt),
+        });
+
+        if (live.status === 'open') {
+          throw new BadRequestException(
+            'This setup already has a live trade — use Close trade instead of deleting the limit.',
+          );
+        }
+        if (live.status === 'pending' && live.orderId) {
+          await this.metaApi.cancelPendingOrder(account, live.orderId);
+          cancelledMetaApi = true;
+        }
+      }
+    }
+
+    // Cancel any Hub pending record so it cannot fill later.
+    if (this.signalHub.isConfigured && signal.hubRecordId) {
+      const currentSender = this.signalHub.toSenderName(
+        user.displayName,
+        userId,
+      );
+      const sendername = signal.hubSenderName || currentSender;
+      const alternates = [currentSender, `trader_${userId.slice(0, 8)}`].filter(
+        (name) => name !== sendername,
+      );
+      const result = await this.signalHub.invalidateByExternalId(
+        signal.signalId,
+        sendername,
+        'Limit deleted by trader',
+        alternates,
+      );
+      if (!result.data && result.notOnHub && signal.hubRecordId) {
+        const byId = await this.signalHub.invalidateByHubId(
+          signal.hubRecordId,
+          sendername,
+          'Limit deleted by trader',
+        );
+        if (byId.error && !byId.error.includes('404')) hubWarning = byId.error;
+      } else if (result.error) {
+        hubWarning = result.error;
+      }
+    }
+
+    await this.prisma.signal.update({
+      where: { id: signal.id },
+      data: {
+        limitAutoPlaceDisabled: true,
+        metaApiAccountId: null,
+        metaApiOrderId: null,
+        metaApiPositionId: null,
+        metaApiExecutedAt: null,
+        hubRecordId: null,
+        hubOrderNotifiedAt: null,
+      },
+    });
+
+    this.logger.log(
+      `Limit deleted for ${signal.signalId} by ${userId} (metaApi cancelled: ${cancelledMetaApi})`,
+    );
+
+    return {
+      status: 'limit_deleted',
+      signalId: signal.signalId,
+      cancelledMetaApi,
+      hubWarning,
+      message:
+        'Limit deleted — the pending order was cancelled and will not be placed again. The setup stays in your open list.',
+    };
   }
 
   async invalidateSetup(

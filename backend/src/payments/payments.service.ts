@@ -169,28 +169,48 @@ export class PaymentsService {
 
     const fee = await this.registrationFee();
 
+    // Partial promo codes discount the amount; 100% codes skip payment entirely.
+    let amount = fee;
+    let appliedPromo: {
+      code: string;
+      discountPercent: number;
+    } | null = null;
     if (promoCode?.trim()) {
       const validation = await this.promo.validate(promoCode, fee);
       if (validation.finalAmount <= 0) {
         return this.completeFreeRegistration(userId, validation.code, fee);
       }
+      amount = validation.finalAmount;
+      appliedPromo = {
+        code: validation.code,
+        discountPercent: validation.discountPercent,
+      };
     }
 
     const payment = await this.prisma.payment.create({
       data: {
         userId,
-        amount: fee,
+        amount,
         currency: 'USDT',
         network,
         purpose: 'registration',
         gatewayId: `pending_${Date.now()}`,
+        ...(appliedPromo
+          ? {
+              gatewayResponse: {
+                promoCode: appliedPromo.code,
+                discountPercent: appliedPromo.discountPercent,
+                originalAmount: fee,
+              } as object,
+            }
+          : {}),
       },
     });
 
     if (!this.nowPayments.isConfigured) {
       return {
         paymentId: payment.id,
-        amount: fee,
+        amount,
         currency: 'USDT',
         network,
         gateway: 'NOWPayments',
@@ -199,7 +219,7 @@ export class PaymentsService {
     }
 
     const npPayment = await this.nowPayments.createPayment({
-      amount: fee,
+      amount,
       orderId: payment.id,
       network,
       description: 'TraderRank Pro weekly trading access (7 days)',
@@ -210,7 +230,16 @@ export class PaymentsService {
       where: { id: payment.id },
       data: {
         gatewayId: String(npPayment.payment_id),
-        gatewayResponse: npPayment as object,
+        gatewayResponse: {
+          ...(npPayment as object),
+          ...(appliedPromo
+            ? {
+                promoCode: appliedPromo.code,
+                discountPercent: appliedPromo.discountPercent,
+                originalAmount: fee,
+              }
+            : {}),
+        },
         payAddress: npPayment.pay_address,
         payAmount: npPayment.pay_amount,
       },
@@ -218,9 +247,16 @@ export class PaymentsService {
 
     return {
       paymentId: payment.id,
-      amount: fee,
+      amount,
       currency: 'USDT',
       network,
+      ...(appliedPromo
+        ? {
+            promoCode: appliedPromo.code,
+            discountPercent: appliedPromo.discountPercent,
+            originalAmount: fee,
+          }
+        : {}),
       payCurrency: npPayment.pay_currency,
       payAmount: npPayment.pay_amount,
       payAddress: npPayment.pay_address,

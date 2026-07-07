@@ -21,6 +21,7 @@ import {
   type SetupSummary,
 } from "@/components/dashboard/setup-detail-modal";
 import { SetupExecutionBadge } from "@/components/dashboard/setup-execution-badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 type Props = {
   onClaimed?: () => void;
@@ -45,6 +46,7 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [archivingAll, setArchivingAll] = useState(false);
+  const [showArchiveAllConfirm, setShowArchiveAllConfirm] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [selected, setSelected] = useState<SetupSummary | null>(null);
 
@@ -68,15 +70,7 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
     load();
   }, [load]);
 
-  async function handleArchiveAll() {
-    if (
-      !confirm(
-        `Archive all ${items.length} open setup(s)? This hides them locally without cancelling Hub orders.`,
-      )
-    ) {
-      return;
-    }
-
+  async function confirmArchiveAll() {
     setArchivingAll(true);
     setSuccess(null);
     setError(null);
@@ -85,10 +79,12 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
       setSuccess(
         `${result.archivedCount} setup${result.archivedCount !== 1 ? "s" : ""} archived`,
       );
+      setShowArchiveAllConfirm(false);
       await load();
       onClaimed?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Archive all failed");
+      setShowArchiveAllConfirm(false);
     } finally {
       setArchivingAll(false);
     }
@@ -131,7 +127,7 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
                 size="sm"
                 className="gap-1 text-gray-400"
                 disabled={loading || archivingAll}
-                onClick={() => void handleArchiveAll()}
+                onClick={() => setShowArchiveAllConfirm(true)}
               >
                 {archivingAll ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -257,6 +253,23 @@ export function UnresolvedSetupsCard({ onClaimed }: Props) {
           onUpdated={handleUpdated}
         />
       )}
+
+      <ConfirmDialog
+        open={showArchiveAllConfirm}
+        tone="warning"
+        title={`Archive all ${items.length} open setup${items.length !== 1 ? "s" : ""}?`}
+        message={
+          <>
+            This hides all your open setups locally. It does not cancel any Hub
+            orders or live trades — those keep running. Are you sure you want
+            to archive everything?
+          </>
+        }
+        confirmLabel="Yes, archive all"
+        loading={archivingAll}
+        onConfirm={() => void confirmArchiveAll()}
+        onCancel={() => setShowArchiveAllConfirm(false)}
+      />
     </>
   );
 }

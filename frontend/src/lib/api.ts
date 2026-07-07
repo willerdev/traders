@@ -227,6 +227,7 @@ class ApiClient {
             submittedAt: string;
             entryRange: { min: number; max: number };
             execution?: {
+              status?: "pending" | "queued" | "failed";
               forwarded: boolean;
               hubError?: string;
               sendername?: string;
@@ -289,7 +290,11 @@ class ApiClient {
       }>(`/signals/hub/resend/${signalId}`, { method: "POST" }),
     list: () => this.request<SignalRecord[]>("/signals"),
     get: (signalId: string) =>
-      this.request<SignalRecord>(`/signals/${signalId}`),
+      this.request<SignalDetailRecord>(`/signals/${signalId}`),
+    warmupExecution: () =>
+      this.request<{ ready: boolean; message?: string; accountId?: string }>(
+        "/signals/execution/warmup",
+      ),
     openUnresolved: () =>
       this.request<OpenSetupsResult>("/signals/open/unresolved"),
     claimableTps: () =>
@@ -359,6 +364,14 @@ class ApiClient {
           ...(evidence ?? {}),
         }),
       }),
+    deleteLimit: (signalId: string) =>
+      this.request<{
+        status: string;
+        signalId: string;
+        cancelledMetaApi: boolean;
+        hubWarning?: string;
+        message: string;
+      }>(`/signals/${signalId}/delete-limit`, { method: "POST" }),
     archive: (signalId: string) =>
       this.request<{ status: string; signalId: string }>(
         `/signals/archive/${signalId}`,
@@ -470,6 +483,34 @@ class ApiClient {
       }
 
       return res.json() as Promise<{ url: string; filename: string }>;
+    },
+    ingestSetup: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const headers: Record<string, string> = {};
+      if (this.token) {
+        headers.Authorization = `Bearer ${this.token}`;
+      }
+
+      const res = await fetch(`${API_BASE}/uploads/setup/ingest`, {
+        method: "POST",
+        headers,
+        body: formData,
+      }).catch(() => {
+        throw new Error(networkErrorMessage());
+      });
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ message: res.statusText }));
+        throw new Error(apiErrorMessage(error, res.statusText) || "Upload failed");
+      }
+
+      return res.json() as Promise<{
+        url: string;
+        filename: string;
+        analysis: SetupAnalysis;
+      }>;
     },
     kyc: async (file: File) => {
       const formData = new FormData();
@@ -1007,6 +1048,13 @@ export interface SignalRecord {
   submittedAt: string;
   pointsAwarded: number;
   screenshotUrl?: string;
+}
+
+export interface SignalDetailRecord extends SignalRecord {
+  metaApiOrderId?: string | null;
+  metaApiPositionId?: string | null;
+  metaApiExecutedAt?: string | null;
+  hubRecordId?: string | null;
 }
 
 export interface MatchedDuplicateSignal {

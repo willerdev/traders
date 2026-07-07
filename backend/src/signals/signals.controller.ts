@@ -71,6 +71,12 @@ export class SignalsController {
     return this.signalsService.getHubHealth();
   }
 
+  @Get('execution/warmup')
+  @UseGuards(JwtAuthGuard)
+  warmupExecution(@Request() req: { user: { id: string } }) {
+    return this.signalsService.warmupExecution(req.user.id);
+  }
+
   @Get('hub/positions')
   @UseGuards(JwtAuthGuard)
   hubPositions(@Request() req: { user: { id: string } }) {
@@ -256,6 +262,15 @@ export class SignalsController {
       signalId,
       dto.reason,
     );
+  }
+
+  @Post(':signalId/delete-limit')
+  @UseGuards(JwtAuthGuard)
+  deleteSetupLimit(
+    @Request() req: { user: { id: string } },
+    @Param('signalId') signalId: string,
+  ) {
+    return this.signalsService.deleteSetupLimit(req.user.id, signalId);
   }
 
   @Post('archive/:signalId')

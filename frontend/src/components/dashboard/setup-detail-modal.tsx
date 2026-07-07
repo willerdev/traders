@@ -25,10 +25,12 @@ import {
   Target,
   RefreshCw,
   TrendingUp,
+  Trash2,
   X,
   XCircle,
 } from "lucide-react";
 import { ClaimTpModal } from "@/components/dashboard/claim-tp-modal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TradeExecutionNotice } from "@/components/trading/trade-execution-notice";
 import {
   SetupExecutionBadge,
@@ -252,6 +254,8 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showTpModal, setShowTpModal] = useState(false);
   const [tpClaimType, setTpClaimType] = useState<"full" | "rr_1_1">("full");
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [showDeleteLimitConfirm, setShowDeleteLimitConfirm] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [editStopLoss, setEditStopLoss] = useState(String(setup.stopLoss));
   const [editTakeProfit, setEditTakeProfit] = useState(String(setup.takeProfit));
@@ -475,17 +479,35 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
     }
   }
 
-  async function handleArchive() {
-    if (!confirm(`Archive ${setup.symbol} locally?`)) return;
+  async function confirmArchive() {
     setActionLoading("archive");
     setActionError(null);
     try {
       await api.signals.archive(setup.signalId);
       setSuccess(`${setup.symbol} archived`);
+      setShowArchiveConfirm(false);
       onUpdated();
       onClose();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Archive failed");
+      setShowArchiveConfirm(false);
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function confirmDeleteLimit() {
+    setActionLoading("deleteLimit");
+    setActionError(null);
+    try {
+      const result = await api.signals.deleteLimit(setup.signalId);
+      setSuccess(result.message ?? "Limit deleted");
+      setShowDeleteLimitConfirm(false);
+      onUpdated();
+      await loadDetails();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not delete limit");
+      setShowDeleteLimitConfirm(false);
     } finally {
       setActionLoading(null);
     }
@@ -500,6 +522,10 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
     liveTrade?.status === "pending" ||
     res?.liveTrade?.status === "open" ||
     res?.liveTrade?.status === "pending";
+  const hasPendingLimit =
+    liveTrade?.status === "pending" ||
+    res?.liveTrade?.status === "pending" ||
+    res?.executionPhase === "limit_active";
   const showLiveTradeSection =
     isOpen &&
     !loading &&
@@ -860,12 +886,28 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
                         Invalidate
                       </Button>
                     )}
+                    {hasPendingLimit && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1 text-danger"
+                        disabled={Boolean(actionLoading)}
+                        onClick={() => setShowDeleteLimitConfirm(true)}
+                      >
+                        {actionLoading === "deleteLimit" ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                        Delete limit
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
                       className="text-gray-400"
                       disabled={Boolean(actionLoading)}
-                      onClick={() => void handleArchive()}
+                      onClick={() => setShowArchiveConfirm(true)}
                     >
                       Archive
                     </Button>
@@ -899,6 +941,40 @@ export function SetupDetailModal({ setup, onClose, onUpdated }: Props) {
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={showArchiveConfirm}
+        tone="warning"
+        title={`Archive ${setup.symbol}?`}
+        message={
+          <>
+            This removes the setup from your open list. It will not cancel any
+            live order or trade on MT5 — archiving is local only. Are you sure
+            you want to archive it?
+          </>
+        }
+        confirmLabel="Yes, archive"
+        loading={actionLoading === "archive"}
+        onConfirm={() => void confirmArchive()}
+        onCancel={() => setShowArchiveConfirm(false)}
+      />
+
+      <ConfirmDialog
+        open={showDeleteLimitConfirm}
+        tone="danger"
+        title={`Delete limit for ${setup.symbol}?`}
+        message={
+          <>
+            This cancels the pending limit order you placed and stops the
+            platform from placing it again. The setup stays in your open list,
+            but no order will run unless you submit a new one.
+          </>
+        }
+        confirmLabel="Yes, delete limit"
+        loading={actionLoading === "deleteLimit"}
+        onConfirm={() => void confirmDeleteLimit()}
+        onCancel={() => setShowDeleteLimitConfirm(false)}
+      />
     </>
   );
 }

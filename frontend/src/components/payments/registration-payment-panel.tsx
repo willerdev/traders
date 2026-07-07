@@ -11,7 +11,9 @@ import {
   Loader2,
   QrCode,
   RefreshCw,
+  Tag,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 const NETWORKS = [
   { id: "TRC20", label: "TRC20 (Tron)", hint: "Lowest fees" },
@@ -40,6 +42,15 @@ export function RegistrationPaymentPanel({
   const [network, setNetwork] = useState<string>("TRC20");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [promoInput, setPromoInput] = useState("");
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoError, setPromoError] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState<{
+    code: string;
+    discountPercent: number;
+    originalAmount: number;
+    finalAmount: number;
+  } | null>(null);
   const [paymentId, setPaymentId] = useState<string | null>(null);
   const [payAddress, setPayAddress] = useState("");
   const [payAmount, setPayAmount] = useState<number | null>(null);
@@ -71,11 +82,35 @@ export function RegistrationPaymentPanel({
     return () => clearInterval(id);
   }, [paymentId, progress, pollStatus]);
 
+  async function applyPromo() {
+    const code = promoInput.trim();
+    if (!code) return;
+    setPromoLoading(true);
+    setPromoError("");
+    try {
+      const result = await api.payments.validatePromo(code);
+      setAppliedPromo({
+        code: result.code,
+        discountPercent: result.discountPercent,
+        originalAmount: result.originalAmount,
+        finalAmount: result.finalAmount,
+      });
+    } catch (err) {
+      setAppliedPromo(null);
+      setPromoError(err instanceof Error ? err.message : "Invalid promo code");
+    } finally {
+      setPromoLoading(false);
+    }
+  }
+
   async function startPayment() {
     setLoading(true);
     setError("");
     try {
-      const result = await api.payments.createRegistration(network);
+      const result = await api.payments.createRegistration(
+        network,
+        appliedPromo?.code,
+      );
       if (result.success || result.message?.includes("waived")) {
         onComplete?.();
         return;
@@ -110,11 +145,61 @@ export function RegistrationPaymentPanel({
     return (
       <div className="space-y-4 rounded-lg border border-[var(--color-border)] bg-foreground/[0.02] p-4">
         <p className="text-sm text-muted">
-          Pay <strong className="text-foreground">5 USDT</strong> for{" "}
-          <strong className="text-foreground">7 days</strong> of trading
+          Pay{" "}
+          {appliedPromo ? (
+            <>
+              <strong className="text-success">
+                {appliedPromo.finalAmount} USDT
+              </strong>{" "}
+              <span className="line-through opacity-60">
+                {appliedPromo.originalAmount} USDT
+              </span>
+            </>
+          ) : (
+            <strong className="text-foreground">5 USDT</strong>
+          )}{" "}
+          for <strong className="text-foreground">7 days</strong> of trading
           {renewal ? " (renewal)" : ""} — send crypto to the address below and
           we confirm automatically.
         </p>
+
+        <div className="space-y-1">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              placeholder="Promo code (optional)"
+              value={promoInput}
+              onChange={(e) => {
+                setPromoInput(e.target.value);
+                setPromoError("");
+              }}
+              className="uppercase sm:max-w-[220px]"
+              autoComplete="off"
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="gap-1"
+              disabled={promoLoading || !promoInput.trim()}
+              onClick={() => void applyPromo()}
+            >
+              {promoLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Tag className="h-3.5 w-3.5" />
+              )}
+              Apply
+            </Button>
+          </div>
+          {promoError && <p className="text-sm text-danger">{promoError}</p>}
+          {appliedPromo && (
+            <p className="text-sm text-success">
+              Code &quot;{appliedPromo.code}&quot; applied —{" "}
+              {appliedPromo.discountPercent}% off, you pay{" "}
+              {appliedPromo.finalAmount} USDT.
+            </p>
+          )}
+        </div>
         <div className="grid gap-2 sm:grid-cols-3">
           {NETWORKS.map((n) => (
             <button

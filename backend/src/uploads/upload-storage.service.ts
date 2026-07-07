@@ -11,7 +11,7 @@ import {
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { join, basename, extname } from 'path';
-import { existsSync, mkdirSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import type { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -76,6 +76,52 @@ export class UploadStorageService {
     const dir = join(process.cwd(), 'uploads', category);
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
+    }
+  }
+
+  /** Write buffer to disk, DB, and optional S3 — used for single-request ingest. */
+  async persistFromBuffer(
+    category: UploadCategory,
+    filename: string,
+    buffer: Buffer,
+    contentType: string,
+  ): Promise<void> {
+    const safeName = this.validateFilename(filename);
+    this.ensureLocalDir(category);
+    writeFileSync(this.localPath(category, safeName), buffer);
+
+    await this.prisma.uploadBlob.upsert({
+      where: { filename: safeName },
+      create: {
+        filename: safeName,
+        category,
+        data: Buffer.from(buffer),
+        contentType,
+        size: buffer.length,
+      },
+      update: {
+        category,
+        data: Buffer.from(buffer),
+        contentType,
+        size: buffer.length,
+      },
+    });
+
+    if (this.s3 && this.bucket) {
+      try {
+        await this.s3.send(
+          new PutObjectCommand({
+            Bucket: this.bucket,
+            Key: this.s3Key(category, safeName),
+            Body: buffer,
+            ContentType: contentType,
+          }),
+        );
+      } catch (err) {
+        this.logger.warn(
+          `S3 upload failed for ${category}/${safeName}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
     }
   }
 

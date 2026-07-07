@@ -1055,6 +1055,7 @@ export type MarketingRecipient = {
   createdAt: string;
   lastSignalAt: string | null;
   lastMarketingAt: string | null;
+  kycStatus?: string | null;
 };
 
 export type MarketingAudienceInfo = {
@@ -1071,6 +1072,7 @@ export type MarketingSchedule = {
   audiences: {
     unpaid_registration: MarketingAudienceInfo;
     inactive_trader: MarketingAudienceInfo;
+    kyc_incomplete: MarketingAudienceInfo;
   };
 };
 

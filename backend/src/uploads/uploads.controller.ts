@@ -64,6 +64,56 @@ export class UploadsController {
     return { analysis };
   }
 
+  /** Single request: persist screenshot + OpenAI vision analysis in parallel. */
+  @Post('setup/ingest')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowed.includes(file.mimetype)) {
+          cb(new BadRequestException('Only JPEG, PNG, and WebP images allowed'), false);
+          return;
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  async ingestSetup(
+    @UploadedFile() file: Express.Multer.File,
+    @Request() req: { user: { id: string } },
+  ) {
+    if (!file) {
+      throw new BadRequestException('Setup image is required');
+    }
+
+    const ext = extname(file.originalname).toLowerCase() || '.jpg';
+    const filename = `${randomBytes(8).toString('hex')}${ext}`;
+
+    const [analysis] = await Promise.all([
+      this.vision.analyzeChartSetup(file.buffer, file.mimetype),
+      this.storage.persistFromBuffer(
+        'setups',
+        filename,
+        file.buffer,
+        file.mimetype,
+      ),
+    ]);
+
+    const baseUrl =
+      process.env.API_PUBLIC_URL || `http://localhost:${process.env.PORT || 4000}`;
+
+    return {
+      url: `${baseUrl}/api/v1/uploads/setups/${filename}`,
+      filename,
+      size: file.size,
+      uploadedBy: req.user.id,
+      analysis,
+    };
+  }
+
   @Post('setup')
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(

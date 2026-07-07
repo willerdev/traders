@@ -325,6 +325,7 @@ export default function App() {
   >(null);
   const [newPromoCode, setNewPromoCode] = useState("");
   const [newPromoDays, setNewPromoDays] = useState("7");
+  const [newPromoPercent, setNewPromoPercent] = useState("100");
   const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
   const [tpRejectReason, setTpRejectReason] = useState<Record<string, string>>({});
   const [kycActionUserId, setKycActionUserId] = useState<string | null>(null);
@@ -351,7 +352,7 @@ export default function App() {
   const [marketingHistory, setMarketingHistory] = useState<MarketingEmailRow[]>([]);
   const [marketingHistoryCount, setMarketingHistoryCount] = useState(0);
   const [marketingAudienceView, setMarketingAudienceView] = useState<
-    "unpaid_registration" | "inactive_trader"
+    "unpaid_registration" | "inactive_trader" | "kyc_incomplete"
   >("unpaid_registration");
   const [marketingRunLoading, setMarketingRunLoading] = useState(false);
   const [marketingTestLoading, setMarketingTestLoading] = useState(false);
@@ -2732,6 +2733,21 @@ export default function App() {
                     color: "#e8eaed",
                   }}
                 />
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  placeholder="Discount % (default 100 = free)"
+                  value={newPromoPercent}
+                  onChange={(e) => setNewPromoPercent(e.target.value)}
+                  style={{
+                    padding: "0.5rem",
+                    borderRadius: 6,
+                    border: "1px solid #334155",
+                    background: "#0b0f14",
+                    color: "#e8eaed",
+                  }}
+                />
                 <button
                   type="button"
                   className="primary"
@@ -2740,7 +2756,7 @@ export default function App() {
                     void api
                       .createPromoCode({
                         code: newPromoCode.trim(),
-                        discountPercent: 100,
+                        discountPercent: Number(newPromoPercent) || 100,
                         expiresInDays: Number(newPromoDays) || 7,
                       })
                       .then(() => {
@@ -2755,7 +2771,8 @@ export default function App() {
                       )
                   }
                 >
-                  Create (100% off, {newPromoDays || 7} days)
+                  Create ({newPromoPercent || 100}% off, {newPromoDays || 7}{" "}
+                  days)
                 </button>
               </div>
             </div>
@@ -2832,7 +2849,8 @@ export default function App() {
                 <p className="muted" style={{ margin: "0.35rem 0 0" }}>
                   {marketingSchedule?.cadence ??
                     "Twice weekly — Monday and Thursday at 10:00 UTC"}
-                  . Reminds unpaid users to activate and idle traders to submit setups.
+                  . Reminds unpaid users to activate, idle traders to submit setups,
+                  and traders without KYC to complete verification for payouts.
                 </p>
               </div>
               <div style={{ display: "flex", gap: "0.5rem" }}>
@@ -2944,6 +2962,14 @@ export default function App() {
                       {marketingSchedule.audiences.inactive_trader.count}
                     </div>
                   </div>
+                  {marketingSchedule.audiences.kyc_incomplete && (
+                    <div className="card">
+                      <div className="label">KYC not completed</div>
+                      <div className="value">
+                        {marketingSchedule.audiences.kyc_incomplete.count}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="toolbar" style={{ marginTop: "1.25rem" }}>
@@ -2973,11 +2999,28 @@ export default function App() {
                       Idle traders (
                       {marketingSchedule.audiences.inactive_trader.count})
                     </button>
+                    {marketingSchedule.audiences.kyc_incomplete && (
+                      <button
+                        type="button"
+                        className={
+                          marketingAudienceView === "kyc_incomplete"
+                            ? "primary"
+                            : "btn-secondary"
+                        }
+                        onClick={() => setMarketingAudienceView("kyc_incomplete")}
+                      >
+                        KYC incomplete (
+                        {marketingSchedule.audiences.kyc_incomplete.count})
+                      </button>
+                    )}
                   </div>
                 </div>
                 <p className="muted" style={{ margin: "0.35rem 0 0.75rem" }}>
-                  {marketingSchedule.audiences[marketingAudienceView].description}.
-                  Users emailed in the last 48 hours are skipped automatically.
+                  {(
+                    marketingSchedule.audiences[marketingAudienceView] ??
+                    marketingSchedule.audiences.unpaid_registration
+                  )?.description}
+                  . Users emailed in the last 48 hours are skipped automatically.
                 </p>
                 <table>
                   <thead>
@@ -2987,21 +3030,28 @@ export default function App() {
                       <th>Status</th>
                       <th>Joined</th>
                       <th>Last setup</th>
+                      {marketingAudienceView === "kyc_incomplete" && <th>KYC</th>}
                       <th>Last marketing email</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {marketingSchedule.audiences[marketingAudienceView].recipients
-                      .length === 0 ? (
+                    {((
+                      marketingSchedule.audiences[marketingAudienceView] ??
+                      marketingSchedule.audiences.unpaid_registration
+                    )?.recipients.length ?? 0) === 0 ? (
                       <tr>
-                        <td colSpan={6} className="muted">
+                        <td
+                          colSpan={marketingAudienceView === "kyc_incomplete" ? 7 : 6}
+                          className="muted"
+                        >
                           No recipients in this audience
                         </td>
                       </tr>
                     ) : (
-                      marketingSchedule.audiences[
-                        marketingAudienceView
-                      ].recipients.map((r) => (
+                      (
+                        marketingSchedule.audiences[marketingAudienceView] ??
+                        marketingSchedule.audiences.unpaid_registration
+                      ).recipients.map((r) => (
                         <tr key={r.userId}>
                           <td>{r.displayName}</td>
                           <td>{r.email}</td>
@@ -3010,6 +3060,13 @@ export default function App() {
                           </td>
                           <td>{fmtDate(r.createdAt)}</td>
                           <td>{r.lastSignalAt ? fmtDate(r.lastSignalAt) : "Never"}</td>
+                          {marketingAudienceView === "kyc_incomplete" && (
+                            <td>
+                              <span className={badgeClass(r.kycStatus ?? "NOT_STARTED")}>
+                                {(r.kycStatus ?? "NOT_STARTED").replace(/_/g, " ")}
+                              </span>
+                            </td>
+                          )}
                           <td>
                             {r.lastMarketingAt ? fmtDate(r.lastMarketingAt) : "Never"}
                           </td>
@@ -3051,7 +3108,9 @@ export default function App() {
                           <td>
                             {m.audience === "unpaid_registration"
                               ? "Unpaid"
-                              : "Idle trader"}
+                              : m.audience === "kyc_incomplete"
+                                ? "KYC incomplete"
+                                : "Idle trader"}
                           </td>
                           <td>{m.subject}</td>
                           <td>
@@ -3865,6 +3924,7 @@ export default function App() {
                       <th>Symbol</th>
                       <th>Side</th>
                       <th>Status</th>
+                      <th>Reason</th>
                       <th>P/L</th>
                       <th>When</th>
                     </tr>
@@ -3872,7 +3932,7 @@ export default function App() {
                   <tbody>
                     {copyDashboard.journal.length === 0 ? (
                       <tr>
-                        <td colSpan={6}>No copied trades yet</td>
+                        <td colSpan={7}>No copied trades yet</td>
                       </tr>
                     ) : (
                       copyDashboard.journal.map((row) => (
@@ -3884,6 +3944,16 @@ export default function App() {
                           <td>{row.direction}</td>
                           <td>
                             <span className={badgeClass(row.status)}>{row.status}</span>
+                          </td>
+                          <td
+                            className="muted"
+                            style={{ maxWidth: 280, whiteSpace: "normal", wordBreak: "break-word" }}
+                            title={row.notes ?? undefined}
+                          >
+                            {row.notes?.trim() ||
+                              (row.status === "FAILED" || row.status === "SKIPPED"
+                                ? "No details recorded"
+                                : "—")}
                           </td>
                           <td>{row.profit != null ? fmtMoney(row.profit) : "—"}</td>
                           <td>{fmtDate(row.createdAt)}</td>

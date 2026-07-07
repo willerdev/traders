@@ -14,6 +14,7 @@ import { useUrlTab } from "@/hooks/use-url-tab";
 import { api, type SignalDraft, type MatchedDuplicateSignal, type HubQuote } from "@/lib/api";
 import { hasTradingAccess } from "@/lib/trading-access";
 import { normalizeSetupFields, setupValidationError } from "@/lib/chart-setup";
+import { compressSetupImage } from "@/lib/compress-setup-image";
 import { WeeklyAccessGate } from "@/components/payments/weekly-access-gate";
 import {
   SubmitReviewCard,
@@ -70,6 +71,7 @@ type SubmitResult = {
   signalId: string;
   entryRange?: { min: number; max: number };
   execution?: {
+    status?: "pending" | "queued" | "failed";
     forwarded: boolean;
     hubError?: string;
     sendername?: string;
@@ -87,6 +89,8 @@ type SubmitResult = {
     issues: string[];
     rejectReason?: string;
   };
+  metaApiOrderId?: string | null;
+  hubRecordId?: string | null;
 };
 
 function formatHubError(raw?: string): string {
@@ -174,6 +178,7 @@ export default function SubmitSignalPage() {
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
   const [accountReady, setAccountReady] = useState<boolean | null>(null);
   const [hadPaidBefore, setHadPaidBefore] = useState(false);
+  const [executionWarmupOk, setExecutionWarmupOk] = useState<boolean | null>(null);
 
   const progress = calcProgress(form, screenshotUrl);
 
@@ -210,14 +215,92 @@ export default function SubmitSignalPage() {
     if (!ready) return;
     void loadDrafts();
     void refreshAccountStatus();
+    void api.signals
+      .warmupExecution()
+      .then((res) => setExecutionWarmupOk(res.ready))
+      .catch(() => setExecutionWarmupOk(false));
   }, [ready, loadDrafts, refreshAccountStatus]);
+
+  useEffect(() => {
+    if (!success?.signalId) return;
+    const pending =
+      success.execution?.status === "pending" ||
+      (!success.metaApiOrderId &&
+        !success.hubRecordId &&
+        !success.executionHub?.id &&
+        success.execution?.forwarded !== true &&
+        success.execution?.status !== "failed");
+    if (!pending) return;
+
+    let attempts = 0;
+    const maxAttempts = 15;
+    const timer = setInterval(() => {
+      attempts += 1;
+      void api.signals.get(success.signalId).then((signal) => {
+        const queued = Boolean(
+          signal.metaApiOrderId || signal.hubRecordId || signal.metaApiExecutedAt,
+        );
+        if (queued) {
+          setSuccess((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  execution: {
+                    ...prev.execution,
+                    status: "queued",
+                    forwarded: true,
+                  },
+                  executionHub: signal.hubRecordId
+                    ? {
+                        id: signal.hubRecordId,
+                        status: "queued",
+                        duplicate: false,
+                      }
+                    : prev.executionHub,
+                  metaApiOrderId: signal.metaApiOrderId,
+                  hubRecordId: signal.hubRecordId,
+                }
+              : prev,
+          );
+          clearInterval(timer);
+          return;
+        }
+        if (attempts >= maxAttempts) {
+          setSuccess((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  execution: {
+                    ...prev.execution,
+                    status: "failed",
+                    forwarded: false,
+                    hubError:
+                      prev.execution?.hubError ||
+                      "Order is still queuing — use Resend to MT5 or wait a minute.",
+                  },
+                }
+              : prev,
+          );
+          clearInterval(timer);
+        }
+      });
+    }, 2000);
+
+    return () => clearInterval(timer);
+  }, [success?.signalId, success?.execution?.status, success?.metaApiOrderId, success?.hubRecordId, success?.executionHub?.id, success?.execution?.forwarded]);
 
   useEffect(() => {
     if (step === "review" && !review) setStep("edit");
   }, [step, review, setStep]);
 
   useEffect(() => {
-    if (!success || success.executionHub?.id) {
+    if (
+      !success ||
+      success.executionHub?.id ||
+      success.execution?.status === "pending" ||
+      success.metaApiOrderId ||
+      success.hubRecordId
+    ) {
       setHubHealth(null);
       return;
     }
@@ -382,48 +465,39 @@ export default function SubmitSignalPage() {
       return;
     }
 
-    setSetupFile(file);
-    setSetupPreview(URL.createObjectURL(file));
-    setAiFilled(false);
+    pauseAutoSave(3000);
+    setUploading(true);
+    setAnalyzing(true);
     setError("");
 
-    setUploading(true);
     try {
-      const upload = await api.uploads.setup(file);
-      setScreenshotUrl(upload.url);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setUploading(false);
-    }
+      const compressed = await compressSetupImage(file);
+      setSetupFile(compressed);
+      setSetupPreview(URL.createObjectURL(compressed));
+      setAiFilled(false);
 
-    void analyzeSetupImage(file);
-  }
+      const ingest = await api.uploads.ingestSetup(compressed);
+      setScreenshotUrl(ingest.url);
 
-  async function analyzeSetupImage(file: File) {
-    setAnalyzing(true);
-    try {
-      const { analysis } = await api.uploads.analyzeSetup(file);
       const fixed = normalizeSetupFields({
-        direction: analysis.direction,
-        entryMin: analysis.entryMin,
-        entryMax: analysis.entryMax,
-        stopLoss: analysis.stopLoss,
-        takeProfit: analysis.takeProfit,
+        direction: ingest.analysis.direction,
+        entryMin: ingest.analysis.entryMin,
+        entryMax: ingest.analysis.entryMax,
+        stopLoss: ingest.analysis.stopLoss,
+        takeProfit: ingest.analysis.takeProfit,
       });
       setForm({
-        symbol: analysis.symbol,
+        symbol: ingest.analysis.symbol,
         direction: fixed.direction,
         entryMin: String(fixed.entryMin),
         entryMax: String(fixed.entryMax),
         stopLoss: String(fixed.stopLoss),
         takeProfit: String(fixed.takeProfit),
-        description: analysis.description,
+        description: ingest.analysis.description,
       });
       setAiSuggestedDirection(fixed.direction);
       setAiFilled(true);
       setStep("verify");
-      setError("");
       requestAnimationFrame(() => {
         formCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
@@ -431,9 +505,10 @@ export default function SubmitSignalPage() {
       setError(
         err instanceof Error
           ? err.message
-          : "AI could not read the chart — fill in the fields manually",
+          : "Upload or AI analysis failed — fill in the fields manually",
       );
     } finally {
+      setUploading(false);
       setAnalyzing(false);
     }
   }
@@ -709,7 +784,10 @@ export default function SubmitSignalPage() {
             "entryRange" in result
               ? (result.entryRange as { min: number; max: number })
               : { min: review.entryMin, max: review.entryMax },
-          execution: "execution" in result ? result.execution : undefined,
+          execution:
+            "execution" in result && result.execution
+              ? result.execution
+              : { status: "pending", forwarded: false },
           executionHub: "executionHub" in result ? result.executionHub : undefined,
           executionValidation:
             "executionValidation" in result ? result.executionValidation : undefined,
@@ -744,9 +822,15 @@ export default function SubmitSignalPage() {
   }
 
   if (success) {
-    const mt5Queued = Boolean(success.executionHub?.id);
+    const executionPending = success.execution?.status === "pending";
+    const mt5Queued = Boolean(
+      success.executionHub?.id ||
+        success.metaApiOrderId ||
+        success.hubRecordId ||
+        success.execution?.forwarded,
+    );
     const validationFailed = success.executionValidation?.approved === false;
-    const mt5Failed = !mt5Queued;
+    const mt5Failed = !executionPending && !mt5Queued;
 
     return (
       <div className="mx-auto max-w-lg px-4 py-16 text-center">
@@ -754,20 +838,28 @@ export default function SubmitSignalPage() {
           <CardContent className="pt-8">
             <div
               className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full text-2xl ${
-                mt5Failed
-                  ? "bg-rank-gold/10 text-rank-gold"
-                  : "bg-success/10 text-success"
+                executionPending
+                  ? "bg-primary/10 text-primary"
+                  : mt5Failed
+                    ? "bg-rank-gold/10 text-rank-gold"
+                    : "bg-success/10 text-success"
               }`}
             >
-              {mt5Failed ? "!" : "✓"}
+              {executionPending ? "…" : mt5Failed ? "!" : "✓"}
             </div>
             <h2 className="text-xl font-bold text-white">
-              {mt5Failed ? "Saved — MT5 not queued" : "Signal Submitted"}
+              {executionPending
+                ? "Setup saved — queuing on MT5…"
+                : mt5Failed
+                  ? "Saved — MT5 not queued"
+                  : "Signal Submitted"}
             </h2>
             <p className="mt-2 text-gray-400">
-              {mt5Failed
-                ? "Your setup was saved on TraderRank, but it was not sent to the MT5 execution server."
-                : "Your setup is locked in and sent to the execution queue."}
+              {executionPending
+                ? "Your setup is locked in. We are placing the pending order on the trading server now."
+                : mt5Failed
+                  ? "Your setup was saved on TraderRank, but it was not sent to the MT5 execution server."
+                  : "Your setup is locked in and sent to the execution queue."}
             </p>
             <Badge variant="secondary" className="mt-4">
               ID: {success.signalId}
@@ -778,15 +870,33 @@ export default function SubmitSignalPage() {
               </p>
             )}
 
-            {mt5Queued && success.executionHub && (
+            {executionPending && (
+              <div className="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-4 text-left text-sm">
+                <p className="font-medium text-primary">Queuing order…</p>
+                <p className="mt-1 text-muted">
+                  This usually takes a few seconds. You can stay on this page or go to
+                  your dashboard — the order will appear once MT5 accepts it.
+                </p>
+              </div>
+            )}
+
+            {mt5Queued && !executionPending && (success.executionHub || success.metaApiOrderId) && (
               <div className="mt-4 rounded-lg border border-success/30 bg-success/5 p-4 text-left text-sm">
                 <p className="font-medium text-success">Queued for MT5</p>
-                <p className="mt-1 text-muted">
-                  Hub status: <strong className="text-foreground">{success.executionHub.status}</strong>
-                  {success.executionHub.progress?.message && (
-                    <> — {success.executionHub.progress.message}</>
-                  )}
-                </p>
+                {success.executionHub ? (
+                  <p className="mt-1 text-muted">
+                    Hub status:{" "}
+                    <strong className="text-foreground">{success.executionHub.status}</strong>
+                    {success.executionHub.progress?.message && (
+                      <> — {success.executionHub.progress.message}</>
+                    )}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-muted">
+                    Pending order placed on MT5
+                    {success.metaApiOrderId ? ` (order ${success.metaApiOrderId})` : ""}.
+                  </p>
+                )}
                 {success.execution?.orderType === "limit" && (
                   <p className="mt-2 text-xs text-muted">
                     Order type is <strong>limit</strong> — MT5 opens the trade only when price
@@ -895,6 +1005,12 @@ export default function SubmitSignalPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+        {executionWarmupOk === false && (
+          <div className="mb-4 rounded-lg border border-rank-gold/30 bg-rank-gold/5 px-4 py-3 text-sm text-muted">
+            Trading server is still connecting — submit may take a moment longer than usual.
+          </div>
+        )}
+
         {accountReady === false && (
           <WeeklyAccessGate
             renewal={hadPaidBefore}
@@ -1278,7 +1394,11 @@ export default function SubmitSignalPage() {
                       <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70">
                         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                         <p className="text-sm text-white">
-                          {uploading ? "Uploading & saving..." : "Analyzing chart with AI..."}
+                          {uploading && analyzing
+                            ? "Uploading & analyzing chart…"
+                            : uploading
+                              ? "Uploading…"
+                              : "Analyzing chart with AI…"}
                         </p>
                       </div>
                     )}

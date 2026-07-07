@@ -4,7 +4,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { isRegistrationEmailAllowed } from '../common/email-quality.util';
 
-export type MarketingAudience = 'unpaid_registration' | 'inactive_trader';
+export type MarketingAudience =
+  | 'unpaid_registration'
+  | 'inactive_trader'
+  | 'kyc_incomplete';
 
 const INACTIVE_AFTER_DAYS = 14;
 const DEDUPE_HOURS = 48;
@@ -23,6 +26,7 @@ type Recipient = {
   createdAt: Date;
   lastSignalAt: Date | null;
   lastMarketingAt: Date | null;
+  kycStatus?: string | null;
 };
 
 type RunSummary = {
@@ -169,15 +173,65 @@ export class MarketingService {
       }));
   }
 
+  /** Paid, active traders who have not completed KYC (required for payouts). */
+  private async kycIncompleteRecipients(): Promise<Recipient[]> {
+    const users = await this.prisma.user.findMany({
+      where: {
+        role: 'TRADER',
+        registrationPaid: true,
+        status: 'ACTIVE',
+        email: { not: null },
+        OR: [
+          { kyc: { is: null } },
+          { kyc: { status: { in: ['NOT_STARTED', 'REJECTED'] } } },
+        ],
+      },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        status: true,
+        createdAt: true,
+        kyc: { select: { status: true } },
+        signals: {
+          orderBy: { submittedAt: 'desc' },
+          take: 1,
+          select: { submittedAt: true },
+        },
+        marketingEmails: {
+          orderBy: { sentAt: 'desc' },
+          take: 1,
+          select: { sentAt: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return users
+      .filter((u) => isRegistrationEmailAllowed(u.email as string))
+      .map((u) => ({
+        userId: u.id,
+        email: (u.email as string).toLowerCase(),
+        displayName: u.displayName,
+        status: u.status,
+        createdAt: u.createdAt,
+        lastSignalAt: u.signals[0]?.submittedAt ?? null,
+        lastMarketingAt: u.marketingEmails[0]?.sentAt ?? null,
+        kycStatus: u.kyc?.status ?? 'NOT_STARTED',
+      }));
+  }
+
   async getSchedule() {
-    const [unpaid, inactive] = await Promise.all([
+    const [unpaid, inactive, kycIncomplete] = await Promise.all([
       this.unpaidRecipients(),
       this.inactiveRecipients(),
+      this.kycIncompleteRecipients(),
     ]);
 
     return {
       emailConfigured: this.email.isConfigured,
-      cadence: 'Twice weekly — Monday and Thursday at 10:00 UTC',
+      cadence:
+        'Twice weekly — Monday and Thursday at 10:00 UTC (unpaid, idle traders, and incomplete KYC)',
       inactiveAfterDays: INACTIVE_AFTER_DAYS,
       nextRuns: this.nextRuns(4),
       audiences: {
@@ -190,6 +244,12 @@ export class MarketingService {
           description: `Paid traders with no setup in the last ${INACTIVE_AFTER_DAYS} days`,
           count: inactive.length,
           recipients: inactive,
+        },
+        kyc_incomplete: {
+          description:
+            'Paid, active traders who have not completed KYC (needed for payouts)',
+          count: kycIncomplete.length,
+          recipients: kycIncomplete,
         },
       },
     };
@@ -247,6 +307,7 @@ export class MarketingService {
       audiences: {
         unpaid_registration: { targeted: 0, sent: 0, skipped: 0, failed: 0 },
         inactive_trader: { targeted: 0, sent: 0, skipped: 0, failed: 0 },
+        kyc_incomplete: { targeted: 0, sent: 0, skipped: 0, failed: 0 },
       },
     };
 
@@ -262,14 +323,16 @@ export class MarketingService {
     this.running = true;
     try {
       const dedupeCutoff = new Date(Date.now() - DEDUPE_HOURS * 60 * 60 * 1000);
-      const [unpaid, inactive] = await Promise.all([
+      const [unpaid, inactive, kycIncomplete] = await Promise.all([
         this.unpaidRecipients(),
         this.inactiveRecipients(),
+        this.kycIncompleteRecipients(),
       ]);
 
       const batches: Array<{ audience: MarketingAudience; recipients: Recipient[] }> = [
         { audience: 'unpaid_registration', recipients: unpaid },
         { audience: 'inactive_trader', recipients: inactive },
+        { audience: 'kyc_incomplete', recipients: kycIncomplete },
       ];
 
       let sends = 0;
@@ -311,7 +374,8 @@ export class MarketingService {
 
       this.logger.log(
         `Marketing run (${trigger}): unpaid ${summary.audiences.unpaid_registration.sent}/${summary.audiences.unpaid_registration.targeted} sent, ` +
-          `inactive ${summary.audiences.inactive_trader.sent}/${summary.audiences.inactive_trader.targeted} sent`,
+          `inactive ${summary.audiences.inactive_trader.sent}/${summary.audiences.inactive_trader.targeted} sent, ` +
+          `kyc ${summary.audiences.kyc_incomplete.sent}/${summary.audiences.kyc_incomplete.targeted} sent`,
       );
       return summary;
     } finally {
@@ -349,6 +413,40 @@ export class MarketingService {
         <p style="color:#94a3b8;font-size:13px;margin-top:24px;">No KYC needed to start trading — verification is only required when you request a payout.</p>`,
       );
       const text = `Hi ${name}, activate your TraderRank Pro account to get your $1,000 virtual funded account and start getting paid for your trading. Activate: ${url}/dashboard`;
+      return { subject, html, text };
+    }
+
+    if (audience === 'kyc_incomplete') {
+      const rejected = recipient.kycStatus === 'REJECTED';
+      const subjects = rejected
+        ? [
+            `${name}, your KYC needs another look — resubmit to unlock payouts`,
+            'Action needed: resubmit your identity verification',
+          ]
+        : [
+            `${name}, complete KYC to withdraw your earnings`,
+            'One step left before your first payout — verify your identity',
+          ];
+      const subject = subjects[variant];
+      const intro = rejected
+        ? `<p>Your previous KYC submission could not be approved. Please upload clearer documents in Settings so we can verify your identity and release payouts.</p>`
+        : `<p>You are trading on <strong>TraderRank Pro</strong>, but identity verification (KYC) is not complete yet.
+        KYC is required before we can send weekly profit share, TP rewards, or referral earnings to your wallet.</p>`;
+      const html = this.email.layout(
+        rejected ? 'Resubmit your KYC' : 'Complete your KYC',
+        `<p>Hi ${name},</p>
+        ${intro}
+        <ul style="color:#cbd5e1;">
+          <li>Upload a valid ID and a selfie — takes about 5 minutes</li>
+          <li>Our team reviews submissions quickly</li>
+          <li>Once approved, you can request payouts from your dashboard</li>
+        </ul>
+        ${this.email.button(`${url}/settings`, rejected ? 'Resubmit KYC in Settings' : 'Complete KYC in Settings')}
+        <p style="color:#94a3b8;font-size:13px;margin-top:24px;">You can keep submitting setups while KYC is pending — verification only blocks withdrawals until approved.</p>`,
+      );
+      const text = rejected
+        ? `Hi ${name}, please resubmit your KYC in Settings so you can request payouts: ${url}/settings`
+        : `Hi ${name}, complete KYC in Settings to unlock payouts from your TraderRank earnings: ${url}/settings`;
       return { subject, html, text };
     }
 

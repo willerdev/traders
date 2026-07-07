@@ -354,6 +354,7 @@ model Signal {
   metaApiOrderId   String?
   metaApiPositionId String?
   metaApiExecutedAt DateTime?
+  limitAutoPlaceDisabled Boolean   @default(false)
   source            String         @default("manual")
 
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -596,7 +597,7 @@ model MarketingEmail {
   id       String   @id @default(cuid())
   userId   String
   email    String
-  audience String // "unpaid_registration" | "inactive_trader"
+  audience String // "unpaid_registration" | "inactive_trader" | "kyc_incomplete"
   subject  String
   status   String // "SENT" | "FAILED" | "SKIPPED"
   detail   String?

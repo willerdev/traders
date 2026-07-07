@@ -373,6 +373,7 @@ export default function Mt5Page() {
                   <th className="pb-2 pr-4">Lots</th>
                   <th className="pb-2 pr-4">Entry</th>
                   <th className="pb-2 pr-4">Status</th>
+                  <th className="pb-2 pr-4">Reason</th>
                   <th className="pb-2 pr-4">P/L</th>
                   <th className="pb-2">When</th>
                 </tr>
@@ -391,6 +392,15 @@ export default function Mt5Page() {
                     <td className="py-3 pr-4">{entry.entryPrice ?? "—"}</td>
                     <td className="py-3 pr-4">
                       <Badge className={statusBadge(entry.status)}>{entry.status}</Badge>
+                    </td>
+                    <td
+                      className="py-3 pr-4 text-gray-400"
+                      title={entry.notes ?? undefined}
+                    >
+                      {entry.notes?.trim() ||
+                        (entry.status === "FAILED" || entry.status === "SKIPPED"
+                          ? "No details recorded"
+                          : "—")}
                     </td>
                     <td
                       className={cn(
