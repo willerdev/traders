@@ -32,6 +32,18 @@ export class PaymentsController {
     private custodyDeposits: CustodyDepositService,
   ) {}
 
+  @Get('registration/pending')
+  @UseGuards(JwtAuthGuard)
+  getPendingRegistration(
+    @Request() req: { user: { id: string } },
+    @Query('network') network?: string,
+  ) {
+    return this.paymentsService.getPendingRegistrationPayment(
+      req.user.id,
+      network,
+    );
+  }
+
   @Post('registration')
   @UseGuards(JwtAuthGuard)
   createRegistration(

@@ -620,6 +620,26 @@ class ApiClient {
   };
 
   payments = {
+    pendingRegistration: (network?: string) =>
+      this.request<{
+        pending: {
+          paymentId: string;
+          amount: number;
+          currency: string;
+          network: string;
+          payAddress?: string;
+          payAmount?: number;
+          payCurrency?: string;
+          gatewayPaymentId?: number;
+          liveStatus?: string;
+          gateway?: string;
+          orderId?: string;
+        } | null;
+      }>(
+        `/payments/registration/pending${
+          network ? `?network=${encodeURIComponent(network)}` : ""
+        }`,
+      ),
     createRegistration: (network: string, promoCode?: string) =>
       this.request<{
         paymentId?: string;

@@ -19,6 +19,10 @@ export class NowPaymentsApiError extends Error {
   }
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 @Injectable()
 export class NowPaymentsService {
   private readonly logger = new Logger(NowPaymentsService.name);
@@ -26,6 +30,12 @@ export class NowPaymentsService {
   private readonly apiKey: string;
   private payoutToken: string | null = null;
   private payoutTokenExpiry = 0;
+  private readonly statusCache = new Map<
+    string,
+    { at: number; data: Awaited<ReturnType<NowPaymentsService['fetchPaymentStatus']>> }
+  >();
+  private static readonly STATUS_TTL_MS = 45_000;
+  private static readonly MAX_429_RETRIES = 3;
 
   constructor(private config: ConfigService) {
     this.apiUrl =
@@ -46,7 +56,7 @@ export class NowPaymentsService {
     };
   }
 
-  private async request<T>(
+  private async requestOnce<T>(
     path: string,
     options: RequestInit = {},
   ): Promise<T> {
@@ -71,15 +81,47 @@ export class NowPaymentsService {
         status?: boolean;
         code?: string;
       };
-      const message =
+      let message =
         payload.message ||
         payload.code ||
         `NOWPayments request failed (${res.status})`;
+
+      if (res.status === 429) {
+        message =
+          'Payment service is temporarily busy — wait 30 seconds and try again';
+      }
+
       this.logger.error(`NOWPayments error ${path}: ${JSON.stringify(body)}`);
       throw new NowPaymentsApiError(message, res.status, body);
     }
 
     return body as T;
+  }
+
+  private async request<T>(
+    path: string,
+    options: RequestInit = {},
+  ): Promise<T> {
+    let lastError: NowPaymentsApiError | undefined;
+
+    for (let attempt = 0; attempt <= NowPaymentsService.MAX_429_RETRIES; attempt++) {
+      try {
+        return await this.requestOnce<T>(path, options);
+      } catch (err) {
+        if (!(err instanceof NowPaymentsApiError)) throw err;
+        lastError = err;
+        if (err.statusCode !== 429 || attempt >= NowPaymentsService.MAX_429_RETRIES) {
+          throw err;
+        }
+        const waitMs = 1500 * (attempt + 1);
+        this.logger.warn(
+          `NOWPayments rate limited on ${path} — retry ${attempt + 1}/${NowPaymentsService.MAX_429_RETRIES} in ${waitMs}ms`,
+        );
+        await sleep(waitMs);
+      }
+    }
+
+    throw lastError ?? new NowPaymentsApiError('NOWPayments request failed', 429);
   }
 
   private normalizeAmount(amount: number): number {
@@ -145,6 +187,7 @@ export class NowPaymentsService {
     } catch (err) {
       if (
         err instanceof NowPaymentsApiError &&
+        err.statusCode !== 429 &&
         /currency|usdt|not allowed|invalid/i.test(err.message)
       ) {
         this.logger.warn(
@@ -190,7 +233,7 @@ export class NowPaymentsService {
     });
   }
 
-  async getPaymentStatus(paymentId: string) {
+  private async fetchPaymentStatus(paymentId: string) {
     return this.request<{
       payment_id: number;
       payment_status: string;
@@ -198,9 +241,20 @@ export class NowPaymentsService {
       pay_amount: number;
       actually_paid: number;
       outcome_amount: number;
+      pay_currency?: string;
     }>(`/payment/${paymentId}`, {
       headers: this.headers(),
     });
+  }
+
+  async getPaymentStatus(paymentId: string) {
+    const cached = this.statusCache.get(paymentId);
+    if (cached && Date.now() - cached.at < NowPaymentsService.STATUS_TTL_MS) {
+      return cached.data;
+    }
+    const data = await this.fetchPaymentStatus(paymentId);
+    this.statusCache.set(paymentId, { at: Date.now(), data });
+    return data;
   }
 
   private async getPayoutAuthToken(): Promise<string> {

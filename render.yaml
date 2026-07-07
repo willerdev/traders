@@ -23,6 +23,7 @@ services:
       - key: API_PUBLIC_URL
         value: https://traders-c53s.onrender.com
         sync: false
+      # NOWPayments keys must be on this backend service (traders-api), not the frontend web service.
       - key: NOWPAYMENTS_API_KEY
         sync: false
       - key: NOWPAYMENTS_PUBLIC_KEY

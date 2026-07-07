@@ -33,6 +33,8 @@ import { Mt5SyncBillingService } from '../mt5-sync/mt5-sync-billing.service';
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
+  private static readonly CREATE_COOLDOWN_MS = 15_000;
+  private readonly lastGatewayCreateByUser = new Map<string, number>();
   private readonly setupPlanPrice: Record<'PREMIUM' | 'PRO', number> = {
     PREMIUM: 5,
     PRO: 15,
@@ -100,9 +102,13 @@ export class PaymentsService {
 
       return npPayment;
     } catch (err) {
-      await this.prisma.payment
-        .delete({ where: { id: input.paymentId } })
-        .catch(() => undefined);
+      const isRateLimited =
+        err instanceof NowPaymentsApiError && err.statusCode === 429;
+      if (!isRateLimited) {
+        await this.prisma.payment
+          .delete({ where: { id: input.paymentId } })
+          .catch(() => undefined);
+      }
 
       if (err instanceof NowPaymentsApiError) {
         throw new BadRequestException(
@@ -111,6 +117,87 @@ export class PaymentsService {
       }
       throw err;
     }
+  }
+
+  private assertGatewayCreateCooldown(userId: string) {
+    const last = this.lastGatewayCreateByUser.get(userId) ?? 0;
+    const waitMs = PaymentsService.CREATE_COOLDOWN_MS - (Date.now() - last);
+    if (waitMs > 0) {
+      throw new BadRequestException(
+        `Please wait ${Math.ceil(waitMs / 1000)} seconds before creating another payment.`,
+      );
+    }
+    this.lastGatewayCreateByUser.set(userId, Date.now());
+  }
+
+  private formatRegistrationPaymentResponse(
+    payment: {
+      id: string;
+      amount: { toString(): string } | number;
+      network: string;
+      payAddress?: string | null;
+      payAmount?: { toString(): string } | number | null;
+      gatewayId?: string | null;
+      gatewayResponse: unknown;
+    },
+    extras?: {
+      promoCode?: string;
+      discountPercent?: number;
+      originalAmount?: number;
+    },
+  ) {
+    const stored = (payment.gatewayResponse ?? {}) as Record<string, unknown>;
+    const payCurrency =
+      typeof stored.pay_currency === 'string' ? stored.pay_currency : 'usdt';
+    const gatewayPaymentId =
+      payment.gatewayId && !payment.gatewayId.startsWith('pending_')
+        ? Number(payment.gatewayId)
+        : undefined;
+
+    return {
+      paymentId: payment.id,
+      amount: Number(payment.amount),
+      currency: 'USDT',
+      network: payment.network,
+      ...(extras?.promoCode
+        ? {
+            promoCode: extras.promoCode,
+            discountPercent: extras.discountPercent,
+            originalAmount: extras.originalAmount,
+          }
+        : {}),
+      payCurrency,
+      payAmount:
+        payment.payAmount != null
+          ? Number(payment.payAmount)
+          : Number(payment.amount),
+      payAddress: payment.payAddress ?? undefined,
+      gatewayPaymentId,
+      liveStatus:
+        typeof stored.payment_status === 'string'
+          ? stored.payment_status
+          : 'waiting',
+      gateway: 'NOWPayments',
+      orderId: payment.id,
+    };
+  }
+
+  private async findReusableRegistrationPayment(
+    userId: string,
+    network: string,
+    amount: number,
+  ) {
+    return this.prisma.payment.findFirst({
+      where: {
+        userId,
+        purpose: 'registration',
+        status: 'PENDING',
+        network,
+        amount,
+        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   private async registrationFee(): Promise<number> {
@@ -250,27 +337,27 @@ export class PaymentsService {
       };
     }
 
-    const payment = await this.prisma.payment.create({
-      data: {
-        userId,
-        amount,
-        currency: 'USDT',
-        network,
-        purpose: 'registration',
-        gatewayId: `pending_${Date.now()}`,
-        ...(appliedPromo
-          ? {
-              gatewayResponse: {
-                promoCode: appliedPromo.code,
-                discountPercent: appliedPromo.discountPercent,
-                originalAmount: fee,
-              } as object,
-            }
-          : {}),
-      },
-    });
+    const promoExtras = appliedPromo
+      ? {
+          promoCode: appliedPromo.code,
+          discountPercent: appliedPromo.discountPercent,
+          originalAmount: fee,
+        }
+      : undefined;
+    const promoMeta = promoExtras;
 
     if (!this.nowPayments.isConfigured) {
+      const payment = await this.prisma.payment.create({
+        data: {
+          userId,
+          amount,
+          currency: 'USDT',
+          network,
+          purpose: 'registration',
+          gatewayId: `pending_${Date.now()}`,
+          ...(promoMeta ? { gatewayResponse: promoMeta as object } : {}),
+        },
+      });
       return {
         paymentId: payment.id,
         amount,
@@ -281,15 +368,39 @@ export class PaymentsService {
       };
     }
 
-    const promoMeta = appliedPromo
-      ? {
-          promoCode: appliedPromo.code,
-          discountPercent: appliedPromo.discountPercent,
-          originalAmount: fee,
-        }
-      : undefined;
+    const existing = await this.findReusableRegistrationPayment(
+      userId,
+      network,
+      amount,
+    );
 
-    const npPayment = await this.createGatewayPayment({
+    if (
+      existing?.payAddress &&
+      existing.gatewayId &&
+      !existing.gatewayId.startsWith('pending_')
+    ) {
+      return this.formatRegistrationPaymentResponse(existing, promoExtras);
+    }
+
+    let payment = existing;
+    if (!payment) {
+      this.assertGatewayCreateCooldown(userId);
+      payment = await this.prisma.payment.create({
+        data: {
+          userId,
+          amount,
+          currency: 'USDT',
+          network,
+          purpose: 'registration',
+          gatewayId: `pending_${Date.now()}`,
+          ...(promoMeta ? { gatewayResponse: promoMeta as object } : {}),
+        },
+      });
+    } else {
+      this.assertGatewayCreateCooldown(userId);
+    }
+
+    await this.createGatewayPayment({
       paymentId: payment.id,
       amount,
       network,
@@ -297,25 +408,36 @@ export class PaymentsService {
       promoMeta,
     });
 
+    const updated = await this.prisma.payment.findUniqueOrThrow({
+      where: { id: payment.id },
+    });
+
+    return this.formatRegistrationPaymentResponse(updated, promoExtras);
+  }
+
+  async getPendingRegistrationPayment(userId: string, network?: string) {
+    const payment = await this.prisma.payment.findFirst({
+      where: {
+        userId,
+        purpose: 'registration',
+        status: 'PENDING',
+        payAddress: { not: null },
+        ...(network ? { network: network.toUpperCase() } : {}),
+        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (
+      !payment?.payAddress ||
+      !payment.gatewayId ||
+      payment.gatewayId.startsWith('pending_')
+    ) {
+      return { pending: null };
+    }
+
     return {
-      paymentId: payment.id,
-      amount,
-      currency: 'USDT',
-      network,
-      ...(appliedPromo
-        ? {
-            promoCode: appliedPromo.code,
-            discountPercent: appliedPromo.discountPercent,
-            originalAmount: fee,
-          }
-        : {}),
-      payCurrency: npPayment.pay_currency,
-      payAmount: npPayment.pay_amount,
-      payAddress: npPayment.pay_address,
-      gatewayPaymentId: npPayment.payment_id,
-      liveStatus: npPayment.payment_status,
-      gateway: 'NOWPayments',
-      orderId: payment.id,
+      pending: this.formatRegistrationPaymentResponse(payment),
     };
   }
 

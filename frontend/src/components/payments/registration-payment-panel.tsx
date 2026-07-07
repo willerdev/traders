@@ -76,6 +76,21 @@ export function RegistrationPaymentPanel({
   }, [paymentId, onComplete]);
 
   useEffect(() => {
+    let cancelled = false;
+    void api.payments.pendingRegistration(network).then((res) => {
+      if (cancelled || !res.pending?.payAddress || !res.pending.paymentId) return;
+      setPaymentId(res.pending.paymentId);
+      setPayAddress(res.pending.payAddress);
+      setPayAmount(res.pending.payAmount ?? res.pending.amount ?? null);
+      setPayCurrency(res.pending.payCurrency || "usdt");
+      setProgress("waiting");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [network]);
+
+  useEffect(() => {
     if (!paymentId || progress === "complete") return;
     const id = setInterval(pollStatus, 8000);
     pollStatus();
