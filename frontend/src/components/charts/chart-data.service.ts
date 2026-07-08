@@ -1,6 +1,7 @@
 import type { ChartTimeframe, OHLCBar } from "@/components/charts/chart-types";
 import { MAX_HISTORICAL_BARS } from "@/components/charts/chart-types";
 import { roundPriceForSymbol, defaultMidForSymbol } from "@/components/charts/chart-price-format";
+import { api } from "@/lib/api";
 
 export { defaultMidForSymbol };
 
@@ -12,104 +13,72 @@ const TIMEFRAME_SECONDS: Record<ChartTimeframe, number> = {
   D1: 86400,
 };
 
-const TIMEFRAME_VOL_MULT: Record<ChartTimeframe, number> = {
-  M1: 0.35,
-  M5: 0.55,
-  M15: 0.75,
-  H1: 1,
-  D1: 2.5,
-};
-
 function alignedBarTime(nowSec: number, intervalSec: number): number {
   return Math.floor(nowSec / intervalSec) * intervalSec;
 }
 
-function seedFromSymbol(symbol: string): number {
-  let h = 0;
-  for (let i = 0; i < symbol.length; i += 1) {
-    h = (h * 31 + symbol.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h);
-}
-
-/** Deterministic 0–1 value — same inputs always produce the same output. */
-function seededUnit(seed: number): number {
-  const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
-  return x - Math.floor(x);
-}
-
-/** Volatility scale by symbol class (placeholder until real tick data). */
-function volatilityForSymbol(
+/** Reject quote seeds from a previously selected symbol (e.g. EURUSD mid on BTC). */
+export function resolveSeedPrice(
   symbol: string,
+  seed?: number | null,
+): number | undefined {
+  if (seed == null || !Number.isFinite(seed) || seed <= 0) return undefined;
+  const ref = defaultMidForSymbol(symbol);
+  const ratio = seed / ref;
+  if (ratio >= 0.5 && ratio <= 2) return seed;
+  return undefined;
+}
+
+function quoteMid(quote: RealtimeQuote | null): number | null {
+  if (!quote) return null;
+  if (quote.mid != null && Number.isFinite(quote.mid)) return quote.mid;
+  if (
+    quote.bid != null &&
+    quote.ask != null &&
+    Number.isFinite(quote.bid) &&
+    Number.isFinite(quote.ask)
+  ) {
+    return (quote.bid + quote.ask) / 2;
+  }
+  return null;
+}
+
+function mergeLiveTick(
+  symbol: string,
+  lastBar: OHLCBar | null,
+  barTime: number,
   mid: number,
-  timeframe: ChartTimeframe,
-): number {
-  const s = symbol.toUpperCase();
-  let vol: number;
-  if (s.includes("XAU") || s.includes("GOLD")) vol = mid * 0.0012;
-  else if (s.includes("BTC")) vol = mid * 0.003;
-  else if (s.includes("NAS") || s.includes("US30") || s.includes("US500")) vol = mid * 0.0015;
-  else if (s.includes("HZ") || s.startsWith("R_")) vol = mid * 0.002;
-  else if (s.includes("JPY")) vol = mid * 0.001;
-  else vol = mid * 0.0015;
-  return vol * TIMEFRAME_VOL_MULT[timeframe];
-}
-
-function buildBar(
-  symbol: string,
-  time: number,
-  open: number,
-  close: number,
-  vol: number,
-  wickSeed: number,
 ): OHLCBar {
-  let o = open;
-  let c = close;
-  const minBody = vol * 0.25;
-  if (Math.abs(c - o) < minBody) {
-    c = o + (c >= o ? minBody : -minBody);
+  const px = roundPriceForSymbol(mid, symbol);
+  if (!lastBar || lastBar.time < barTime) {
+    return {
+      time: barTime,
+      open: px,
+      high: px,
+      low: px,
+      close: px,
+    };
   }
-  const high = Math.max(o, c) + seededUnit(wickSeed) * vol * 0.45;
-  const low = Math.min(o, c) - seededUnit(wickSeed + 1) * vol * 0.45;
+  if (lastBar.time > barTime) {
+    return lastBar;
+  }
   return {
-    time,
-    open: roundPriceForSymbol(o, symbol),
-    high: roundPriceForSymbol(high, symbol),
-    low: roundPriceForSymbol(low, symbol),
-    close: roundPriceForSymbol(c, symbol),
+    time: barTime,
+    open: lastBar.open,
+    high: roundPriceForSymbol(Math.max(lastBar.high, px), symbol),
+    low: roundPriceForSymbol(Math.min(lastBar.low, px), symbol),
+    close: px,
   };
 }
 
-/**
- * CONNECT BACKEND: replace this mock with
- * GET /signals/mt5/ohlc?symbol={symbol}&timeframe={timeframe}
- * Expected response: { bars: OHLCBar[] }
- */
+/** Load live OHLC candles from MetaAPI via backend. */
 export async function loadHistoricalOHLC(
   symbol: string,
   timeframe: ChartTimeframe,
-  seedPrice?: number | null,
+  _seedPrice?: number | null,
 ): Promise<OHLCBar[]> {
-  const interval = TIMEFRAME_SECONDS[timeframe];
-  const now = Math.floor(Date.now() / 1000);
-  const symSeed = seedFromSymbol(symbol);
-  const base =
-    seedPrice && seedPrice > 0 ? seedPrice : defaultMidForSymbol(symbol);
-  const vol = volatilityForSymbol(symbol, base, timeframe);
-  const bars: OHLCBar[] = [];
-  let price = base;
-
-  for (let i = MAX_HISTORICAL_BARS - 1; i >= 0; i -= 1) {
-    const t = alignedBarTime(now - i * interval, interval);
-    const r1 = seededUnit(symSeed + i * 3);
-    const drift = Math.sin((i + symSeed) / 9) * vol * 0.6;
-    const open = price;
-    const close = open + drift + (r1 - 0.5) * vol;
-    bars.push(buildBar(symbol, t, open, close, vol, symSeed + i * 11));
-    price = close;
-  }
-
-  return bars;
+  const res = await api.signals.mt5Ohlc(symbol, timeframe, MAX_HISTORICAL_BARS);
+  return res.bars;
 }
 
 export type RealtimeQuote = {
@@ -118,11 +87,7 @@ export type RealtimeQuote = {
   mid?: number | null;
 };
 
-/**
- * CONNECT BACKEND: replace interval stub with WebSocket subscription, e.g.
- * wss://your-api/market/stream?symbol={symbol}&timeframe={timeframe}
- * On each tick/bar message, call onBar(updatedOHLCBar).
- */
+/** Live candle updates — tick from MetaAPI quote + periodic candle sync. */
 export function subscribeRealtimeUpdates(
   symbol: string,
   timeframe: ChartTimeframe,
@@ -130,61 +95,53 @@ export function subscribeRealtimeUpdates(
   onBar: (bar: OHLCBar, isNewBar: boolean) => void,
 ): () => void {
   const interval = TIMEFRAME_SECONDS[timeframe];
-  const symSeed = seedFromSymbol(symbol);
-  const vol = volatilityForSymbol(symbol, defaultMidForSymbol(symbol), timeframe);
-  let lastBarTime = alignedBarTime(Math.floor(Date.now() / 1000), interval);
   let lastBar: OHLCBar | null = null;
-  let simMid = defaultMidForSymbol(symbol);
-  let tickIndex = 0;
+  let lastBarTime = 0;
+  let cancelled = false;
 
-  const tick = () => {
-    const quote = getQuote();
-    let mid =
-      quote?.mid ??
-      (quote?.bid != null && quote?.ask != null
-        ? (quote.bid + quote.ask) / 2
-        : null);
+  const applyBar = (bar: OHLCBar, isNew: boolean) => {
+    lastBar = bar;
+    lastBarTime = bar.time;
+    onBar(bar, isNew);
+  };
 
-    if (mid == null || !Number.isFinite(mid)) {
-      tickIndex += 1;
-      simMid += (seededUnit(symSeed + tickIndex) - 0.5) * vol * 0.12;
-      mid = simMid;
-    } else {
-      simMid = mid;
-    }
-
-    const now = Math.floor(Date.now() / 1000);
-    const barTime = alignedBarTime(now, interval);
-    const px = roundPriceForSymbol(mid, symbol);
-
-    if (!lastBar || barTime > lastBarTime) {
-      lastBarTime = barTime;
-      lastBar = buildBar(symbol, barTime, px, px, vol, symSeed + tickIndex);
-      onBar(lastBar, true);
-      return;
-    }
-
-    if (lastBar) {
-      lastBar = buildBar(
-        symbol,
-        lastBar.time,
-        lastBar.open,
-        px,
-        vol,
-        symSeed + tickIndex,
-      );
-      lastBar.high = roundPriceForSymbol(
-        Math.max(lastBar.high, px, lastBar.open),
-        symbol,
-      );
-      lastBar.low = roundPriceForSymbol(
-        Math.min(lastBar.low, px, lastBar.open),
-        symbol,
-      );
-      onBar(lastBar, false);
+  const syncFromApi = async () => {
+    if (cancelled) return;
+    try {
+      const res = await api.signals.mt5Ohlc(symbol, timeframe, 2);
+      const bars = res.bars;
+      if (bars.length === 0) return;
+      for (let i = 0; i < bars.length; i += 1) {
+        const bar = bars[i];
+        const isNew = i === bars.length - 1 && bar.time > lastBarTime;
+        applyBar(bar, isNew);
+      }
+    } catch {
+      /* keep ticking from live quote */
     }
   };
 
-  const id = window.setInterval(tick, 1000);
-  return () => window.clearInterval(id);
+  void syncFromApi();
+
+  const tick = () => {
+    if (cancelled) return;
+    const mid = quoteMid(getQuote());
+    if (mid == null || !Number.isFinite(mid)) return;
+    if (resolveSeedPrice(symbol, mid) == null) return;
+
+    const now = Math.floor(Date.now() / 1000);
+    const barTime = alignedBarTime(now, interval);
+    const next = mergeLiveTick(symbol, lastBar, barTime, mid);
+    const isNew = barTime > lastBarTime;
+    applyBar(next, isNew);
+  };
+
+  const tickId = window.setInterval(tick, 1000);
+  const syncId = window.setInterval(() => void syncFromApi(), 10_000);
+
+  return () => {
+    cancelled = true;
+    window.clearInterval(tickId);
+    window.clearInterval(syncId);
+  };
 }

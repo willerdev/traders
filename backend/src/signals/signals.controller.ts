@@ -316,6 +316,32 @@ export class SignalsController {
     return this.signalsService.getUserMt5Quotes(req.user.id);
   }
 
+  @Get('mt5/quote')
+  @UseGuards(JwtAuthGuard)
+  getUserMt5Quote(
+    @Request() req: { user: { id: string } },
+    @Query('symbol') symbol: string,
+  ) {
+    return this.signalsService.getUserMt5Quote(req.user.id, symbol);
+  }
+
+  @Get('mt5/ohlc')
+  @UseGuards(JwtAuthGuard)
+  getUserMt5Ohlc(
+    @Request() req: { user: { id: string } },
+    @Query('symbol') symbol: string,
+    @Query('timeframe') timeframe: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedLimit = limit ? Number.parseInt(limit, 10) : undefined;
+    return this.signalsService.getUserMt5Ohlc(
+      req.user.id,
+      symbol,
+      timeframe,
+      Number.isFinite(parsedLimit) ? parsedLimit : undefined,
+    );
+  }
+
   @Get('mt5/running')
   @UseGuards(JwtAuthGuard)
   getUserMt5Running(@Request() req: { user: { id: string } }) {

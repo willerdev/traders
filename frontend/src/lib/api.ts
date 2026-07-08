@@ -335,6 +335,15 @@ class ApiClient {
     mt5Terminal: () => this.request<UserMt5Terminal>("/signals/mt5/terminal"),
     mt5Quotes: () =>
       this.request<UserMt5QuotesResult>("/signals/mt5/quotes"),
+    mt5Quote: (symbol: string) => {
+      const q = new URLSearchParams({ symbol });
+      return this.request<UserMt5QuoteResult>(`/signals/mt5/quote?${q}`);
+    },
+    mt5Ohlc: (symbol: string, timeframe: string, limit?: number) => {
+      const q = new URLSearchParams({ symbol, timeframe });
+      if (limit != null) q.set("limit", String(limit));
+      return this.request<UserMt5OhlcResult>(`/signals/mt5/ohlc?${q}`);
+    },
     mt5Running: () =>
       this.request<UserMt5RunningResult>("/signals/mt5/running"),
     closeMt5Position: (positionId: string) =>
@@ -1919,6 +1928,32 @@ export interface UserMt5QuoteItem {
 
 export interface UserMt5QuotesResult {
   items: UserMt5QuoteItem[];
+  refreshedAt: string;
+}
+
+export interface UserMt5QuoteResult {
+  symbol: string;
+  resolvedSymbol: string;
+  bid: number;
+  ask: number;
+  mid: number;
+  spread: number;
+  time: string;
+  refreshedAt: string;
+}
+
+export interface UserMt5OhlcBar {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
+export interface UserMt5OhlcResult {
+  symbol: string;
+  timeframe: string;
+  bars: UserMt5OhlcBar[];
   refreshedAt: string;
 }
 

@@ -10,6 +10,7 @@ import {
 import { useThemeStore } from "@/stores/theme";
 import {
   loadHistoricalOHLC,
+  resolveSeedPrice,
   subscribeRealtimeUpdates,
   type RealtimeQuote,
 } from "@/components/charts/chart-data.service";
@@ -64,10 +65,23 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
     const timeframeRef = useRef(timeframe);
     const seedPriceRef = useRef(seedPrice);
     const getQuoteRef = useRef(getQuote);
-    const loadedKeyRef = useRef<string | null>(null);
+    const loadGenRef = useRef(0);
+    const setDataRef = useRef(chart.setData);
+    const applySymbolFormatRef = useRef(chart.applySymbolFormat);
+    const updateCandleRef = useRef(chart.updateCandle);
+    const setMarkersRef = useRef(chart.setMarkers);
+    const clearMarkersRef = useRef(chart.clearMarkers);
+    const setPriceLinesRef = useRef(chart.setPriceLines);
+
     symbolRef.current = symbol;
     timeframeRef.current = timeframe;
     getQuoteRef.current = getQuote;
+    setDataRef.current = chart.setData;
+    applySymbolFormatRef.current = chart.applySymbolFormat;
+    updateCandleRef.current = chart.updateCandle;
+    setMarkersRef.current = chart.setMarkers;
+    clearMarkersRef.current = chart.clearMarkers;
+    setPriceLinesRef.current = chart.setPriceLines;
 
     useEffect(() => {
       seedPriceRef.current = seedPrice;
@@ -75,67 +89,95 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
 
     const loadBars = useCallback(
       async (sym: string, tf: ChartTimeframe, seed?: number | null) => {
+        const gen = ++loadGenRef.current;
         onLoadingChange?.(true);
         try {
-          const bars = await loadHistoricalOHLC(sym, tf, seed);
-          chart.setData(bars, { fit: true });
-          loadedKeyRef.current = `${sym}:${tf}`;
+          applySymbolFormatRef.current(sym);
+          const validSeed = resolveSeedPrice(sym, seed);
+          const bars = await loadHistoricalOHLC(sym, tf, validSeed);
+          if (gen !== loadGenRef.current) return;
+          if (bars.length > 0) {
+            setDataRef.current(bars, { fit: true });
+          }
+        } catch {
+          /* MetaAPI candle load failed — live poll may recover on next sync */
         } finally {
-          onLoadingChange?.(false);
+          if (gen === loadGenRef.current) {
+            onLoadingChange?.(false);
+          }
         }
       },
-      [chart, onLoadingChange],
+      [onLoadingChange],
     );
 
     useImperativeHandle(ref, () => ({
       setSymbol: (next) => {
-        void loadBars(next, timeframeRef.current, seedPriceRef.current);
+        void loadBars(
+          next,
+          timeframeRef.current,
+          resolveSeedPrice(next, seedPriceRef.current),
+        );
       },
       setTimeframe: (next) => {
-        void loadBars(symbolRef.current, next, seedPriceRef.current);
+        void loadBars(
+          symbolRef.current,
+          next,
+          resolveSeedPrice(symbolRef.current, seedPriceRef.current),
+        );
       },
-      updateCandle: chart.updateCandle,
+      updateCandle: (bar) => updateCandleRef.current(bar),
       addMarker: (marker) => {
         markersExtraRef.current = [...markersExtraRef.current, marker];
-        chart.setMarkers([...markers, ...markersExtraRef.current]);
+        setMarkersRef.current([...markers, ...markersExtraRef.current]);
       },
       clearMarkers: () => {
         markersExtraRef.current = [];
-        chart.clearMarkers();
+        clearMarkersRef.current();
       },
-      setPriceLines: chart.setPriceLines,
+      setPriceLines: (lines) => setPriceLinesRef.current(lines),
       reload: () => {
-        void loadBars(symbolRef.current, timeframeRef.current, seedPriceRef.current);
+        void loadBars(
+          symbolRef.current,
+          timeframeRef.current,
+          resolveSeedPrice(symbolRef.current, seedPriceRef.current),
+        );
       },
     }));
 
     useEffect(() => {
       if (!chart.ready) return;
-      const key = `${symbol}:${timeframe}`;
-      if (loadedKeyRef.current === key) return;
-      void loadBars(symbol, timeframe, seedPriceRef.current ?? undefined);
+      void loadBars(
+        symbol,
+        timeframe,
+        resolveSeedPrice(symbol, seedPriceRef.current),
+      );
     }, [chart.ready, symbol, timeframe, loadBars]);
 
     useEffect(() => {
       if (!chart.ready) return;
+      const activeSymbol = symbol;
       const unsub = subscribeRealtimeUpdates(
-        symbol,
+        activeSymbol,
         timeframe,
         () => getQuoteRef.current?.() ?? null,
-        (bar) => chart.updateCandle(bar),
+        (bar) => {
+          if (symbolRef.current === activeSymbol) {
+            updateCandleRef.current(bar);
+          }
+        },
       );
       return unsub;
-    }, [symbol, timeframe, chart.ready, chart]);
+    }, [symbol, timeframe, chart.ready]);
 
     useEffect(() => {
       if (!chart.ready) return;
-      chart.setMarkers([...markers, ...markersExtraRef.current]);
-    }, [markers, chart.ready, chart]);
+      setMarkersRef.current([...markers, ...markersExtraRef.current]);
+    }, [markers, chart.ready]);
 
     useEffect(() => {
       if (!chart.ready) return;
-      chart.setPriceLines(priceLines);
-    }, [priceLines, chart.ready, chart]);
+      setPriceLinesRef.current(priceLines);
+    }, [priceLines, chart.ready]);
 
     return (
       <div

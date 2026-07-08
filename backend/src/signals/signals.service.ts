@@ -5027,6 +5027,76 @@ export class SignalsService {
     };
   }
 
+  /** Live MetaAPI quote for any chart symbol on the platform MT5 account. */
+  async getUserMt5Quote(userId: string, symbol: string) {
+    await this.compliance.requireActiveTrader(userId);
+
+    const canonical = symbol?.trim();
+    if (!canonical) {
+      throw new BadRequestException('symbol is required');
+    }
+
+    const platformAccountId = this.metaApi.getConfiguredDefaultAccountId();
+    if (!this.metaApi.isConfigured || !platformAccountId) {
+      throw new ServiceUnavailableException('MetaAPI is not configured');
+    }
+
+    const account = await this.metaApi.getAccount(platformAccountId);
+    const price = await this.metaApi.getSymbolPrice(account, canonical);
+    const bid = price.bid;
+    const ask = price.ask;
+    const mid = (bid + ask) / 2;
+
+    return {
+      symbol: canonical,
+      resolvedSymbol: price.symbol,
+      bid,
+      ask,
+      mid,
+      spread: ask - bid,
+      time: price.time,
+      refreshedAt: new Date().toISOString(),
+    };
+  }
+
+  /** Live OHLC candles from MetaAPI for the platform MT5 account. */
+  async getUserMt5Ohlc(
+    userId: string,
+    symbol: string,
+    timeframe: string,
+    limit?: number,
+  ) {
+    await this.compliance.requireActiveTrader(userId);
+
+    const canonical = symbol?.trim();
+    if (!canonical) {
+      throw new BadRequestException('symbol is required');
+    }
+    if (!timeframe?.trim()) {
+      throw new BadRequestException('timeframe is required');
+    }
+
+    const platformAccountId = this.metaApi.getConfiguredDefaultAccountId();
+    if (!this.metaApi.isConfigured || !platformAccountId) {
+      throw new ServiceUnavailableException('MetaAPI is not configured');
+    }
+
+    const account = await this.metaApi.getAccount(platformAccountId);
+    const bars = await this.metaApi.getHistoricalCandles(
+      account,
+      canonical,
+      timeframe.trim(),
+      limit ?? 300,
+    );
+
+    return {
+      symbol: canonical,
+      timeframe: timeframe.trim().toUpperCase(),
+      bars,
+      refreshedAt: new Date().toISOString(),
+    };
+  }
+
   /** User MT5 hub — their submitted setups on the platform MT5 account. */
   private async loadMt5SyncPositionMap(userId: string) {
     const links = await this.prisma.mt5SyncLink.findMany({

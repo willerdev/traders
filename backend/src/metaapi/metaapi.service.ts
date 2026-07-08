@@ -64,6 +64,27 @@ export type MetaApiSymbolPrice = {
   lossTickValue?: number;
 };
 
+export type MetaApiOhlcBar = {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+};
+
+const CHART_TO_METAAPI_TIMEFRAME: Record<string, string> = {
+  M1: '1m',
+  M5: '5m',
+  M15: '15m',
+  H1: '1h',
+  D1: '1d',
+  '1m': '1m',
+  '5m': '5m',
+  '15m': '15m',
+  '1h': '1h',
+  '1d': '1d',
+};
+
 export type MetaApiAccountInformation = {
   balance: number;
   equity: number;
@@ -315,6 +336,23 @@ export class MetaApiService {
     if (override) return override.replace(/\/$/, '');
     const slug = region.trim().toLowerCase().replace(/_/g, '-');
     return `https://mt-client-api-v1.${slug}.agiliumtrade.ai`;
+  }
+
+  private marketDataUrl(region: string): string {
+    const override = this.config
+      .get<string>('METAAPI_MARKET_DATA_URL')
+      ?.trim();
+    if (override) return override.replace(/\/$/, '');
+    const slug = region.trim().toLowerCase().replace(/_/g, '-');
+    return `https://mt-market-data-client-api-v1.${slug}.agiliumtrade.ai`;
+  }
+
+  resolveMetaApiTimeframe(timeframe: string): string {
+    const key = timeframe.trim();
+    const mapped = CHART_TO_METAAPI_TIMEFRAME[key.toUpperCase()] ??
+      CHART_TO_METAAPI_TIMEFRAME[key.toLowerCase()];
+    if (mapped) return mapped;
+    throw new BadRequestException(`Unsupported chart timeframe: ${timeframe}`);
   }
 
   private mapAccount(raw: Record<string, unknown>): MetaApiAccount {
@@ -676,6 +714,148 @@ export class MetaApiService {
       lossTickValue:
         body.lossTickValue != null ? Number(body.lossTickValue) : undefined,
     };
+  }
+
+  async getHistoricalCandles(
+    account: MetaApiAccount,
+    symbol: string,
+    timeframe: string,
+    limit = 300,
+  ): Promise<MetaApiOhlcBar[]> {
+    const metaTf = this.resolveMetaApiTimeframe(timeframe);
+    const capped = Math.min(Math.max(limit, 1), 1000);
+    const variants = getSymbolLookupVariants(symbol);
+    let lastError: BadRequestException | null = null;
+
+    for (const brokerSymbol of variants) {
+      try {
+        return await this.fetchHistoricalCandles(
+          account,
+          brokerSymbol,
+          metaTf,
+          capped,
+        );
+      } catch (err) {
+        if (err instanceof BadRequestException) {
+          lastError = err;
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    const resolved = await this.resolveBrokerSymbol(account, symbol);
+    if (resolved && !variants.includes(resolved)) {
+      try {
+        return await this.fetchHistoricalCandles(
+          account,
+          resolved,
+          metaTf,
+          capped,
+        );
+      } catch (err) {
+        if (err instanceof BadRequestException) {
+          lastError = err;
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    const canonical = normalizeChartSymbol(symbol);
+    throw (
+      lastError ??
+      new BadRequestException(`Could not load candles for ${canonical}`)
+    );
+  }
+
+  private async fetchHistoricalCandles(
+    account: MetaApiAccount,
+    brokerSymbol: string,
+    metaTimeframe: string,
+    limit: number,
+  ): Promise<MetaApiOhlcBar[]> {
+    const base = this.marketDataUrl(account.region);
+    const url = new URL(
+      `${base}/users/current/accounts/${encodeURIComponent(account.id)}/historical-market-data/symbols/${encodeURIComponent(brokerSymbol)}/timeframes/${encodeURIComponent(metaTimeframe)}/candles`,
+    );
+    url.searchParams.set('limit', String(limit));
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120_000);
+
+    let res: Response;
+    try {
+      res = await fetch(url.toString(), {
+        headers: this.headers(),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    const body = (await res.json().catch(() => null)) as unknown;
+
+    if (!res.ok) {
+      const message =
+        body && typeof body === 'object' && 'message' in body
+          ? String((body as { message: unknown }).message)
+          : `status ${res.status}`;
+      this.raiseBrokerError(
+        message,
+        `candles for ${brokerSymbol}`,
+        `Could not load live candles for ${brokerSymbol} right now. Please try again in a few minutes.`,
+      );
+    }
+
+    if (!Array.isArray(body)) {
+      throw new BadRequestException(
+        `Unexpected candle response for ${brokerSymbol}`,
+      );
+    }
+
+    const bars: MetaApiOhlcBar[] = [];
+    for (const raw of body) {
+      if (!raw || typeof raw !== 'object') continue;
+      const row = raw as Record<string, unknown>;
+      const open = Number(row.open);
+      const high = Number(row.high);
+      const low = Number(row.low);
+      const close = Number(row.close);
+      const timeRaw = row.time;
+      if (
+        !Number.isFinite(open) ||
+        !Number.isFinite(high) ||
+        !Number.isFinite(low) ||
+        !Number.isFinite(close) ||
+        typeof timeRaw !== 'string'
+      ) {
+        continue;
+      }
+      const time = Math.floor(new Date(timeRaw).getTime() / 1000);
+      if (!Number.isFinite(time) || time <= 0) continue;
+      bars.push({ time, open, high, low, close });
+    }
+
+    bars.sort((a, b) => a.time - b.time);
+
+    const deduped: MetaApiOhlcBar[] = [];
+    for (const bar of bars) {
+      const prev = deduped[deduped.length - 1];
+      if (prev && prev.time === bar.time) {
+        deduped[deduped.length - 1] = bar;
+      } else {
+        deduped.push(bar);
+      }
+    }
+
+    if (deduped.length === 0) {
+      throw new BadRequestException(
+        `No candle data returned for ${brokerSymbol}`,
+      );
+    }
+
+    return deduped;
   }
 
   async getAccountInformation(

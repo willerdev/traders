@@ -21,6 +21,7 @@ export type UseLightweightChartResult = {
   clearMarkers: () => void;
   setPriceLines: (lines: ChartPriceLine[]) => void;
   applyTheme: (mode: ChartThemeMode) => void;
+  applySymbolFormat: (symbol: string) => void;
   fitContent: () => void;
 };
 
@@ -153,13 +154,18 @@ export function useLightweightChart(
     if (ready) chartRef.current?.applyOptions(createChartOptions(theme));
   }, [theme, ready]);
 
-  useEffect(() => {
-    if (!seriesRef.current || !ready) return;
-    const pf = priceFormatForSymbol(symbol);
+  const applySymbolFormat = useCallback((sym: string) => {
+    if (!seriesRef.current) return;
+    const pf = priceFormatForSymbol(sym);
     seriesRef.current.applyOptions(
       createCandlestickSeriesOptions(pf) as CandlestickSeriesPartialOptions,
     );
-  }, [symbol, ready]);
+  }, []);
+
+  useEffect(() => {
+    if (!seriesRef.current || !ready) return;
+    applySymbolFormat(symbol);
+  }, [symbol, ready, applySymbolFormat]);
 
   const setData = useCallback(
     (bars: OHLCBar[], options?: { fit?: boolean }) => {
@@ -173,7 +179,7 @@ export function useLightweightChart(
   );
 
   const updateCandle = useCallback((bar: OHLCBar) => {
-    if (!seriesRef.current) return;
+    if (!seriesRef.current || barsRef.current.length === 0) return;
     const bars = barsRef.current;
     const last = bars[bars.length - 1];
     if (last && last.time === bar.time) {
@@ -267,6 +273,7 @@ export function useLightweightChart(
     clearMarkers,
     setPriceLines,
     applyTheme,
+    applySymbolFormat,
     fitContent,
   };
 }

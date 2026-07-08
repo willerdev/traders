@@ -105,7 +105,11 @@ export function Mt5ChartTerminal({
   );
 
   const liveQuote = useMemo((): RealtimeQuote | null => {
-    if (selectedQuote) {
+    if (
+      selectedQuote?.bid != null &&
+      selectedQuote?.ask != null &&
+      selectedQuote?.mid != null
+    ) {
       return {
         bid: selectedQuote.bid,
         ask: selectedQuote.ask,
@@ -116,12 +120,11 @@ export function Mt5ChartTerminal({
   }, [selectedQuote, fetchedQuotes, selectedSymbol]);
 
   useEffect(() => {
-    if (selectedQuote) return;
     let cancelled = false;
 
     async function poll() {
       try {
-        const q = await api.signals.quote(selectedSymbol);
+        const q = await api.signals.mt5Quote(selectedSymbol);
         if (cancelled) return;
         setFetchedQuotes((prev) => ({
           ...prev,
@@ -132,17 +135,17 @@ export function Mt5ChartTerminal({
           },
         }));
       } catch {
-        /* mock ticks continue when quote unavailable */
+        /* chart sync continues when quote unavailable */
       }
     }
 
     void poll();
-    const id = window.setInterval(poll, 4000);
+    const id = window.setInterval(poll, 1000);
     return () => {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [selectedSymbol, selectedQuote]);
+  }, [selectedSymbol]);
 
   const openOrders = useMemo((): OrderRow[] => {
     const rows: OrderRow[] = [];
