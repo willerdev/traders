@@ -21,7 +21,7 @@ import { resolvePayoutDestination } from '../common/payout.util';
 import { ComplianceService } from '../compliance/compliance.service';
 
 const PLAN_DAYS = 5;
-const MIN_WALLET_TOPUP_USDT = 1;
+const MIN_WALLET_TOPUP_USDT = 2;
 
 @Injectable()
 export class WalletService {

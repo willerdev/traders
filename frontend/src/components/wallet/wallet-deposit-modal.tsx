@@ -43,7 +43,7 @@ export function WalletDepositModal({
   onComplete?: () => void;
 }) {
   const [step, setStep] = useState<Step>("amount");
-  const [amount, setAmount] = useState("10");
+  const [amount, setAmount] = useState("2");
   const [startPlan, setStartPlan] = useState(false);
   const [riskPercent, setRiskPercent] = useState("2");
   const [network, setNetwork] = useState("TRC20");
@@ -57,7 +57,7 @@ export function WalletDepositModal({
 
   const reset = useCallback(() => {
     setStep("amount");
-    setAmount("10");
+    setAmount("2");
     setStartPlan(false);
     setRiskPercent("2");
     setNetwork("TRC20");
@@ -103,7 +103,7 @@ export function WalletDepositModal({
     try {
       const numAmount = Number(amount);
       if (!Number.isFinite(numAmount) || numAmount < 1) {
-        throw new Error("Enter at least $1 USDT");
+        throw new Error("Enter at least $2 USDT");
       }
       if (startPlan && numAmount < minPlanDeposit) {
         throw new Error(
@@ -209,11 +209,11 @@ export function WalletDepositModal({
             <>
               <div>
                 <label className="mb-1 block text-xs text-gray-400">
-                  Amount (USDT) — any amount $1+
+                  Amount (USDT) — minimum $2
                 </label>
                 <Input
                   type="number"
-                  min={1}
+                  min={2}
                   step="0.01"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
@@ -253,7 +253,7 @@ export function WalletDepositModal({
               <Button
                 className="w-full"
                 onClick={() => setStep("network")}
-                disabled={!amount || Number(amount) < 1}
+                disabled={!amount || Number(amount) < 2}
               >
                 Continue
               </Button>

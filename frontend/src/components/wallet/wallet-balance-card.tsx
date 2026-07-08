@@ -1,21 +1,14 @@
 "use client";
 
 import { formatCurrency } from "@/lib/utils";
-import {
-  ArrowDownLeft,
-  ArrowUpRight,
-  ArrowLeftRight,
-  MoreHorizontal,
-  Settings,
-} from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Settings } from "lucide-react";
 import Link from "next/link";
 
 type WalletBalanceCardProps = {
   balance: number;
   totalEarned: number;
   totalDeposited: number;
-  onSend: () => void;
-  onReceive: () => void;
+  onWithdraw: () => void;
   onDeposit: () => void;
 };
 
@@ -23,26 +16,15 @@ export function WalletBalanceCard({
   balance,
   totalEarned,
   totalDeposited,
-  onSend,
-  onReceive,
+  onWithdraw,
   onDeposit,
 }: WalletBalanceCardProps) {
   const changePct =
     totalDeposited > 0 ? (totalEarned / totalDeposited) * 100 : 0;
 
   const actions = [
-    { label: "Send", icon: ArrowUpRight, onClick: onSend },
-    { label: "Receive", icon: ArrowDownLeft, onClick: onReceive },
-    { label: "Deposit", icon: ArrowLeftRight, onClick: onDeposit },
-    {
-      label: "More",
-      icon: MoreHorizontal,
-      onClick: () => {
-        document
-          .getElementById("wallet-activity")
-          ?.scrollIntoView({ behavior: "smooth" });
-      },
-    },
+    { label: "Withdraw", icon: ArrowUpRight, onClick: onWithdraw },
+    { label: "Deposit", icon: ArrowDownLeft, onClick: onDeposit },
   ] as const;
 
   return (
@@ -77,7 +59,7 @@ export function WalletBalanceCard({
         </Link>
       </div>
 
-      <div className="relative mt-6 grid grid-cols-4 gap-2">
+      <div className="relative mt-6 grid grid-cols-2 gap-2">
         {actions.map(({ label, icon: Icon, onClick }) => (
           <button
             key={label}

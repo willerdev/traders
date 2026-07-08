@@ -6,7 +6,6 @@ import { api, type WalletLedgerItem, type WalletSummary } from "@/lib/api";
 import { WalletBalanceCard } from "@/components/wallet/wallet-balance-card";
 import { WalletDepositModal } from "@/components/wallet/wallet-deposit-modal";
 import { WalletWithdrawModal } from "@/components/wallet/wallet-withdraw-modal";
-import { WalletReceiveModal } from "@/components/wallet/wallet-receive-modal";
 import { formatCurrency } from "@/lib/utils";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { Loader2 } from "lucide-react";
@@ -18,7 +17,6 @@ export default function WalletPage() {
   const [loading, setLoading] = useState(true);
   const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
-  const [receiveOpen, setReceiveOpen] = useState(false);
 
   async function refresh() {
     setLoading(true);
@@ -63,8 +61,7 @@ export default function WalletPage() {
           balance={summary.availableBalance}
           totalEarned={summary.totalEarned}
           totalDeposited={summary.totalDeposited}
-          onSend={() => setWithdrawOpen(true)}
-          onReceive={() => setReceiveOpen(true)}
+          onWithdraw={() => setWithdrawOpen(true)}
           onDeposit={() => setDepositOpen(true)}
         />
       )}
@@ -163,11 +160,6 @@ export default function WalletPage() {
         onClose={() => setWithdrawOpen(false)}
         availableBalance={summary?.availableBalance ?? 0}
         onComplete={() => void refresh()}
-      />
-      <WalletReceiveModal
-        open={receiveOpen}
-        onClose={() => setReceiveOpen(false)}
-        onDeposit={() => setDepositOpen(true)}
       />
     </div>
   );
