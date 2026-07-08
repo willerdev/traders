@@ -531,6 +531,23 @@ export const api = {
     const suffix = q.toString() ? `?${q.toString()}` : "";
     return request<IncomeJournalResult>(`/admin/income-journal${suffix}`);
   },
+  creditUserWallet: (data: {
+    userId?: string;
+    email?: string;
+    amount: number;
+    description?: string;
+  }) =>
+    request<{
+      userId: string;
+      amount: number;
+      balance: number;
+      description: string;
+      email: string | null;
+      displayName: string;
+    }>("/admin/wallet/credit", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
   publishSystemSignal: (body: {
     symbol: string;
     direction: "BUY" | "SELL";

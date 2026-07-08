@@ -239,6 +239,67 @@ export class WalletService {
     return { balance: newBalance };
   }
 
+  async creditBalance(
+    userId: string,
+    amount: number,
+    type: WalletTxType,
+    description: string,
+    referenceId?: string,
+  ) {
+    if (amount <= 0) {
+      throw new BadRequestException('Amount must be positive');
+    }
+    const wallet = await this.getOrCreateWallet(userId);
+    const newBalance = Number(wallet.availableBalance) + amount;
+    await this.prisma.$transaction([
+      this.prisma.platformWallet.update({
+        where: { userId },
+        data: { availableBalance: newBalance },
+      }),
+      this.prisma.walletTransaction.create({
+        data: {
+          userId,
+          amount,
+          type,
+          description,
+          referenceId,
+          balanceAfter: newBalance,
+        },
+      }),
+    ]);
+    return { balance: newBalance };
+  }
+
+  async adminCreditWallet(
+    userId: string,
+    amount: number,
+    adminId: string,
+    description?: string,
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const note =
+      description?.trim() ||
+      `Platform credit — $${amount.toFixed(2)} USDT`;
+    const { balance } = await this.creditBalance(
+      userId,
+      amount,
+      'ADJUSTMENT',
+      note,
+      `admin_${adminId}`,
+    );
+
+    this.notifications.walletAdminCredit(userId, { amount, balance });
+
+    return {
+      userId,
+      amount,
+      balance,
+      description: note,
+    };
+  }
+
   private depositBelowMinMessage(network: string) {
     return `Amount is below the minimum for ${network}. Try a higher amount or switch network.`;
   }

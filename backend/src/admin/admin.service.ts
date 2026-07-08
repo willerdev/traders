@@ -25,6 +25,7 @@ import { CreatePromoCodeDto, BulkCreatePromoCodesDto, SendMessageDto, UpdateStaf
 import { assessEmail } from '../common/email-quality.util';
 import { resolveAdminPermissions } from './admin-permissions.util';
 import { PresenceService } from '../presence/presence.service';
+import { WalletService } from '../wallet/wallet.service';
 
 @Injectable()
 export class AdminService {
@@ -45,6 +46,7 @@ export class AdminService {
     private notifications: NotificationService,
     private config: ConfigService,
     private presence: PresenceService,
+    private walletService: WalletService,
   ) {}
 
   getLivePresence() {
@@ -1576,6 +1578,51 @@ export class AdminService {
       .slice(skip, skip + take);
 
     return { items, count: items.length, limit: take, offset: skip };
+  }
+
+  async creditUserWallet(
+    adminId: string,
+    input: {
+      userId?: string;
+      email?: string;
+      amount: number;
+      description?: string;
+    },
+  ) {
+    const email = input.email?.trim().toLowerCase();
+    const user = input.userId
+      ? await this.prisma.user.findUnique({ where: { id: input.userId } })
+      : email
+        ? await this.prisma.user.findFirst({
+            where: { email: { equals: email, mode: 'insensitive' } },
+          })
+        : null;
+
+    if (!user) {
+      throw new NotFoundException('User not found — provide a valid userId or email');
+    }
+    if (!Number.isFinite(input.amount) || input.amount <= 0) {
+      throw new BadRequestException('Amount must be positive');
+    }
+
+    const result = await this.walletService.adminCreditWallet(
+      user.id,
+      input.amount,
+      adminId,
+      input.description,
+    );
+
+    await this.logAction(adminId, 'WALLET_CREDIT', user.id, {
+      amount: input.amount,
+      balance: result.balance,
+      description: result.description,
+    });
+
+    return {
+      ...result,
+      email: user.email,
+      displayName: user.displayName,
+    };
   }
 
   publishSystemSignal(body: {

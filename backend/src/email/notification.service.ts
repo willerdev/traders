@@ -251,18 +251,18 @@ export class NotificationService {
     if (!user) return false;
 
     const html = this.email.layout(
-      'Payout credited to your wallet',
+      'Reward credited',
       `<p>Hi ${this.escape(user.name)},</p>
-      <p>Your payout has been approved and <strong>$${data.amount.toFixed(2)} USDT</strong> is now in your platform wallet.</p>
-      <p>New wallet balance: <strong>$${data.balance.toFixed(2)} USDT</strong></p>
+      <p>Your reward have been credited to your wallet.</p>
+      <p><strong>$${data.amount.toFixed(2)} USDT</strong> — new balance: <strong>$${data.balance.toFixed(2)} USDT</strong></p>
       ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
     );
 
     return this.email.send({
       to: user.email,
-      subject: `Payout approved — $${data.amount.toFixed(2)} USDT in your wallet`,
+      subject: 'Your reward have been credited to your wallet',
       html,
-      text: `$${data.amount.toFixed(2)} USDT credited to your platform wallet.`,
+      text: 'Your reward have been credited to your wallet.',
     });
   }
 
@@ -1116,6 +1116,58 @@ export class NotificationService {
       this.sendWalletDepositConfirmed(userId, data),
       'Wallet deposit confirmed',
     );
+    this.dispatch(
+      this.sendWalletDepositAdminAlert(userId, data),
+      'Admin deposit alert',
+    );
+  }
+
+  private async sendWalletDepositAdminAlert(
+    userId: string,
+    data: { amount: number; balance: number },
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, displayName: true },
+    });
+    if (!user) return false;
+
+    const admins = await this.prisma.user.findMany({
+      where: { role: 'ADMIN', email: { not: null } },
+      select: { email: true },
+    });
+    const fallback = 'willeratmit12@gmail.com';
+    const recipients = new Set<string>();
+    for (const admin of admins) {
+      if (admin.email) recipients.add(admin.email.trim().toLowerCase());
+    }
+    if (recipients.size === 0) recipients.add(fallback);
+
+    const userLine = user.email
+      ? `${this.escape(user.displayName)} (${this.escape(user.email)})`
+      : this.escape(user.displayName);
+
+    const html = this.email.layout(
+      'New wallet deposit',
+      `<p>A user deposit has been confirmed on the platform.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">User</td><td style="padding:6px 0;"><strong>${userLine}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Deposited</td><td style="padding:6px 0;"><strong>$${data.amount.toFixed(2)} USDT</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">New balance</td><td style="padding:6px 0;"><strong>$${data.balance.toFixed(2)} USDT</strong></td></tr>
+      </table>`,
+    );
+
+    let sent = false;
+    for (const to of recipients) {
+      const ok = await this.email.send({
+        to,
+        subject: `Wallet deposit — $${data.amount.toFixed(2)} USDT from ${user.displayName}`,
+        html,
+        text: `Deposit confirmed: ${user.displayName} deposited $${data.amount.toFixed(2)} USDT. Balance: $${data.balance.toFixed(2)}.`,
+      });
+      if (ok) sent = true;
+    }
+    return sent;
   }
 
   private async sendWalletDepositConfirmed(
@@ -1147,6 +1199,37 @@ export class NotificationService {
       this.sendWalletWithdrawRequested(userId, data),
       'Wallet withdraw requested',
     );
+  }
+
+  walletAdminCredit(
+    userId: string,
+    data: { amount: number; balance: number },
+  ) {
+    this.dispatch(
+      this.sendWalletAdminCredit(userId, data),
+      'Wallet admin credit',
+    );
+  }
+
+  private async sendWalletAdminCredit(
+    userId: string,
+    data: { amount: number; balance: number },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Wallet credited',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p><strong>$${data.amount.toFixed(2)} USDT</strong> has been added to your platform wallet.</p>
+      <p>Available balance: <strong>$${data.balance.toFixed(2)} USDT</strong></p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Your wallet has been credited',
+      html,
+      text: `$${data.amount.toFixed(2)} USDT credited. Balance: $${data.balance.toFixed(2)} USDT.`,
+    });
   }
 
   private async sendWalletWithdrawRequested(

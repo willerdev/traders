@@ -31,6 +31,8 @@ const PROGRESS_LABEL: Record<Progress, string> = {
   failed: "Payment failed",
 };
 
+const DEPOSIT_POLL_COOLDOWN_SEC = 120;
+
 export function WalletDepositModal({
   open,
   onClose,
@@ -55,6 +57,8 @@ export function WalletDepositModal({
   const [progress, setProgress] = useState<Progress>("waiting");
   const [copied, setCopied] = useState(false);
   const [depositMin, setDepositMin] = useState(10);
+  const [payStartedAt, setPayStartedAt] = useState<number | null>(null);
+  const [cooldownLeft, setCooldownLeft] = useState(DEPOSIT_POLL_COOLDOWN_SEC);
 
   const belowMinMessage = (net: string) =>
     `Amount is below the minimum for ${net}. Try a higher amount or switch network.`;
@@ -71,6 +75,8 @@ export function WalletDepositModal({
     setPayAddress("");
     setPayAmount(null);
     setProgress("waiting");
+    setPayStartedAt(null);
+    setCooldownLeft(DEPOSIT_POLL_COOLDOWN_SEC);
   }, []);
 
   useEffect(() => {
@@ -111,11 +117,25 @@ export function WalletDepositModal({
   }, [paymentId, onComplete]);
 
   useEffect(() => {
+    if (!paymentId || step === "done" || payStartedAt == null) return;
+    const tick = () => {
+      const elapsed = Math.floor((Date.now() - payStartedAt) / 1000);
+      setCooldownLeft(Math.max(0, DEPOSIT_POLL_COOLDOWN_SEC - elapsed));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [paymentId, step, payStartedAt]);
+
+  useEffect(() => {
     if (!paymentId || step === "done") return;
     const t = setInterval(() => void pollStatus(), 8000);
     void pollStatus();
     return () => clearInterval(t);
   }, [paymentId, step, pollStatus]);
+
+  const canManualRefresh = cooldownLeft <= 0;
+  const cooldownLabel = `${String(Math.floor(cooldownLeft / 60)).padStart(1, "0")}:${String(cooldownLeft % 60).padStart(2, "0")}`;
 
   async function createPayment() {
     setError("");
@@ -140,6 +160,8 @@ export function WalletDepositModal({
       setPayAmount(res.payAmount ?? res.amount);
       setStep("pay");
       setProgress("waiting");
+      setPayStartedAt(Date.now());
+      setCooldownLeft(DEPOSIT_POLL_COOLDOWN_SEC);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start deposit");
     } finally {
@@ -330,17 +352,41 @@ export function WalletDepositModal({
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <Badge variant="gold">{PROGRESS_LABEL[progress]}</Badge>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => void pollStatus()}
-                      className="gap-1 text-muted"
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      Refresh
-                    </Button>
+                    {canManualRefresh ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void pollStatus()}
+                        className="gap-1 text-muted"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        Refresh
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-muted">
+                        Refresh in {cooldownLabel}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mb-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-center">
+                    <p className="text-[10px] uppercase tracking-wide text-muted">
+                      Confirmation check
+                    </p>
+                    <p className="text-2xl font-bold tabular-nums text-white">
+                      {canManualRefresh ? "Ready" : cooldownLabel}
+                    </p>
+                    {!canManualRefresh && (
+                      <div className="mx-auto mt-2 h-1.5 max-w-xs overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className="h-full bg-primary transition-all duration-1000"
+                          style={{
+                            width: `${((DEPOSIT_POLL_COOLDOWN_SEC - cooldownLeft) / DEPOSIT_POLL_COOLDOWN_SEC) * 100}%`,
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
                   <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
                     <p className="text-xs uppercase tracking-wide text-muted">
@@ -364,7 +410,8 @@ export function WalletDepositModal({
                     </Button>
                   </div>
                   <p className="text-xs text-gray-500">
-                    We check every 8 seconds. Stay on this screen until confirmed.
+                    We check automatically every 8 seconds. Manual refresh unlocks
+                    after the 2-minute countdown — no need to keep tapping refresh.
                   </p>
                 </>
               )}

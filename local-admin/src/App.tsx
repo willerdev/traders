@@ -417,6 +417,10 @@ export default function App() {
   const [incomeJournalSource, setIncomeJournalSource] = useState<
     "" | "INVESTOR" | "DEPOSITOR"
   >("");
+  const [creditEmail, setCreditEmail] = useState("");
+  const [creditAmount, setCreditAmount] = useState("");
+  const [creditNote, setCreditNote] = useState("");
+  const [creditSaving, setCreditSaving] = useState(false);
   const [systemSymbol, setSystemSymbol] = useState("EURUSD");
   const [systemDirection, setSystemDirection] = useState<"BUY" | "SELL">("BUY");
   const [systemEntryMin, setSystemEntryMin] = useState("1.0850");
@@ -4039,6 +4043,75 @@ export default function App() {
                     }}
                   >
                     {platformSaving ? "Saving…" : "Save settings"}
+                  </button>
+                </div>
+
+                <div className="panel" style={{ marginTop: "1.5rem" }}>
+                  <h3>Credit user wallet</h3>
+                  <p className="muted">
+                    Add USDT to any user&apos;s platform wallet by email or user ID.
+                  </p>
+                  <div className="form-grid" style={{ marginTop: "0.75rem" }}>
+                    <label>
+                      User email
+                      <input
+                        className="input"
+                        placeholder="trader@example.com"
+                        value={creditEmail}
+                        onChange={(e) => setCreditEmail(e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      Amount (USDT)
+                      <input
+                        className="input"
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={creditAmount}
+                        onChange={(e) => setCreditAmount(e.target.value)}
+                      />
+                    </label>
+                    <label style={{ gridColumn: "1 / -1" }}>
+                      Note (optional)
+                      <input
+                        className="input"
+                        placeholder="Bonus, correction, etc."
+                        value={creditNote}
+                        onChange={(e) => setCreditNote(e.target.value)}
+                      />
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    style={{ marginTop: "0.75rem" }}
+                    disabled={creditSaving || !creditEmail.trim() || !creditAmount}
+                    onClick={() => {
+                      setCreditSaving(true);
+                      void api
+                        .creditUserWallet({
+                          email: creditEmail.trim(),
+                          amount: Number(creditAmount),
+                          description: creditNote.trim() || undefined,
+                        })
+                        .then((res) => {
+                          setMessage(
+                            `Credited ${fmtMoney(res.amount)} to ${res.displayName} — balance ${fmtMoney(res.balance)}.`,
+                          );
+                          setCreditEmail("");
+                          setCreditAmount("");
+                          setCreditNote("");
+                        })
+                        .catch((e) =>
+                          setMessage(
+                            e instanceof Error ? e.message : "Credit failed",
+                          ),
+                        )
+                        .finally(() => setCreditSaving(false));
+                    }}
+                  >
+                    {creditSaving ? "Crediting…" : "Credit wallet"}
                   </button>
                 </div>
 

@@ -12,6 +12,7 @@ import { MessagesModule } from '../messages/messages.module';
 import { UploadsModule } from '../uploads/uploads.module';
 import { MetaApiModule } from '../metaapi/metaapi.module';
 import { PresenceModule } from '../presence/presence.module';
+import { WalletModule } from '../wallet/wallet.module';
 import { AdminPermissionGuard } from '../auth/guards/admin-permission.guard';
 
 @Module({
@@ -27,6 +28,7 @@ import { AdminPermissionGuard } from '../auth/guards/admin-permission.guard';
     MessagesModule,
     UploadsModule,
     PresenceModule,
+    WalletModule,
   ],
   controllers: [AdminController],
   providers: [AdminService, AdminPermissionGuard],

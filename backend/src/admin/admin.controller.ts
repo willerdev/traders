@@ -558,6 +558,20 @@ export class AdminController {
     );
   }
 
+  @Post('wallet/credit')
+  creditUserWallet(
+    @Request() req: { user: { id: string } },
+    @Body()
+    body: {
+      userId?: string;
+      email?: string;
+      amount: number;
+      description?: string;
+    },
+  ) {
+    return this.adminService.creditUserWallet(req.user.id, body);
+  }
+
   @Post('system-signals')
   publishSystemSignal(
     @Body()
