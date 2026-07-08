@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   MessageCircle,
   LineChart,
+  ScrollText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore, useDashboardStore } from "@/stores/auth";
@@ -25,6 +26,7 @@ import { ChatFab } from "@/components/layout/chat-fab";
 const navItems = [
   { href: "/dashboard", label: "Dashboard", shortLabel: "Home", icon: LayoutDashboard },
   { href: "/wallet", label: "Wallet", shortLabel: "Wallet", icon: Wallet },
+  { href: "/journal", label: "Journal", shortLabel: "Journal", icon: ScrollText },
   {
     href: "/mt5",
     label: "MT5",

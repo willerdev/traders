@@ -11,13 +11,15 @@ import {
   Wallet,
   X,
   PiggyBank,
+  ScrollText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const cashRoutes = ["/wallet", "/tp-claims", "/payouts", "/settings"] as const;
+const cashRoutes = ["/wallet", "/journal", "/tp-claims", "/payouts", "/settings"] as const;
 
 const cashMenuItems = [
   { href: "/wallet", label: "Wallet", icon: PiggyBank },
+  { href: "/journal", label: "Journal", icon: ScrollText },
   { href: "/tp-claims", label: "Claims", icon: ClipboardCheck },
   { href: "/payouts", label: "Payouts", icon: Wallet },
   { href: "/settings", label: "Account", icon: Settings },

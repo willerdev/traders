@@ -44,6 +44,7 @@ import {
 } from "@/components/mt5/mt5-ui";
 import { Mt5Assistant } from "@/components/mt5/mt5-assistant";
 import { Mt5LiveSyncCard } from "@/components/mt5/mt5-live-sync-card";
+import { Mt5ChartTerminal } from "@/components/mt5/mt5-chart-terminal";
 
 type Tab = "quotes" | "setups" | "trades" | "history";
 type HistorySubTab = "positions" | "orders" | "deals";
@@ -97,6 +98,9 @@ export default function Mt5UserPage() {
   const [closingAll, setClosingAll] = useState(false);
   const [tradingAccess, setTradingAccess] = useState<boolean | null>(null);
   const [hadPaidBefore, setHadPaidBefore] = useState(false);
+  const [selectedChartSymbol, setSelectedChartSymbol] = useState<string | null>(
+    null,
+  );
 
   const refreshTradingAccess = useCallback(async () => {
     try {
@@ -137,6 +141,12 @@ export default function Mt5UserPage() {
   const account = data?.account;
   const limitCount = data?.stats.limitCount ?? 0;
   const runningCount = data?.stats.runningCount ?? runningTrades.length;
+
+  const chartSymbol =
+    selectedChartSymbol ??
+    runningTrades[0]?.symbol ??
+    quotes[0]?.symbol ??
+    "EURUSD";
 
   const historyPositions = useMemo(
     () => history.filter((h) => h.status === "WON" || h.status === "LOST"),
@@ -494,6 +504,18 @@ export default function Mt5UserPage() {
           />
         )}
       </div>
+
+      {(tab === "quotes" || tab === "trades") && (
+        <Mt5ChartTerminal
+          quotes={quotes}
+          runningTrades={runningTrades}
+          limitTrades={limitTrades}
+          setups={setups}
+          selectedSymbol={chartSymbol}
+          onSelectSymbol={setSelectedChartSymbol}
+          onOpenSetup={setSelectedSetup}
+        />
+      )}
 
       {error && (
         <p className="mx-4 mt-3 rounded border border-[#ff5252]/30 bg-[#ff5252]/10 px-3 py-2 text-xs text-[#ff5252]">

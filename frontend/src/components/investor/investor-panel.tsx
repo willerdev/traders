@@ -11,7 +11,6 @@ import {
   PaymentSourceSelector,
   type PaymentSource,
 } from "@/components/wallet/payment-source-selector";
-import { DailyIncomeJournal } from "@/components/wallet/daily-income-journal";
 import { cn, formatCurrency } from "@/lib/utils";
 import Link from "next/link";
 import {
@@ -328,7 +327,6 @@ export function InvestorPanel() {
         </Card>
       )}
 
-      <DailyIncomeJournal compact />
     </div>
   );
 }

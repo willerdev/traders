@@ -7,7 +7,6 @@ import { api, type DepositorPlanPreview, type WalletSummary } from "@/lib/api";
 import { WalletDepositPanel } from "@/components/wallet/wallet-deposit-panel";
 import { formatCurrency } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
-import { DailyIncomeJournal } from "@/components/wallet/daily-income-journal";
 
 export function DepositorPanel() {
   const [summary, setSummary] = useState<WalletSummary | null>(null);
@@ -152,7 +151,6 @@ export function DepositorPanel() {
         </Card>
       )}
 
-      <DailyIncomeJournal compact />
     </div>
   );
 }
