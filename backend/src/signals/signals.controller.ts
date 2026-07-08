@@ -19,6 +19,7 @@ import {
   SaveSignalDraftDto,
   ClaimSetupDto,
   UpdateSetupStopsDto,
+  ModifyMt5PositionStopsDto,
   InvalidateSetupDto,
   PartialCloseSetupDto,
   TradeOutcomeWebhookDto,
@@ -369,6 +370,20 @@ export class SignalsController {
     return this.signalsService.closeUserMetaApiPosition(
       req.user.id,
       positionId,
+    );
+  }
+
+  @Post('mt5/positions/:positionId/modify-stops')
+  @UseGuards(JwtAuthGuard)
+  modifyUserMt5PositionStops(
+    @Request() req: { user: { id: string } },
+    @Param('positionId') positionId: string,
+    @Body() dto: ModifyMt5PositionStopsDto,
+  ) {
+    return this.signalsService.modifyUserMt5PositionStops(
+      req.user.id,
+      positionId,
+      dto,
     );
   }
 

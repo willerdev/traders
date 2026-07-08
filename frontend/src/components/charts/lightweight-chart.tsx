@@ -5,7 +5,9 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
+  useState,
 } from "react";
 import { useThemeStore } from "@/stores/theme";
 import {
@@ -25,6 +27,10 @@ import {
   useLightweightChart,
   type SetChartDataOptions,
 } from "@/components/charts/use-lightweight-chart";
+import { useDraggableOrderLines } from "@/components/charts/use-draggable-order-lines";
+import { validateStopDrag } from "@/components/charts/validate-stop-levels";
+import { fmtMt5Price } from "@/components/mt5/mt5-ui";
+import { cn } from "@/lib/utils";
 
 export type LightweightChartHandle = {
   setSymbol: (symbol: ChartSymbol) => void;
@@ -46,6 +52,8 @@ type Props = {
   markers?: ChartMarker[];
   priceLines?: ChartPriceLine[];
   className?: string;
+  draggableLines?: boolean;
+  onPriceLineDragEnd?: (line: ChartPriceLine, newPrice: number) => Promise<void>;
   onLoadingChange?: (loading: boolean, reason?: ChartLoadReason) => void;
   onChartStatusChange?: (status: {
     source?: "metaapi" | "quote-fallback";
@@ -74,6 +82,8 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
       markers = [],
       priceLines = [],
       className,
+      draggableLines = false,
+      onPriceLineDragEnd,
       onLoadingChange,
       onChartStatusChange,
     },
@@ -81,6 +91,9 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
   ) {
     const theme = useThemeStore((s) => s.theme);
     const chart = useLightweightChart(theme, symbol);
+    const [dragPrices, setDragPrices] = useState<Record<string, number>>({});
+    const [dragError, setDragError] = useState<string | null>(null);
+    const onPriceLineDragEndRef = useRef(onPriceLineDragEnd);
     const markersExtraRef = useRef<ChartMarker[]>([]);
     const symbolRef = useRef(symbol);
     const timeframeRef = useRef(timeframe);
@@ -109,6 +122,76 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
     setMarkersRef.current = chart.setMarkers;
     clearMarkersRef.current = chart.clearMarkers;
     setPriceLinesRef.current = chart.setPriceLines;
+    onPriceLineDragEndRef.current = onPriceLineDragEnd;
+
+    const mergedPriceLines = useMemo(() => {
+      return priceLines.map((line) => {
+        const override = dragPrices[line.id];
+        if (override == null) return line;
+        const title =
+          line.kind === "sl"
+            ? `SL · ${fmtMt5Price(override)}`
+            : line.kind === "tp"
+              ? `TP · ${fmtMt5Price(override)}`
+              : line.title;
+        return { ...line, price: override, title };
+      });
+    }, [priceLines, dragPrices]);
+
+    useEffect(() => {
+      setDragPrices((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const line of priceLines) {
+          if (next[line.id] != null && Math.abs(next[line.id] - line.price) < 1e-9) {
+            delete next[line.id];
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, [priceLines]);
+
+    const handleDragEnd = useCallback(
+      async (line: ChartPriceLine, newPrice: number) => {
+        const linesForValidation = mergedPriceLines.map((l) =>
+          l.id === line.id ? { ...l, price: newPrice } : l,
+        );
+        const err = validateStopDrag(line, newPrice, linesForValidation);
+        if (err) {
+          setDragPrices((prev) => {
+            const next = { ...prev };
+            delete next[line.id];
+            return next;
+          });
+          setDragError(err);
+          throw new Error(err);
+        }
+        setDragError(null);
+        if (!onPriceLineDragEndRef.current) return;
+        await onPriceLineDragEndRef.current(line, newPrice);
+        setDragPrices((prev) => {
+          const next = { ...prev };
+          delete next[line.id];
+          return next;
+        });
+      },
+      [mergedPriceLines],
+    );
+
+    const drag = useDraggableOrderLines({
+      containerRef: chart.containerRef,
+      ready: chart.ready,
+      lines: mergedPriceLines,
+      enabled: draggableLines && Boolean(onPriceLineDragEnd),
+      priceToCoordinate: chart.priceToCoordinate,
+      coordinateToPrice: chart.coordinateToPrice,
+      setScrollEnabled: chart.setScrollEnabled,
+      onLinePriceChange: (lineId, price) => {
+        setDragPrices((prev) => ({ ...prev, [lineId]: price }));
+      },
+      onDragEnd: handleDragEnd,
+    });
 
     useEffect(() => {
       seedPriceRef.current = seedPrice;
@@ -254,17 +337,37 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
 
     useEffect(() => {
       if (!chart.ready) return;
-      setPriceLinesRef.current(priceLines);
-    }, [priceLines, chart.ready]);
+      setPriceLinesRef.current(mergedPriceLines);
+    }, [mergedPriceLines, chart.ready]);
 
     return (
-      <div
-        ref={chart.containerRef}
-        className={className}
-        style={{ minHeight: 180 }}
-        role="img"
-        aria-label={`${symbol} candlestick chart`}
-      />
+      <div className="relative h-full w-full">
+        <div
+          ref={chart.containerRef}
+          className={cn(className, drag.cursor && "touch-none")}
+          style={{ minHeight: 180, cursor: drag.cursor }}
+          role="img"
+          aria-label={`${symbol} candlestick chart`}
+        />
+        {drag.dragLabel && (
+          <div
+            className="pointer-events-none absolute right-12 z-10 rounded border border-[var(--mt5-divider)] bg-[var(--mt5-surface)]/95 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-[var(--mt5-text)] shadow-sm"
+            style={{ top: Math.max(4, drag.dragLabel.y - 10) }}
+          >
+            {fmtMt5Price(drag.dragLabel.price)}
+          </div>
+        )}
+        {drag.saving && (
+          <div className="pointer-events-none absolute left-2 top-2 rounded bg-[var(--mt5-surface)]/90 px-2 py-1 text-[10px] text-[var(--mt5-muted)]">
+            Saving…
+          </div>
+        )}
+        {dragError && (
+          <div className="pointer-events-none absolute bottom-2 left-2 right-2 rounded-md border border-[#ff5252]/30 bg-[#ff5252]/10 px-2 py-1 text-[10px] text-[#ff5252]">
+            {dragError}
+          </div>
+        )}
+      </div>
     );
   },
 );

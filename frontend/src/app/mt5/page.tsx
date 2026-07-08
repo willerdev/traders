@@ -44,6 +44,7 @@ import {
   useMt5Expand,
 } from "@/components/mt5/mt5-ui";
 import { Mt5Assistant } from "@/components/mt5/mt5-assistant";
+import { useMt5ChartDisplaySettings } from "@/hooks/use-mt5-chart-display-settings";
 import { Mt5LiveSyncCard } from "@/components/mt5/mt5-live-sync-card";
 import { Mt5ChartTerminal } from "@/components/mt5/mt5-chart-terminal";
 import {
@@ -108,6 +109,7 @@ export default function Mt5UserPage() {
   const [selectedChartSymbol, setSelectedChartSymbol] = useState<string | null>(
     null,
   );
+  const { settings: chartDisplaySettings } = useMt5ChartDisplaySettings();
 
   const refreshTradingAccess = useCallback(async () => {
     try {
@@ -574,6 +576,7 @@ export default function Mt5UserPage() {
             onCloseTrade={handleCloseTrade}
             showOrdersPanel={tab === "trades" || tab === "chart"}
             chartOnly={tab === "chart"}
+            onStopsUpdated={() => void loadRunning()}
           />
         </div>
       )}
@@ -645,7 +648,9 @@ export default function Mt5UserPage() {
         />
       )}
 
-      <Mt5Assistant onActionsTaken={refreshAfterAssistant} />
+      {chartDisplaySettings.showAssistant && (
+        <Mt5Assistant onActionsTaken={refreshAfterAssistant} />
+      )}
 
       <div className="md:hidden">
         <Mt5MobileBottomNav
@@ -1004,19 +1009,34 @@ function PositionsPanel({
               <>
                 <div>
                   <span className="font-semibold">{trade.symbol}</span>
-                  <span className="text-[var(--mt5-muted)]">, </span>
+                  <span className="text-[var(--mt5-muted)]"> · </span>
                   <Mt5DirectionTag
                     direction={trade.direction}
                     volume={trade.volume}
                   />
+                  {trade.volume != null && (
+                    <span className="ml-1 text-[10px] text-[var(--mt5-muted)]">
+                      {trade.volume.toFixed(2)} lot
+                    </span>
+                  )}
                 </div>
-                <Mt5Pnl value={profit} className="text-base" />
+                <Mt5Pnl value={profit} className="text-base font-semibold" />
               </>
             }
             subheader={
               <>
-                {fmtMt5Price(trade.openPrice)} →{" "}
-                {fmtMt5Price(trade.currentPrice ?? trade.openPrice)}
+                <span>
+                  {fmtMt5Price(trade.openPrice)} →{" "}
+                  <span className="font-medium text-[var(--mt5-text)]">
+                    {fmtMt5Price(trade.currentPrice ?? trade.openPrice)}
+                  </span>
+                </span>
+                {(trade.stopLoss != null || trade.takeProfit != null) && (
+                  <span className="mt-0.5 block text-[10px] text-[var(--mt5-muted)]">
+                    SL {fmtMt5Price(trade.stopLoss)} · TP{" "}
+                    {fmtMt5Price(trade.takeProfit)}
+                  </span>
+                )}
               </>
             }
             actions={

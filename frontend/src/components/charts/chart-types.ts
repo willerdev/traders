@@ -34,6 +34,15 @@ export type ChartPriceLine = {
   color: string;
   title?: string;
   lineStyle?: 0 | 1 | 2 | 3;
+  kind?: "entry" | "sl" | "tp" | "limit";
+  draggable?: boolean;
+  signalId?: string | null;
+  positionId?: string;
+  orderId?: string;
+  direction?: "BUY" | "SELL";
+  entryMin?: number;
+  entryMax?: number;
+  openPrice?: number;
 };
 
 export const MAX_HISTORICAL_BARS = 500;

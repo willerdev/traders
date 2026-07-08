@@ -31,6 +31,9 @@ export type UseLightweightChartResult = {
   applyTheme: (mode: ChartThemeMode) => void;
   applySymbolFormat: (symbol: string) => void;
   fitContent: () => void;
+  priceToCoordinate: (price: number) => number | null;
+  coordinateToPrice: (y: number) => number | null;
+  setScrollEnabled: (enabled: boolean) => void;
 };
 
 export function useLightweightChart(
@@ -301,6 +304,23 @@ export function useLightweightChart(
     chartRef.current?.timeScale().fitContent();
   }, []);
 
+  const priceToCoordinate = useCallback((price: number) => {
+    const y = seriesRef.current?.priceToCoordinate(price);
+    return y ?? null;
+  }, []);
+
+  const coordinateToPrice = useCallback((y: number) => {
+    const price = seriesRef.current?.coordinateToPrice(y);
+    return price ?? null;
+  }, []);
+
+  const setScrollEnabled = useCallback((enabled: boolean) => {
+    chartRef.current?.applyOptions({
+      handleScroll: enabled,
+      handleScale: enabled,
+    });
+  }, []);
+
   return {
     containerRef,
     ready,
@@ -312,5 +332,8 @@ export function useLightweightChart(
     applyTheme,
     applySymbolFormat,
     fitContent,
+    priceToCoordinate,
+    coordinateToPrice,
+    setScrollEnabled,
   };
 }

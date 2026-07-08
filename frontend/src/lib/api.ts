@@ -351,6 +351,14 @@ class ApiClient {
         `/signals/mt5/positions/${encodeURIComponent(positionId)}/close`,
         { method: "POST" },
       ),
+    modifyMt5PositionStops: (
+      positionId: string,
+      stops: { stopLoss?: number; takeProfit?: number },
+    ) =>
+      this.request<ModifyMt5PositionStopsResult>(
+        `/signals/mt5/positions/${encodeURIComponent(positionId)}/modify-stops`,
+        { method: "POST", body: JSON.stringify(stops) },
+      ),
     closeAllMt5Positions: () =>
       this.request<CloseAllMt5Result>("/signals/mt5/positions/close-all", {
         method: "POST",
@@ -1765,6 +1773,15 @@ export interface UpdateSetupStopsResult {
   message: string;
 }
 
+export interface ModifyMt5PositionStopsResult {
+  ok: boolean;
+  positionId: string;
+  signalId?: string;
+  stopLoss?: number | null;
+  takeProfit?: number | null;
+  message: string;
+}
+
 export interface MetaApiAccountRow {
   id: string;
   login: string;
@@ -1878,6 +1895,7 @@ export interface UserMt5Trade {
   canSetBreakeven?: boolean;
   breakevenSet?: boolean;
   canPartialClose?: boolean;
+  canAdjustStops?: boolean;
   executionLabel?: string;
 }
 

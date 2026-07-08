@@ -744,6 +744,16 @@ export class UpdateSetupStopsDto {
   takeProfit?: number;
 }
 
+export class ModifyMt5PositionStopsDto {
+  @IsOptional()
+  @IsNumber()
+  stopLoss?: number;
+
+  @IsOptional()
+  @IsNumber()
+  takeProfit?: number;
+}
+
 export class PartialCloseSetupDto {
   @IsNumber()
   @Min(0.01)

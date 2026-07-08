@@ -10,7 +10,7 @@ import {
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
-import { CreateSignalDto, ClaimSetupDto, TradeOutcomeWebhookDto, TradeLifecycleItemDto, TradeLifecycleWebhookDto, HubActionDto, UpdateSetupStopsDto } from '../common/dto';
+import { CreateSignalDto, ClaimSetupDto, TradeOutcomeWebhookDto, TradeLifecycleItemDto, TradeLifecycleWebhookDto, HubActionDto, UpdateSetupStopsDto, ModifyMt5PositionStopsDto } from '../common/dto';
 import { createHash } from 'crypto';
 import { ComplianceService } from '../compliance/compliance.service';
 import { ForwardSignalResult, SignalHubService } from './signal-hub.service';
@@ -2553,6 +2553,41 @@ export class SignalsService {
       if (takeProfit >= entryMin) {
         throw new BadRequestException(
           'For SELL setups, take profit must be below the entry range',
+        );
+      }
+    }
+  }
+
+  private validatePositionStopLevels(
+    direction: TradeDirection,
+    openPrice: number,
+    stopLoss: number | undefined,
+    takeProfit: number | undefined,
+  ) {
+    if (!Number.isFinite(openPrice)) {
+      throw new BadRequestException('Open price is required to validate stop levels');
+    }
+
+    if (direction === 'BUY') {
+      if (stopLoss != null && Number.isFinite(stopLoss) && stopLoss >= openPrice) {
+        throw new BadRequestException(
+          'For BUY positions, stop loss must be below the entry price',
+        );
+      }
+      if (takeProfit != null && Number.isFinite(takeProfit) && takeProfit <= openPrice) {
+        throw new BadRequestException(
+          'For BUY positions, take profit must be above the entry price',
+        );
+      }
+    } else {
+      if (stopLoss != null && Number.isFinite(stopLoss) && stopLoss <= openPrice) {
+        throw new BadRequestException(
+          'For SELL positions, stop loss must be above the entry price',
+        );
+      }
+      if (takeProfit != null && Number.isFinite(takeProfit) && takeProfit >= openPrice) {
+        throw new BadRequestException(
+          'For SELL positions, take profit must be below the entry price',
         );
       }
     }
@@ -5594,6 +5629,7 @@ export class SignalsService {
           ? Boolean(linked.trade.tp1BreakevenAt)
           : false,
         canPartialClose: pos.volume > 0 && Boolean(linked),
+        canAdjustStops: true,
         executionLabel: syncActive
           ? 'Running on your linked MT5'
           : 'Running on platform MT5',
@@ -5664,6 +5700,140 @@ export class SignalsService {
     });
 
     return { items, count: items.length };
+  }
+
+  async modifyUserMt5PositionStops(
+    userId: string,
+    positionId: string,
+    dto: ModifyMt5PositionStopsDto,
+  ) {
+    await this.compliance.requireActiveTrader(userId);
+
+    if (dto.stopLoss === undefined && dto.takeProfit === undefined) {
+      throw new BadRequestException('Provide stopLoss and/or takeProfit to update');
+    }
+
+    if (!this.metaApi.isConfigured) {
+      throw new ServiceUnavailableException('Live trading is not configured');
+    }
+
+    const linkedSignal = await this.prisma.signal.findFirst({
+      where: {
+        userId,
+        status: 'OPEN',
+        OR: [
+          { metaApiPositionId: positionId },
+          { metaApiOrderId: positionId },
+        ],
+      },
+    });
+
+    if (linkedSignal) {
+      const result = await this.updateSetupStops(userId, linkedSignal.signalId, dto);
+      return {
+        ok: true,
+        positionId,
+        signalId: linkedSignal.signalId,
+        stopLoss: result.stopLoss,
+        takeProfit: result.takeProfit,
+        message: result.message,
+      };
+    }
+
+    const { user, syncActive, terminalAccountId } =
+      await this.resolveUserMt5TerminalContext(userId);
+
+    if (!terminalAccountId) {
+      throw new ServiceUnavailableException('Platform MT5 account is not configured');
+    }
+
+    const account = await this.metaApi.ensureAccountReady(terminalAccountId);
+
+    const positions = syncActive
+      ? await this.metaApi.getPositions(account)
+      : await this.metaApi.findUserOpenPositions(
+          account,
+          user.displayName,
+          userId,
+        );
+
+    const pos = positions.find((p) => p.id === positionId);
+    if (pos) {
+      const direction: TradeDirection = pos.type
+        .toLowerCase()
+        .includes('sell')
+        ? 'SELL'
+        : 'BUY';
+      const nextSl =
+        dto.stopLoss !== undefined ? dto.stopLoss : pos.stopLoss;
+      const nextTp =
+        dto.takeProfit !== undefined ? dto.takeProfit : pos.takeProfit;
+
+      this.validatePositionStopLevels(
+        direction,
+        pos.openPrice,
+        dto.stopLoss !== undefined ? nextSl : undefined,
+        dto.takeProfit !== undefined ? nextTp : undefined,
+      );
+
+      await this.metaApi.modifyPositionStops(account, {
+        positionId,
+        ...(dto.stopLoss !== undefined ? { stopLoss: dto.stopLoss } : {}),
+        ...(dto.takeProfit !== undefined ? { takeProfit: dto.takeProfit } : {}),
+      });
+
+      return {
+        ok: true,
+        positionId,
+        stopLoss: nextSl ?? null,
+        takeProfit: nextTp ?? null,
+        message: 'Stop levels updated on broker',
+      };
+    }
+
+    const orders = syncActive
+      ? await this.metaApi.getOrders(account)
+      : await this.metaApi.findUserPendingOrders(
+          account,
+          user.displayName,
+          userId,
+        );
+
+    const order = orders.find((o) => o.id === positionId);
+    if (!order) {
+      throw new ForbiddenException('Position or order not found on your account');
+    }
+
+    const direction: TradeDirection = order.type
+      .toLowerCase()
+      .includes('sell')
+      ? 'SELL'
+      : 'BUY';
+    const nextSl =
+      dto.stopLoss !== undefined ? dto.stopLoss : order.stopLoss;
+    const nextTp =
+      dto.takeProfit !== undefined ? dto.takeProfit : order.takeProfit;
+
+    this.validatePositionStopLevels(
+      direction,
+      order.openPrice,
+      dto.stopLoss !== undefined ? nextSl : undefined,
+      dto.takeProfit !== undefined ? nextTp : undefined,
+    );
+
+    await this.metaApi.modifyPendingOrderStops(account, {
+      orderId: positionId,
+      ...(dto.stopLoss !== undefined ? { stopLoss: dto.stopLoss } : {}),
+      ...(dto.takeProfit !== undefined ? { takeProfit: dto.takeProfit } : {}),
+    });
+
+    return {
+      ok: true,
+      positionId,
+      stopLoss: nextSl ?? null,
+      takeProfit: nextTp ?? null,
+      message: 'Pending order stop levels updated on broker',
+    };
   }
 
   async closeUserMetaApiPosition(userId: string, positionId: string) {

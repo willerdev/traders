@@ -22,6 +22,12 @@ import {
 import type { RealtimeQuote } from "@/components/charts/chart-data.service";
 import { useChartWatchlist } from "@/components/charts/use-chart-watchlist";
 import { buildMt5ChartOverlays } from "@/components/mt5/build-mt5-chart-overlays";
+import { persistStopChange } from "@/components/charts/persist-stop-change";
+import type { ChartPriceLine } from "@/components/charts/chart-types";
+import { ChartUserWatermark } from "@/components/mt5/chart-user-watermark";
+import { Mt5ChartSettingsButton } from "@/components/mt5/mt5-chart-settings-button";
+import { useMt5ChartDisplaySettings } from "@/hooks/use-mt5-chart-display-settings";
+import { useAuthStore } from "@/stores/auth";
 import {
   MT5_BUY,
   MT5_SELL,
@@ -45,6 +51,7 @@ type Props = {
   showOrdersPanel?: boolean;
   /** Mobile Charts tab — chart fills viewport, no orders panel height cap */
   chartOnly?: boolean;
+  onStopsUpdated?: () => void;
 };
 
 function toSetupSummary(setup: OpenSetupItem): SetupSummary {
@@ -80,6 +87,7 @@ export function Mt5ChartTerminal({
   onCloseTrade,
   showOrdersPanel = true,
   chartOnly = false,
+  onStopsUpdated,
 }: Props) {
   const chartRef = useRef<LightweightChartHandle>(null);
   const [timeframe, setTimeframe] = useState<ChartTimeframe>("M5");
@@ -99,6 +107,9 @@ export function Mt5ChartTerminal({
     error?: string | null;
   }>({});
   const { watchlist, addSymbol, removeSymbol } = useChartWatchlist();
+  const { settings: chartSettings, setSetting: setChartSetting } =
+    useMt5ChartDisplaySettings();
+  const userDisplayName = useAuthStore((s) => s.user?.displayName ?? "");
   const [fetchedQuotes, setFetchedQuotes] = useState<
     Record<string, RealtimeQuote>
   >({});
@@ -177,6 +188,24 @@ export function Mt5ChartTerminal({
     [openOrders, selectedSymbol],
   );
 
+  const symbolFloating = useMemo(
+    () => symbolOrders.reduce((sum, o) => sum + (o.trade.profit ?? 0), 0),
+    [symbolOrders],
+  );
+
+  const symbolVolume = useMemo(
+    () => symbolOrders.reduce((sum, o) => sum + (o.trade.volume ?? 0), 0),
+    [symbolOrders],
+  );
+
+  const handlePriceLineDragEnd = useCallback(
+    async (line: ChartPriceLine, newPrice: number) => {
+      await persistStopChange(line, newPrice);
+      onStopsUpdated?.();
+    },
+    [onStopsUpdated],
+  );
+
   const totalProfit = useMemo(
     () => openOrders.reduce((sum, o) => sum + (o.trade.profit ?? 0), 0),
     [openOrders],
@@ -190,8 +219,22 @@ export function Mt5ChartTerminal({
         runningTrades,
         limitTrades,
         setups,
+        options: {
+          showOrders: chartSettings.showOrders,
+          showLimits: chartSettings.showLimits,
+          showSlTp: chartSettings.showSlTp,
+        },
       }),
-    [selectedSymbol, timeframe, runningTrades, limitTrades, setups],
+    [
+      selectedSymbol,
+      timeframe,
+      runningTrades,
+      limitTrades,
+      setups,
+      chartSettings.showOrders,
+      chartSettings.showLimits,
+      chartSettings.showSlTp,
+    ],
   );
 
   function handleTimeframeChange(tf: ChartTimeframe) {
@@ -273,6 +316,20 @@ export function Mt5ChartTerminal({
                 {overlaySummary.setups} setup
               </span>
             )}
+            {symbolOrders.length > 0 && (
+              <span className="rounded bg-[var(--mt5-row-hover)] px-1.5 py-0.5 text-[var(--mt5-text)]">
+                <Mt5Pnl value={symbolFloating} className="inline text-[9px]" />
+                {symbolVolume > 0 && (
+                  <span className="text-[var(--mt5-muted)]">
+                    {" "}
+                    · {symbolVolume.toFixed(2)} lot
+                  </span>
+                )}
+              </span>
+            )}
+            {chartSettings.showSlTp && priceLines.some((l) => l.draggable) && (
+              <span className="text-[var(--mt5-muted)]">Drag SL/TP to adjust</span>
+            )}
           </div>
         )}
 
@@ -287,9 +344,17 @@ export function Mt5ChartTerminal({
               : "min-h-0 flex-1",
         )}
       >
+        <ChartUserWatermark
+          name={userDisplayName}
+          visible={chartSettings.showWatermark}
+        />
+        <Mt5ChartSettingsButton
+          settings={chartSettings}
+          onChange={setChartSetting}
+        />
         <div
           className={cn(
-            "h-full w-full transition-opacity duration-300",
+            "relative z-[2] h-full w-full transition-opacity duration-300",
             chartLoading && chartLoadReason === "timeframe" && "opacity-95",
           )}
         >
@@ -301,6 +366,8 @@ export function Mt5ChartTerminal({
             getQuote={() => liveQuote}
             markers={markers}
             priceLines={priceLines}
+            draggableLines={chartSettings.showSlTp}
+            onPriceLineDragEnd={handlePriceLineDragEnd}
             className="h-full w-full"
             onLoadingChange={handleChartLoadingChange}
             onChartStatusChange={setChartStatus}
@@ -332,12 +399,13 @@ export function Mt5ChartTerminal({
       {/* Desktop MT5-style terminal — hidden on phone */}
       {showOrdersPanel && (
         <div className="hidden md:flex md:max-h-[32vh] md:shrink-0 md:flex-col md:border-t md:border-[var(--mt5-divider)]">
-          <div className="grid grid-cols-[1.2fr_0.8fr_0.6fr_0.5fr_0.7fr_0.7fr_0.7fr_0.7fr_0.6fr] gap-2 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--mt5-muted)]">
+          <div className="grid grid-cols-[1.1fr_0.75fr_0.55fr_0.45fr_0.65fr_0.65fr_0.6fr_0.6fr_0.65fr_0.55fr] gap-2 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--mt5-muted)]">
             <span>Symbol</span>
             <span>Ticket</span>
             <span>Type</span>
             <span>Volume</span>
             <span>Price</span>
+            <span>Current</span>
             <span>S / L</span>
             <span>T / P</span>
             <span>Profit</span>
@@ -373,7 +441,7 @@ export function Mt5ChartTerminal({
                       if (e.key === "Enter" || e.key === " ") handleSymbolChange(symbol);
                     }}
                     className={cn(
-                      "grid grid-cols-[1.2fr_0.8fr_0.6fr_0.5fr_0.7fr_0.7fr_0.7fr_0.7fr_0.6fr] gap-2 border-b border-[var(--mt5-divider)] px-3 py-2 text-xs tabular-nums transition-colors hover:bg-[var(--mt5-row-hover)]",
+                      "grid grid-cols-[1.1fr_0.75fr_0.55fr_0.45fr_0.65fr_0.65fr_0.6fr_0.6fr_0.65fr_0.55fr] gap-2 border-b border-[var(--mt5-divider)] px-3 py-2 text-xs tabular-nums transition-colors hover:bg-[var(--mt5-row-hover)]",
                       active && "bg-[var(--mt5-row-hover)]",
                     )}
                   >
@@ -389,8 +457,11 @@ export function Mt5ChartTerminal({
                     >
                       {typeLabel}
                     </span>
-                    <span>{trade.volume?.toFixed(2) ?? "—"}</span>
+                    <span className="font-medium">{trade.volume?.toFixed(2) ?? "—"}</span>
                     <span>{fmtMt5Price(trade.openPrice ?? trade.entryMin)}</span>
+                    <span className="font-medium text-[var(--mt5-text)]">
+                      {fmtMt5Price(trade.currentPrice ?? trade.openPrice)}
+                    </span>
                     <span>{fmtMt5Price(trade.stopLoss)}</span>
                     <span>{fmtMt5Price(trade.takeProfit)}</span>
                     <span>
