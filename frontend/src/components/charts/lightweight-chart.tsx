@@ -55,7 +55,7 @@ type Props = {
   className?: string;
   draggableLines?: boolean;
   onPriceLineDragEnd?: (line: ChartPriceLine, newPrice: number) => Promise<void>;
-  onChartTap?: () => void;
+  onChartTap?: (point: { clientX: number; clientY: number }) => void;
   onLoadingChange?: (loading: boolean, reason?: ChartLoadReason) => void;
   onChartStatusChange?: (status: {
     source?: "metaapi" | "quote-fallback";
@@ -361,7 +361,7 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
         const dy = e.clientY - start.y;
         const dt = Date.now() - start.t;
         if (Math.hypot(dx, dy) < 12 && dt < 400) {
-          onChartTapRef.current?.();
+          onChartTapRef.current?.({ clientX: e.clientX, clientY: e.clientY });
         }
         start = null;
       }

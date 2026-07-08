@@ -29,6 +29,7 @@ import { Mt5ChartSettingsButton } from "@/components/mt5/mt5-chart-settings-butt
 import { Mt5ChartSymbolOverlay } from "@/components/mt5/mt5-chart-symbol-overlay";
 import {
   Mt5ChartRadialMenu,
+  clampRadialAnchor,
   type RadialToolId,
 } from "@/components/mt5/mt5-chart-radial-menu";
 import { useMt5ChartDisplaySettings } from "@/hooks/use-mt5-chart-display-settings";
@@ -95,9 +96,14 @@ export function Mt5ChartTerminal({
   onStopsUpdated,
 }: Props) {
   const chartRef = useRef<LightweightChartHandle>(null);
+  const chartAreaRef = useRef<HTMLDivElement>(null);
   const symbolSearchRef = useRef<HTMLInputElement>(null);
   const [timeframe, setTimeframe] = useState<ChartTimeframe>("M5");
   const [radialOpen, setRadialOpen] = useState(false);
+  const [radialAnchor, setRadialAnchor] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartLoadReason, setChartLoadReason] = useState<ChartLoadReason | null>(
@@ -258,6 +264,19 @@ export function Mt5ChartTerminal({
     onSelectSymbol(symbol);
   }
 
+  function handleChartTap(point: { clientX: number; clientY: number }) {
+    const area = chartAreaRef.current;
+    if (!area) return;
+    const rect = area.getBoundingClientRect();
+    const anchor = clampRadialAnchor(
+      point.clientX - rect.left,
+      point.clientY - rect.top,
+      { width: rect.width, height: rect.height },
+    );
+    setRadialAnchor(anchor);
+    setRadialOpen(true);
+  }
+
   function handleRadialTool(tool: RadialToolId) {
     switch (tool) {
       case "settings":
@@ -379,6 +398,7 @@ export function Mt5ChartTerminal({
 
       {/* Chart fills remaining height on desktop */}
       <div
+        ref={chartAreaRef}
         className={cn(
           "relative w-full",
           chartOnly
@@ -401,6 +421,7 @@ export function Mt5ChartTerminal({
         />
         <Mt5ChartRadialMenu
           open={radialOpen}
+          anchor={radialAnchor}
           activeTimeframe={timeframe}
           onClose={() => setRadialOpen(false)}
           onTimeframe={(tf) => {
@@ -425,7 +446,7 @@ export function Mt5ChartTerminal({
             priceLines={priceLines}
             draggableLines={chartSettings.showSlTp}
             onPriceLineDragEnd={handlePriceLineDragEnd}
-            onChartTap={() => setRadialOpen((v) => !v)}
+            onChartTap={handleChartTap}
             className="h-full w-full"
             onLoadingChange={handleChartLoadingChange}
             onChartStatusChange={setChartStatus}
