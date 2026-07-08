@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { api } from "@/lib/api";
 import type {
   OpenSetupItem,
   UserMt5AccountSummary,
@@ -12,12 +13,15 @@ import {
   LightweightChart,
   type LightweightChartHandle,
 } from "@/components/charts/lightweight-chart";
+import { ChartSymbolPicker } from "@/components/charts/chart-symbol-picker";
 import {
   CHART_TIMEFRAMES,
   type ChartMarker,
   type ChartPriceLine,
   type ChartTimeframe,
 } from "@/components/charts/chart-types";
+import type { RealtimeQuote } from "@/components/charts/chart-data.service";
+import { useChartWatchlist } from "@/components/charts/use-chart-watchlist";
 import {
   MT5_BUY,
   MT5_SELL,
@@ -27,6 +31,14 @@ import {
 } from "@/components/mt5/mt5-ui";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
+
+const TIMEFRAME_SECONDS: Record<ChartTimeframe, number> = {
+  M1: 60,
+  M5: 300,
+  M15: 900,
+  H1: 3600,
+  D1: 86400,
+};
 
 type Props = {
   quotes: UserMt5QuoteItem[];
@@ -82,20 +94,55 @@ export function Mt5ChartTerminal({
   const chartRef = useRef<LightweightChartHandle>(null);
   const [timeframe, setTimeframe] = useState<ChartTimeframe>("M5");
   const [chartLoading, setChartLoading] = useState(false);
-
-  const symbols = useMemo(() => {
-    const set = new Set<string>();
-    for (const q of quotes) set.add(q.symbol);
-    for (const t of runningTrades) set.add(t.symbol);
-    for (const t of limitTrades) set.add(t.symbol);
-    if (set.size === 0) set.add(selectedSymbol);
-    return Array.from(set).sort();
-  }, [quotes, runningTrades, limitTrades, selectedSymbol]);
+  const { watchlist, addSymbol, removeSymbol } = useChartWatchlist();
+  const [fetchedQuotes, setFetchedQuotes] = useState<
+    Record<string, RealtimeQuote>
+  >({});
 
   const selectedQuote = useMemo(
     () => quotes.find((q) => q.symbol === selectedSymbol) ?? null,
     [quotes, selectedSymbol],
   );
+
+  const liveQuote = useMemo((): RealtimeQuote | null => {
+    if (selectedQuote) {
+      return {
+        bid: selectedQuote.bid,
+        ask: selectedQuote.ask,
+        mid: selectedQuote.mid,
+      };
+    }
+    return fetchedQuotes[selectedSymbol] ?? null;
+  }, [selectedQuote, fetchedQuotes, selectedSymbol]);
+
+  useEffect(() => {
+    if (selectedQuote) return;
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const q = await api.signals.quote(selectedSymbol);
+        if (cancelled) return;
+        setFetchedQuotes((prev) => ({
+          ...prev,
+          [selectedSymbol]: {
+            bid: q.bid,
+            ask: q.ask,
+            mid: q.mid,
+          },
+        }));
+      } catch {
+        /* mock ticks continue when quote unavailable */
+      }
+    }
+
+    void poll();
+    const id = window.setInterval(poll, 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [selectedSymbol, selectedQuote]);
 
   const openOrders = useMemo((): OrderRow[] => {
     const rows: OrderRow[] = [];
@@ -131,7 +178,7 @@ export function Mt5ChartTerminal({
   const { priceLines, markers } = useMemo(() => {
     const lines: ChartPriceLine[] = [];
     const marks: ChartMarker[] = [];
-    const barTime = alignedNow(300);
+    const barTime = alignedNow(TIMEFRAME_SECONDS[timeframe]);
 
     for (const { trade, kind } of symbolOrders) {
       const isBuy = trade.direction.toUpperCase() === "BUY";
@@ -181,16 +228,19 @@ export function Mt5ChartTerminal({
     }
 
     return { priceLines: lines, markers: marks };
-  }, [symbolOrders]);
+  }, [symbolOrders, timeframe]);
 
   function handleTimeframeChange(tf: ChartTimeframe) {
     setTimeframe(tf);
-    chartRef.current?.setTimeframe(tf);
   }
 
   function handleSymbolChange(symbol: string) {
     onSelectSymbol(symbol);
-    chartRef.current?.setSymbol(symbol);
+  }
+
+  function handleAddSymbol(symbol: string) {
+    addSymbol(symbol);
+    onSelectSymbol(symbol);
   }
 
   return (
@@ -202,28 +252,23 @@ export function Mt5ChartTerminal({
       data-mt5-chart-terminal
     >
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-2">
-        <select
-          value={selectedSymbol}
-          onChange={(e) => handleSymbolChange(e.target.value)}
-          className="max-w-[10rem] rounded border border-[var(--mt5-divider)] bg-[var(--mt5-bg)] px-2 py-1.5 text-xs font-semibold text-[var(--mt5-text)]"
-          aria-label="Chart symbol"
-        >
-          {symbols.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+      <div className="flex flex-col gap-2 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-2 lg:flex-row lg:items-start">
+        <ChartSymbolPicker
+          selectedSymbol={selectedSymbol}
+          watchlist={watchlist}
+          onSelect={handleSymbolChange}
+          onAdd={handleAddSymbol}
+          onRemove={removeSymbol}
+        />
 
-        {selectedQuote && (
-          <div className="hidden text-xs text-[var(--mt5-muted)] sm:block">
-            Bid {fmtMt5Price(selectedQuote.bid)} · Ask{" "}
-            {fmtMt5Price(selectedQuote.ask)}
+        {liveQuote && (
+          <div className="shrink-0 text-xs text-[var(--mt5-muted)] lg:pt-1">
+            Bid {fmtMt5Price(liveQuote.bid ?? null)} · Ask{" "}
+            {fmtMt5Price(liveQuote.ask ?? null)}
           </div>
         )}
 
-        <div className="flex flex-1 flex-wrap justify-end gap-0.5">
+        <div className="flex flex-wrap justify-end gap-0.5 lg:shrink-0 lg:pt-1">
           {CHART_TIMEFRAMES.map((tf) => (
             <button
               key={tf}
@@ -259,16 +304,8 @@ export function Mt5ChartTerminal({
           ref={chartRef}
           symbol={selectedSymbol}
           timeframe={timeframe}
-          seedPrice={selectedQuote?.mid ?? selectedQuote?.bid}
-          getQuote={() =>
-            selectedQuote
-              ? {
-                  bid: selectedQuote.bid,
-                  ask: selectedQuote.ask,
-                  mid: selectedQuote.mid,
-                }
-              : null
-          }
+          seedPrice={liveQuote?.mid ?? liveQuote?.bid}
+          getQuote={() => liveQuote}
           markers={markers}
           priceLines={priceLines}
           className="h-full w-full"

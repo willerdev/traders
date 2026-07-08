@@ -21,13 +21,39 @@ function seedFromSymbol(symbol: string): number {
   return Math.abs(h);
 }
 
+/** Deterministic 0–1 value — same inputs always produce the same output. */
+function seededUnit(seed: number): number {
+  const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+/** Default mid price when no live quote exists yet. */
+export function defaultMidForSymbol(symbol: string): number {
+  const s = symbol.toUpperCase();
+  if (s.includes("XAU") || s.includes("GOLD")) return 2650;
+  if (s.includes("BTC")) return 68000;
+  if (s.includes("ETH")) return 3400;
+  if (s.includes("NAS") || s.includes("US100")) return 18500;
+  if (s.includes("US30")) return 39500;
+  if (s.includes("JPY")) return 155;
+  if (s.includes("HZ") || s.startsWith("R_") || s.startsWith("V")) return 6500;
+  return 1.08 + (seedFromSymbol(symbol) % 1000) / 10000;
+}
+
 /** Volatility scale by symbol class (placeholder until real tick data). */
 function volatilityForSymbol(symbol: string, mid: number): number {
   const s = symbol.toUpperCase();
   if (s.includes("XAU") || s.includes("GOLD")) return mid * 0.0008;
   if (s.includes("BTC")) return mid * 0.002;
   if (s.includes("NAS") || s.includes("US30") || s.includes("US500")) return mid * 0.001;
+  if (s.includes("HZ") || s.startsWith("R_")) return mid * 0.0015;
   return mid * 0.0003;
+}
+
+function roundPrice(value: number, ref: number): number {
+  const digits = ref >= 1000 ? 2 : ref >= 100 ? 2 : ref >= 10 ? 3 : 5;
+  const m = 10 ** digits;
+  return Math.round(value * m) / m;
 }
 
 /**
@@ -42,21 +68,22 @@ export async function loadHistoricalOHLC(
 ): Promise<OHLCBar[]> {
   const interval = TIMEFRAME_SECONDS[timeframe];
   const now = Math.floor(Date.now() / 1000);
+  const symSeed = seedFromSymbol(symbol);
   const base =
-    seedPrice && seedPrice > 0
-      ? seedPrice
-      : 1.08 + (seedFromSymbol(symbol) % 1000) / 10000;
+    seedPrice && seedPrice > 0 ? seedPrice : defaultMidForSymbol(symbol);
   const vol = volatilityForSymbol(symbol, base);
   const bars: OHLCBar[] = [];
   let price = base;
 
   for (let i = MAX_HISTORICAL_BARS - 1; i >= 0; i -= 1) {
     const t = alignedBarTime(now - i * interval, interval);
-    const drift = (Math.sin((i + seedFromSymbol(symbol)) / 12) * vol) / 2;
+    const r1 = seededUnit(symSeed + i * 3);
+    const r2 = seededUnit(symSeed + i * 7 + 1);
+    const drift = (Math.sin((i + symSeed) / 12) * vol) / 2;
     const open = price;
-    const close = open + drift + (Math.random() - 0.5) * vol;
-    const high = Math.max(open, close) + Math.random() * vol * 0.5;
-    const low = Math.min(open, close) - Math.random() * vol * 0.5;
+    const close = open + drift + (r1 - 0.5) * vol;
+    const high = Math.max(open, close) + r2 * vol * 0.5;
+    const low = Math.min(open, close) - seededUnit(symSeed + i * 11) * vol * 0.5;
     price = close;
     bars.push({
       time: t,
@@ -68,12 +95,6 @@ export async function loadHistoricalOHLC(
   }
 
   return bars;
-}
-
-function roundPrice(value: number, ref: number): number {
-  const digits = ref >= 100 ? 2 : ref >= 10 ? 3 : 5;
-  const m = 10 ** digits;
-  return Math.round(value * m) / m;
 }
 
 export type RealtimeQuote = {
@@ -94,17 +115,28 @@ export function subscribeRealtimeUpdates(
   onBar: (bar: OHLCBar, isNewBar: boolean) => void,
 ): () => void {
   const interval = TIMEFRAME_SECONDS[timeframe];
+  const symSeed = seedFromSymbol(symbol);
   let lastBarTime = alignedBarTime(Math.floor(Date.now() / 1000), interval);
   let lastBar: OHLCBar | null = null;
+  let simMid = defaultMidForSymbol(symbol);
+  let tickIndex = 0;
 
   const tick = () => {
     const quote = getQuote();
-    const mid =
+    let mid =
       quote?.mid ??
       (quote?.bid != null && quote?.ask != null
         ? (quote.bid + quote.ask) / 2
         : null);
-    if (mid == null || !Number.isFinite(mid)) return;
+
+    if (mid == null || !Number.isFinite(mid)) {
+      const vol = volatilityForSymbol(symbol, simMid);
+      tickIndex += 1;
+      simMid += (seededUnit(symSeed + tickIndex) - 0.5) * vol * 0.35;
+      mid = simMid;
+    } else {
+      simMid = mid;
+    }
 
     const now = Math.floor(Date.now() / 1000);
     const barTime = alignedBarTime(now, interval);
@@ -134,7 +166,6 @@ export function subscribeRealtimeUpdates(
     }
   };
 
-  void symbol;
   const id = window.setInterval(tick, 1000);
   return () => window.clearInterval(id);
 }

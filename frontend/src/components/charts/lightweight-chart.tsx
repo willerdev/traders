@@ -64,17 +64,22 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
     const timeframeRef = useRef(timeframe);
     const seedPriceRef = useRef(seedPrice);
     const getQuoteRef = useRef(getQuote);
+    const loadedKeyRef = useRef<string | null>(null);
     symbolRef.current = symbol;
     timeframeRef.current = timeframe;
-    seedPriceRef.current = seedPrice;
     getQuoteRef.current = getQuote;
+
+    useEffect(() => {
+      seedPriceRef.current = seedPrice;
+    }, [seedPrice]);
 
     const loadBars = useCallback(
       async (sym: string, tf: ChartTimeframe, seed?: number | null) => {
         onLoadingChange?.(true);
         try {
           const bars = await loadHistoricalOHLC(sym, tf, seed);
-          chart.setData(bars);
+          chart.setData(bars, { fit: true });
+          loadedKeyRef.current = `${sym}:${tf}`;
         } finally {
           onLoadingChange?.(false);
         }
@@ -106,8 +111,10 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
 
     useEffect(() => {
       if (!chart.ready) return;
-      void loadBars(symbol, timeframe, seedPrice);
-    }, [chart.ready, symbol, timeframe, seedPrice, loadBars]);
+      const key = `${symbol}:${timeframe}`;
+      if (loadedKeyRef.current === key) return;
+      void loadBars(symbol, timeframe, seedPriceRef.current ?? undefined);
+    }, [chart.ready, symbol, timeframe, loadBars]);
 
     useEffect(() => {
       if (!chart.ready) return;

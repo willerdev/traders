@@ -14,7 +14,7 @@ type CandlestickSeries = ISeriesApi<"Candlestick">;
 export type UseLightweightChartResult = {
   containerRef: React.RefObject<HTMLDivElement | null>;
   ready: boolean;
-  setData: (bars: OHLCBar[]) => void;
+  setData: (bars: OHLCBar[], options?: { fit?: boolean }) => void;
   updateCandle: (bar: OHLCBar) => void;
   setMarkers: (markers: ChartMarker[]) => void;
   clearMarkers: () => void;
@@ -39,7 +39,7 @@ export function useLightweightChart(theme: ChartThemeMode): UseLightweightChartR
   const pendingPriceLinesRef = useRef<ChartPriceLine[] | null>(null);
   const [ready, setReady] = useState(false);
 
-  const applyData = useCallback((bars: OHLCBar[]) => {
+  const applyData = useCallback((bars: OHLCBar[], fit = false) => {
     barsRef.current = bars;
     seriesRef.current?.setData(
       bars.map((b) => ({
@@ -50,7 +50,9 @@ export function useLightweightChart(theme: ChartThemeMode): UseLightweightChartR
         close: b.close,
       })),
     );
-    chartRef.current?.timeScale().fitContent();
+    if (fit) {
+      chartRef.current?.timeScale().fitContent();
+    }
   }, []);
 
   useEffect(() => {
@@ -78,7 +80,7 @@ export function useLightweightChart(theme: ChartThemeMode): UseLightweightChartR
       seriesRef.current = series;
 
       if (pendingBarsRef.current) {
-        applyData(pendingBarsRef.current);
+        applyData(pendingBarsRef.current, true);
         pendingBarsRef.current = null;
       }
       if (pendingMarkersRef.current) {
@@ -147,12 +149,12 @@ export function useLightweightChart(theme: ChartThemeMode): UseLightweightChartR
   }, [theme, ready]);
 
   const setData = useCallback(
-    (bars: OHLCBar[]) => {
+    (bars: OHLCBar[], options?: { fit?: boolean }) => {
       if (!seriesRef.current) {
         pendingBarsRef.current = bars;
         return;
       }
-      applyData(bars);
+      applyData(bars, options?.fit ?? false);
     },
     [applyData],
   );
