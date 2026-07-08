@@ -12,7 +12,7 @@ import {
   type Mt5ConnectCredentials,
 } from "@/components/mt5/mt5-connect-form";
 import { useAuthStore } from "@/stores/auth";
-import { Radio, RefreshCw } from "lucide-react";
+import { Radio, RefreshCw, ChevronDown } from "lucide-react";
 
 type Props = {
   tradingActive: boolean;
@@ -34,6 +34,7 @@ export function Mt5LiveSyncCard({
   const [claiming, setClaiming] = useState(false);
   const [connectError, setConnectError] = useState("");
   const [connectMessage, setConnectMessage] = useState("");
+  const [expanded, setExpanded] = useState(false);
   const [localLinkedId, setLocalLinkedId] = useState<string | null>(
     linkedAccountId ?? null,
   );
@@ -58,6 +59,10 @@ export function Mt5LiveSyncCard({
     if (!tradingActive) return;
     void refresh();
   }, [tradingActive, refresh]);
+
+  useEffect(() => {
+    if (connectError || showCheckout) setExpanded(true);
+  }, [connectError, showCheckout]);
 
   if (!tradingActive) return null;
 
@@ -201,9 +206,14 @@ export function Mt5LiveSyncCard({
   if (compact) {
     return (
       <div className="border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-4 py-3">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <Radio className="h-4 w-4 text-primary" />
+        <button
+          type="button"
+          className="mb-0 flex w-full items-center justify-between gap-2 text-left"
+          onClick={() => setExpanded((open) => !open)}
+          aria-expanded={expanded}
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <Radio className="h-4 w-4 shrink-0 text-primary" />
             <span className="text-sm font-medium">MT5 Live Sync</span>
             {active ? (
               <Badge variant="success" className="text-[10px]">
@@ -214,50 +224,85 @@ export function Mt5LiveSyncCard({
                 Add-on
               </Badge>
             )}
-          </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 px-2"
-            onClick={() => void refresh()}
-            disabled={loading}
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-          </Button>
-        </div>
-        {!active && hasLinkedAccount && (
-          <Button
-            size="sm"
-            className="w-full"
-            onClick={() => setShowCheckout(true)}
-          >
-            Enable — {formatCurrency(feeUsdt)}/week
-          </Button>
-        )}
-        {!active && !hasLinkedAccount && (
-          <div className="space-y-2">
-            <Mt5ConnectForm
-              compact
-              submitting={claiming}
-              onSubmit={connectAccount}
-            />
-            {connectError && (
-              <p className="text-xs text-danger">{connectError}</p>
-            )}
-            {connectMessage && (
-              <p className="text-xs text-success">{connectMessage}</p>
+            {!expanded && (
+              <span className="truncate text-[10px] text-[var(--mt5-muted)]">
+                {!hasLinkedAccount
+                  ? "Tap to connect"
+                  : !active
+                    ? `Enable — ${formatCurrency(feeUsdt)}/week`
+                    : `${status?.openLinks ?? 0} synced`}
+              </span>
             )}
           </div>
-        )}
-        {showCheckout && (
-          <div className="mt-3">
-            <Mt5LiveSyncPaymentPanel
-              feeUsdt={feeUsdt}
-              onComplete={() => {
-                setShowCheckout(false);
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2"
+              onClick={(e) => {
+                e.stopPropagation();
                 void refresh();
               }}
+              disabled={loading}
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            </Button>
+            <ChevronDown
+              className={`h-4 w-4 text-[var(--mt5-muted)] transition-transform ${expanded ? "rotate-180" : ""}`}
             />
+          </div>
+        </button>
+        {expanded && (
+          <div className="mt-3 space-y-3">
+            {!active && hasLinkedAccount && (
+              <Button
+                size="sm"
+                className="w-full"
+                onClick={() => setShowCheckout(true)}
+              >
+                Enable — {formatCurrency(feeUsdt)}/week
+              </Button>
+            )}
+            {!active && !hasLinkedAccount && (
+              <div className="space-y-2">
+                <Mt5ConnectForm
+                  compact
+                  submitting={claiming}
+                  onSubmit={connectAccount}
+                />
+                {connectError && (
+                  <p className="text-xs text-danger">{connectError}</p>
+                )}
+                {connectMessage && (
+                  <p className="text-xs text-success">{connectMessage}</p>
+                )}
+              </div>
+            )}
+            {showCheckout && (
+              <Mt5LiveSyncPaymentPanel
+                feeUsdt={feeUsdt}
+                onComplete={() => {
+                  setShowCheckout(false);
+                  void refresh();
+                }}
+              />
+            )}
+            {hasLinkedAccount && status && (
+              <div className="space-y-1 text-xs text-[var(--mt5-muted)]">
+                <p>
+                  Linked:{" "}
+                  <span className="font-mono text-[var(--mt5-text)]">
+                    {status.linkedAccountId ?? localLinkedId ?? "—"}
+                  </span>
+                </p>
+                {active && (
+                  <p>
+                    {status.openLinks ?? 0} open synced position
+                    {(status.openLinks ?? 0) === 1 ? "" : "s"} tracked.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -267,17 +312,31 @@ export function Mt5LiveSyncCard({
   return (
     <Card className="border-primary/20">
       <CardHeader className="flex flex-row items-start justify-between gap-3 pb-2">
-        <div>
+        <button
+          type="button"
+          className="min-w-0 flex-1 text-left"
+          onClick={() => setExpanded((open) => !open)}
+          aria-expanded={expanded}
+        >
           <CardTitle className="flex items-center gap-2 text-base">
             <Radio className="h-4 w-4 text-primary" />
             MT5 Live Sync
+            <ChevronDown
+              className={`h-4 w-4 text-muted transition-transform ${expanded ? "rotate-180" : ""}`}
+            />
           </CardTitle>
           <p className="mt-1 text-xs text-muted">
-            {active
-              ? "Your MT5 trades sync to the platform automatically"
-              : `${formatCurrency(feeUsdt)}/week — no manual setup upload`}
+            {expanded
+              ? active
+                ? "Your MT5 trades sync to the platform automatically"
+                : `${formatCurrency(feeUsdt)}/week — no manual setup upload`
+              : !hasLinkedAccount
+                ? "Tap to connect your MT5 account"
+                : !active
+                  ? `Tap to enable — ${formatCurrency(feeUsdt)}/week`
+                  : "Tap to view sync details"}
           </p>
-        </div>
+        </button>
         <div className="flex items-center gap-2">
           {active ? (
             <Badge variant="success">Active</Badge>
@@ -295,7 +354,7 @@ export function Mt5LiveSyncCard({
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="pt-0">{body}</CardContent>
+      {expanded && <CardContent className="pt-0">{body}</CardContent>}
     </Card>
   );
 }
