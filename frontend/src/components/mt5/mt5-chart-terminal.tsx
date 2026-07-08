@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type {
   OpenSetupItem,
@@ -97,6 +97,13 @@ export function Mt5ChartTerminal({
   const [chartLoading, setChartLoading] = useState(false);
   const [chartLoadReason, setChartLoadReason] = useState<ChartLoadReason | null>(
     null,
+  );
+  const handleChartLoadingChange = useCallback(
+    (loading: boolean, reason?: ChartLoadReason) => {
+      setChartLoading(loading);
+      setChartLoadReason(loading ? (reason ?? null) : null);
+    },
+    [],
   );
   const [chartStatus, setChartStatus] = useState<{
     source?: "metaapi" | "quote-fallback";
@@ -323,10 +330,7 @@ export function Mt5ChartTerminal({
             markers={markers}
             priceLines={priceLines}
             className="h-full w-full"
-            onLoadingChange={(loading, reason) => {
-              setChartLoading(loading);
-              setChartLoadReason(loading ? (reason ?? null) : null);
-            }}
+            onLoadingChange={handleChartLoadingChange}
             onChartStatusChange={setChartStatus}
           />
         </div>

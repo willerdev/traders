@@ -58,7 +58,7 @@ function dataOptionsForLoad(reason: ChartLoadReason): SetChartDataOptions {
     case "timeframe":
       return { preserveTimeRange: true };
     case "symbol":
-      return { applyDefaultZoom: true };
+    case "initial":
     default:
       return { applyDefaultZoom: true };
   }
@@ -88,6 +88,9 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
     const getQuoteRef = useRef(getQuote);
     const loadGenRef = useRef(0);
     const loadedKeyRef = useRef<string | null>(null);
+    const historyReadyRef = useRef(false);
+    const onLoadingChangeRef = useRef(onLoadingChange);
+    const onChartStatusChangeRef = useRef(onChartStatusChange);
     const setDataRef = useRef(chart.setData);
     const applySymbolFormatRef = useRef(chart.applySymbolFormat);
     const updateCandleRef = useRef(chart.updateCandle);
@@ -98,6 +101,8 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
     symbolRef.current = symbol;
     timeframeRef.current = timeframe;
     getQuoteRef.current = getQuote;
+    onLoadingChangeRef.current = onLoadingChange;
+    onChartStatusChangeRef.current = onChartStatusChange;
     setDataRef.current = chart.setData;
     applySymbolFormatRef.current = chart.applySymbolFormat;
     updateCandleRef.current = chart.updateCandle;
@@ -117,44 +122,50 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
         reason: ChartLoadReason,
       ) => {
         const gen = ++loadGenRef.current;
-        onLoadingChange?.(true, reason);
+        const loadKey = `${sym}:${tf}`;
+        historyReadyRef.current = false;
+        onLoadingChangeRef.current?.(true, reason);
+
         try {
-          if (reason === "symbol") {
+          if (reason === "symbol" || reason === "initial") {
             applySymbolFormatRef.current(sym);
           }
           const result = await loadChartData(sym, tf, seed);
           if (gen !== loadGenRef.current) return;
+
           if (result.bars.length > 0) {
             setDataRef.current(result.bars, dataOptionsForLoad(reason));
-            loadedKeyRef.current = `${sym}:${tf}`;
-            onChartStatusChange?.({
+            historyReadyRef.current = true;
+            onChartStatusChangeRef.current?.({
               source: result.source,
               error: result.error ?? null,
             });
           } else if (reason !== "timeframe") {
-            onChartStatusChange?.({
+            onChartStatusChangeRef.current?.({
               source: result.source,
               error: result.error ?? "No chart data available",
             });
           }
         } catch (err) {
           if (reason !== "timeframe") {
-            onChartStatusChange?.({
+            onChartStatusChangeRef.current?.({
               error:
                 err instanceof Error ? err.message : "Could not load chart data",
             });
           }
         } finally {
+          loadedKeyRef.current = loadKey;
           if (gen === loadGenRef.current) {
-            onLoadingChange?.(false, reason);
+            onLoadingChangeRef.current?.(false, reason);
           }
         }
       },
-      [onLoadingChange, onChartStatusChange],
+      [],
     );
 
     useImperativeHandle(ref, () => ({
       setSymbol: (next) => {
+        loadedKeyRef.current = null;
         void loadBars(
           next,
           timeframeRef.current,
@@ -163,6 +174,7 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
         );
       },
       setTimeframe: (next) => {
+        loadedKeyRef.current = `${symbolRef.current}:${timeframeRef.current}`;
         void loadBars(
           symbolRef.current,
           next,
@@ -181,6 +193,7 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
       },
       setPriceLines: (lines) => setPriceLinesRef.current(lines),
       reload: () => {
+        loadedKeyRef.current = null;
         void loadBars(
           symbolRef.current,
           timeframeRef.current,
@@ -221,12 +234,15 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
         () => getQuoteRef.current?.() ?? null,
         (bar) => {
           if (
-            symbolRef.current === activeSymbol &&
-            timeframeRef.current === activeTf
+            !historyReadyRef.current ||
+            symbolRef.current !== activeSymbol ||
+            timeframeRef.current !== activeTf
           ) {
-            updateCandleRef.current(bar);
+            return;
           }
+          updateCandleRef.current(bar);
         },
+        { isActive: () => historyReadyRef.current },
       );
       return unsub;
     }, [symbol, timeframe, chart.ready]);

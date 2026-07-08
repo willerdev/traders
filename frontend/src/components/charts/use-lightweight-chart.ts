@@ -86,7 +86,9 @@ export function useLightweightChart(
       try {
         chart.timeScale().setVisibleRange(savedTimeRange);
       } catch {
-        applyDefaultVisibleRange(chart, bars.length);
+        if (bars.length > 0) {
+          applyDefaultVisibleRange(chart, bars.length);
+        }
       }
     }
   }, []);

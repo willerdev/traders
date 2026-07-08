@@ -186,6 +186,24 @@ async function loadLiveQuoteMid(symbol: string): Promise<number | null> {
   }
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(
+      () => reject(new Error("Chart data request timed out")),
+      ms,
+    );
+    promise
+      .then((value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        window.clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
 /** Load OHLC from MetaAPI; fall back to quote-anchored bars if history is slow/unavailable. */
 export async function loadChartData(
   symbol: string,
@@ -193,10 +211,9 @@ export async function loadChartData(
   seedPrice?: number | null,
 ): Promise<ChartDataLoadResult> {
   try {
-    const res = await api.signals.mt5Ohlc(
-      symbol,
-      timeframe,
-      INITIAL_OHLC_LIMIT,
+    const res = await withTimeout(
+      api.signals.mt5Ohlc(symbol, timeframe, INITIAL_OHLC_LIMIT),
+      25_000,
     );
     if (res.bars.length > 0) {
       return { bars: res.bars, source: "metaapi" };
@@ -251,33 +268,37 @@ export type RealtimeQuote = {
   mid?: number | null;
 };
 
-/** Live candle updates — tick from MetaAPI quote + periodic candle sync. */
+/** Live candle updates — tick from MetaAPI quote + periodic last-bar sync. */
 export function subscribeRealtimeUpdates(
   symbol: string,
   timeframe: ChartTimeframe,
   getQuote: () => RealtimeQuote | null,
   onBar: (bar: OHLCBar, isNewBar: boolean) => void,
+  options?: { isActive?: () => boolean },
 ): () => void {
   const interval = TIMEFRAME_SECONDS[timeframe];
   let lastBar: OHLCBar | null = null;
   let lastBarTime = 0;
   let cancelled = false;
 
+  const canRun = () => !cancelled && (options?.isActive?.() ?? true);
+
   const applyBar = (bar: OHLCBar, isNew: boolean) => {
+    if (!canRun()) return;
     lastBar = bar;
     lastBarTime = bar.time;
     onBar(bar, isNew);
   };
 
-  const syncFromApi = async () => {
-    if (cancelled) return;
+  /** Refresh only the latest closed + forming bars — never replace full history. */
+  const syncLastBarsFromApi = async () => {
+    if (!canRun()) return;
     try {
-      const res = await api.signals.mt5Ohlc(symbol, timeframe, 3);
+      const res = await api.signals.mt5Ohlc(symbol, timeframe, 2);
       const bars = res.bars;
       if (bars.length === 0) return;
-      for (let i = 0; i < bars.length; i += 1) {
-        const bar = bars[i];
-        const isNew = i === bars.length - 1 && bar.time > lastBarTime;
+      for (const bar of bars) {
+        const isNew = bar.time > lastBarTime;
         applyBar(bar, isNew);
       }
     } catch {
@@ -285,10 +306,8 @@ export function subscribeRealtimeUpdates(
     }
   };
 
-  void syncFromApi();
-
   const tick = () => {
-    if (cancelled) return;
+    if (!canRun()) return;
     const mid = quoteMid(getQuote());
     if (mid == null || !Number.isFinite(mid)) return;
 
@@ -300,7 +319,7 @@ export function subscribeRealtimeUpdates(
   };
 
   const tickId = window.setInterval(tick, 1000);
-  const syncId = window.setInterval(() => void syncFromApi(), 15_000);
+  const syncId = window.setInterval(() => void syncLastBarsFromApi(), 15_000);
 
   return () => {
     cancelled = true;
