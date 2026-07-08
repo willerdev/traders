@@ -14,11 +14,13 @@ import {
   X,
 } from "lucide-react";
 
-export const MENU_SIZE = 220;
+export const MENU_SIZE = 164;
 const HALF = MENU_SIZE / 2;
-const RING_WIDTH = 14;
-/** Midline of the donut — all labels/icons sit on this radius */
+const RING_WIDTH = 11;
 const RING_RADIUS = HALF - RING_WIDTH / 2;
+
+const TF_CENTER = -Math.PI / 2;
+const TOOL_CENTER = Math.PI / 2;
 
 /** MT5-style ring labels (unsupported map to nearest backend TF). */
 export const RADIAL_TIMEFRAMES: {
@@ -48,14 +50,6 @@ const TOOLS = [
 
 export type RadialToolId = (typeof TOOLS)[number]["id"];
 
-/** Upper arc (left → over top → right), math angles (y-down canvas). */
-const TF_START = -Math.PI * 0.9;
-const TF_END = -Math.PI * 0.1;
-
-/** Lower arc (right → under bottom → left). */
-const TOOL_START = Math.PI * 0.1;
-const TOOL_END = Math.PI * 0.9;
-
 type Props = {
   open: boolean;
   anchor: { x: number; y: number } | null;
@@ -65,6 +59,30 @@ type Props = {
   onTool: (tool: RadialToolId) => void;
 };
 
+function degToRad(deg: number) {
+  return (deg * Math.PI) / 180;
+}
+
+/** Evenly cluster items around center; span grows with count but stays capped. */
+function clusteredAngles(
+  count: number,
+  center: number,
+  stepDeg: number,
+  maxSpanDeg: number,
+): number[] {
+  if (count <= 0) return [];
+  if (count === 1) return [center];
+
+  const maxSpan = degToRad(maxSpanDeg);
+  const step = Math.min(
+    degToRad(stepDeg),
+    maxSpan / (count - 1),
+  );
+  const half = ((count - 1) * step) / 2;
+
+  return Array.from({ length: count }, (_, i) => center - half + i * step);
+}
+
 function ringPoint(angle: number) {
   return {
     left: HALF + RING_RADIUS * Math.cos(angle),
@@ -72,10 +90,14 @@ function ringPoint(angle: number) {
   };
 }
 
-function arcAngle(index: number, total: number, start: number, end: number) {
-  if (total <= 1) return (start + end) / 2;
-  return start + ((end - start) * index) / (total - 1);
-}
+const TF_ANGLES = clusteredAngles(
+  RADIAL_TIMEFRAMES.length,
+  TF_CENTER,
+  13,
+  118,
+);
+
+const TOOL_ANGLES = clusteredAngles(TOOLS.length, TOOL_CENTER, 17, 76);
 
 export function Mt5ChartRadialMenu({
   open,
@@ -110,7 +132,7 @@ export function Mt5ChartRadialMenu({
           aria-label="Chart quick menu"
         >
           <svg
-            className="absolute inset-0 h-full w-full drop-shadow-[0_0_20px_rgba(0,0,0,0.5)]"
+            className="absolute inset-0 h-full w-full drop-shadow-[0_0_16px_rgba(0,0,0,0.45)]"
             viewBox={`0 0 ${MENU_SIZE} ${MENU_SIZE}`}
             aria-hidden
           >
@@ -128,7 +150,7 @@ export function Mt5ChartRadialMenu({
           <button
             type="button"
             onClick={onClose}
-            className="absolute z-10 flex h-8 w-8 items-center justify-center text-[var(--mt5-muted)] transition-colors hover:text-[var(--mt5-text)]"
+            className="absolute z-10 flex h-7 w-7 items-center justify-center text-[var(--mt5-muted)] transition-colors hover:text-[var(--mt5-text)]"
             style={{
               left: HALF,
               top: HALF,
@@ -136,17 +158,11 @@ export function Mt5ChartRadialMenu({
             }}
             aria-label="Close menu"
           >
-            <X className="h-5 w-5" strokeWidth={2} />
+            <X className="h-4 w-4" strokeWidth={2} />
           </button>
 
           {RADIAL_TIMEFRAMES.map((tf, i) => {
-            const angle = arcAngle(
-              i,
-              RADIAL_TIMEFRAMES.length,
-              TF_START,
-              TF_END,
-            );
-            const { left, top } = ringPoint(angle);
+            const { left, top } = ringPoint(TF_ANGLES[i]);
             return (
               <button
                 key={tf.id}
@@ -157,7 +173,7 @@ export function Mt5ChartRadialMenu({
                   onClose();
                 }}
                 className={cn(
-                  "absolute z-10 flex h-6 min-w-[1.75rem] items-center justify-center text-[11px] font-semibold leading-none",
+                  "absolute z-10 flex h-5 min-w-[1.5rem] items-center justify-center text-[10px] font-semibold leading-none",
                   tf.mapsTo === activeTimeframe
                     ? "text-[#4a9eff]"
                     : tf.mapsTo
@@ -176,8 +192,7 @@ export function Mt5ChartRadialMenu({
           })}
 
           {TOOLS.map((tool, i) => {
-            const angle = arcAngle(i, TOOLS.length, TOOL_START, TOOL_END);
-            const { left, top } = ringPoint(angle);
+            const { left, top } = ringPoint(TOOL_ANGLES[i]);
             const Icon = tool.icon;
             return (
               <button
@@ -187,7 +202,7 @@ export function Mt5ChartRadialMenu({
                   onTool(tool.id);
                   if (tool.id !== "settings") onClose();
                 }}
-                className="absolute z-10 flex h-7 w-7 items-center justify-center text-[var(--mt5-text)]"
+                className="absolute z-10 flex h-6 w-6 items-center justify-center text-[var(--mt5-text)]"
                 style={{
                   left,
                   top,
@@ -196,7 +211,7 @@ export function Mt5ChartRadialMenu({
                 aria-label={tool.label}
                 title={tool.label}
               >
-                <Icon className="h-[17px] w-[17px]" strokeWidth={1.75} />
+                <Icon className="h-[15px] w-[15px]" strokeWidth={1.75} />
               </button>
             );
           })}
