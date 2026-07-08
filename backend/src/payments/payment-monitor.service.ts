@@ -20,12 +20,19 @@ export class PaymentMonitorService {
     this.running = true;
 
     try {
-      const result = await this.payments.syncAllPendingRegistrationPayments();
-      const custody = await this.custodyDeposits.syncAllPendingDeposits();
+      const [registration, walletDeposits, custody] = await Promise.all([
+        this.payments.syncAllPendingRegistrationPayments(),
+        this.payments.syncAllPendingWalletDeposits(),
+        this.custodyDeposits.syncAllPendingDeposits(),
+      ]);
 
-      if (result.confirmed > 0 || custody.confirmed > 0) {
+      if (
+        registration.confirmed > 0 ||
+        walletDeposits.confirmed > 0 ||
+        custody.confirmed > 0
+      ) {
         this.logger.log(
-          `Payment monitor: ${result.confirmed} registration payment(s) confirmed (${result.viaBlockchain} via blockchain), ${custody.confirmed} custody deposit(s) confirmed`,
+          `Payment monitor: ${registration.confirmed} registration (${registration.viaBlockchain} via chain), ${walletDeposits.confirmed} wallet deposit(s), ${custody.confirmed} custody deposit(s) confirmed`,
         );
       }
     } catch (err) {

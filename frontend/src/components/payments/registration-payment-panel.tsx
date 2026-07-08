@@ -63,17 +63,70 @@ export function RegistrationPaymentPanel({
   const [progress, setProgress] = useState<Progress>("waiting");
   const [actuallyPaid, setActuallyPaid] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
-  const [source, setSource] = useState<PaymentSource>("wallet");
+  const [source, setSource] = useState<PaymentSource>("crypto");
   const [walletBalance, setWalletBalance] = useState(0);
+  const [lockedBalance, setLockedBalance] = useState(0);
+  const [pendingDeposits, setPendingDeposits] = useState(0);
+  const [walletRefreshing, setWalletRefreshing] = useState(false);
   const [feeUsdt, setFeeUsdt] = useState(5);
 
   const amountDue = appliedPromo?.finalAmount ?? feeUsdt;
 
+  const refreshWallet = useCallback(async () => {
+    setWalletRefreshing(true);
+    try {
+      const s = await api.wallet.summary();
+      setWalletBalance(s.availableBalance);
+      setLockedBalance(s.lockedBalance);
+      setPendingDeposits(s.pendingWalletDeposits ?? 0);
+      if (s.availableBalance >= amountDue) {
+        setSource((prev) => (prev === "crypto" ? "wallet" : prev));
+      }
+    } catch {
+      /* keep last known balance */
+    } finally {
+      setWalletRefreshing(false);
+    }
+  }, [amountDue]);
+
   useEffect(() => {
-    void api.wallet.summary().then((s) => setWalletBalance(s.availableBalance));
+    void refreshWallet();
     void api.payments.featuredPromo().then((r) => {
       if (r.registrationFeeUsdt) setFeeUsdt(r.registrationFeeUsdt);
     });
+  }, [refreshWallet]);
+
+  useEffect(() => {
+    if (!paymentId) return;
+    const id = setInterval(() => void refreshWallet(), 12_000);
+    return () => clearInterval(id);
+  }, [paymentId, refreshWallet]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function restorePendingRegistration() {
+      try {
+        const res = await api.payments.pendingRegistration();
+        if (cancelled || !res.pending?.payAddress || !res.pending.paymentId) {
+          return;
+        }
+        setSource("crypto");
+        setPaymentId(res.pending.paymentId);
+        setPayAddress(res.pending.payAddress);
+        setPayAmount(res.pending.payAmount ?? res.pending.amount ?? null);
+        setPayCurrency(res.pending.payCurrency || "usdt");
+        if (res.pending.network) setNetwork(res.pending.network);
+        setProgress("waiting");
+      } catch {
+        /* no pending renewal payment */
+      }
+    }
+
+    void restorePendingRegistration();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const pollStatus = useCallback(async () => {
@@ -140,6 +193,9 @@ export function RegistrationPaymentPanel({
     setLoading(true);
     setError("");
     try {
+      if (source === "wallet") {
+        await refreshWallet();
+      }
       const result = await api.payments.createRegistration(
         network,
         appliedPromo?.code,
@@ -204,8 +260,12 @@ export function RegistrationPaymentPanel({
 
         <PaymentSourceSelector
           walletBalance={walletBalance}
+          lockedBalance={lockedBalance}
+          pendingDeposits={pendingDeposits}
           amountDue={amountDue}
           source={source}
+          onRefreshWallet={() => void refreshWallet()}
+          refreshingWallet={walletRefreshing}
           onSourceChange={(s) => {
             setSource(s);
             setPaymentId(null);

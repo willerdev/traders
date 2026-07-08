@@ -434,6 +434,8 @@ export class PaymentsService {
     amount: number,
     appliedPromo: { code: string; discountPercent: number } | null,
   ) {
+    await this.syncUserPendingWalletDeposits(userId);
+
     const wallet = await this.walletService.getOrCreateWallet(userId);
     const balance = Number(wallet.availableBalance);
     if (balance < amount) {
@@ -511,8 +513,17 @@ export class PaymentsService {
       return { pending: null };
     }
 
+    await this.syncPendingCryptoPayment(payment.id).catch(() => null);
+
+    const fresh = await this.prisma.payment.findUnique({
+      where: { id: payment.id },
+    });
+    if (!fresh || fresh.status !== 'PENDING' || !fresh.payAddress) {
+      return { pending: null };
+    }
+
     return {
-      pending: this.formatRegistrationPaymentResponse(payment),
+      pending: this.formatRegistrationPaymentResponse(fresh),
     };
   }
 
@@ -1189,12 +1200,54 @@ export class PaymentsService {
     return { status: 'confirmed', paymentId: payment.id, mt5Sync: true };
   }
 
+  private readonly syncablePaymentPurposes = [
+    'registration',
+    'wallet_deposit',
+    'setup_plan_premium',
+    'setup_plan_pro',
+    'profit_share',
+    'mt5_sync',
+    'investor_enrollment',
+  ] as const;
+
   async syncAllPendingRegistrationPayments() {
+    return this.syncAllPendingCryptoPayments(['registration']);
+  }
+
+  async syncAllPendingWalletDeposits() {
+    return this.syncAllPendingCryptoPayments(['wallet_deposit']);
+  }
+
+  async syncUserPendingWalletDeposits(userId: string) {
+    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const pending = await this.prisma.payment.findMany({
+      where: {
+        userId,
+        status: 'PENDING',
+        purpose: 'wallet_deposit',
+        createdAt: { gte: cutoff },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+    });
+
+    let confirmed = 0;
+    for (const payment of pending) {
+      const result = await this.syncPendingCryptoPayment(payment.id);
+      if (result?.confirmed) confirmed += 1;
+    }
+
+    return { scanned: pending.length, confirmed };
+  }
+
+  private async syncAllPendingCryptoPayments(
+    purposes: readonly string[] = this.syncablePaymentPurposes,
+  ) {
     const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const pending = await this.prisma.payment.findMany({
       where: {
         status: 'PENDING',
-        purpose: 'registration',
+        purpose: { in: [...purposes] },
         createdAt: { gte: cutoff },
       },
       orderBy: { createdAt: 'asc' },
@@ -1213,7 +1266,7 @@ export class PaymentsService {
         !gatewayId.startsWith('promo_');
       if (!payAddress && !hasGateway) continue;
 
-      const result = await this.syncPendingRegistrationPayment(payment.id);
+      const result = await this.syncPendingCryptoPayment(payment.id);
       if (result?.confirmed) {
         confirmed += 1;
         if (result.source === 'blockchain') viaBlockchain += 1;
@@ -1223,7 +1276,12 @@ export class PaymentsService {
     return { scanned: pending.length, confirmed, viaBlockchain };
   }
 
+  /** @deprecated Use syncPendingCryptoPayment */
   async syncPendingRegistrationPayment(paymentId: string) {
+    return this.syncPendingCryptoPayment(paymentId);
+  }
+
+  async syncPendingCryptoPayment(paymentId: string) {
     const payment = await this.prisma.payment.findUnique({
       where: { id: paymentId },
     });
@@ -1244,8 +1302,7 @@ export class PaymentsService {
         const status = live.payment_status?.toLowerCase();
 
         if (this.isConfirmedGatewayStatus(status)) {
-          await this.confirmRegistrationPayment(payment.id, live as object, {
-            gatewayId,
+          await this.confirmPayment(payment, live as object, gatewayId, {
             source: 'nowpayments',
           });
           return { confirmed: true, source: 'nowpayments' as const };
@@ -1285,16 +1342,16 @@ export class PaymentsService {
     });
 
     if (chainMatch) {
-      await this.confirmRegistrationPayment(
-        payment.id,
+      await this.confirmPayment(
+        payment,
         {
           blockchain: chainMatch,
           pay_address: payAddress,
           pay_amount: payAmount,
           actually_paid: chainMatch.amount,
         },
+        hasGateway ? gatewayId : undefined,
         {
-          gatewayId: hasGateway ? gatewayId : undefined,
           txHash: chainMatch.txHash,
           source: 'blockchain',
         },

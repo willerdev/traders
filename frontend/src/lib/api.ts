@@ -1178,6 +1178,8 @@ export interface WalletTransaction {
 export interface WalletSummary {
   availableBalance: number;
   lockedBalance: number;
+  pendingWalletDeposits?: number;
+  pendingWalletDepositAmount?: number;
   subscriptionPaid: number;
   totalDeposited: number;
   totalEarned: number;

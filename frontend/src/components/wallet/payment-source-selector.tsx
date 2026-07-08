@@ -1,41 +1,62 @@
 "use client";
 
 import { cn, formatCurrency } from "@/lib/utils";
-import { Wallet, ArrowDownToLine } from "lucide-react";
+import { Wallet, ArrowDownToLine, RefreshCw } from "lucide-react";
 
 export type PaymentSource = "wallet" | "crypto";
 
 export function PaymentSourceSelector({
   walletBalance,
+  lockedBalance = 0,
+  pendingDeposits = 0,
   amountDue,
   source,
   onSourceChange,
+  onRefreshWallet,
+  refreshingWallet = false,
   className,
 }: {
   walletBalance: number;
+  lockedBalance?: number;
+  pendingDeposits?: number;
   amountDue: number;
   source: PaymentSource;
   onSourceChange: (source: PaymentSource) => void;
+  onRefreshWallet?: () => void;
+  refreshingWallet?: boolean;
   className?: string;
 }) {
   const canPayFromWallet = walletBalance >= amountDue;
 
   return (
     <div className={cn("space-y-2", className)}>
-      <p className="text-xs font-medium uppercase tracking-wide text-muted">
-        Payment source
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted">
+          Payment source
+        </p>
+        {onRefreshWallet && (
+          <button
+            type="button"
+            onClick={onRefreshWallet}
+            disabled={refreshingWallet}
+            className="flex items-center gap-1 text-[10px] font-medium text-primary hover:underline disabled:opacity-50"
+          >
+            <RefreshCw
+              className={cn("h-3 w-3", refreshingWallet && "animate-spin")}
+            />
+            Refresh balance
+          </button>
+        )}
+      </div>
       <div className="grid gap-2 sm:grid-cols-2">
         <button
           type="button"
           onClick={() => onSourceChange("wallet")}
-          disabled={!canPayFromWallet && source !== "wallet"}
           className={cn(
             "rounded-xl border p-3 text-left transition-colors",
             source === "wallet"
               ? "border-primary bg-primary/10"
               : "border-[var(--color-border)] hover:border-primary/40",
-            !canPayFromWallet && "opacity-50",
           )}
         >
           <div className="flex items-center gap-2">
@@ -44,17 +65,29 @@ export function PaymentSourceSelector({
             </div>
             <div>
               <p className="text-sm font-medium text-foreground">
-                Wallet balance
+                Platform wallet
               </p>
               <p className="text-xs text-muted">
                 {formatCurrency(walletBalance)} available
               </p>
             </div>
           </div>
+          {lockedBalance > 0 && (
+            <p className="mt-1.5 text-[10px] text-muted">
+              {formatCurrency(lockedBalance)} locked in earning plans (not
+              usable for subscription)
+            </p>
+          )}
+          {pendingDeposits > 0 && (
+            <p className="mt-1.5 text-[10px] text-amber-400/90">
+              {pendingDeposits} deposit{pendingDeposits !== 1 ? "s" : ""}{" "}
+              confirming — tap Refresh balance
+            </p>
+          )}
           {!canPayFromWallet && (
             <p className="mt-2 text-xs text-danger">
-              Need {formatCurrency(amountDue - walletBalance)} more — deposit
-              first or pay with crypto
+              Need {formatCurrency(amountDue - walletBalance)} more in your
+              platform wallet — deposit on Wallet page or pay with crypto below
             </p>
           )}
         </button>
@@ -75,15 +108,20 @@ export function PaymentSourceSelector({
             </div>
             <div>
               <p className="text-sm font-medium text-foreground">
-                New crypto deposit
+                Pay with crypto
               </p>
               <p className="text-xs text-muted">
-                Send USDT to a payment address
+                Send USDT from any wallet — activates on confirm
               </p>
             </div>
           </div>
         </button>
       </div>
+      <p className="text-[10px] leading-snug text-muted">
+        External wallets (Trust, MetaMask, etc.) are not linked automatically.
+        Deposit USDT to your platform wallet first, or use Pay with crypto for
+        a one-time renewal address.
+      </p>
     </div>
   );
 }

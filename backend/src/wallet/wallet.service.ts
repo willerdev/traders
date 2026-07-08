@@ -1,9 +1,11 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
   ServiceUnavailableException,
+  forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DepositorPlanStatus, WalletTxType } from '@prisma/client';
@@ -19,6 +21,7 @@ import {
 import { NotificationService } from '../email/notification.service';
 import { resolvePayoutDestination } from '../common/payout.util';
 import { ComplianceService } from '../compliance/compliance.service';
+import { PaymentsService } from '../payments/payments.service';
 
 const PLAN_DAYS = 5;
 const DEPOSIT_MIN_FALLBACK_USDT = 10;
@@ -33,6 +36,8 @@ export class WalletService {
     private config: ConfigService,
     private notifications: NotificationService,
     private compliance: ComplianceService,
+    @Inject(forwardRef(() => PaymentsService))
+    private payments: PaymentsService,
   ) {}
 
   private ipnUrl() {
@@ -109,7 +114,16 @@ export class WalletService {
   }
 
   async getSummary(userId: string) {
-    const [wallet, txs, payments, activePlan] = await Promise.all([
+    try {
+      await this.payments.syncUserPendingWalletDeposits(userId);
+    } catch (err) {
+      this.logger.warn(
+        `Wallet deposit sync failed for ${userId}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+
+    const [wallet, txs, payments, activePlan, pendingDeposits] =
+      await Promise.all([
       this.getOrCreateWallet(userId),
       this.prisma.walletTransaction.findMany({ where: { userId } }),
       this.prisma.payment.findMany({
@@ -118,6 +132,17 @@ export class WalletService {
       this.prisma.depositorPlan.findFirst({
         where: { userId, status: 'ACTIVE' },
         include: { credits: { orderBy: { dayIndex: 'asc' } } },
+      }),
+      this.prisma.payment.findMany({
+        where: {
+          userId,
+          purpose: 'wallet_deposit',
+          status: 'PENDING',
+          payAddress: { not: null },
+          createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 3,
       }),
     ]);
 
@@ -150,6 +175,11 @@ export class WalletService {
     return {
       availableBalance: Number(wallet.availableBalance),
       lockedBalance: Number(wallet.lockedBalance),
+      pendingWalletDeposits: pendingDeposits.length,
+      pendingWalletDepositAmount: pendingDeposits.reduce(
+        (sum, p) => sum + Number(p.amount),
+        0,
+      ),
       subscriptionPaid,
       totalDeposited,
       totalEarned,
