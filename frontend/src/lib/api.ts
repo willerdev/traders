@@ -1954,6 +1954,7 @@ export interface UserMt5OhlcResult {
   symbol: string;
   timeframe: string;
   bars: UserMt5OhlcBar[];
+  source?: "metaapi";
   refreshedAt: string;
 }
 

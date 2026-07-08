@@ -331,6 +331,14 @@ export class MetaApiService {
     return h;
   }
 
+  /** Market-data host uses auth-token only (api-version breaks some candle requests). */
+  private marketDataHeaders() {
+    return {
+      Accept: 'application/json',
+      'auth-token': this.token,
+    };
+  }
+
   private clientUrl(region: string): string {
     const override = this.config.get<string>('METAAPI_CLIENT_URL')?.trim();
     if (override) return override.replace(/\/$/, '');
@@ -720,44 +728,57 @@ export class MetaApiService {
     account: MetaApiAccount,
     symbol: string,
     timeframe: string,
-    limit = 300,
+    limit = 200,
   ): Promise<MetaApiOhlcBar[]> {
     const metaTf = this.resolveMetaApiTimeframe(timeframe);
     const capped = Math.min(Math.max(limit, 1), 1000);
     const variants = getSymbolLookupVariants(symbol);
     let lastError: BadRequestException | null = null;
 
+    // Ensure symbol is subscribed on the terminal before requesting candles.
+    try {
+      await this.getSymbolPrice(account, symbol);
+    } catch {
+      /* continue — candle fetch may still succeed */
+    }
+
+    const limits = [...new Set([capped, Math.min(capped, 120), 60])];
+
     for (const brokerSymbol of variants) {
-      try {
-        return await this.fetchHistoricalCandles(
-          account,
-          brokerSymbol,
-          metaTf,
-          capped,
-        );
-      } catch (err) {
-        if (err instanceof BadRequestException) {
-          lastError = err;
-          continue;
+      for (const tryLimit of limits) {
+        try {
+          return await this.fetchHistoricalCandles(
+            account,
+            brokerSymbol,
+            metaTf,
+            tryLimit,
+          );
+        } catch (err) {
+          if (err instanceof BadRequestException) {
+            lastError = err;
+            continue;
+          }
+          throw err;
         }
-        throw err;
       }
     }
 
     const resolved = await this.resolveBrokerSymbol(account, symbol);
     if (resolved && !variants.includes(resolved)) {
-      try {
-        return await this.fetchHistoricalCandles(
-          account,
-          resolved,
-          metaTf,
-          capped,
-        );
-      } catch (err) {
-        if (err instanceof BadRequestException) {
-          lastError = err;
-        } else {
-          throw err;
+      for (const tryLimit of limits) {
+        try {
+          return await this.fetchHistoricalCandles(
+            account,
+            resolved,
+            metaTf,
+            tryLimit,
+          );
+        } catch (err) {
+          if (err instanceof BadRequestException) {
+            lastError = err;
+          } else {
+            throw err;
+          }
         }
       }
     }
@@ -782,14 +803,21 @@ export class MetaApiService {
     url.searchParams.set('limit', String(limit));
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120_000);
+    const timeout = setTimeout(() => controller.abort(), 28_000);
 
     let res: Response;
     try {
       res = await fetch(url.toString(), {
-        headers: this.headers(),
+        headers: this.marketDataHeaders(),
         signal: controller.signal,
       });
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new BadRequestException(
+          `Candle request timed out for ${brokerSymbol} — try a shorter timeframe or fewer bars`,
+        );
+      }
+      throw err;
     } finally {
       clearTimeout(timeout);
     }

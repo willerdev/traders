@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useThemeStore } from "@/stores/theme";
 import {
-  loadHistoricalOHLC,
+  loadChartData,
   resolveSeedPrice,
   subscribeRealtimeUpdates,
   type RealtimeQuote,
@@ -42,6 +42,10 @@ type Props = {
   priceLines?: ChartPriceLine[];
   className?: string;
   onLoadingChange?: (loading: boolean) => void;
+  onChartStatusChange?: (status: {
+    source?: "metaapi" | "quote-fallback";
+    error?: string | null;
+  }) => void;
 };
 
 export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
@@ -55,6 +59,7 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
       priceLines = [],
       className,
       onLoadingChange,
+      onChartStatusChange,
     },
     ref,
   ) {
@@ -93,21 +98,32 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
         onLoadingChange?.(true);
         try {
           applySymbolFormatRef.current(sym);
-          const validSeed = resolveSeedPrice(sym, seed);
-          const bars = await loadHistoricalOHLC(sym, tf, validSeed);
+          const result = await loadChartData(sym, tf, seed);
           if (gen !== loadGenRef.current) return;
-          if (bars.length > 0) {
-            setDataRef.current(bars, { fit: true });
+          if (result.bars.length > 0) {
+            setDataRef.current(result.bars, { fit: true });
+            onChartStatusChange?.({
+              source: result.source,
+              error: result.error ?? null,
+            });
+          } else {
+            onChartStatusChange?.({
+              source: result.source,
+              error: result.error ?? "No chart data available",
+            });
           }
-        } catch {
-          /* MetaAPI candle load failed — live poll may recover on next sync */
+        } catch (err) {
+          onChartStatusChange?.({
+            error:
+              err instanceof Error ? err.message : "Could not load chart data",
+          });
         } finally {
           if (gen === loadGenRef.current) {
             onLoadingChange?.(false);
           }
         }
       },
-      [onLoadingChange],
+      [onLoadingChange, onChartStatusChange],
     );
 
     useImperativeHandle(ref, () => ({

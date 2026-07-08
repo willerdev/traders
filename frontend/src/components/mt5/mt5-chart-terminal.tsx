@@ -94,6 +94,10 @@ export function Mt5ChartTerminal({
   const chartRef = useRef<LightweightChartHandle>(null);
   const [timeframe, setTimeframe] = useState<ChartTimeframe>("M5");
   const [chartLoading, setChartLoading] = useState(false);
+  const [chartStatus, setChartStatus] = useState<{
+    source?: "metaapi" | "quote-fallback";
+    error?: string | null;
+  }>({});
   const { watchlist, addSymbol, removeSymbol } = useChartWatchlist();
   const [fetchedQuotes, setFetchedQuotes] = useState<
     Record<string, RealtimeQuote>
@@ -310,7 +314,21 @@ export function Mt5ChartTerminal({
           priceLines={priceLines}
           className="h-full w-full"
           onLoadingChange={setChartLoading}
+          onChartStatusChange={setChartStatus}
         />
+        {chartLoading && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[var(--mt5-bg)]/40">
+            <Loader2 className="h-6 w-6 animate-spin text-[var(--mt5-muted)]" />
+          </div>
+        )}
+        {!chartLoading && chartStatus.error && (
+          <div className="pointer-events-none absolute bottom-2 left-2 right-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-200/90">
+            {chartStatus.source === "quote-fallback"
+              ? "Live price only — candle history unavailable. "
+              : null}
+            {chartStatus.error}
+          </div>
+        )}
       </div>
 
       {/* Desktop MT5-style terminal — hidden on phone */}

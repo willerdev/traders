@@ -179,8 +179,12 @@ export function useLightweightChart(
   );
 
   const updateCandle = useCallback((bar: OHLCBar) => {
-    if (!seriesRef.current || barsRef.current.length === 0) return;
+    if (!seriesRef.current) return;
     const bars = barsRef.current;
+    if (bars.length === 0) {
+      applyData([bar], true);
+      return;
+    }
     const last = bars[bars.length - 1];
     if (last && last.time === bar.time) {
       bars[bars.length - 1] = bar;
@@ -195,7 +199,7 @@ export function useLightweightChart(
       low: bar.low,
       close: bar.close,
     });
-  }, []);
+  }, [applyData]);
 
   const setMarkers = useCallback((markers: ChartMarker[]) => {
     if (!markersRef.current) {
