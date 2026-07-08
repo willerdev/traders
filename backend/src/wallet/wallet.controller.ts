@@ -94,6 +94,21 @@ export class WalletController {
     );
   }
 
+  @Get('daily-calendar')
+  @UseGuards(JwtAuthGuard)
+  dailyCalendar(
+    @Request() req: { user: { id: string } },
+    @Query('year') year?: string,
+    @Query('month') month?: string,
+  ) {
+    const now = new Date();
+    return this.wallet.getDailyCalendar(
+      req.user.id,
+      year ? Number(year) : now.getUTCFullYear(),
+      month ? Number(month) : now.getUTCMonth() + 1,
+    );
+  }
+
   @Post('withdraw')
   @UseGuards(JwtAuthGuard)
   withdraw(

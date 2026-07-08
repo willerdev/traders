@@ -685,6 +685,63 @@ export class WalletService {
     return { items, total: investorTotal + depositorTotal };
   }
 
+  async getDailyCalendar(userId: string, year: number, month: number) {
+    if (!Number.isFinite(year) || year < 2000 || year > 2100) {
+      throw new BadRequestException('Invalid year');
+    }
+    if (!Number.isFinite(month) || month < 1 || month > 12) {
+      throw new BadRequestException('Invalid month');
+    }
+
+    const start = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+    const end = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
+
+    const transactions = await this.prisma.walletTransaction.findMany({
+      where: {
+        userId,
+        createdAt: { gte: start, lt: end },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        amount: true,
+        type: true,
+        description: true,
+        createdAt: true,
+      },
+    });
+
+    const days: Record<
+      string,
+      {
+        date: string;
+        net: number;
+        transactions: Array<{
+          amount: number;
+          type: string;
+          description: string;
+        }>;
+      }
+    > = {};
+
+    for (const tx of transactions) {
+      const date = tx.createdAt.toISOString().slice(0, 10);
+      if (!days[date]) {
+        days[date] = { date, net: 0, transactions: [] };
+      }
+      const amount = Number(tx.amount);
+      days[date].net += amount;
+      days[date].transactions.push({
+        amount,
+        type: tx.type,
+        description: tx.description,
+      });
+    }
+
+    const monthNet = Object.values(days).reduce((sum, d) => sum + d.net, 0);
+
+    return { year, month, monthNet, days };
+  }
+
   private async completePlan(planId: string, userId: string, amount: number) {
     const wallet = await this.getOrCreateWallet(userId);
     const newLocked = Math.max(0, Number(wallet.lockedBalance) - amount);

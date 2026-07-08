@@ -811,6 +811,10 @@ class ApiClient {
       this.request<{ items: DailyIncomeEntry[]; total: number }>(
         `/wallet/income-journal?take=${take}&skip=${skip}`,
       ),
+    dailyCalendar: (year: number, month: number) =>
+      this.request<DailyCalendarResult>(
+        `/wallet/daily-calendar?year=${year}&month=${month}`,
+      ),
   };
 
   investor = {
@@ -1225,6 +1229,23 @@ export interface DailyIncomeEntry {
   creditDate: string;
   dayIndex: number | null;
   creditedAt: string;
+}
+
+export interface DailyCalendarDay {
+  date: string;
+  net: number;
+  transactions: Array<{
+    amount: number;
+    type: string;
+    description: string;
+  }>;
+}
+
+export interface DailyCalendarResult {
+  year: number;
+  month: number;
+  monthNet: number;
+  days: Record<string, DailyCalendarDay>;
 }
 
 export interface InvestorStatus {

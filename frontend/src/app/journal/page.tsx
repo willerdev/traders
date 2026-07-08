@@ -11,11 +11,11 @@ export default function JournalPage() {
   }
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-6 md:max-w-2xl">
+    <div className="mx-auto max-w-lg px-4 py-6 md:max-w-3xl">
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Daily income journal</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Investor and depositor daily earnings credited to your wallet.
+          Calendar view of daily wallet profit and loss — tap a day for details.
         </p>
       </div>
       <DailyIncomeJournal />
