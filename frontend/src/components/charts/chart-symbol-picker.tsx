@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
   CHART_SYMBOL_CATALOG,
   normalizeSymbolKey,
@@ -18,6 +18,7 @@ type Props = {
   onRemove: (symbol: string) => void;
   compact?: boolean;
   className?: string;
+  searchInputRef?: RefObject<HTMLInputElement | null>;
 };
 
 export function ChartSymbolPicker({
@@ -28,6 +29,7 @@ export function ChartSymbolPicker({
   onRemove,
   compact = false,
   className,
+  searchInputRef,
 }: Props) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -117,6 +119,7 @@ export function ChartSymbolPicker({
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--mt5-muted)]" />
           <input
+            ref={searchInputRef}
             type="text"
             value={query}
             onChange={(e) => {

@@ -26,6 +26,11 @@ import { persistStopChange } from "@/components/charts/persist-stop-change";
 import type { ChartPriceLine } from "@/components/charts/chart-types";
 import { ChartUserWatermark } from "@/components/mt5/chart-user-watermark";
 import { Mt5ChartSettingsButton } from "@/components/mt5/mt5-chart-settings-button";
+import { Mt5ChartSymbolOverlay } from "@/components/mt5/mt5-chart-symbol-overlay";
+import {
+  Mt5ChartRadialMenu,
+  type RadialToolId,
+} from "@/components/mt5/mt5-chart-radial-menu";
 import { useMt5ChartDisplaySettings } from "@/hooks/use-mt5-chart-display-settings";
 import { useAuthStore } from "@/stores/auth";
 import {
@@ -90,7 +95,10 @@ export function Mt5ChartTerminal({
   onStopsUpdated,
 }: Props) {
   const chartRef = useRef<LightweightChartHandle>(null);
+  const symbolSearchRef = useRef<HTMLInputElement>(null);
   const [timeframe, setTimeframe] = useState<ChartTimeframe>("M5");
+  const [radialOpen, setRadialOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartLoadReason, setChartLoadReason] = useState<ChartLoadReason | null>(
     null,
@@ -250,6 +258,31 @@ export function Mt5ChartTerminal({
     onSelectSymbol(symbol);
   }
 
+  function handleRadialTool(tool: RadialToolId) {
+    switch (tool) {
+      case "settings":
+        setSettingsOpen(true);
+        setRadialOpen(false);
+        break;
+      case "layout":
+        chartRef.current?.fitContent();
+        setRadialOpen(false);
+        break;
+      case "crosshair":
+      case "indicators":
+      case "objects":
+        setRadialOpen(false);
+        break;
+      default:
+        setRadialOpen(false);
+    }
+  }
+
+  function focusSymbolSearch() {
+    symbolSearchRef.current?.focus();
+    symbolSearchRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
   const desktopTerminal = showOrdersPanel && !chartOnly;
 
   return (
@@ -264,7 +297,7 @@ export function Mt5ChartTerminal({
       )}
       data-mt5-chart-terminal
     >
-      {/* Compact toolbar — pair + timeframe only */}
+      {/* Toolbar — pair search + settings (timeframes via radial on chart) */}
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-2 py-1.5 lg:px-3">
         <ChartSymbolPicker
           compact
@@ -273,26 +306,37 @@ export function Mt5ChartTerminal({
           onSelect={handleSymbolChange}
           onAdd={handleAddSymbol}
           onRemove={removeSymbol}
+          searchInputRef={symbolSearchRef}
           className="min-w-0 flex-1"
         />
 
-        <div className="flex shrink-0 gap-0.5">
-          {CHART_TIMEFRAMES.map((tf) => (
-            <button
-              key={tf}
-              type="button"
-              onClick={() => handleTimeframeChange(tf)}
-              className={cn(
-                "min-w-[2.25rem] rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide",
-                timeframe === tf
-                  ? "bg-primary text-white"
-                  : "text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)]",
-              )}
-            >
-              {tf}
-            </button>
-          ))}
-        </div>
+        {!chartOnly && (
+          <div className="hidden shrink-0 gap-0.5 md:flex">
+            {CHART_TIMEFRAMES.map((tf) => (
+              <button
+                key={tf}
+                type="button"
+                onClick={() => handleTimeframeChange(tf)}
+                className={cn(
+                  "min-w-[2.25rem] rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide",
+                  timeframe === tf
+                    ? "bg-primary text-white"
+                    : "text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)]",
+                )}
+              >
+                {tf}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <Mt5ChartSettingsButton
+          placement="toolbar"
+          settings={chartSettings}
+          onChange={setChartSetting}
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+        />
 
         {chartLoading && chartLoadReason !== "timeframe" && (
           <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--mt5-muted)]" />
@@ -348,9 +392,22 @@ export function Mt5ChartTerminal({
           name={userDisplayName}
           visible={chartSettings.showWatermark}
         />
-        <Mt5ChartSettingsButton
-          settings={chartSettings}
-          onChange={setChartSetting}
+        <Mt5ChartSymbolOverlay
+          symbol={selectedSymbol}
+          timeframe={timeframe}
+          liveQuote={liveQuote}
+          chartError={chartStatus.error}
+          onSymbolClick={focusSymbolSearch}
+        />
+        <Mt5ChartRadialMenu
+          open={radialOpen}
+          activeTimeframe={timeframe}
+          onClose={() => setRadialOpen(false)}
+          onTimeframe={(tf) => {
+            handleTimeframeChange(tf);
+            setRadialOpen(false);
+          }}
+          onTool={handleRadialTool}
         />
         <div
           className={cn(
@@ -368,6 +425,7 @@ export function Mt5ChartTerminal({
             priceLines={priceLines}
             draggableLines={chartSettings.showSlTp}
             onPriceLineDragEnd={handlePriceLineDragEnd}
+            onChartTap={() => setRadialOpen((v) => !v)}
             className="h-full w-full"
             onLoadingChange={handleChartLoadingChange}
             onChartStatusChange={setChartStatus}

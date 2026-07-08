@@ -42,14 +42,23 @@ type Props = {
     value: Mt5ChartDisplaySettings[K],
   ) => void;
   className?: string;
+  /** toolbar = inline in header; chart = removed (use radial) */
+  placement?: "toolbar" | "chart";
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
 export function Mt5ChartSettingsButton({
   settings,
   onChange,
   className,
+  placement = "toolbar",
+  open: controlledOpen,
+  onOpenChange,
 }: Props) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -69,10 +78,16 @@ export function Mt5ChartSettingsButton({
   }, [open]);
 
   return (
-    <div ref={rootRef} className={cn("absolute right-2 top-2 z-[12]", className)}>
+    <div
+      ref={rootRef}
+      className={cn(
+        placement === "toolbar" ? "relative shrink-0" : "absolute right-2 top-2 z-[12]",
+        className,
+      )}
+    >
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen(!open)}
         className={cn(
           "flex h-9 w-9 items-center justify-center rounded-full border border-[var(--mt5-divider)] bg-[var(--mt5-surface)]/95 text-[var(--mt5-muted)] shadow-md backdrop-blur-sm transition-colors hover:bg-[var(--mt5-row-hover)] hover:text-[var(--mt5-text)]",
           open && "border-primary/40 text-primary",
@@ -85,7 +100,12 @@ export function Mt5ChartSettingsButton({
 
       {open && (
         <div
-          className="absolute right-0 top-11 w-[min(17rem,calc(100vw-2rem))] rounded-xl border border-[var(--mt5-divider)] bg-[var(--mt5-surface)] p-3 shadow-xl"
+          className={cn(
+            "absolute z-50 w-[min(17rem,calc(100vw-2rem))] rounded-xl border border-[var(--mt5-divider)] bg-[var(--mt5-surface)] p-3 shadow-xl",
+            placement === "toolbar"
+              ? "right-0 top-11"
+              : "right-0 top-11",
+          )}
           role="dialog"
           aria-label="Chart display settings"
         >

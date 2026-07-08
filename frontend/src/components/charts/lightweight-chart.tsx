@@ -40,6 +40,7 @@ export type LightweightChartHandle = {
   clearMarkers: () => void;
   setPriceLines: (lines: ChartPriceLine[]) => void;
   reload: () => void;
+  fitContent: () => void;
 };
 
 export type ChartLoadReason = "initial" | "symbol" | "timeframe";
@@ -54,6 +55,7 @@ type Props = {
   className?: string;
   draggableLines?: boolean;
   onPriceLineDragEnd?: (line: ChartPriceLine, newPrice: number) => Promise<void>;
+  onChartTap?: () => void;
   onLoadingChange?: (loading: boolean, reason?: ChartLoadReason) => void;
   onChartStatusChange?: (status: {
     source?: "metaapi" | "quote-fallback";
@@ -84,6 +86,7 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
       className,
       draggableLines = false,
       onPriceLineDragEnd,
+      onChartTap,
       onLoadingChange,
       onChartStatusChange,
     },
@@ -94,6 +97,7 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
     const [dragPrices, setDragPrices] = useState<Record<string, number>>({});
     const [dragError, setDragError] = useState<string | null>(null);
     const onPriceLineDragEndRef = useRef(onPriceLineDragEnd);
+    const onChartTapRef = useRef(onChartTap);
     const markersExtraRef = useRef<ChartMarker[]>([]);
     const symbolRef = useRef(symbol);
     const timeframeRef = useRef(timeframe);
@@ -123,6 +127,7 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
     clearMarkersRef.current = chart.clearMarkers;
     setPriceLinesRef.current = chart.setPriceLines;
     onPriceLineDragEndRef.current = onPriceLineDragEnd;
+    onChartTapRef.current = onChartTap;
 
     const mergedPriceLines = useMemo(() => {
       return priceLines.map((line) => {
@@ -284,6 +289,7 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
           "symbol",
         );
       },
+      fitContent: () => chart.fitContent(),
     }));
 
     useEffect(() => {
@@ -340,6 +346,34 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
       setPriceLinesRef.current(mergedPriceLines);
     }, [mergedPriceLines, chart.ready]);
 
+    useEffect(() => {
+      if (!chart.containerRef.current || !chart.ready) return;
+      const target = chart.containerRef.current;
+      let start: { x: number; y: number; t: number } | null = null;
+
+      function onPointerDown(e: PointerEvent) {
+        start = { x: e.clientX, y: e.clientY, t: Date.now() };
+      }
+
+      function onPointerUp(e: PointerEvent) {
+        if (!start) return;
+        const dx = e.clientX - start.x;
+        const dy = e.clientY - start.y;
+        const dt = Date.now() - start.t;
+        if (Math.hypot(dx, dy) < 12 && dt < 400) {
+          onChartTapRef.current?.();
+        }
+        start = null;
+      }
+
+      target.addEventListener("pointerdown", onPointerDown);
+      target.addEventListener("pointerup", onPointerUp);
+      return () => {
+        target.removeEventListener("pointerdown", onPointerDown);
+        target.removeEventListener("pointerup", onPointerUp);
+      };
+    }, [chart.ready, chart.containerRef]);
+
     return (
       <div className="relative h-full w-full">
         <div
@@ -358,7 +392,7 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
           </div>
         )}
         {drag.saving && (
-          <div className="pointer-events-none absolute left-2 top-2 rounded bg-[var(--mt5-surface)]/90 px-2 py-1 text-[10px] text-[var(--mt5-muted)]">
+          <div className="pointer-events-none absolute bottom-2 left-2 rounded bg-[var(--mt5-surface)]/90 px-2 py-1 text-[10px] text-[var(--mt5-muted)]">
             Saving…
           </div>
         )}
