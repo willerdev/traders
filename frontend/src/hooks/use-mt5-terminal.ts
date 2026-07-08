@@ -172,6 +172,12 @@ export function useMt5Terminal(
     };
   }, [canLoad, tab, loadQuotes]);
 
+  useEffect(() => {
+    if (!canLoad || tab !== "chart") return;
+    const id = window.setInterval(() => void load({ background: true }), 5000);
+    return () => window.clearInterval(id);
+  }, [canLoad, tab, load]);
+
   return {
     data,
     runningTrades,

@@ -17,12 +17,11 @@ import {
 import { ChartSymbolPicker } from "@/components/charts/chart-symbol-picker";
 import {
   CHART_TIMEFRAMES,
-  type ChartMarker,
-  type ChartPriceLine,
   type ChartTimeframe,
 } from "@/components/charts/chart-types";
 import type { RealtimeQuote } from "@/components/charts/chart-data.service";
 import { useChartWatchlist } from "@/components/charts/use-chart-watchlist";
+import { buildMt5ChartOverlays } from "@/components/mt5/build-mt5-chart-overlays";
 import {
   MT5_BUY,
   MT5_SELL,
@@ -32,14 +31,6 @@ import {
 } from "@/components/mt5/mt5-ui";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
-
-const TIMEFRAME_SECONDS: Record<ChartTimeframe, number> = {
-  M1: 60,
-  M5: 300,
-  M15: 900,
-  H1: 3600,
-  D1: 86400,
-};
 
 type Props = {
   quotes: UserMt5QuoteItem[];
@@ -66,11 +57,6 @@ function toSetupSummary(setup: OpenSetupItem): SetupSummary {
     status: "OPEN",
     submittedAt: setup.submittedAt,
   };
-}
-
-function alignedNow(intervalSec: number): number {
-  const now = Math.floor(Date.now() / 1000);
-  return Math.floor(now / intervalSec) * intervalSec;
 }
 
 type OrderRow = {
@@ -193,60 +179,17 @@ export function Mt5ChartTerminal({
     [openOrders],
   );
 
-  const { priceLines, markers } = useMemo(() => {
-    const lines: ChartPriceLine[] = [];
-    const marks: ChartMarker[] = [];
-    const barTime = alignedNow(TIMEFRAME_SECONDS[timeframe]);
-
-    for (const { trade, kind } of symbolOrders) {
-      const isBuy = trade.direction.toUpperCase() === "BUY";
-      const dirColor = isBuy ? MT5_BUY : MT5_SELL;
-      const id = trade.positionId ?? trade.orderId ?? trade.symbol;
-
-      if (trade.stopLoss != null) {
-        lines.push({
-          id: `${id}-sl`,
-          price: trade.stopLoss,
-          color: MT5_SELL,
-          title: "SL",
-          lineStyle: 2,
-        });
-      }
-      if (trade.takeProfit != null) {
-        lines.push({
-          id: `${id}-tp`,
-          price: trade.takeProfit,
-          color: MT5_BUY,
-          title: "TP",
-          lineStyle: 2,
-        });
-      }
-      const entry =
-        trade.openPrice ??
-        (trade.entryMin != null && trade.entryMax != null
-          ? (trade.entryMin + trade.entryMax) / 2
-          : trade.entryMin ?? trade.entryMax);
-      if (entry != null) {
-        lines.push({
-          id: `${id}-entry`,
-          price: entry,
-          color: dirColor,
-          title: kind === "limit" ? "Limit" : "Entry",
-          lineStyle: 0,
-        });
-      }
-
-      marks.push({
-        time: barTime,
-        position: isBuy ? "belowBar" : "aboveBar",
-        color: dirColor,
-        shape: isBuy ? "arrowUp" : "arrowDown",
-        text: kind === "limit" ? "Limit" : "Open",
-      });
-    }
-
-    return { priceLines: lines, markers: marks };
-  }, [symbolOrders, timeframe]);
+  const { priceLines, markers, summary: overlaySummary } = useMemo(
+    () =>
+      buildMt5ChartOverlays({
+        selectedSymbol,
+        timeframe,
+        runningTrades,
+        limitTrades,
+        setups,
+      }),
+    [selectedSymbol, timeframe, runningTrades, limitTrades, setups],
+  );
 
   function handleTimeframeChange(tf: ChartTimeframe) {
     setTimeframe(tf);
@@ -305,6 +248,26 @@ export function Mt5ChartTerminal({
           <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--mt5-muted)]" />
         )}
       </div>
+
+        {overlaySummary.total > 0 && (
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-2 py-1 text-[9px] font-medium text-[var(--mt5-muted)]">
+            {overlaySummary.running > 0 && (
+              <span className="rounded bg-[#4a9eff]/15 px-1.5 py-0.5 text-[#4a9eff]">
+                {overlaySummary.running} open
+              </span>
+            )}
+            {overlaySummary.limits > 0 && (
+              <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-300">
+                {overlaySummary.limits} limit
+              </span>
+            )}
+            {overlaySummary.setups > 0 && (
+              <span className="rounded bg-primary/15 px-1.5 py-0.5 text-primary">
+                {overlaySummary.setups} setup
+              </span>
+            )}
+          </div>
+        )}
 
       {/* Chart fills remaining height on desktop */}
       <div
