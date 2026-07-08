@@ -264,10 +264,10 @@ export function Mt5ChartTerminal({
   return (
     <div
       className={cn(
-        "flex flex-col bg-[var(--mt5-bg)]",
+        "flex min-h-0 flex-col bg-[var(--mt5-bg)]",
         showOrdersPanel
-          ? "lg:min-h-0 lg:flex-1 lg:overflow-hidden"
-          : "shrink-0 border-b border-[var(--mt5-divider)]",
+          ? "shrink-0 border-b border-[var(--mt5-divider)] lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:border-b-0"
+          : "flex-1 overflow-hidden",
       )}
       data-mt5-chart-terminal
     >
@@ -309,10 +309,10 @@ export function Mt5ChartTerminal({
       {/* Chart fills remaining height on desktop */}
       <div
         className={cn(
-          "relative min-h-[200px] w-full flex-1",
+          "relative min-h-[200px] w-full",
           showOrdersPanel
-            ? "h-[min(42vh,280px)] lg:min-h-0"
-            : "h-[min(42vh,280px)]",
+            ? "h-[min(42vh,280px)] flex-1 lg:min-h-0"
+            : "min-h-0 flex-1",
         )}
       >
         <div

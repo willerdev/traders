@@ -9,7 +9,7 @@ import {
   writeMt5Cache,
 } from "@/lib/mt5-cache";
 
-type Tab = "quotes" | "setups" | "trades" | "history";
+type Tab = "quotes" | "chart" | "trades" | "history" | "setups";
 
 function bootstrapFromCache(userId: string | undefined) {
   if (!userId) return null;
@@ -149,7 +149,7 @@ export function useMt5Terminal(
   }, []);
 
   useEffect(() => {
-    if (!canLoad || tab !== "trades") return;
+    if (!canLoad || (tab !== "trades" && tab !== "chart")) return;
     const start = window.setTimeout(() => {
       void loadRunning();
     }, 0);
@@ -161,7 +161,7 @@ export function useMt5Terminal(
   }, [canLoad, tab, loadRunning]);
 
   useEffect(() => {
-    if (!canLoad || tab !== "quotes") return;
+    if (!canLoad || (tab !== "quotes" && tab !== "chart")) return;
     const start = window.setTimeout(() => {
       void loadQuotes();
     }, 0);

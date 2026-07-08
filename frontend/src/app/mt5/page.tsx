@@ -46,9 +46,13 @@ import {
 import { Mt5Assistant } from "@/components/mt5/mt5-assistant";
 import { Mt5LiveSyncCard } from "@/components/mt5/mt5-live-sync-card";
 import { Mt5ChartTerminal } from "@/components/mt5/mt5-chart-terminal";
+import {
+  Mt5MobileBottomNav,
+  type Mt5MobileTab,
+} from "@/components/mt5/mt5-mobile-bottom-nav";
 import { DEFAULT_CHART_SYMBOL } from "@/components/charts/chart-types";
 
-type Tab = "quotes" | "setups" | "trades" | "history";
+type Tab = "quotes" | "chart" | "trades" | "history" | "setups";
 type HistorySubTab = "positions" | "orders" | "deals";
 
 function toSetupSummary(setup: OpenSetupItem): SetupSummary {
@@ -83,8 +87,9 @@ export default function Mt5UserPage() {
   const { ready, hasHydrated } = useRequireAuth();
   const userRole = useAuthStore((s) => s.user?.role);
   const userId = useAuthStore((s) => s.user?.id);
-  const [tab, setTab] = useUrlTab("tab", "trades", [
+  const [tab, setTab] = useUrlTab("tab", "chart", [
     "quotes",
+    "chart",
     "setups",
     "trades",
     "history",
@@ -353,29 +358,45 @@ export default function Mt5UserPage() {
       ? "History"
       : tab === "trades"
         ? "Trade"
-        : tab === "quotes"
-          ? "Quotes"
-          : "Setups";
+        : tab === "chart"
+          ? "Charts"
+          : tab === "quotes"
+            ? "Quotes"
+            : "Setups";
+
+  const mobileTab: Mt5MobileTab =
+    tab === "quotes" ||
+    tab === "chart" ||
+    tab === "trades" ||
+    tab === "history"
+      ? tab
+      : "quotes";
+
+  const setMobileTab = (next: Mt5MobileTab) => setTab(next);
 
   return (
     <div
       className={cn(
         "mt5-shell flex w-full max-w-lg flex-col bg-[var(--mt5-bg)] text-[var(--mt5-text)]",
-        "min-h-[calc(100dvh-5.75rem-env(safe-area-inset-bottom,0px))]",
+        "min-h-[calc(100dvh-env(safe-area-inset-bottom,0px))]",
+        "max-lg:pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))]",
         "md:min-h-[calc(100dvh-1rem)] md:max-w-2xl",
-        "lg:mx-0 lg:max-w-none",
+        "lg:mx-0 lg:max-w-none lg:pb-0",
         tab === "trades" &&
           "lg:h-[calc(100dvh-0.5rem)] lg:max-h-[calc(100dvh-0.5rem)] lg:min-h-0 lg:overflow-hidden lg:flex-1",
+        tab === "chart" &&
+          "max-lg:min-h-[calc(100dvh-4.25rem-env(safe-area-inset-bottom,0px))]",
       )}
     >
-      <div className="lg:hidden">
+      <div className={cn("lg:hidden", tab === "chart" && "max-lg:hidden")}>
         <Mt5LiveSyncCard tradingActive compact />
       </div>
-      {/* MT5-style header — hidden on desktop chart (Trade tab) */}
+      {/* MT5-style header — hidden on desktop chart (Trade tab) and mobile Charts tab */}
       <div
         className={cn(
           "sticky top-0 z-20 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)]",
           tab === "trades" && "lg:hidden",
+          tab === "chart" && "max-lg:hidden",
         )}
       >
         <div className="flex items-center justify-between px-4 py-3">
@@ -384,7 +405,7 @@ export default function Mt5UserPage() {
               <button
                 type="button"
                 onClick={() => setTab("trades")}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)] hover:text-[var(--mt5-text)]"
+                className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)] hover:text-[var(--mt5-text)] lg:flex"
                 aria-label="Back to Trade"
               >
                 <ChevronLeft className="h-5 w-5" />
@@ -426,7 +447,7 @@ export default function Mt5UserPage() {
               <button
                 type="button"
                 onClick={() => setTab("history")}
-                className="rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-primary hover:bg-[var(--mt5-row-hover)]"
+                className="hidden rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-primary hover:bg-[var(--mt5-row-hover)] lg:inline"
               >
                 History
               </button>
@@ -509,11 +530,13 @@ export default function Mt5UserPage() {
         )}
 
         {tab !== "history" && (
-          <Mt5SubTabs
-            tabs={mainTabs.map((t) => ({ id: t.id, label: t.label.toUpperCase() }))}
-            active={tab}
-            onChange={setTab}
-          />
+          <div className="hidden lg:block">
+            <Mt5SubTabs
+              tabs={mainTabs.map((t) => ({ id: t.id, label: t.label.toUpperCase() }))}
+              active={tab}
+              onChange={setTab}
+            />
+          </div>
         )}
 
         {tab === "history" && (
@@ -529,10 +552,13 @@ export default function Mt5UserPage() {
         )}
       </div>
 
-      {(tab === "quotes" || tab === "trades") && (
+      {(tab === "chart" || tab === "trades") && (
         <div
           className={cn(
-            tab === "trades" && "lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden",
+            tab === "chart" &&
+              "flex min-h-0 flex-1 flex-col overflow-hidden max-lg:min-h-[calc(100dvh-4.25rem-env(safe-area-inset-bottom,0px))]",
+            tab === "trades" &&
+              "hidden lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden",
           )}
         >
           <Mt5ChartTerminal
@@ -557,7 +583,12 @@ export default function Mt5UserPage() {
       )}
 
       <div
-        className={`flex-1 overflow-y-auto transition-opacity duration-200 ${refreshing ? "opacity-[0.92]" : ""} ${tab === "trades" ? "lg:hidden" : ""}`}
+        className={cn(
+          "flex-1 overflow-y-auto transition-opacity duration-200",
+          refreshing && "opacity-[0.92]",
+          tab === "trades" && "lg:hidden",
+          tab === "chart" && "max-lg:hidden",
+        )}
       >
         {loading && !data && tab !== "quotes" ? (
           <div className="flex flex-col items-center justify-center gap-2 py-12 text-[var(--mt5-muted)]">
@@ -613,6 +644,12 @@ export default function Mt5UserPage() {
       )}
 
       <Mt5Assistant onActionsTaken={refreshAfterAssistant} />
+
+      <Mt5MobileBottomNav
+        active={mobileTab}
+        onChange={setMobileTab}
+        badges={{ trades: runningCount > 0 ? runningCount : undefined }}
+      />
     </div>
   );
 }

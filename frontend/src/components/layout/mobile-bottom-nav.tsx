@@ -128,6 +128,10 @@ export function MobileBottomNav() {
     return () => window.removeEventListener("keydown", onKey);
   }, [cashOpen]);
 
+  if (isMt5Path(pathname)) {
+    return null;
+  }
+
   return (
     <>
       {cashOpen && (
