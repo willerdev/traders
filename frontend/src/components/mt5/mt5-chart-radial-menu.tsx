@@ -14,8 +14,11 @@ import {
   X,
 } from "lucide-react";
 
-const MENU_SIZE = 220;
+export const MENU_SIZE = 220;
 const HALF = MENU_SIZE / 2;
+const RING_WIDTH = 14;
+/** Midline of the donut — all labels/icons sit on this radius */
+const RING_RADIUS = HALF - RING_WIDTH / 2;
 
 /** MT5-style ring labels (unsupported map to nearest backend TF). */
 export const RADIAL_TIMEFRAMES: {
@@ -45,6 +48,14 @@ const TOOLS = [
 
 export type RadialToolId = (typeof TOOLS)[number]["id"];
 
+/** Upper arc (left → over top → right), math angles (y-down canvas). */
+const TF_START = -Math.PI * 0.9;
+const TF_END = -Math.PI * 0.1;
+
+/** Lower arc (right → under bottom → left). */
+const TOOL_START = Math.PI * 0.1;
+const TOOL_END = Math.PI * 0.9;
+
 type Props = {
   open: boolean;
   anchor: { x: number; y: number } | null;
@@ -54,19 +65,16 @@ type Props = {
   onTool: (tool: RadialToolId) => void;
 };
 
-function arcPosition(
-  index: number,
-  total: number,
-  radius: number,
-  startRad: number,
-  endRad: number,
-) {
-  const t = total <= 1 ? 0.5 : index / (total - 1);
-  const angle = startRad + (endRad - startRad) * t;
+function ringPoint(angle: number) {
   return {
-    x: Math.cos(angle) * radius,
-    y: Math.sin(angle) * radius,
+    left: HALF + RING_RADIUS * Math.cos(angle),
+    top: HALF + RING_RADIUS * Math.sin(angle),
   };
+}
+
+function arcAngle(index: number, total: number, start: number, end: number) {
+  if (total <= 1) return (start + end) / 2;
+  return start + ((end - start) * index) / (total - 1);
 }
 
 export function Mt5ChartRadialMenu({
@@ -78,9 +86,6 @@ export function Mt5ChartRadialMenu({
   onTool,
 }: Props) {
   if (!open || !anchor) return null;
-
-  const tfRadius = 88;
-  const toolRadius = 72;
 
   return (
     <div
@@ -104,26 +109,44 @@ export function Mt5ChartRadialMenu({
           role="dialog"
           aria-label="Chart quick menu"
         >
-          {/* Donut ring — transparent center shows chart underneath */}
-          <div className="absolute inset-0 rounded-full border-[14px] border-[#2a2d35]/92 bg-transparent shadow-[0_0_24px_rgba(0,0,0,0.45)]" />
+          <svg
+            className="absolute inset-0 h-full w-full drop-shadow-[0_0_20px_rgba(0,0,0,0.5)]"
+            viewBox={`0 0 ${MENU_SIZE} ${MENU_SIZE}`}
+            aria-hidden
+          >
+            <circle
+              cx={HALF}
+              cy={HALF}
+              r={RING_RADIUS}
+              fill="none"
+              stroke="#2a2d35"
+              strokeWidth={RING_WIDTH}
+              strokeOpacity={0.92}
+            />
+          </svg>
 
           <button
             type="button"
             onClick={onClose}
-            className="absolute left-1/2 top-1/2 z-10 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[var(--mt5-muted)] transition-colors hover:text-[var(--mt5-text)]"
+            className="absolute z-10 flex h-8 w-8 items-center justify-center text-[var(--mt5-muted)] transition-colors hover:text-[var(--mt5-text)]"
+            style={{
+              left: HALF,
+              top: HALF,
+              transform: "translate(-50%, -50%)",
+            }}
             aria-label="Close menu"
           >
             <X className="h-5 w-5" strokeWidth={2} />
           </button>
 
           {RADIAL_TIMEFRAMES.map((tf, i) => {
-            const { x, y } = arcPosition(
+            const angle = arcAngle(
               i,
               RADIAL_TIMEFRAMES.length,
-              tfRadius,
-              -Math.PI * 0.92,
-              -Math.PI * 0.08,
+              TF_START,
+              TF_END,
             );
+            const { left, top } = ringPoint(angle);
             return (
               <button
                 key={tf.id}
@@ -134,15 +157,17 @@ export function Mt5ChartRadialMenu({
                   onClose();
                 }}
                 className={cn(
-                  "absolute left-1/2 top-1/2 flex h-8 min-w-[2rem] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-md text-[11px] font-semibold",
+                  "absolute z-10 flex h-6 min-w-[1.75rem] items-center justify-center text-[11px] font-semibold leading-none",
                   tf.mapsTo === activeTimeframe
                     ? "text-[#4a9eff]"
                     : tf.mapsTo
-                      ? "text-[var(--mt5-text)] hover:bg-white/10"
-                      : "text-[var(--mt5-muted)]/40",
+                      ? "text-[var(--mt5-text)]"
+                      : "text-[var(--mt5-muted)]/45",
                 )}
                 style={{
-                  transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
+                  left,
+                  top,
+                  transform: "translate(-50%, -50%)",
                 }}
               >
                 {tf.label}
@@ -151,13 +176,8 @@ export function Mt5ChartRadialMenu({
           })}
 
           {TOOLS.map((tool, i) => {
-            const { x, y } = arcPosition(
-              i,
-              TOOLS.length,
-              toolRadius,
-              Math.PI * 0.08,
-              Math.PI * 0.92,
-            );
+            const angle = arcAngle(i, TOOLS.length, TOOL_START, TOOL_END);
+            const { left, top } = ringPoint(angle);
             const Icon = tool.icon;
             return (
               <button
@@ -167,14 +187,16 @@ export function Mt5ChartRadialMenu({
                   onTool(tool.id);
                   if (tool.id !== "settings") onClose();
                 }}
-                className="absolute left-1/2 top-1/2 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-lg text-[var(--mt5-text)] hover:bg-white/10"
+                className="absolute z-10 flex h-7 w-7 items-center justify-center text-[var(--mt5-text)]"
                 style={{
-                  transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
+                  left,
+                  top,
+                  transform: "translate(-50%, -50%)",
                 }}
                 aria-label={tool.label}
                 title={tool.label}
               >
-                <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} />
+                <Icon className="h-[17px] w-[17px]" strokeWidth={1.75} />
               </button>
             );
           })}
