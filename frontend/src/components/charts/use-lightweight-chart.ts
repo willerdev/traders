@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { IChartApi, ISeriesApi, CandlestickSeriesPartialOptions } from "lightweight-charts";
 import { createChartOptions, createCandlestickSeriesOptions, type ChartThemeMode } from "@/components/charts/chart-config";
 import type {
@@ -13,6 +13,7 @@ type CandlestickSeries = ISeriesApi<"Candlestick">;
 
 export type UseLightweightChartResult = {
   containerRef: React.RefObject<HTMLDivElement | null>;
+  ready: boolean;
   setData: (bars: OHLCBar[]) => void;
   updateCandle: (bar: OHLCBar) => void;
   setMarkers: (markers: ChartMarker[]) => void;
@@ -33,6 +34,24 @@ export function useLightweightChart(theme: ChartThemeMode): UseLightweightChartR
     new Map(),
   );
   const barsRef = useRef<OHLCBar[]>([]);
+  const pendingBarsRef = useRef<OHLCBar[] | null>(null);
+  const pendingMarkersRef = useRef<ChartMarker[] | null>(null);
+  const pendingPriceLinesRef = useRef<ChartPriceLine[] | null>(null);
+  const [ready, setReady] = useState(false);
+
+  const applyData = useCallback((bars: OHLCBar[]) => {
+    barsRef.current = bars;
+    seriesRef.current?.setData(
+      bars.map((b) => ({
+        time: b.time as import("lightweight-charts").UTCTimestamp,
+        open: b.open,
+        high: b.high,
+        low: b.low,
+        close: b.close,
+      })),
+    );
+    chartRef.current?.timeScale().fitContent();
+  }, []);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -58,14 +77,53 @@ export function useLightweightChart(theme: ChartThemeMode): UseLightweightChartR
       chartRef.current = chart;
       seriesRef.current = series;
 
+      if (pendingBarsRef.current) {
+        applyData(pendingBarsRef.current);
+        pendingBarsRef.current = null;
+      }
+      if (pendingMarkersRef.current) {
+        markersRef.current.setMarkers(
+          pendingMarkersRef.current.map((m) => ({
+            time: m.time as import("lightweight-charts").UTCTimestamp,
+            position: m.position,
+            color: m.color,
+            shape: m.shape,
+            text: m.text,
+          })),
+        );
+        pendingMarkersRef.current = null;
+      }
+      if (pendingPriceLinesRef.current) {
+        for (const line of pendingPriceLinesRef.current) {
+          const pl = series.createPriceLine({
+            price: line.price,
+            color: line.color,
+            title: line.title ?? "",
+            lineStyle: line.lineStyle ?? 2,
+            axisLabelVisible: true,
+            lineWidth: 1,
+          });
+          priceLinesRef.current.set(line.id, pl);
+        }
+        pendingPriceLinesRef.current = null;
+      }
+
       ro = new ResizeObserver(() => {
-        chartRef.current?.timeScale().fitContent();
+        if (chartRef.current && containerRef.current) {
+          const { width, height } = containerRef.current.getBoundingClientRect();
+          if (width > 0 && height > 0) {
+            chartRef.current.applyOptions({ width, height });
+          }
+        }
       });
       ro.observe(el);
+
+      if (!disposed) setReady(true);
     })();
 
     return () => {
       disposed = true;
+      setReady(false);
       ro?.disconnect();
       priceLinesRef.current.forEach((line) => {
         try {
@@ -80,23 +138,27 @@ export function useLightweightChart(theme: ChartThemeMode): UseLightweightChartR
       chartRef.current?.remove();
       chartRef.current = null;
     };
-  }, [theme]);
-
-  const setData = useCallback((bars: OHLCBar[]) => {
-    barsRef.current = bars;
-    seriesRef.current?.setData(
-      bars.map((b) => ({
-        time: b.time as import("lightweight-charts").UTCTimestamp,
-        open: b.open,
-        high: b.high,
-        low: b.low,
-        close: b.close,
-      })),
-    );
-    chartRef.current?.timeScale().fitContent();
+    // Chart instance is created once; theme updates via applyTheme.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (ready) chartRef.current?.applyOptions(createChartOptions(theme));
+  }, [theme, ready]);
+
+  const setData = useCallback(
+    (bars: OHLCBar[]) => {
+      if (!seriesRef.current) {
+        pendingBarsRef.current = bars;
+        return;
+      }
+      applyData(bars);
+    },
+    [applyData],
+  );
+
   const updateCandle = useCallback((bar: OHLCBar) => {
+    if (!seriesRef.current) return;
     const bars = barsRef.current;
     const last = bars[bars.length - 1];
     if (last && last.time === bar.time) {
@@ -105,7 +167,7 @@ export function useLightweightChart(theme: ChartThemeMode): UseLightweightChartR
       bars.push(bar);
       if (bars.length > 500) bars.shift();
     }
-    seriesRef.current?.update({
+    seriesRef.current.update({
       time: bar.time as import("lightweight-charts").UTCTimestamp,
       open: bar.open,
       high: bar.high,
@@ -115,7 +177,11 @@ export function useLightweightChart(theme: ChartThemeMode): UseLightweightChartR
   }, []);
 
   const setMarkers = useCallback((markers: ChartMarker[]) => {
-    markersRef.current?.setMarkers(
+    if (!markersRef.current) {
+      pendingMarkersRef.current = markers;
+      return;
+    }
+    markersRef.current.setMarkers(
       markers.map((m) => ({
         time: m.time as import("lightweight-charts").UTCTimestamp,
         position: m.position,
@@ -127,12 +193,16 @@ export function useLightweightChart(theme: ChartThemeMode): UseLightweightChartR
   }, []);
 
   const clearMarkers = useCallback(() => {
+    pendingMarkersRef.current = [];
     markersRef.current?.setMarkers([]);
   }, []);
 
   const setPriceLines = useCallback((lines: ChartPriceLine[]) => {
     const series = seriesRef.current;
-    if (!series) return;
+    if (!series) {
+      pendingPriceLinesRef.current = lines;
+      return;
+    }
 
     const nextIds = new Set(lines.map((l) => l.id));
     for (const [id, line] of priceLinesRef.current) {
@@ -165,12 +235,9 @@ export function useLightweightChart(theme: ChartThemeMode): UseLightweightChartR
     }
   }, []);
 
-  const applyTheme = useCallback(
-    (mode: ChartThemeMode) => {
-      chartRef.current?.applyOptions(createChartOptions(mode));
-    },
-    [],
-  );
+  const applyTheme = useCallback((mode: ChartThemeMode) => {
+    chartRef.current?.applyOptions(createChartOptions(mode));
+  }, []);
 
   const fitContent = useCallback(() => {
     chartRef.current?.timeScale().fitContent();
@@ -178,6 +245,7 @@ export function useLightweightChart(theme: ChartThemeMode): UseLightweightChartR
 
   return {
     containerRef,
+    ready,
     setData,
     updateCandle,
     setMarkers,

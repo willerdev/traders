@@ -2,6 +2,7 @@
 
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -61,27 +62,32 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
     const markersExtraRef = useRef<ChartMarker[]>([]);
     const symbolRef = useRef(symbol);
     const timeframeRef = useRef(timeframe);
+    const seedPriceRef = useRef(seedPrice);
     const getQuoteRef = useRef(getQuote);
     symbolRef.current = symbol;
     timeframeRef.current = timeframe;
+    seedPriceRef.current = seedPrice;
     getQuoteRef.current = getQuote;
 
-    const loadBars = async (sym: string, tf: ChartTimeframe, seed?: number | null) => {
-      onLoadingChange?.(true);
-      try {
-        const bars = await loadHistoricalOHLC(sym, tf, seed);
-        chart.setData(bars);
-      } finally {
-        onLoadingChange?.(false);
-      }
-    };
+    const loadBars = useCallback(
+      async (sym: string, tf: ChartTimeframe, seed?: number | null) => {
+        onLoadingChange?.(true);
+        try {
+          const bars = await loadHistoricalOHLC(sym, tf, seed);
+          chart.setData(bars);
+        } finally {
+          onLoadingChange?.(false);
+        }
+      },
+      [chart, onLoadingChange],
+    );
 
     useImperativeHandle(ref, () => ({
       setSymbol: (next) => {
-        void loadBars(next, timeframeRef.current, seedPrice);
+        void loadBars(next, timeframeRef.current, seedPriceRef.current);
       },
       setTimeframe: (next) => {
-        void loadBars(symbolRef.current, next, seedPrice);
+        void loadBars(symbolRef.current, next, seedPriceRef.current);
       },
       updateCandle: chart.updateCandle,
       addMarker: (marker) => {
@@ -94,20 +100,17 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
       },
       setPriceLines: chart.setPriceLines,
       reload: () => {
-        void loadBars(symbolRef.current, timeframeRef.current, seedPrice);
+        void loadBars(symbolRef.current, timeframeRef.current, seedPriceRef.current);
       },
     }));
 
     useEffect(() => {
-      chart.applyTheme(theme);
-    }, [theme, chart]);
-
-    useEffect(() => {
+      if (!chart.ready) return;
       void loadBars(symbol, timeframe, seedPrice);
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when symbol/tf/seed change
-    }, [symbol, timeframe, seedPrice]);
+    }, [chart.ready, symbol, timeframe, seedPrice, loadBars]);
 
     useEffect(() => {
+      if (!chart.ready) return;
       const unsub = subscribeRealtimeUpdates(
         symbol,
         timeframe,
@@ -115,20 +118,23 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
         (bar) => chart.updateCandle(bar),
       );
       return unsub;
-    }, [symbol, timeframe, chart]);
+    }, [symbol, timeframe, chart.ready, chart]);
 
     useEffect(() => {
+      if (!chart.ready) return;
       chart.setMarkers([...markers, ...markersExtraRef.current]);
-    }, [markers, chart]);
+    }, [markers, chart.ready, chart]);
 
     useEffect(() => {
+      if (!chart.ready) return;
       chart.setPriceLines(priceLines);
-    }, [priceLines, chart]);
+    }, [priceLines, chart.ready, chart]);
 
     return (
       <div
         ref={chart.containerRef}
         className={className}
+        style={{ minHeight: 180 }}
         role="img"
         aria-label={`${symbol} candlestick chart`}
       />

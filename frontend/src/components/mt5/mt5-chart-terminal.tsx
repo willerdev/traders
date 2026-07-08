@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import type {
   OpenSetupItem,
+  UserMt5AccountSummary,
   UserMt5QuoteItem,
   UserMt5Trade,
 } from "@/lib/api";
@@ -32,9 +33,12 @@ type Props = {
   runningTrades: UserMt5Trade[];
   limitTrades: UserMt5Trade[];
   setups: OpenSetupItem[];
+  account?: UserMt5AccountSummary;
   selectedSymbol: string;
   onSelectSymbol: (symbol: string) => void;
   onOpenSetup: (setup: SetupSummary) => void;
+  onCloseTrade?: (trade: UserMt5Trade) => void;
+  showOrdersPanel?: boolean;
 };
 
 function toSetupSummary(setup: OpenSetupItem): SetupSummary {
@@ -56,14 +60,24 @@ function alignedNow(intervalSec: number): number {
   return Math.floor(now / intervalSec) * intervalSec;
 }
 
+type OrderRow = {
+  key: string;
+  symbol: string;
+  trade: UserMt5Trade;
+  kind: "running" | "limit";
+};
+
 export function Mt5ChartTerminal({
   quotes,
   runningTrades,
   limitTrades,
   setups,
+  account,
   selectedSymbol,
   onSelectSymbol,
   onOpenSetup,
+  onCloseTrade,
+  showOrdersPanel = true,
 }: Props) {
   const chartRef = useRef<LightweightChartHandle>(null);
   const [timeframe, setTimeframe] = useState<ChartTimeframe>("M5");
@@ -83,18 +97,23 @@ export function Mt5ChartTerminal({
     [quotes, selectedSymbol],
   );
 
-  const openOrders = useMemo(() => {
-    const rows: Array<{
-      key: string;
-      symbol: string;
-      trade: UserMt5Trade;
-      kind: "running" | "limit";
-    }> = [];
+  const openOrders = useMemo((): OrderRow[] => {
+    const rows: OrderRow[] = [];
     for (const t of runningTrades) {
-      rows.push({ key: `run-${t.positionId ?? t.orderId ?? t.symbol}`, symbol: t.symbol, trade: t, kind: "running" });
+      rows.push({
+        key: `run-${t.positionId ?? t.orderId ?? t.symbol}`,
+        symbol: t.symbol,
+        trade: t,
+        kind: "running",
+      });
     }
     for (const t of limitTrades) {
-      rows.push({ key: `lim-${t.orderId ?? t.symbol}`, symbol: t.symbol, trade: t, kind: "limit" });
+      rows.push({
+        key: `lim-${t.orderId ?? t.symbol}`,
+        symbol: t.symbol,
+        trade: t,
+        kind: "limit",
+      });
     }
     return rows;
   }, [runningTrades, limitTrades]);
@@ -102,6 +121,11 @@ export function Mt5ChartTerminal({
   const symbolOrders = useMemo(
     () => openOrders.filter((o) => o.symbol === selectedSymbol),
     [openOrders, selectedSymbol],
+  );
+
+  const totalProfit = useMemo(
+    () => openOrders.reduce((sum, o) => sum + (o.trade.profit ?? 0), 0),
+    [openOrders],
   );
 
   const { priceLines, markers } = useMemo(() => {
@@ -171,14 +195,18 @@ export function Mt5ChartTerminal({
 
   return (
     <div
-      className="flex shrink-0 flex-col border-b border-[var(--mt5-divider)] bg-[var(--mt5-bg)]"
+      className={cn(
+        "flex shrink-0 flex-col border-b border-[var(--mt5-divider)] bg-[var(--mt5-bg)]",
+        showOrdersPanel && "lg:flex-1 lg:min-h-0 lg:border-b-0",
+      )}
       data-mt5-chart-terminal
     >
-      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--mt5-divider)] px-3 py-2">
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-2">
         <select
           value={selectedSymbol}
           onChange={(e) => handleSymbolChange(e.target.value)}
-          className="max-w-[8rem] rounded border border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-2 py-1 text-xs font-semibold text-[var(--mt5-text)]"
+          className="max-w-[10rem] rounded border border-[var(--mt5-divider)] bg-[var(--mt5-bg)] px-2 py-1.5 text-xs font-semibold text-[var(--mt5-text)]"
           aria-label="Chart symbol"
         >
           {symbols.map((s) => (
@@ -188,16 +216,23 @@ export function Mt5ChartTerminal({
           ))}
         </select>
 
-        <div className="flex flex-1 flex-wrap gap-1">
+        {selectedQuote && (
+          <div className="hidden text-xs text-[var(--mt5-muted)] sm:block">
+            Bid {fmtMt5Price(selectedQuote.bid)} · Ask{" "}
+            {fmtMt5Price(selectedQuote.ask)}
+          </div>
+        )}
+
+        <div className="flex flex-1 flex-wrap justify-end gap-0.5">
           {CHART_TIMEFRAMES.map((tf) => (
             <button
               key={tf}
               type="button"
               onClick={() => handleTimeframeChange(tf)}
               className={cn(
-                "rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                "min-w-[2.25rem] rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide",
                 timeframe === tf
-                  ? "bg-primary/20 text-primary"
+                  ? "bg-primary text-white"
                   : "text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)]",
               )}
             >
@@ -211,7 +246,15 @@ export function Mt5ChartTerminal({
         )}
       </div>
 
-      <div className="relative h-[min(42vh,280px)] min-h-[200px] w-full">
+      {/* Chart — taller on desktop */}
+      <div
+        className={cn(
+          "relative w-full",
+          showOrdersPanel
+            ? "h-[min(42vh,280px)] min-h-[200px] lg:min-h-[320px] lg:flex-1"
+            : "h-[min(42vh,280px)] min-h-[200px]",
+        )}
+      >
         <LightweightChart
           ref={chartRef}
           symbol={selectedSymbol}
@@ -228,86 +271,144 @@ export function Mt5ChartTerminal({
           }
           markers={markers}
           priceLines={priceLines}
-          className="absolute inset-0 h-full w-full"
+          className="h-full w-full"
           onLoadingChange={setChartLoading}
         />
       </div>
 
-      <div className="border-t border-[var(--mt5-divider)]">
-        <div className="flex items-center justify-between px-3 py-1.5">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--mt5-muted)]">
-            Open orders
-          </span>
-          <span className="text-[10px] text-[var(--mt5-muted)]">
-            {openOrders.length} total
-          </span>
-        </div>
+      {/* Desktop MT5-style terminal — hidden on phone */}
+      {showOrdersPanel && (
+        <div className="hidden lg:flex lg:min-h-[220px] lg:max-h-[38vh] lg:flex-col lg:border-t lg:border-[var(--mt5-divider)]">
+          <div className="grid grid-cols-[1.2fr_0.8fr_0.6fr_0.5fr_0.7fr_0.7fr_0.7fr_0.7fr_0.6fr] gap-2 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--mt5-muted)]">
+            <span>Symbol</span>
+            <span>Ticket</span>
+            <span>Type</span>
+            <span>Volume</span>
+            <span>Price</span>
+            <span>S / L</span>
+            <span>T / P</span>
+            <span>Profit</span>
+            <span className="text-right">Action</span>
+          </div>
 
-        {openOrders.length === 0 ? (
-          <p className="px-3 pb-3 text-xs text-[var(--mt5-muted)]">
-            No open positions or pending limits.
-          </p>
-        ) : (
-          <div className="max-h-32 overflow-y-auto">
-            {openOrders.map(({ key, symbol, trade, kind }) => {
-              const setup = trade.signalId
-                ? setups.find((s) => s.signalId === trade.signalId)
-                : undefined;
-              const active = symbol === selectedSymbol;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => handleSymbolChange(symbol)}
-                  className={cn(
-                    "flex w-full items-center justify-between gap-2 border-t border-[var(--mt5-divider)] px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--mt5-row-hover)]",
-                    active && "bg-[var(--mt5-row-hover)]",
-                  )}
-                >
-                  <div className="min-w-0">
-                    <span className="font-semibold text-[var(--mt5-text)]">{symbol}</span>
-                    <span className="ml-2">
-                      <Mt5DirectionTag
-                        direction={trade.direction}
-                        volume={trade.volume}
-                        suffix={kind === "limit" ? "limit" : undefined}
-                      />
-                    </span>
-                    <p className="mt-0.5 text-[10px] text-[var(--mt5-muted)]">
-                      {fmtMt5Price(trade.openPrice ?? trade.entryMin)} · SL{" "}
-                      {fmtMt5Price(trade.stopLoss)} · TP {fmtMt5Price(trade.takeProfit)}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    {trade.profit != null && (
-                      <Mt5Pnl value={trade.profit} className="text-sm" />
+          <div className="flex-1 overflow-y-auto">
+            {openOrders.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+                <p className="text-sm text-[var(--mt5-muted)]">
+                  You don&apos;t have any open positions
+                </p>
+              </div>
+            ) : (
+              openOrders.map(({ key, symbol, trade, kind }) => {
+                const setup = trade.signalId
+                  ? setups.find((s) => s.signalId === trade.signalId)
+                  : undefined;
+                const active = symbol === selectedSymbol;
+                const ticket = trade.positionId ?? trade.orderId ?? "—";
+                const typeLabel =
+                  kind === "limit"
+                    ? `${trade.direction.toLowerCase()} limit`
+                    : trade.direction.toLowerCase();
+
+                return (
+                  <div
+                    key={key}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleSymbolChange(symbol)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") handleSymbolChange(symbol);
+                    }}
+                    className={cn(
+                      "grid grid-cols-[1.2fr_0.8fr_0.6fr_0.5fr_0.7fr_0.7fr_0.7fr_0.7fr_0.6fr] gap-2 border-b border-[var(--mt5-divider)] px-3 py-2 text-xs tabular-nums transition-colors hover:bg-[var(--mt5-row-hover)]",
+                      active && "bg-[var(--mt5-row-hover)]",
                     )}
-                    {setup && (
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onOpenSetup(toSetupSummary(setup));
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
+                  >
+                    <span className="font-semibold text-[var(--mt5-text)]">{symbol}</span>
+                    <span className="text-[var(--mt5-muted)]">#{ticket}</span>
+                    <span
+                      style={{
+                        color:
+                          trade.direction.toUpperCase() === "BUY"
+                            ? MT5_BUY
+                            : MT5_SELL,
+                      }}
+                    >
+                      {typeLabel}
+                    </span>
+                    <span>{trade.volume?.toFixed(2) ?? "—"}</span>
+                    <span>{fmtMt5Price(trade.openPrice ?? trade.entryMin)}</span>
+                    <span>{fmtMt5Price(trade.stopLoss)}</span>
+                    <span>{fmtMt5Price(trade.takeProfit)}</span>
+                    <span>
+                      {trade.profit != null ? (
+                        <Mt5Pnl value={trade.profit} className="text-xs" />
+                      ) : (
+                        "—"
+                      )}
+                    </span>
+                    <span className="flex justify-end gap-2 text-[10px]">
+                      {setup && (
+                        <button
+                          type="button"
+                          className="font-semibold text-primary hover:underline"
+                          onClick={(e) => {
                             e.stopPropagation();
                             onOpenSetup(toSetupSummary(setup));
-                          }
-                        }}
-                        className="text-[10px] font-semibold text-primary"
-                      >
-                        Setup
-                      </span>
-                    )}
+                          }}
+                        >
+                          Setup
+                        </button>
+                      )}
+                      {kind === "running" && onCloseTrade && (
+                        <button
+                          type="button"
+                          className="font-semibold text-[#ff5252] hover:underline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCloseTrade(trade);
+                          }}
+                        >
+                          Close
+                        </button>
+                      )}
+                    </span>
                   </div>
-                </button>
-              );
-            })}
+                );
+              })
+            )}
           </div>
-        )}
-      </div>
+
+          {/* Account summary bar — MT5 terminal footer */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-2 text-[11px] text-[var(--mt5-muted)]">
+            <span>
+              Balance:{" "}
+              <strong className="text-[var(--mt5-text)]">
+                {fmtMt5Price(account?.startingBalance ?? 0)}
+              </strong>
+            </span>
+            <span>
+              Equity:{" "}
+              <strong className="text-[var(--mt5-text)]">
+                {fmtMt5Price(account?.equity ?? account?.startingBalance ?? 0)}
+              </strong>
+            </span>
+            <span>
+              Floating:{" "}
+              <strong className="text-[var(--mt5-text)]">
+                {fmtMt5Price(account?.floatingProfit ?? totalProfit)}
+              </strong>
+            </span>
+            <span className="ml-auto">
+              Profit:{" "}
+              <Mt5Pnl
+                value={account?.totalProfit ?? totalProfit}
+                className="inline text-xs"
+              />
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

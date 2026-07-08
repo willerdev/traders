@@ -356,7 +356,7 @@ export default function Mt5UserPage() {
           : "Setups";
 
   return (
-    <div className="mt5-shell mx-auto flex min-h-[calc(100dvh-5.75rem-env(safe-area-inset-bottom,0px))] max-w-lg flex-col bg-[var(--mt5-bg)] text-[var(--mt5-text)] md:min-h-[calc(100dvh-1rem)] md:max-w-2xl">
+    <div className="mt5-shell mx-auto flex min-h-[calc(100dvh-5.75rem-env(safe-area-inset-bottom,0px))] max-w-lg flex-col bg-[var(--mt5-bg)] text-[var(--mt5-text)] md:min-h-[calc(100dvh-1rem)] md:max-w-2xl lg:max-w-[96vw] xl:max-w-[1400px]">
       <Mt5LiveSyncCard tradingActive compact />
       {/* MT5-style header */}
       <div className="sticky top-0 z-20 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)]">
@@ -511,9 +511,12 @@ export default function Mt5UserPage() {
           runningTrades={runningTrades}
           limitTrades={limitTrades}
           setups={setups}
+          account={account}
           selectedSymbol={chartSymbol}
           onSelectSymbol={setSelectedChartSymbol}
           onOpenSetup={setSelectedSetup}
+          onCloseTrade={handleCloseTrade}
+          showOrdersPanel={tab === "trades"}
         />
       )}
 
@@ -524,7 +527,7 @@ export default function Mt5UserPage() {
       )}
 
       <div
-        className={`flex-1 overflow-y-auto transition-opacity duration-200 ${refreshing ? "opacity-[0.92]" : ""}`}
+        className={`flex-1 overflow-y-auto transition-opacity duration-200 ${refreshing ? "opacity-[0.92]" : ""} ${tab === "trades" ? "lg:hidden" : ""}`}
       >
         {loading && !data && tab !== "quotes" ? (
           <div className="flex flex-col items-center justify-center gap-2 py-12 text-[var(--mt5-muted)]">
