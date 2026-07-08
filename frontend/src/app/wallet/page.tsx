@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, type WalletLedgerItem, type WalletSummary } from "@/lib/api";
-import { WalletDepositPanel } from "@/components/wallet/wallet-deposit-panel";
-import { WalletWithdrawForm } from "@/components/wallet/wallet-withdraw-form";
+import { WalletBalanceCard } from "@/components/wallet/wallet-balance-card";
+import { WalletDepositModal } from "@/components/wallet/wallet-deposit-modal";
+import { WalletWithdrawModal } from "@/components/wallet/wallet-withdraw-modal";
+import { WalletReceiveModal } from "@/components/wallet/wallet-receive-modal";
 import { formatCurrency } from "@/lib/utils";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { Loader2 } from "lucide-react";
@@ -14,6 +16,9 @@ export default function WalletPage() {
   const [summary, setSummary] = useState<WalletSummary | null>(null);
   const [txs, setTxs] = useState<WalletLedgerItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [depositOpen, setDepositOpen] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [receiveOpen, setReceiveOpen] = useState(false);
 
   async function refresh() {
     setLoading(true);
@@ -45,62 +50,76 @@ export default function WalletPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 px-4 py-4 sm:px-6 sm:py-6">
+    <div className="mx-auto max-w-lg space-y-4 px-4 py-4 sm:max-w-xl sm:px-6 sm:py-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Wallet</h1>
         <p className="mt-1 text-sm text-gray-400">
-          Subscriptions, deposits, daily earnings, and withdrawals
+          USDT balance for subscriptions, deposits, and earnings
         </p>
       </div>
 
       {summary && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <WalletBalanceCard
+          balance={summary.availableBalance}
+          totalEarned={summary.totalEarned}
+          totalDeposited={summary.totalDeposited}
+          onSend={() => setWithdrawOpen(true)}
+          onReceive={() => setReceiveOpen(true)}
+          onDeposit={() => setDepositOpen(true)}
+        />
+      )}
+
+      {summary && (
+        <div className="grid grid-cols-3 gap-2">
           {[
-            { label: "Available", value: summary.availableBalance },
             { label: "Deposited", value: summary.totalDeposited },
             { label: "Earned", value: summary.totalEarned },
-            { label: "Subscriptions paid", value: summary.subscriptionPaid },
+            { label: "Locked", value: summary.lockedBalance },
           ].map((item) => (
-            <Card key={item.label}>
-              <CardContent className="pt-4">
-                <p className="text-xs text-gray-500">{item.label}</p>
-                <p className="text-xl font-bold text-white">
-                  {formatCurrency(item.value)}
-                </p>
-              </CardContent>
-            </Card>
+            <div
+              key={item.label}
+              className="rounded-xl border border-white/5 bg-white/[0.02] px-3 py-3"
+            >
+              <p className="text-[10px] uppercase tracking-wide text-gray-500">
+                {item.label}
+              </p>
+              <p className="text-sm font-bold text-white">
+                {formatCurrency(item.value)}
+              </p>
+            </div>
           ))}
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Deposit</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <WalletDepositPanel
-              minDeposit={summary?.minDepositUsdt ?? 50}
-              onComplete={() => void refresh()}
-            />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Withdraw</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <WalletWithdrawForm
-              availableBalance={summary?.availableBalance ?? 0}
-              onComplete={() => void refresh()}
-            />
-          </CardContent>
-        </Card>
-      </div>
-
       <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-base">Assets</CardTitle>
+          <span className="text-xs text-gray-500">USDT</span>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-white/5 px-3 py-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20 text-sm font-bold text-emerald-400">
+                ₮
+              </div>
+              <div>
+                <p className="font-medium text-white">USDT</p>
+                <p className="text-xs text-gray-500">Tether USD</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="font-bold text-white">
+                {formatCurrency(summary?.availableBalance ?? 0)}
+              </p>
+              <p className="text-xs text-gray-500">Available</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card id="wallet-activity">
         <CardHeader>
-          <CardTitle className="text-base">Activity</CardTitle>
+          <CardTitle className="text-base">Transactions</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           {txs.length === 0 ? (
@@ -109,12 +128,12 @@ export default function WalletPage() {
             txs.map((tx) => (
               <div
                 key={tx.id}
-                className="flex items-center justify-between gap-3 rounded-lg border border-white/5 px-3 py-2"
+                className="flex items-center justify-between gap-3 rounded-lg border border-white/5 px-3 py-2.5"
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm text-white">{tx.description}</p>
                   <p className="text-[10px] text-gray-500">
-                    {tx.type} · {new Date(tx.createdAt).toLocaleString()}
+                    {new Date(tx.createdAt).toLocaleString()}
                   </p>
                 </div>
                 <span
@@ -132,6 +151,24 @@ export default function WalletPage() {
           )}
         </CardContent>
       </Card>
+
+      <WalletDepositModal
+        open={depositOpen}
+        onClose={() => setDepositOpen(false)}
+        minPlanDeposit={summary?.minDepositUsdt ?? 50}
+        onComplete={() => void refresh()}
+      />
+      <WalletWithdrawModal
+        open={withdrawOpen}
+        onClose={() => setWithdrawOpen(false)}
+        availableBalance={summary?.availableBalance ?? 0}
+        onComplete={() => void refresh()}
+      />
+      <WalletReceiveModal
+        open={receiveOpen}
+        onClose={() => setReceiveOpen(false)}
+        onDeposit={() => setDepositOpen(true)}
+      />
     </div>
   );
 }

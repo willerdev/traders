@@ -21,6 +21,7 @@ import { resolvePayoutDestination } from '../common/payout.util';
 import { ComplianceService } from '../compliance/compliance.service';
 
 const PLAN_DAYS = 5;
+const MIN_WALLET_TOPUP_USDT = 1;
 
 @Injectable()
 export class WalletService {
@@ -200,16 +201,51 @@ export class WalletService {
     };
   }
 
+  async debitBalance(
+    userId: string,
+    amount: number,
+    type: WalletTxType,
+    description: string,
+    referenceId?: string,
+  ) {
+    if (amount <= 0) {
+      throw new BadRequestException('Amount must be positive');
+    }
+    const wallet = await this.getOrCreateWallet(userId);
+    const current = Number(wallet.availableBalance);
+    if (current < amount) {
+      throw new BadRequestException('Insufficient wallet balance');
+    }
+    const newBalance = current - amount;
+    await this.prisma.$transaction([
+      this.prisma.platformWallet.update({
+        where: { userId },
+        data: { availableBalance: newBalance },
+      }),
+      this.prisma.walletTransaction.create({
+        data: {
+          userId,
+          amount: -amount,
+          type,
+          description,
+          referenceId,
+          balanceAfter: newBalance,
+        },
+      }),
+    ]);
+    return { balance: newBalance };
+  }
+
   async createDeposit(
     userId: string,
     network: string,
     amount: number,
     riskPercent?: number,
   ) {
-    const config = await this.getPlatformConfig();
-    const minDeposit = Number(config?.depositorMinDepositUsdt ?? 50);
-    if (amount < minDeposit) {
-      throw new BadRequestException(`Minimum deposit is $${minDeposit} USDT`);
+    if (amount < MIN_WALLET_TOPUP_USDT) {
+      throw new BadRequestException(
+        `Minimum top-up is $${MIN_WALLET_TOPUP_USDT} USDT`,
+      );
     }
 
     const payment = await this.prisma.payment.create({

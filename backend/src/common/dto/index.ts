@@ -259,9 +259,9 @@ export class RequestTpClaimPayoutDto {
 }
 
 export class CreatePaymentDto {
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  network: string;
+  network?: string;
 
   @IsOptional()
   @IsString()
@@ -270,6 +270,10 @@ export class CreatePaymentDto {
   @IsOptional()
   @IsString()
   promoCode?: string;
+
+  @IsOptional()
+  @IsIn(['wallet', 'crypto'])
+  source?: 'wallet' | 'crypto';
 }
 
 export class CreateSetupPlanPaymentDto {

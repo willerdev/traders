@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
+import Link from "next/link";
 import {
   CheckCircle2,
   Copy,
@@ -14,6 +15,10 @@ import {
   Tag,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import {
+  PaymentSourceSelector,
+  type PaymentSource,
+} from "@/components/wallet/payment-source-selector";
 
 const NETWORKS = [
   { id: "TRC20", label: "TRC20 (Tron)", hint: "Lowest fees" },
@@ -58,6 +63,18 @@ export function RegistrationPaymentPanel({
   const [progress, setProgress] = useState<Progress>("waiting");
   const [actuallyPaid, setActuallyPaid] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
+  const [source, setSource] = useState<PaymentSource>("wallet");
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [feeUsdt, setFeeUsdt] = useState(5);
+
+  const amountDue = appliedPromo?.finalAmount ?? feeUsdt;
+
+  useEffect(() => {
+    void api.wallet.summary().then((s) => setWalletBalance(s.availableBalance));
+    void api.payments.featuredPromo().then((r) => {
+      if (r.registrationFeeUsdt) setFeeUsdt(r.registrationFeeUsdt);
+    });
+  }, []);
 
   const pollStatus = useCallback(async () => {
     if (!paymentId) return;
@@ -76,6 +93,7 @@ export function RegistrationPaymentPanel({
   }, [paymentId, onComplete]);
 
   useEffect(() => {
+    if (source !== "crypto") return;
     let cancelled = false;
     void api.payments.pendingRegistration(network).then((res) => {
       if (cancelled || !res.pending?.payAddress || !res.pending.paymentId) return;
@@ -88,7 +106,7 @@ export function RegistrationPaymentPanel({
     return () => {
       cancelled = true;
     };
-  }, [network]);
+  }, [network, source]);
 
   useEffect(() => {
     if (!paymentId || progress === "complete") return;
@@ -125,14 +143,21 @@ export function RegistrationPaymentPanel({
       const result = await api.payments.createRegistration(
         network,
         appliedPromo?.code,
+        source,
       );
       if (result.success || result.message?.includes("waived")) {
+        if (result.balanceAfter != null) {
+          setWalletBalance(result.balanceAfter);
+        }
         onComplete?.();
         return;
       }
       if (result.message?.includes("still active")) {
         setError("Your weekly access is still active.");
         return;
+      }
+      if (source === "wallet") {
+        throw new Error(result.message || "Wallet payment failed");
       }
       if (!result.payAddress || !result.paymentId) {
         throw new Error(result.message || "Could not create payment");
@@ -171,12 +196,22 @@ export function RegistrationPaymentPanel({
               </span>
             </>
           ) : (
-            <strong className="text-foreground">5 USDT</strong>
+            <strong className="text-foreground">{feeUsdt} USDT</strong>
           )}{" "}
           for <strong className="text-foreground">7 days</strong> of trading
-          {renewal ? " (renewal)" : ""} — send crypto to the address below and
-          we confirm automatically.
+          {renewal ? " (renewal)" : ""}.
         </p>
+
+        <PaymentSourceSelector
+          walletBalance={walletBalance}
+          amountDue={amountDue}
+          source={source}
+          onSourceChange={(s) => {
+            setSource(s);
+            setPaymentId(null);
+            setError("");
+          }}
+        />
 
         <div className="space-y-1">
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -215,31 +250,43 @@ export function RegistrationPaymentPanel({
             </p>
           )}
         </div>
-        <div className="grid gap-2 sm:grid-cols-3">
-          {NETWORKS.map((n) => (
-            <button
-              key={n.id}
-              type="button"
-              onClick={() => setNetwork(n.id)}
-              className={cn(
-                "rounded-lg border px-3 py-2 text-left text-sm transition-colors",
-                network === n.id
-                  ? "border-primary bg-primary/10 text-foreground"
-                  : "border-[var(--color-border)] text-muted hover:border-primary/40",
-              )}
-            >
-              <span className="font-medium">{n.label}</span>
-              <span className="mt-0.5 block text-xs opacity-70">{n.hint}</span>
-            </button>
-          ))}
-        </div>
+        {source === "crypto" && (
+          <div className="grid gap-2 sm:grid-cols-3">
+            {NETWORKS.map((n) => (
+              <button
+                key={n.id}
+                type="button"
+                onClick={() => setNetwork(n.id)}
+                className={cn(
+                  "rounded-lg border px-3 py-2 text-left text-sm transition-colors",
+                  network === n.id
+                    ? "border-primary bg-primary/10 text-foreground"
+                    : "border-[var(--color-border)] text-muted hover:border-primary/40",
+                )}
+              >
+                <span className="font-medium">{n.label}</span>
+                <span className="mt-0.5 block text-xs opacity-70">{n.hint}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {source === "wallet" && walletBalance < amountDue && (
+          <p className="text-sm text-muted">
+            <Link href="/wallet" className="text-primary hover:underline">
+              Deposit to your wallet
+            </Link>{" "}
+            or switch to crypto payment.
+          </p>
+        )}
         {error && <p className="text-sm text-danger">{error}</p>}
         <Button onClick={startPayment} disabled={loading} className="w-full sm:w-auto">
           {loading ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              Creating payment…
+              {source === "wallet" ? "Processing…" : "Creating payment…"}
             </>
+          ) : source === "wallet" ? (
+            `Pay ${formatCurrency(amountDue)} from wallet`
           ) : (
             "Generate payment address"
           )}

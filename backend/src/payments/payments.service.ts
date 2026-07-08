@@ -316,6 +316,7 @@ export class PaymentsService {
     userId: string,
     network: string,
     promoCode?: string,
+    source: 'wallet' | 'crypto' = 'crypto',
   ) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
@@ -344,6 +345,10 @@ export class PaymentsService {
         code: validation.code,
         discountPercent: validation.discountPercent,
       };
+    }
+
+    if (source === 'wallet') {
+      return this.payRegistrationFromWallet(userId, amount, appliedPromo);
     }
 
     const promoExtras = appliedPromo
@@ -422,6 +427,67 @@ export class PaymentsService {
     });
 
     return this.formatRegistrationPaymentResponse(updated, promoExtras);
+  }
+
+  private async payRegistrationFromWallet(
+    userId: string,
+    amount: number,
+    appliedPromo: { code: string; discountPercent: number } | null,
+  ) {
+    const wallet = await this.walletService.getOrCreateWallet(userId);
+    const balance = Number(wallet.availableBalance);
+    if (balance < amount) {
+      throw new BadRequestException(
+        `Insufficient wallet balance — you need $${amount.toFixed(2)} USDT but have $${balance.toFixed(2)}`,
+      );
+    }
+
+    const promoMeta = appliedPromo
+      ? {
+          promoCode: appliedPromo.code,
+          discountPercent: appliedPromo.discountPercent,
+          originalAmount: await this.registrationFee(),
+          paymentSource: 'wallet',
+        }
+      : { paymentSource: 'wallet' };
+
+    const payment = await this.prisma.payment.create({
+      data: {
+        userId,
+        amount,
+        currency: 'USDT',
+        network: 'WALLET',
+        purpose: 'registration',
+        gatewayId: `wallet_${Date.now()}`,
+        gatewayResponse: promoMeta as object,
+      },
+    });
+
+    await this.walletService.debitBalance(
+      userId,
+      amount,
+      'SUBSCRIPTION',
+      `Weekly trading access — $${amount.toFixed(2)} USDT`,
+      payment.id,
+    );
+
+    const result = await this.confirmRegistrationPayment(
+      payment.id,
+      promoMeta,
+      { source: 'manual' },
+    );
+
+    return {
+      success: true,
+      paymentId: payment.id,
+      amount,
+      currency: 'USDT',
+      network: 'WALLET',
+      source: 'wallet',
+      message: 'Paid from wallet balance',
+      accessExpiresAt: result.accessExpiresAt,
+      balanceAfter: balance - amount,
+    };
   }
 
   async getPendingRegistrationPayment(userId: string, network?: string) {

@@ -648,7 +648,11 @@ class ApiClient {
           network ? `?network=${encodeURIComponent(network)}` : ""
         }`,
       ),
-    createRegistration: (network: string, promoCode?: string) =>
+    createRegistration: (
+      network: string,
+      promoCode?: string,
+      source?: "wallet" | "crypto",
+    ) =>
       this.request<{
         paymentId?: string;
         amount?: number;
@@ -665,9 +669,12 @@ class ApiClient {
         message?: string;
         promoCode?: string;
         amountCharged?: number;
+        source?: string;
+        balanceAfter?: number;
+        accessExpiresAt?: string;
       }>("/payments/registration", {
         method: "POST",
-        body: JSON.stringify({ network, promoCode }),
+        body: JSON.stringify({ network, promoCode, source }),
       }),
     getStatus: (paymentId: string) =>
       this.request<{
@@ -800,10 +807,10 @@ class ApiClient {
 
   investor = {
     status: () => this.request<InvestorStatus>("/investor/status"),
-    enrollCheckout: (network: string) =>
+    enrollCheckout: (network: string, source?: "wallet" | "crypto") =>
       this.request<InvestorCheckout>("/investor/enroll/checkout", {
         method: "POST",
-        body: JSON.stringify({ network }),
+        body: JSON.stringify({ network, source }),
       }),
     updateSettings: (riskPercent: number) =>
       this.request<{ riskPercent: number; paused: boolean }>(
@@ -1238,6 +1245,9 @@ export interface InvestorCheckout {
   message?: string;
   active?: boolean;
   enrolledAt?: string | null;
+  success?: boolean;
+  source?: string;
+  balanceAfter?: number;
 }
 
 export interface SignalRecord {

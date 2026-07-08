@@ -52,8 +52,9 @@ export class PaymentsController {
   ) {
     return this.paymentsService.createRegistrationPayment(
       req.user.id,
-      dto.network,
+      dto.network ?? 'TRC20',
       dto.promoCode,
+      dto.source ?? 'crypto',
     );
   }
 

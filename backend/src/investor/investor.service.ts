@@ -4,6 +4,8 @@ import {
   Logger,
   NotFoundException,
   ServiceUnavailableException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -17,6 +19,7 @@ import {
 } from '../common/public-url.util';
 import { NotificationService } from '../email/notification.service';
 import { MetaApiService } from '../metaapi/metaapi.service';
+import { WalletService } from '../wallet/wallet.service';
 
 @Injectable()
 export class InvestorService {
@@ -28,6 +31,8 @@ export class InvestorService {
     private config: ConfigService,
     private notifications: NotificationService,
     private metaApi: MetaApiService,
+    @Inject(forwardRef(() => WalletService))
+    private walletService: WalletService,
   ) {}
 
   private ipnUrl() {
@@ -107,7 +112,11 @@ export class InvestorService {
     };
   }
 
-  async createEnrollmentCheckout(userId: string, network: string) {
+  async createEnrollmentCheckout(
+    userId: string,
+    network: string,
+    source: 'wallet' | 'crypto' = 'crypto',
+  ) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
     if (user.investorActive) {
@@ -119,6 +128,11 @@ export class InvestorService {
     }
 
     const amount = await this.investorFee();
+
+    if (source === 'wallet') {
+      return this.payEnrollmentFromWallet(userId, amount);
+    }
+
     const payment = await this.prisma.payment.create({
       data: {
         userId,
@@ -182,6 +196,50 @@ export class InvestorService {
     }
   }
 
+  private async payEnrollmentFromWallet(userId: string, amount: number) {
+    const wallet = await this.walletService.getOrCreateWallet(userId);
+    const balance = Number(wallet.availableBalance);
+    if (balance < amount) {
+      throw new BadRequestException(
+        `Insufficient wallet balance — you need $${amount.toFixed(2)} USDT but have $${balance.toFixed(2)}`,
+      );
+    }
+
+    const payment = await this.prisma.payment.create({
+      data: {
+        userId,
+        amount,
+        currency: 'USDT',
+        network: 'WALLET',
+        purpose: 'investor_enrollment',
+        gatewayId: `wallet_${Date.now()}`,
+        gatewayResponse: { paymentSource: 'wallet' } as object,
+      },
+    });
+
+    await this.walletService.debitBalance(
+      userId,
+      amount,
+      'INVESTOR_FEE',
+      `Investor program enrollment — $${amount.toFixed(2)} USDT`,
+      payment.id,
+    );
+
+    await this.confirmEnrollment(payment.id, { paymentSource: 'wallet' });
+
+    return {
+      success: true,
+      active: true,
+      paymentId: payment.id,
+      amount,
+      currency: 'USDT',
+      network: 'WALLET',
+      source: 'wallet',
+      message: 'Paid from wallet balance',
+      balanceAfter: balance - amount,
+    };
+  }
+
   async confirmEnrollment(
     paymentId: string,
     gatewayPayload: object,
@@ -195,6 +253,21 @@ export class InvestorService {
     }
 
     const now = new Date();
+    const walletTx =
+      payment.network === 'WALLET'
+        ? []
+        : [
+            this.prisma.walletTransaction.create({
+              data: {
+                userId: payment.userId,
+                amount: -Number(payment.amount),
+                type: 'INVESTOR_FEE',
+                referenceId: paymentId,
+                description: `Investor program enrollment — $${Number(payment.amount).toFixed(2)} USDT`,
+              },
+            }),
+          ];
+
     await this.prisma.$transaction([
       this.prisma.payment.update({
         where: { id: paymentId },
@@ -218,15 +291,7 @@ export class InvestorService {
         create: { userId: payment.userId, riskPercent: 2 },
         update: {},
       }),
-      this.prisma.walletTransaction.create({
-        data: {
-          userId: payment.userId,
-          amount: -Number(payment.amount),
-          type: 'INVESTOR_FEE',
-          referenceId: paymentId,
-          description: `Investor program enrollment — $${Number(payment.amount).toFixed(2)} USDT`,
-        },
-      }),
+      ...walletTx,
     ]);
 
     this.notifications.investorEnrollmentConfirmed(payment.userId, {
