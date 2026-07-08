@@ -1,25 +1,39 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { api, type WalletLedgerItem, type WalletSummary } from "@/lib/api";
 import { WalletBalanceCard } from "@/components/wallet/wallet-balance-card";
 import { WalletDepositModal } from "@/components/wallet/wallet-deposit-modal";
 import { WalletWithdrawModal } from "@/components/wallet/wallet-withdraw-modal";
 import { formatCurrency } from "@/lib/utils";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
-import { Loader2 } from "lucide-react";
+import { syncApiAuthToken, useAuthStore } from "@/stores/auth";
+import { Loader2, RefreshCw } from "lucide-react";
 
 export default function WalletPage() {
   const { ready } = useRequireAuth();
+  const token = useAuthStore((s) => s.token);
   const [summary, setSummary] = useState<WalletSummary | null>(null);
   const [txs, setTxs] = useState<WalletLedgerItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
+    const authToken = syncApiAuthToken();
+    if (!authToken) {
+      setError("Session not ready — log out and sign in again.");
+      setSummary(null);
+      setTxs([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
+    setError(null);
     try {
       const [s, t] = await Promise.all([
         api.wallet.summary(),
@@ -27,19 +41,41 @@ export default function WalletPage() {
       ]);
       setSummary(s);
       setTxs(t.items);
+    } catch (err) {
+      setSummary(null);
+      setTxs([]);
+      setError(
+        err instanceof Error ? err.message : "Could not load wallet balance",
+      );
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !token) return;
     void refresh();
-  }, [ready]);
+  }, [ready, token, refresh]);
+
+  useEffect(() => {
+    if (!ready || !token) return;
+
+    const onResume = () => void refresh();
+    window.addEventListener("pageshow", onResume);
+    window.addEventListener("focus", onResume);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") onResume();
+    });
+
+    return () => {
+      window.removeEventListener("pageshow", onResume);
+      window.removeEventListener("focus", onResume);
+    };
+  }, [ready, token, refresh]);
 
   if (!ready) return <AuthLoadingScreen />;
 
-  if (loading && !summary) {
+  if (loading && !summary && !error) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
         <Loader2 className="h-7 w-7 animate-spin text-primary" />
@@ -49,12 +85,37 @@ export default function WalletPage() {
 
   return (
     <div className="mx-auto max-w-lg space-y-4 px-4 py-4 sm:max-w-xl sm:px-6 sm:py-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Wallet</h1>
-        <p className="mt-1 text-sm text-gray-400">
-          USDT balance for subscriptions, deposits, and earnings
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Wallet</h1>
+          <p className="mt-1 text-sm text-gray-400">
+            USDT balance for subscriptions, deposits, and earnings
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="shrink-0 text-muted"
+          onClick={() => void refresh()}
+          disabled={loading}
+        >
+          <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+        </Button>
       </div>
+
+      {error && (
+        <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+          <p>{error}</p>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="mt-2 font-medium underline"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {summary && (
         <WalletBalanceCard
@@ -94,23 +155,29 @@ export default function WalletPage() {
           <span className="text-xs text-gray-500">USDT</span>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-white/5 px-3 py-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20 text-sm font-bold text-emerald-400">
-                ₮
+          {summary ? (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-white/5 px-3 py-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20 text-sm font-bold text-emerald-400">
+                  ₮
+                </div>
+                <div>
+                  <p className="font-medium text-white">USDT</p>
+                  <p className="text-xs text-gray-500">Tether USD</p>
+                </div>
               </div>
-              <div>
-                <p className="font-medium text-white">USDT</p>
-                <p className="text-xs text-gray-500">Tether USD</p>
+              <div className="text-right">
+                <p className="font-bold text-white">
+                  {formatCurrency(summary.availableBalance)}
+                </p>
+                <p className="text-xs text-gray-500">Available</p>
               </div>
             </div>
-            <div className="text-right">
-              <p className="font-bold text-white">
-                {formatCurrency(summary?.availableBalance ?? 0)}
-              </p>
-              <p className="text-xs text-gray-500">Available</p>
-            </div>
-          </div>
+          ) : (
+            <p className="text-sm text-gray-500">
+              Balance unavailable — tap Retry above.
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -120,7 +187,9 @@ export default function WalletPage() {
         </CardHeader>
         <CardContent className="space-y-2">
           {txs.length === 0 ? (
-            <p className="text-sm text-gray-500">No transactions yet.</p>
+            <p className="text-sm text-gray-500">
+              {summary ? "No transactions yet." : "Transactions unavailable."}
+            </p>
           ) : (
             txs.map((tx) => (
               <div

@@ -39,6 +39,13 @@ function applyAuth(
   });
 }
 
+/** Ensure the API client uses the latest persisted session (important on mobile Safari). */
+export function syncApiAuthToken(): string | null {
+  const token = useAuthStore.getState().token ?? api.getToken();
+  if (token) api.setToken(token);
+  return token;
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({

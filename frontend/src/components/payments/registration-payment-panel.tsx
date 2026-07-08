@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
+import { syncApiAuthToken } from "@/stores/auth";
 import { cn, formatCurrency } from "@/lib/utils";
 import Link from "next/link";
 import {
@@ -73,6 +74,7 @@ export function RegistrationPaymentPanel({
   const amountDue = appliedPromo?.finalAmount ?? feeUsdt;
 
   const refreshWallet = useCallback(async () => {
+    if (!syncApiAuthToken()) return;
     setWalletRefreshing(true);
     try {
       const s = await api.wallet.summary();

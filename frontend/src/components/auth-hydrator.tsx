@@ -12,9 +12,7 @@ export function AuthHydrator() {
       useAuthStore.setState({ hasHydrated: true });
     };
 
-    // Zustand may finish rehydrating before this effect runs.
-    syncAuth();
-
+    // Wait for persisted auth before pages fetch — early hydration caused $0 wallet on mobile.
     const unsub = useAuthStore.persist.onFinishHydration(syncAuth);
     void Promise.resolve(useAuthStore.persist.rehydrate()).finally(syncAuth);
 
