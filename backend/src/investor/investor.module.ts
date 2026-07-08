@@ -9,7 +9,7 @@ import { CopyTradingModule } from '../copy-trading/copy-trading.module';
 
 @Module({
   imports: [
-    PaymentsModule,
+    forwardRef(() => PaymentsModule),
     EmailModule,
     MetaApiModule,
     forwardRef(() => CopyTradingModule),

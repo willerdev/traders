@@ -21,6 +21,6 @@ import { CopyTradingService } from './copy-trading.service';
   ],
   controllers: [AdminCopyPoolController, AdminCopySettingsController],
   providers: [CopyTradeRiskService, CopyTradingService],
-  exports: [CopyTradingService],
+  exports: [CopyTradingService, CopyTradeRiskService],
 })
 export class CopyTradingModule {}
