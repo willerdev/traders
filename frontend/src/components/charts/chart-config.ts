@@ -1,6 +1,7 @@
 import type { DeepPartial } from "lightweight-charts";
 import { ColorType } from "lightweight-charts";
 import { MT5_BUY, MT5_SELL } from "@/components/mt5/mt5-ui";
+import type { SymbolPriceFormat } from "@/components/charts/chart-price-format";
 
 export type ChartThemeMode = "dark" | "light";
 
@@ -55,9 +56,9 @@ export function createChartOptions(mode: ChartThemeMode): DeepPartial<import("li
 }
 
 /** Candlestick series colors — buy blue / sell red from MT5 palette. */
-export function createCandlestickSeriesOptions(): DeepPartial<
-  import("lightweight-charts").CandlestickSeriesOptions
-> {
+export function createCandlestickSeriesOptions(
+  priceFormat?: SymbolPriceFormat,
+): DeepPartial<import("lightweight-charts").CandlestickSeriesOptions> {
   return {
     upColor: MT5_BUY,
     downColor: MT5_SELL,
@@ -65,5 +66,16 @@ export function createCandlestickSeriesOptions(): DeepPartial<
     borderDownColor: MT5_SELL,
     wickUpColor: MT5_BUY,
     wickDownColor: MT5_SELL,
+    borderVisible: true,
+    wickVisible: true,
+    ...(priceFormat
+      ? {
+          priceFormat: {
+            type: "price" as const,
+            precision: priceFormat.precision,
+            minMove: priceFormat.minMove,
+          },
+        }
+      : {}),
   };
 }

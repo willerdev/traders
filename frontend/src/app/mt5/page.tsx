@@ -18,6 +18,7 @@ import { useMt5Terminal } from "@/hooks/use-mt5-terminal";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { useUrlTab } from "@/hooks/use-url-tab";
 import { hasTradingAccess } from "@/lib/trading-access";
+import { cn } from "@/lib/utils";
 import { WeeklyAccessGate } from "@/components/payments/weekly-access-gate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -356,12 +357,26 @@ export default function Mt5UserPage() {
           : "Setups";
 
   return (
-    <div className="mt5-shell flex min-h-[calc(100dvh-5.75rem-env(safe-area-inset-bottom,0px))] w-full max-w-lg flex-col bg-[var(--mt5-bg)] text-[var(--mt5-text)] md:min-h-[calc(100dvh-1rem)] md:max-w-2xl lg:mx-0 lg:max-w-none lg:min-h-[calc(100dvh-0.5rem)] lg:flex-1">
+    <div
+      className={cn(
+        "mt5-shell flex w-full max-w-lg flex-col bg-[var(--mt5-bg)] text-[var(--mt5-text)]",
+        "min-h-[calc(100dvh-5.75rem-env(safe-area-inset-bottom,0px))]",
+        "md:min-h-[calc(100dvh-1rem)] md:max-w-2xl",
+        "lg:mx-0 lg:max-w-none",
+        tab === "trades" &&
+          "lg:h-[calc(100dvh-0.5rem)] lg:max-h-[calc(100dvh-0.5rem)] lg:min-h-0 lg:overflow-hidden lg:flex-1",
+      )}
+    >
       <div className="lg:hidden">
         <Mt5LiveSyncCard tradingActive compact />
       </div>
-      {/* MT5-style header */}
-      <div className="sticky top-0 z-20 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)]">
+      {/* MT5-style header — hidden on desktop chart (Trade tab) */}
+      <div
+        className={cn(
+          "sticky top-0 z-20 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)]",
+          tab === "trades" && "lg:hidden",
+        )}
+      >
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             {tab === "history" && (
@@ -514,7 +529,11 @@ export default function Mt5UserPage() {
       </div>
 
       {(tab === "quotes" || tab === "trades") && (
-        <div className={tab === "trades" ? "lg:flex lg:min-h-0 lg:flex-1 lg:flex-col" : undefined}>
+        <div
+          className={cn(
+            tab === "trades" && "lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden",
+          )}
+        >
           <Mt5ChartTerminal
             quotes={quotes}
             runningTrades={runningTrades}

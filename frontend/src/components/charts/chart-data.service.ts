@@ -1,5 +1,8 @@
 import type { ChartTimeframe, OHLCBar } from "@/components/charts/chart-types";
 import { MAX_HISTORICAL_BARS } from "@/components/charts/chart-types";
+import { roundPriceForSymbol, defaultMidForSymbol } from "@/components/charts/chart-price-format";
+
+export { defaultMidForSymbol };
 
 const TIMEFRAME_SECONDS: Record<ChartTimeframe, number> = {
   M1: 60,
@@ -7,6 +10,14 @@ const TIMEFRAME_SECONDS: Record<ChartTimeframe, number> = {
   M15: 900,
   H1: 3600,
   D1: 86400,
+};
+
+const TIMEFRAME_VOL_MULT: Record<ChartTimeframe, number> = {
+  M1: 0.35,
+  M5: 0.55,
+  M15: 0.75,
+  H1: 1,
+  D1: 2.5,
 };
 
 function alignedBarTime(nowSec: number, intervalSec: number): number {
@@ -27,33 +38,46 @@ function seededUnit(seed: number): number {
   return x - Math.floor(x);
 }
 
-/** Default mid price when no live quote exists yet. */
-export function defaultMidForSymbol(symbol: string): number {
-  const s = symbol.toUpperCase();
-  if (s.includes("XAU") || s.includes("GOLD")) return 2650;
-  if (s.includes("BTC")) return 68000;
-  if (s.includes("ETH")) return 3400;
-  if (s.includes("NAS") || s.includes("US100")) return 18500;
-  if (s.includes("US30")) return 39500;
-  if (s.includes("JPY")) return 155;
-  if (s.includes("HZ") || s.startsWith("R_") || s.startsWith("V")) return 6500;
-  return 1.08 + (seedFromSymbol(symbol) % 1000) / 10000;
-}
-
 /** Volatility scale by symbol class (placeholder until real tick data). */
-function volatilityForSymbol(symbol: string, mid: number): number {
+function volatilityForSymbol(
+  symbol: string,
+  mid: number,
+  timeframe: ChartTimeframe,
+): number {
   const s = symbol.toUpperCase();
-  if (s.includes("XAU") || s.includes("GOLD")) return mid * 0.0008;
-  if (s.includes("BTC")) return mid * 0.002;
-  if (s.includes("NAS") || s.includes("US30") || s.includes("US500")) return mid * 0.001;
-  if (s.includes("HZ") || s.startsWith("R_")) return mid * 0.0015;
-  return mid * 0.0003;
+  let vol: number;
+  if (s.includes("XAU") || s.includes("GOLD")) vol = mid * 0.0012;
+  else if (s.includes("BTC")) vol = mid * 0.003;
+  else if (s.includes("NAS") || s.includes("US30") || s.includes("US500")) vol = mid * 0.0015;
+  else if (s.includes("HZ") || s.startsWith("R_")) vol = mid * 0.002;
+  else if (s.includes("JPY")) vol = mid * 0.001;
+  else vol = mid * 0.0015;
+  return vol * TIMEFRAME_VOL_MULT[timeframe];
 }
 
-function roundPrice(value: number, ref: number): number {
-  const digits = ref >= 1000 ? 2 : ref >= 100 ? 2 : ref >= 10 ? 3 : 5;
-  const m = 10 ** digits;
-  return Math.round(value * m) / m;
+function buildBar(
+  symbol: string,
+  time: number,
+  open: number,
+  close: number,
+  vol: number,
+  wickSeed: number,
+): OHLCBar {
+  let o = open;
+  let c = close;
+  const minBody = vol * 0.25;
+  if (Math.abs(c - o) < minBody) {
+    c = o + (c >= o ? minBody : -minBody);
+  }
+  const high = Math.max(o, c) + seededUnit(wickSeed) * vol * 0.45;
+  const low = Math.min(o, c) - seededUnit(wickSeed + 1) * vol * 0.45;
+  return {
+    time,
+    open: roundPriceForSymbol(o, symbol),
+    high: roundPriceForSymbol(high, symbol),
+    low: roundPriceForSymbol(low, symbol),
+    close: roundPriceForSymbol(c, symbol),
+  };
 }
 
 /**
@@ -71,27 +95,18 @@ export async function loadHistoricalOHLC(
   const symSeed = seedFromSymbol(symbol);
   const base =
     seedPrice && seedPrice > 0 ? seedPrice : defaultMidForSymbol(symbol);
-  const vol = volatilityForSymbol(symbol, base);
+  const vol = volatilityForSymbol(symbol, base, timeframe);
   const bars: OHLCBar[] = [];
   let price = base;
 
   for (let i = MAX_HISTORICAL_BARS - 1; i >= 0; i -= 1) {
     const t = alignedBarTime(now - i * interval, interval);
     const r1 = seededUnit(symSeed + i * 3);
-    const r2 = seededUnit(symSeed + i * 7 + 1);
-    const drift = (Math.sin((i + symSeed) / 12) * vol) / 2;
+    const drift = Math.sin((i + symSeed) / 9) * vol * 0.6;
     const open = price;
     const close = open + drift + (r1 - 0.5) * vol;
-    const high = Math.max(open, close) + r2 * vol * 0.5;
-    const low = Math.min(open, close) - seededUnit(symSeed + i * 11) * vol * 0.5;
+    bars.push(buildBar(symbol, t, open, close, vol, symSeed + i * 11));
     price = close;
-    bars.push({
-      time: t,
-      open: roundPrice(open, base),
-      high: roundPrice(high, base),
-      low: roundPrice(low, base),
-      close: roundPrice(close, base),
-    });
   }
 
   return bars;
@@ -116,6 +131,7 @@ export function subscribeRealtimeUpdates(
 ): () => void {
   const interval = TIMEFRAME_SECONDS[timeframe];
   const symSeed = seedFromSymbol(symbol);
+  const vol = volatilityForSymbol(symbol, defaultMidForSymbol(symbol), timeframe);
   let lastBarTime = alignedBarTime(Math.floor(Date.now() / 1000), interval);
   let lastBar: OHLCBar | null = null;
   let simMid = defaultMidForSymbol(symbol);
@@ -130,9 +146,8 @@ export function subscribeRealtimeUpdates(
         : null);
 
     if (mid == null || !Number.isFinite(mid)) {
-      const vol = volatilityForSymbol(symbol, simMid);
       tickIndex += 1;
-      simMid += (seededUnit(symSeed + tickIndex) - 0.5) * vol * 0.35;
+      simMid += (seededUnit(symSeed + tickIndex) - 0.5) * vol * 0.12;
       mid = simMid;
     } else {
       simMid = mid;
@@ -140,28 +155,32 @@ export function subscribeRealtimeUpdates(
 
     const now = Math.floor(Date.now() / 1000);
     const barTime = alignedBarTime(now, interval);
-    const px = roundPrice(mid, mid);
+    const px = roundPriceForSymbol(mid, symbol);
 
     if (!lastBar || barTime > lastBarTime) {
       lastBarTime = barTime;
-      lastBar = {
-        time: barTime,
-        open: px,
-        high: px,
-        low: px,
-        close: px,
-      };
+      lastBar = buildBar(symbol, barTime, px, px, vol, symSeed + tickIndex);
       onBar(lastBar, true);
       return;
     }
 
     if (lastBar) {
-      lastBar = {
-        ...lastBar,
-        high: Math.max(lastBar.high, px),
-        low: Math.min(lastBar.low, px),
-        close: px,
-      };
+      lastBar = buildBar(
+        symbol,
+        lastBar.time,
+        lastBar.open,
+        px,
+        vol,
+        symSeed + tickIndex,
+      );
+      lastBar.high = roundPriceForSymbol(
+        Math.max(lastBar.high, px, lastBar.open),
+        symbol,
+      );
+      lastBar.low = roundPriceForSymbol(
+        Math.min(lastBar.low, px, lastBar.open),
+        symbol,
+      );
       onBar(lastBar, false);
     }
   };

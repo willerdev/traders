@@ -58,7 +58,7 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
     ref,
   ) {
     const theme = useThemeStore((s) => s.theme);
-    const chart = useLightweightChart(theme);
+    const chart = useLightweightChart(theme, symbol);
     const markersExtraRef = useRef<ChartMarker[]>([]);
     const symbolRef = useRef(symbol);
     const timeframeRef = useRef(timeframe);

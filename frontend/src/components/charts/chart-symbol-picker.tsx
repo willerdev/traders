@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CHART_SYMBOL_CATALOG,
-  labelForSymbol,
   normalizeSymbolKey,
   resolveChartSymbol,
   searchChartSymbols,
@@ -17,6 +16,8 @@ type Props = {
   onSelect: (symbol: string) => void;
   onAdd: (symbol: string) => void;
   onRemove: (symbol: string) => void;
+  compact?: boolean;
+  className?: string;
 };
 
 export function ChartSymbolPicker({
@@ -25,6 +26,8 @@ export function ChartSymbolPicker({
   onSelect,
   onAdd,
   onRemove,
+  compact = false,
+  className,
 }: Props) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -59,22 +62,34 @@ export function ChartSymbolPicker({
   }
 
   return (
-    <div ref={rootRef} className="flex min-w-0 flex-1 flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-1.5">
+    <div
+      ref={rootRef}
+      className={cn(
+        "flex min-w-0",
+        compact ? "flex-1 flex-row items-center gap-2" : "flex-1 flex-col gap-2",
+        className,
+      )}
+    >
+      <div
+        className={cn(
+          "flex items-center gap-1.5",
+          compact ? "min-w-0 flex-1 overflow-x-auto" : "flex-wrap",
+        )}
+      >
         {tabs.map((sym) => (
           <button
             key={sym}
             type="button"
             onClick={() => onSelect(sym)}
             className={cn(
-              "group flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors",
+              "group flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors",
               sym === selectedSymbol
                 ? "border-primary bg-primary/15 text-primary"
                 : "border-[var(--mt5-divider)] text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)]",
             )}
           >
             {sym}
-            {watchlist.includes(sym) && sym !== selectedSymbol && (
+            {watchlist.includes(sym) && sym !== selectedSymbol && !compact && (
               <span
                 role="button"
                 tabIndex={0}
@@ -98,7 +113,7 @@ export function ChartSymbolPicker({
         ))}
       </div>
 
-      <div className="relative flex gap-1">
+      <div className={cn("relative flex gap-1", compact ? "w-44 shrink-0" : "w-full")}>
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--mt5-muted)]" />
           <input
@@ -116,22 +131,24 @@ export function ChartSymbolPicker({
               }
               if (e.key === "Escape") setOpen(false);
             }}
-            placeholder="Search or add pair (e.g. XAUUSD, V75)"
+            placeholder={compact ? "Add pair" : "Search or add pair"}
             className="w-full rounded border border-[var(--mt5-divider)] bg-[var(--mt5-bg)] py-1.5 pl-7 pr-2 text-xs text-[var(--mt5-text)] placeholder:text-[var(--mt5-muted)]"
           />
         </div>
-        <button
-          type="button"
-          onClick={addFromQuery}
-          disabled={!query.trim()}
-          className="flex shrink-0 items-center gap-1 rounded border border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-2.5 text-[11px] font-semibold text-primary disabled:opacity-40"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Add
-        </button>
+        {!compact && (
+          <button
+            type="button"
+            onClick={addFromQuery}
+            disabled={!query.trim()}
+            className="flex shrink-0 items-center gap-1 rounded border border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-2.5 text-[11px] font-semibold text-primary disabled:opacity-40"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add
+          </button>
+        )}
 
         {open && (query.trim() || results.length > 0) && (
-          <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-52 overflow-y-auto rounded-lg border border-[var(--mt5-divider)] bg-[var(--mt5-surface)] py-1 shadow-lg">
+          <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-52 w-56 overflow-y-auto rounded-lg border border-[var(--mt5-divider)] bg-[var(--mt5-surface)] py-1 shadow-lg">
             {(query.trim() ? results : CHART_SYMBOL_CATALOG.slice(0, 8)).map(
               (entry) => {
                 const inList = watchlist.includes(entry.symbol);
@@ -150,10 +167,6 @@ export function ChartSymbolPicker({
                     <span>
                       <strong className="text-[var(--mt5-text)]">{entry.symbol}</strong>
                       <span className="ml-2 text-[var(--mt5-muted)]">{entry.label}</span>
-                    </span>
-                    <span className="text-[10px] text-[var(--mt5-muted)]">
-                      {entry.category}
-                      {inList ? " · added" : ""}
                     </span>
                   </button>
                 );
@@ -175,13 +188,6 @@ export function ChartSymbolPicker({
           </div>
         )}
       </div>
-
-      <p className="text-[10px] text-[var(--mt5-muted)]">
-        Viewing {selectedSymbol}
-        {labelForSymbol(selectedSymbol) !== selectedSymbol
-          ? ` · ${labelForSymbol(selectedSymbol)}`
-          : ""}
-      </p>
     </div>
   );
 }

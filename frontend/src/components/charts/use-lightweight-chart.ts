@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { IChartApi, ISeriesApi, CandlestickSeriesPartialOptions } from "lightweight-charts";
 import { createChartOptions, createCandlestickSeriesOptions, type ChartThemeMode } from "@/components/charts/chart-config";
+import { priceFormatForSymbol } from "@/components/charts/chart-price-format";
 import type {
   ChartMarker,
   ChartPriceLine,
@@ -23,7 +24,10 @@ export type UseLightweightChartResult = {
   fitContent: () => void;
 };
 
-export function useLightweightChart(theme: ChartThemeMode): UseLightweightChartResult {
+export function useLightweightChart(
+  theme: ChartThemeMode,
+  symbol: string,
+): UseLightweightChartResult {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<CandlestickSeries | null>(null);
@@ -66,10 +70,11 @@ export function useLightweightChart(theme: ChartThemeMode): UseLightweightChartR
       const lc = await import("lightweight-charts");
       if (disposed || !containerRef.current) return;
 
+      const pf = priceFormatForSymbol(symbol);
       const chart = lc.createChart(containerRef.current, createChartOptions(theme));
       const series = chart.addSeries(
         lc.CandlestickSeries,
-        createCandlestickSeriesOptions() as CandlestickSeriesPartialOptions,
+        createCandlestickSeriesOptions(pf) as CandlestickSeriesPartialOptions,
       );
       markersRef.current = lc.createSeriesMarkers(
         series,
@@ -147,6 +152,14 @@ export function useLightweightChart(theme: ChartThemeMode): UseLightweightChartR
   useEffect(() => {
     if (ready) chartRef.current?.applyOptions(createChartOptions(theme));
   }, [theme, ready]);
+
+  useEffect(() => {
+    if (!seriesRef.current || !ready) return;
+    const pf = priceFormatForSymbol(symbol);
+    seriesRef.current.applyOptions(
+      createCandlestickSeriesOptions(pf) as CandlestickSeriesPartialOptions,
+    );
+  }, [symbol, ready]);
 
   const setData = useCallback(
     (bars: OHLCBar[], options?: { fit?: boolean }) => {

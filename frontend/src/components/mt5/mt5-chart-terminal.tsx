@@ -246,29 +246,26 @@ export function Mt5ChartTerminal({
   return (
     <div
       className={cn(
-        "flex shrink-0 flex-col border-b border-[var(--mt5-divider)] bg-[var(--mt5-bg)]",
-        showOrdersPanel && "lg:flex-1 lg:min-h-0 lg:border-b-0",
+        "flex flex-col bg-[var(--mt5-bg)]",
+        showOrdersPanel
+          ? "lg:min-h-0 lg:flex-1 lg:overflow-hidden"
+          : "shrink-0 border-b border-[var(--mt5-divider)]",
       )}
       data-mt5-chart-terminal
     >
-      {/* Toolbar */}
-      <div className="flex flex-col gap-2 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-2 lg:flex-row lg:items-start">
+      {/* Compact toolbar — pair + timeframe only */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-2 py-1.5 lg:px-3">
         <ChartSymbolPicker
+          compact
           selectedSymbol={selectedSymbol}
           watchlist={watchlist}
           onSelect={handleSymbolChange}
           onAdd={handleAddSymbol}
           onRemove={removeSymbol}
+          className="min-w-0 flex-1"
         />
 
-        {liveQuote && (
-          <div className="shrink-0 text-xs text-[var(--mt5-muted)] lg:pt-1">
-            Bid {fmtMt5Price(liveQuote.bid ?? null)} · Ask{" "}
-            {fmtMt5Price(liveQuote.ask ?? null)}
-          </div>
-        )}
-
-        <div className="flex flex-wrap justify-end gap-0.5 lg:shrink-0 lg:pt-1">
+        <div className="flex shrink-0 gap-0.5">
           {CHART_TIMEFRAMES.map((tf) => (
             <button
               key={tf}
@@ -287,17 +284,17 @@ export function Mt5ChartTerminal({
         </div>
 
         {chartLoading && (
-          <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--mt5-muted)]" />
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--mt5-muted)]" />
         )}
       </div>
 
-      {/* Chart — taller on desktop */}
+      {/* Chart fills remaining height on desktop */}
       <div
         className={cn(
-          "relative w-full",
+          "relative min-h-[200px] w-full flex-1",
           showOrdersPanel
-            ? "h-[min(42vh,280px)] min-h-[200px] lg:min-h-[320px] lg:flex-1"
-            : "h-[min(42vh,280px)] min-h-[200px]",
+            ? "h-[min(42vh,280px)] lg:min-h-0"
+            : "h-[min(42vh,280px)]",
         )}
       >
         <LightweightChart
@@ -315,7 +312,7 @@ export function Mt5ChartTerminal({
 
       {/* Desktop MT5-style terminal — hidden on phone */}
       {showOrdersPanel && (
-        <div className="hidden lg:flex lg:min-h-[220px] lg:max-h-[38vh] lg:flex-col lg:border-t lg:border-[var(--mt5-divider)]">
+        <div className="hidden lg:flex lg:max-h-[32vh] lg:shrink-0 lg:flex-col lg:border-t lg:border-[var(--mt5-divider)]">
           <div className="grid grid-cols-[1.2fr_0.8fr_0.6fr_0.5fr_0.7fr_0.7fr_0.7fr_0.7fr_0.6fr] gap-2 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--mt5-muted)]">
             <span>Symbol</span>
             <span>Ticket</span>
