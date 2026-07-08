@@ -248,7 +248,7 @@ export default function Mt5Page() {
               ) : (
                 <ul className="space-y-3">
                   {data?.terminal?.positions.map((pos) => {
-                    const pnl = pos.profit + pos.unrealizedProfit + pos.swap + pos.commission;
+                    const pnl = Number(pos.profit ?? 0);
                     return (
                       <li
                         key={pos.id}
@@ -332,7 +332,7 @@ export default function Mt5Page() {
               </thead>
               <tbody>
                 {(data?.terminal?.positions ?? []).map((pos) => {
-                  const pnl = pos.profit + pos.unrealizedProfit + pos.swap + pos.commission;
+                  const pnl = Number(pos.profit ?? 0);
                   return (
                     <tr key={pos.id} className="border-b border-white/5">
                       <td className="py-3 pr-4 text-white">{pos.symbol}</td>

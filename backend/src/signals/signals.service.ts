@@ -5170,6 +5170,11 @@ export class SignalsService {
     return { user, syncActive, platformAccountId, terminalAccountId };
   }
 
+  /** MetaAPI `profit` already includes unrealized price P/L (MT5 Profit column). */
+  private metaPositionDisplayProfit(pos: { profit?: number | null }): number {
+    return Number(pos.profit ?? 0);
+  }
+
   /** User MT5 hub — their submitted setups on the platform MT5 account. */
   private async buildMt5UserAccountSummary(
     userId: string,
@@ -5459,8 +5464,7 @@ export class SignalsService {
           const linked = signalId
             ? openSignals.find((s) => s.signalId === signalId)
             : null;
-          const pnl =
-            pos.profit + pos.unrealizedProfit + pos.swap + pos.commission;
+          const pnl = this.metaPositionDisplayProfit(pos);
 
           pushTrade({
             signalId,
@@ -5599,8 +5603,7 @@ export class SignalsService {
           (s) => clientIdBySignalId.get(s.signalId) === pos.clientId,
         ) ??
         null;
-      const pnl =
-        pos.profit + pos.unrealizedProfit + pos.swap + pos.commission;
+      const pnl = this.metaPositionDisplayProfit(pos);
 
       return {
         signalId: linked?.signalId ?? null,

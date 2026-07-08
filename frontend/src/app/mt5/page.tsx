@@ -47,6 +47,7 @@ import { Mt5Assistant } from "@/components/mt5/mt5-assistant";
 import { useMt5ChartDisplaySettings } from "@/hooks/use-mt5-chart-display-settings";
 import { Mt5LiveSyncCard } from "@/components/mt5/mt5-live-sync-card";
 import { Mt5ChartTerminal } from "@/components/mt5/mt5-chart-terminal";
+import { Mt5SwipeableRow } from "@/components/mt5/mt5-swipeable-row";
 import {
   Mt5MobileBottomNav,
   type Mt5MobileTab,
@@ -623,6 +624,10 @@ export default function Mt5UserPage() {
             onBreakeven={handleBreakeven}
             onPartialClose={handlePartialClose}
             onOpenSetup={setSelectedSetup}
+            onViewChart={(trade) => {
+              setSelectedChartSymbol(trade.symbol);
+              setTab("chart");
+            }}
           />
         ) : tab === "history" ? (
           <HistoryPanel
@@ -964,6 +969,7 @@ function PositionsPanel({
   onBreakeven,
   onPartialClose,
   onOpenSetup,
+  onViewChart,
 }: {
   trades: UserMt5Trade[];
   actionKey: string | null;
@@ -971,6 +977,7 @@ function PositionsPanel({
   onBreakeven: (t: UserMt5Trade) => void;
   onPartialClose: (t: UserMt5Trade, vol: number) => void;
   onOpenSetup: (setup: SetupSummary) => void;
+  onViewChart: (t: UserMt5Trade) => void;
 }) {
   const expand = useMt5Expand();
   const [partialLot, setPartialLot] = useState<Record<string, string>>({});
@@ -1000,8 +1007,42 @@ function PositionsPanel({
         const partialKey = partialLot[key] ?? "";
 
         return (
-          <Mt5ExpandableRow
+          <Mt5SwipeableRow
             key={key}
+            actions={[
+              ...(trade.canClose
+                ? [
+                    {
+                      key: "close",
+                      label: "Close",
+                      tone: "danger" as const,
+                      disabled: actionKey === key,
+                      onClick: () => void onClose(trade),
+                    },
+                  ]
+                : []),
+              ...(trade.canPartialClose && trade.signalId
+                ? [
+                    {
+                      key: "partial",
+                      label: "Partial",
+                      tone: "neutral" as const,
+                      onClick: () => {
+                        expand.toggle(key);
+                        setPartialOpen(key);
+                      },
+                    },
+                  ]
+                : []),
+              {
+                key: "chart",
+                label: "Chart",
+                tone: "primary" as const,
+                onClick: () => onViewChart(trade),
+              },
+            ]}
+          >
+          <Mt5ExpandableRow
             id={key}
             expanded={expanded}
             onToggle={() => expand.toggle(key)}
@@ -1158,6 +1199,7 @@ function PositionsPanel({
               ]}
             />
           </Mt5ExpandableRow>
+          </Mt5SwipeableRow>
         );
       })}
     </div>
