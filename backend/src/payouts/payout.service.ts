@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Logger, ForbiddenException } from '@nestjs/common';
+import { PayoutSource, WalletTxType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NowPaymentsService } from '../payments/nowpayments.service';
 import { ConfigService } from '@nestjs/config';
@@ -336,6 +337,19 @@ export class PayoutService {
     return { weekNumber, year: d.getUTCFullYear() };
   }
 
+  private walletTxTypeForPayout(source: PayoutSource): WalletTxType {
+    switch (source) {
+      case 'TP_REWARD':
+        return 'TP_REWARD';
+      case 'PROFIT_SHARE':
+        return 'PROFIT_SHARE';
+      case 'WEEKLY':
+        return 'TP_REWARD';
+      default:
+        return 'ADJUSTMENT';
+    }
+  }
+
   async approveAndSendPayout(payoutId: string, adminId: string, network = 'TRC20') {
     const payout = await this.prisma.payout.findUnique({
       where: { id: payoutId },
@@ -349,7 +363,64 @@ export class PayoutService {
       };
     }
 
+    const amount = Number(payout.traderShare);
+    const creditToWallet = payout.source !== 'DEPOSITOR';
     const isMobileMoney = payout.payoutMethod === 'MOBILE_MONEY';
+
+    if (creditToWallet) {
+      const newBalance = await this.prisma.$transaction(async (tx) => {
+        const wallet = await tx.platformWallet.upsert({
+          where: { userId: payout.userId },
+          create: { userId: payout.userId },
+          update: {},
+        });
+        const balance = Number(wallet.availableBalance) + amount;
+
+        await tx.platformWallet.update({
+          where: { userId: payout.userId },
+          data: { availableBalance: balance },
+        });
+        await tx.walletTransaction.create({
+          data: {
+            userId: payout.userId,
+            amount,
+            type: this.walletTxTypeForPayout(payout.source),
+            referenceId: payoutId,
+            description: `Payout approved — $${amount.toFixed(2)} USDT credited to wallet`,
+            balanceAfter: balance,
+          },
+        });
+        await tx.payout.update({
+          where: { id: payoutId },
+          data: {
+            status: 'PAID',
+            processedAt: new Date(),
+            notes: `Approved by admin ${adminId} — $${amount.toFixed(2)} USDT credited to platform wallet`,
+          },
+        });
+
+        return balance;
+      });
+
+      this.notifications.payoutCreditedToWallet(payout.userId, {
+        amount,
+        balance: newBalance,
+        weekNumber: payout.weekNumber,
+        year: payout.year,
+        source: payout.source,
+      });
+
+      const updated = await this.prisma.payout.findUniqueOrThrow({
+        where: { id: payoutId },
+      });
+
+      return {
+        payout: updated,
+        verificationRequired: false,
+        creditedToWallet: true,
+        walletBalance: newBalance,
+      };
+    }
 
     const updated = await this.prisma.payout.update({
       where: { id: payoutId },
@@ -358,25 +429,13 @@ export class PayoutService {
         processedAt: new Date(),
         notes: isMobileMoney
           ? `Confirmed by admin ${adminId} — mobile money (manual transfer)`
-          : `Confirmed by admin ${adminId} — crypto (manual external payment)`,
-      },
-    });
-
-    await this.prisma.walletTransaction.create({
-      data: {
-        userId: payout.userId,
-        amount: -Number(payout.traderShare),
-        type: 'PAYOUT',
-        referenceId: payoutId,
-        description: isMobileMoney
-          ? `Mobile money payout — ${(payout.walletAddress ?? '').slice(0, 24)}…`
-          : `Crypto payout to ${(payout.walletAddress ?? '').slice(0, 8)}...`,
+          : `Confirmed by admin ${adminId} — external crypto withdrawal sent`,
       },
     });
 
     if (payout.walletAddress) {
       this.notifications.payoutApproved(payout.userId, {
-        amount: Number(payout.traderShare),
+        amount,
         walletAddress: payout.walletAddress,
         weekNumber: payout.weekNumber,
         year: payout.year,
@@ -386,6 +445,7 @@ export class PayoutService {
     return {
       payout: updated,
       verificationRequired: false,
+      creditedToWallet: false,
     };
   }
 

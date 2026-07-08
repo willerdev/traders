@@ -221,6 +221,51 @@ export class NotificationService {
     this.dispatch(this.sendPayoutApproved(userId, data), 'Payout approved');
   }
 
+  payoutCreditedToWallet(
+    userId: string,
+    data: {
+      amount: number;
+      balance: number;
+      weekNumber: number;
+      year: number;
+      source: string;
+    },
+  ) {
+    this.dispatch(
+      this.sendPayoutCreditedToWallet(userId, data),
+      'Payout credited to wallet',
+    );
+  }
+
+  private async sendPayoutCreditedToWallet(
+    userId: string,
+    data: {
+      amount: number;
+      balance: number;
+      weekNumber: number;
+      year: number;
+      source: string;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+
+    const html = this.email.layout(
+      'Payout credited to your wallet',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your payout has been approved and <strong>$${data.amount.toFixed(2)} USDT</strong> is now in your platform wallet.</p>
+      <p>New wallet balance: <strong>$${data.balance.toFixed(2)} USDT</strong></p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+    );
+
+    return this.email.send({
+      to: user.email,
+      subject: `Payout approved — $${data.amount.toFixed(2)} USDT in your wallet`,
+      html,
+      text: `$${data.amount.toFixed(2)} USDT credited to your platform wallet.`,
+    });
+  }
+
   private async sendPayoutApproved(
     userId: string,
     data: {
