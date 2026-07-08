@@ -174,7 +174,14 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
         }
         setDragError(null);
         if (!onPriceLineDragEndRef.current) return;
-        await onPriceLineDragEndRef.current(line, newPrice);
+        try {
+          await onPriceLineDragEndRef.current(line, newPrice);
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : "Could not update stops";
+          setDragError(message);
+          throw err;
+        }
         setDragPrices((prev) => {
           const next = { ...prev };
           delete next[line.id];
@@ -391,9 +398,42 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
             {fmtMt5Price(drag.dragLabel.price)}
           </div>
         )}
-        {drag.saving && (
+        {drag.pending && (
+          <div
+            className="absolute bottom-3 left-2 right-2 z-20 flex flex-wrap items-center justify-center gap-2 rounded-lg border border-[var(--mt5-divider)] bg-[var(--mt5-surface)]/98 px-3 py-2 shadow-lg backdrop-blur-sm sm:left-1/2 sm:right-auto sm:max-w-md sm:-translate-x-1/2"
+            role="dialog"
+            aria-label="Confirm stop modification"
+          >
+            <p className="min-w-0 flex-1 text-center text-[11px] font-medium text-[var(--mt5-text)] sm:text-left">
+              Move{" "}
+              <span className="font-semibold uppercase">
+                {drag.pending.line.kind}
+              </span>{" "}
+              to {fmtMt5Price(drag.pending.newPrice)}?
+            </p>
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                disabled={drag.saving}
+                onClick={() => drag.cancelPending()}
+                className="rounded-md border border-[var(--mt5-divider)] px-3 py-1.5 text-[11px] font-semibold text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={drag.saving}
+                onClick={() => void drag.confirmPending()}
+                className="rounded-md bg-[#4a9eff] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#3b8ee8] disabled:opacity-50"
+              >
+                {drag.saving ? "Sending…" : "Confirm"}
+              </button>
+            </div>
+          </div>
+        )}
+        {drag.saving && !drag.pending && (
           <div className="pointer-events-none absolute bottom-2 left-2 rounded bg-[var(--mt5-surface)]/90 px-2 py-1 text-[10px] text-[var(--mt5-muted)]">
-            Saving…
+            Sending to broker…
           </div>
         )}
         {dragError && (

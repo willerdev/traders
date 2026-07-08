@@ -391,7 +391,9 @@ export function Mt5ChartTerminal({
               </span>
             )}
             {chartSettings.showSlTp && priceLines.some((l) => l.draggable) && (
-              <span className="text-[var(--mt5-muted)]">Drag SL/TP to adjust</span>
+              <span className="text-[var(--mt5-muted)]">
+                Drag SL/TP · Confirm to apply on broker
+              </span>
             )}
           </div>
         )}

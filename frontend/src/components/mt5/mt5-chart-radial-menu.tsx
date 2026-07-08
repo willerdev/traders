@@ -14,15 +14,10 @@ import {
   X,
 } from "lucide-react";
 
-export const MENU_SIZE = 164;
-const HALF = MENU_SIZE / 2;
-const RING_WIDTH = 11;
-const RING_RADIUS = HALF - RING_WIDTH / 2;
+export const MENU_WIDTH = 300;
+export const MENU_HEIGHT = 132;
 
-const TF_CENTER = -Math.PI / 2;
-const TOOL_CENTER = Math.PI / 2;
-
-/** MT5-style ring labels (unsupported map to nearest backend TF). */
+/** MT5-style labels (unsupported map to nearest backend TF). */
 export const RADIAL_TIMEFRAMES: {
   id: string;
   label: string;
@@ -45,7 +40,7 @@ const TOOLS = [
   { id: "indicators", label: "Indicators", icon: TrendingUp },
   { id: "settings", label: "Settings", icon: Settings2 },
   { id: "objects", label: "Objects", icon: Shapes },
-  { id: "layout", label: "Layout", icon: LayoutGrid },
+  { id: "layout", label: "Fit", icon: LayoutGrid },
 ] as const;
 
 export type RadialToolId = (typeof TOOLS)[number]["id"];
@@ -59,46 +54,6 @@ type Props = {
   onTool: (tool: RadialToolId) => void;
 };
 
-function degToRad(deg: number) {
-  return (deg * Math.PI) / 180;
-}
-
-/** Evenly cluster items around center; span grows with count but stays capped. */
-function clusteredAngles(
-  count: number,
-  center: number,
-  stepDeg: number,
-  maxSpanDeg: number,
-): number[] {
-  if (count <= 0) return [];
-  if (count === 1) return [center];
-
-  const maxSpan = degToRad(maxSpanDeg);
-  const step = Math.min(
-    degToRad(stepDeg),
-    maxSpan / (count - 1),
-  );
-  const half = ((count - 1) * step) / 2;
-
-  return Array.from({ length: count }, (_, i) => center - half + i * step);
-}
-
-function ringPoint(angle: number) {
-  return {
-    left: HALF + RING_RADIUS * Math.cos(angle),
-    top: HALF + RING_RADIUS * Math.sin(angle),
-  };
-}
-
-const TF_ANGLES = clusteredAngles(
-  RADIAL_TIMEFRAMES.length,
-  TF_CENTER,
-  13,
-  118,
-);
-
-const TOOL_ANGLES = clusteredAngles(TOOLS.length, TOOL_CENTER, 17, 76);
-
 export function Mt5ChartRadialMenu({
   open,
   anchor,
@@ -111,110 +66,84 @@ export function Mt5ChartRadialMenu({
 
   return (
     <div
-      className="absolute inset-0 z-[20] bg-black/20"
+      className="absolute inset-0 z-[20] bg-black/25"
       onClick={onClose}
       role="presentation"
     >
       <div
-        className="pointer-events-none absolute"
+        className="pointer-events-auto absolute max-w-[calc(100%-1rem)] rounded-xl border border-[var(--mt5-divider)] bg-[var(--mt5-surface)]/98 shadow-2xl backdrop-blur-md"
         style={{
           left: anchor.x,
           top: anchor.y,
-          width: MENU_SIZE,
-          height: MENU_SIZE,
-          transform: "translate(-50%, -50%)",
+          width: `min(${MENU_WIDTH}px, calc(100% - 1rem))`,
+          transform: "translate(-50%, 0)",
         }}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label="Chart quick menu"
       >
-        <div
-          className="pointer-events-auto relative h-full w-full"
-          onClick={(e) => e.stopPropagation()}
-          role="dialog"
-          aria-label="Chart quick menu"
-        >
-          <svg
-            className="absolute inset-0 h-full w-full drop-shadow-[0_0_16px_rgba(0,0,0,0.45)]"
-            viewBox={`0 0 ${MENU_SIZE} ${MENU_SIZE}`}
-            aria-hidden
-          >
-            <circle
-              cx={HALF}
-              cy={HALF}
-              r={RING_RADIUS}
-              fill="none"
-              stroke="#2a2d35"
-              strokeWidth={RING_WIDTH}
-              strokeOpacity={0.92}
-            />
-          </svg>
-
+        <div className="flex items-center justify-between gap-2 border-b border-[var(--mt5-divider)] px-3 py-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--mt5-muted)]">
+            Timeframes
+          </p>
           <button
             type="button"
             onClick={onClose}
-            className="absolute z-10 flex h-7 w-7 items-center justify-center text-[var(--mt5-muted)] transition-colors hover:text-[var(--mt5-text)]"
-            style={{
-              left: HALF,
-              top: HALF,
-              transform: "translate(-50%, -50%)",
-            }}
+            className="rounded p-1 text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)] hover:text-[var(--mt5-text)]"
             aria-label="Close menu"
           >
-            <X className="h-4 w-4" strokeWidth={2} />
+            <X className="h-4 w-4" />
           </button>
+        </div>
 
-          {RADIAL_TIMEFRAMES.map((tf, i) => {
-            const { left, top } = ringPoint(TF_ANGLES[i]);
-            return (
-              <button
-                key={tf.id}
-                type="button"
-                disabled={!tf.mapsTo}
-                onClick={() => {
-                  if (tf.mapsTo) onTimeframe(tf.mapsTo);
-                  onClose();
-                }}
-                className={cn(
-                  "absolute z-10 flex h-5 min-w-[1.5rem] items-center justify-center text-[10px] font-semibold leading-none",
-                  tf.mapsTo === activeTimeframe
-                    ? "text-[#4a9eff]"
-                    : tf.mapsTo
-                      ? "text-[var(--mt5-text)]"
-                      : "text-[var(--mt5-muted)]/45",
-                )}
-                style={{
-                  left,
-                  top,
-                  transform: "translate(-50%, -50%)",
-                }}
-              >
-                {tf.label}
-              </button>
-            );
-          })}
+        <div className="flex gap-1 overflow-x-auto px-2 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {RADIAL_TIMEFRAMES.map((tf) => (
+            <button
+              key={tf.id}
+              type="button"
+              disabled={!tf.mapsTo}
+              onClick={() => {
+                if (tf.mapsTo) onTimeframe(tf.mapsTo);
+                onClose();
+              }}
+              className={cn(
+                "shrink-0 rounded-md px-2.5 py-1.5 text-xs font-semibold tabular-nums transition-colors",
+                tf.mapsTo === activeTimeframe
+                  ? "bg-[#4a9eff] text-white"
+                  : tf.mapsTo
+                    ? "bg-[var(--mt5-row-hover)] text-[var(--mt5-text)] hover:bg-[#4a9eff]/20"
+                    : "cursor-not-allowed text-[var(--mt5-muted)]/40",
+              )}
+              title={tf.supported ? tf.label : `${tf.label} (uses ${tf.mapsTo})`}
+            >
+              {tf.label}
+            </button>
+          ))}
+        </div>
 
-          {TOOLS.map((tool, i) => {
-            const { left, top } = ringPoint(TOOL_ANGLES[i]);
-            const Icon = tool.icon;
-            return (
-              <button
-                key={tool.id}
-                type="button"
-                onClick={() => {
-                  onTool(tool.id);
-                  if (tool.id !== "settings") onClose();
-                }}
-                className="absolute z-10 flex h-6 w-6 items-center justify-center text-[var(--mt5-text)]"
-                style={{
-                  left,
-                  top,
-                  transform: "translate(-50%, -50%)",
-                }}
-                aria-label={tool.label}
-                title={tool.label}
-              >
-                <Icon className="h-[15px] w-[15px]" strokeWidth={1.75} />
-              </button>
-            );
-          })}
+        <div className="border-t border-[var(--mt5-divider)] px-2 py-2">
+          <p className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--mt5-muted)]">
+            Tools
+          </p>
+          <div className="grid grid-cols-3 gap-1 sm:grid-cols-5">
+            {TOOLS.map((tool) => {
+              const Icon = tool.icon;
+              return (
+                <button
+                  key={tool.id}
+                  type="button"
+                  onClick={() => {
+                    onTool(tool.id);
+                    if (tool.id !== "settings") onClose();
+                  }}
+                  className="flex flex-col items-center gap-1 rounded-lg px-1 py-2 text-[10px] font-medium text-[var(--mt5-text)] transition-colors hover:bg-[var(--mt5-row-hover)]"
+                >
+                  <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+                  <span className="leading-tight">{tool.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
@@ -226,10 +155,17 @@ export function clampRadialAnchor(
   y: number,
   bounds: { width: number; height: number },
 ): { x: number; y: number } {
-  return {
-    x: Math.max(HALF, Math.min(x, bounds.width - HALF)),
-    y: Math.max(HALF, Math.min(y, bounds.height - HALF)),
-  };
+  const halfW = Math.min(MENU_WIDTH / 2, bounds.width / 2 - 8);
+  const clampedX = Math.max(halfW + 8, Math.min(x, bounds.width - halfW - 8));
+
+  const belowY = y + 16;
+  const aboveY = y - MENU_HEIGHT - 16;
+  const fitsBelow = belowY + MENU_HEIGHT <= bounds.height - 8;
+  const clampedY = fitsBelow
+    ? belowY
+    : Math.max(8, Math.min(aboveY, bounds.height - MENU_HEIGHT - 8));
+
+  return { x: clampedX, y: clampedY };
 }
 
 export function isSupportedRadialTimeframe(id: string): ChartTimeframe | null {

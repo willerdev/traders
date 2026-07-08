@@ -11,6 +11,13 @@ type DragState = {
   startPrice: number;
 };
 
+export type PendingStopModification = {
+  line: ChartPriceLine;
+  originalPrice: number;
+  newPrice: number;
+  labelY: number;
+};
+
 type Options = {
   containerRef: React.RefObject<HTMLDivElement | null>;
   ready: boolean;
@@ -48,11 +55,14 @@ export function useDraggableOrderLines({
     price: number;
     y: number;
   } | null>(null);
+  const [pending, setPending] = useState<PendingStopModification | null>(null);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  const pendingRef = useRef<PendingStopModification | null>(null);
 
   linesRef.current = lines;
   savingRef.current = saving;
+  pendingRef.current = pending;
 
   const findLineAtY = useCallback(
     (clientY: number): ChartPriceLine | null => {
@@ -86,6 +96,7 @@ export function useDraggableOrderLines({
       setSaving(true);
       try {
         await onDragEnd(line, newPrice);
+        setPending(null);
       } finally {
         setSaving(false);
         setDragLabel(null);
@@ -97,12 +108,27 @@ export function useDraggableOrderLines({
     [onDragEnd, setScrollEnabled],
   );
 
+  const confirmPending = useCallback(async () => {
+    const mod = pendingRef.current;
+    if (!mod || savingRef.current) return;
+    await finishDrag({ ...mod.line, price: mod.newPrice }, mod.newPrice);
+  }, [finishDrag]);
+
+  const cancelPending = useCallback(() => {
+    const mod = pendingRef.current;
+    if (!mod) return;
+    onLinePriceChange(mod.line.id, mod.originalPrice);
+    setPending(null);
+    setDragLabel(null);
+    setScrollEnabled(true);
+  }, [onLinePriceChange, setScrollEnabled]);
+
   useEffect(() => {
     if (!containerRef.current || !ready || !enabled) return;
     const target: HTMLDivElement = containerRef.current;
 
     function onPointerDown(e: PointerEvent) {
-      if (savingRef.current) return;
+      if (savingRef.current || pendingRef.current) return;
       const line = findLineAtY(e.clientY);
       if (!line) return;
 
@@ -124,12 +150,15 @@ export function useDraggableOrderLines({
         if (line) {
           const y = priceToCoordinate(price);
           setDragLabel(
-            y != null ? { price, y } : { price, y: e.clientY - target.getBoundingClientRect().top },
+            y != null
+              ? { price, y }
+              : { price, y: e.clientY - target.getBoundingClientRect().top },
           );
         }
         return;
       }
 
+      if (pendingRef.current) return;
       const hover = findLineAtY(e.clientY);
       setHoverLineId(hover?.id ?? null);
     }
@@ -164,15 +193,27 @@ export function useDraggableOrderLines({
         return;
       }
 
+      dragRef.current = null;
+      setDraggingLineId(null);
+
       if (Math.abs(newPrice - drag.startPrice) < 1e-9) {
-        dragRef.current = null;
-        setDraggingLineId(null);
         setDragLabel(null);
         setScrollEnabled(true);
         return;
       }
 
-      void finishDrag({ ...line, price: newPrice }, newPrice);
+      const labelY =
+        priceToCoordinate(newPrice) ??
+        e.clientY - target.getBoundingClientRect().top;
+
+      setPending({
+        line: { ...line, price: newPrice },
+        originalPrice: drag.startPrice,
+        newPrice,
+        labelY,
+      });
+      setDragLabel({ price: newPrice, y: labelY });
+      setScrollEnabled(true);
     }
 
     function onPointerCancel(e: PointerEvent) {
@@ -210,17 +251,19 @@ export function useDraggableOrderLines({
     priceToCoordinate,
     onLinePriceChange,
     setScrollEnabled,
-    finishDrag,
   ]);
 
   const cursor =
-    draggingLineId || hoverLineId ? "ns-resize" : undefined;
+    draggingLineId || hoverLineId || pending ? "ns-resize" : undefined;
 
   return {
     cursor,
     dragLabel,
     draggingLineId,
+    pending,
     saving,
+    confirmPending,
+    cancelPending,
     formatLineTitle,
   };
 }
