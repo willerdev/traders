@@ -321,6 +321,41 @@ export class CreatePromoCodeDto {
   @IsOptional()
   @IsString()
   expiresAt?: string;
+
+  /** Max redemptions; 1 = single-use offline payer code. Omit for unlimited. */
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  maxUses?: number;
+}
+
+export class BulkCreatePromoCodesDto {
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  count: number;
+
+  @IsOptional()
+  @IsString()
+  prefix?: string;
+
+  @IsOptional()
+  @IsNumber()
+  discountPercent?: number;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsNumber()
+  expiresInDays?: number;
+
+  /** Defaults to 1 (single-use) for offline payer batches */
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  maxUses?: number;
 }
 
 export class SaveSignalDraftDto {

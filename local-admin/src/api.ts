@@ -304,8 +304,21 @@ export const api = {
     discountPercent?: number;
     description?: string;
     expiresInDays?: number;
+    maxUses?: number;
   }) =>
     request<PromoCodeRow>("/admin/promo-codes", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  bulkCreatePromoCodes: (data: {
+    count: number;
+    prefix?: string;
+    discountPercent?: number;
+    expiresInDays?: number;
+    description?: string;
+    maxUses?: number;
+  }) =>
+    request<{ count: number; items: PromoCodeRow[] }>("/admin/promo-codes/bulk", {
       method: "POST",
       body: JSON.stringify(data),
     }),
@@ -883,6 +896,11 @@ export type PromoCodeRow = {
   active: boolean;
   expired: boolean;
   valid: boolean;
+  maxUses: number | null;
+  usedCount: number;
+  remainingUses: number | null;
+  exhausted?: boolean;
+  singleUse?: boolean;
   createdAt: string;
 };
 

@@ -356,6 +356,11 @@ export default function App() {
     string | null
   >(null);
   const [newPromoCode, setNewPromoCode] = useState("");
+  const [newPromoSingleUse, setNewPromoSingleUse] = useState(false);
+  const [bulkPromoCount, setBulkPromoCount] = useState("5");
+  const [bulkPromoPrefix, setBulkPromoPrefix] = useState("offline");
+  const [bulkPromoDays, setBulkPromoDays] = useState("30");
+  const [bulkPromoLoading, setBulkPromoLoading] = useState(false);
   const [newPromoDays, setNewPromoDays] = useState("7");
   const [newPromoPercent, setNewPromoPercent] = useState("100");
   const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
@@ -3043,8 +3048,9 @@ export default function App() {
               <h2>Promo / invite codes</h2>
             </div>
             <p className="muted" style={{ marginBottom: "1rem" }}>
-              New codes expire after 7 days by default. Create a fresh code each week
-              for invites you share manually.
+              Create reusable codes for campaigns, or single-use codes for people who
+              paid offline — they enter the code at checkout for 100% off and account
+              activation.
             </p>
             <div
               className="kyc-card"
@@ -3053,7 +3059,7 @@ export default function App() {
               <h3 style={{ marginTop: 0 }}>Create code</h3>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                 <input
-                  placeholder="Code (e.g. launch-march)"
+                  placeholder="Code (e.g. launch-march or payer-john)"
                   value={newPromoCode}
                   onChange={(e) => setNewPromoCode(e.target.value)}
                   style={{
@@ -3094,6 +3100,22 @@ export default function App() {
                     color: "#e8eaed",
                   }}
                 />
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    fontSize: "0.85rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={newPromoSingleUse}
+                    onChange={(e) => setNewPromoSingleUse(e.target.checked)}
+                  />
+                  Single use (offline payer — one activation only)
+                </label>
                 <button
                   type="button"
                   className="primary"
@@ -3104,9 +3126,14 @@ export default function App() {
                         code: newPromoCode.trim(),
                         discountPercent: Number(newPromoPercent) || 100,
                         expiresInDays: Number(newPromoDays) || 7,
+                        maxUses: newPromoSingleUse ? 1 : undefined,
+                        description: newPromoSingleUse
+                          ? "Single-use offline payer activation"
+                          : undefined,
                       })
                       .then(() => {
                         setNewPromoCode("");
+                        setNewPromoSingleUse(false);
                         setMessage("Promo code created");
                         return loadTab("promos");
                       })
@@ -3118,7 +3145,98 @@ export default function App() {
                   }
                 >
                   Create ({newPromoPercent || 100}% off, {newPromoDays || 7}{" "}
-                  days)
+                  days{newPromoSingleUse ? ", single use" : ""})
+                </button>
+              </div>
+            </div>
+            <div
+              className="kyc-card"
+              style={{ marginBottom: "1.5rem", maxWidth: 480 }}
+            >
+              <h3 style={{ marginTop: 0 }}>Bulk offline payer codes</h3>
+              <p className="muted" style={{ margin: "0 0 0.75rem", fontSize: "0.85rem" }}>
+                Generate unique single-use codes (100% off, 30 days). Give one code
+                per person who paid offline.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  placeholder="How many codes"
+                  value={bulkPromoCount}
+                  onChange={(e) => setBulkPromoCount(e.target.value)}
+                  style={{
+                    padding: "0.5rem",
+                    borderRadius: 6,
+                    border: "1px solid #334155",
+                    background: "#0b0f14",
+                    color: "#e8eaed",
+                  }}
+                />
+                <input
+                  placeholder="Prefix (default offline)"
+                  value={bulkPromoPrefix}
+                  onChange={(e) => setBulkPromoPrefix(e.target.value)}
+                  style={{
+                    padding: "0.5rem",
+                    borderRadius: 6,
+                    border: "1px solid #334155",
+                    background: "#0b0f14",
+                    color: "#e8eaed",
+                  }}
+                />
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  placeholder="Valid for days (default 30)"
+                  value={bulkPromoDays}
+                  onChange={(e) => setBulkPromoDays(e.target.value)}
+                  style={{
+                    padding: "0.5rem",
+                    borderRadius: 6,
+                    border: "1px solid #334155",
+                    background: "#0b0f14",
+                    color: "#e8eaed",
+                  }}
+                />
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={bulkPromoLoading}
+                  onClick={() => {
+                    const count = Number(bulkPromoCount);
+                    if (!Number.isFinite(count) || count < 1) {
+                      setMessage("Enter a valid count (1–100).");
+                      return;
+                    }
+                    setBulkPromoLoading(true);
+                    void api
+                      .bulkCreatePromoCodes({
+                        count,
+                        prefix: bulkPromoPrefix.trim() || "offline",
+                        discountPercent: 100,
+                        expiresInDays: Number(bulkPromoDays) || 30,
+                        maxUses: 1,
+                      })
+                      .then((res) => {
+                        setMessage(
+                          `Created ${res.count} single-use codes: ${res.items.map((c) => c.code).join(", ")}`,
+                        );
+                        return loadTab("promos");
+                      })
+                      .catch((err) =>
+                        setMessage(
+                          err instanceof Error ? err.message : "Bulk create failed",
+                        ),
+                      )
+                      .finally(() => setBulkPromoLoading(false));
+                  }}
+                >
+                  {bulkPromoLoading
+                    ? "Generating…"
+                    : `Generate ${bulkPromoCount || "5"} codes`}
                 </button>
               </div>
             </div>
@@ -3127,7 +3245,7 @@ export default function App() {
                 <tr>
                   <th>Code</th>
                   <th>Discount</th>
-                  <th>Used</th>
+                  <th>Uses</th>
                   <th>Expires</th>
                   <th>Status</th>
                   <th />
@@ -3148,7 +3266,10 @@ export default function App() {
                       </td>
                       <td>{p.discountPercent}%</td>
                       <td>
-                        {promoUsage.filter((u) => u.code === p.code).length}
+                        {p.maxUses != null
+                          ? `${p.usedCount}/${p.maxUses}`
+                          : p.usedCount}
+                        {p.singleUse ? " · 1×" : ""}
                       </td>
                       <td>{fmtDate(p.expiresAt)}</td>
                       <td>
@@ -3156,20 +3277,24 @@ export default function App() {
                           className={badgeClass(
                             !p.active
                               ? "rejected"
-                              : p.expired
-                                ? "expired"
-                                : "approved",
+                              : p.exhausted
+                                ? "pending"
+                                : p.expired
+                                  ? "expired"
+                                  : "approved",
                           )}
                         >
                           {!p.active
                             ? "INACTIVE"
-                            : p.expired
-                              ? "EXPIRED"
-                              : "ACTIVE"}
+                            : p.exhausted
+                              ? "USED"
+                              : p.expired
+                                ? "EXPIRED"
+                                : "ACTIVE"}
                         </span>
                       </td>
                       <td>
-                        {p.active && !p.expired && (
+                        {p.active && !p.expired && !p.exhausted && (
                           <button
                             type="button"
                             className="danger"

@@ -706,6 +706,7 @@ model PromoCode {
   description     String
   expiresAt       DateTime
   active          Boolean  @default(true)
+  maxUses         Int?
   createdById     String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

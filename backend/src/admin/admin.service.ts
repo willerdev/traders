@@ -21,7 +21,7 @@ import { hasActiveTradingAccess } from '../common/weekly-access.util';
 import { MessagesService } from '../messages/messages.service';
 import { NotificationService } from '../email/notification.service';
 import { ReferralsService } from '../referrals/referrals.service';
-import { CreatePromoCodeDto, SendMessageDto, UpdateStaffPermissionsDto } from '../common/dto';
+import { CreatePromoCodeDto, BulkCreatePromoCodesDto, SendMessageDto, UpdateStaffPermissionsDto } from '../common/dto';
 import { assessEmail } from '../common/email-quality.util';
 import { resolveAdminPermissions } from './admin-permissions.util';
 import { PresenceService } from '../presence/presence.service';
@@ -318,6 +318,10 @@ export class AdminService {
 
   createPromoCode(adminId: string, dto: CreatePromoCodeDto) {
     return this.promo.create(adminId, dto);
+  }
+
+  bulkCreatePromoCodes(adminId: string, dto: BulkCreatePromoCodesDto) {
+    return this.promo.createBulk(adminId, dto);
   }
 
   deactivatePromoCode(adminId: string, code: string) {

@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { AdminService } from './admin.service';
-import { CreatePromoCodeDto, SendMessageDto, AdminRejectReasonDto, UpdateStaffPermissionsDto } from '../common/dto';
+import { CreatePromoCodeDto, BulkCreatePromoCodesDto, SendMessageDto, AdminRejectReasonDto, UpdateStaffPermissionsDto } from '../common/dto';
 import { JwtAuthGuard, AdminPermissionGuard } from '../auth/guards';
 import { RequireAdminPermission } from '../auth/decorators/admin-permission.decorator';
 import { UploadStorageService } from '../uploads/upload-storage.service';
@@ -328,6 +328,14 @@ export class AdminController {
     @Body() dto: CreatePromoCodeDto,
   ) {
     return this.adminService.createPromoCode(req.user.id, dto);
+  }
+
+  @Post('promo-codes/bulk')
+  bulkCreatePromoCodes(
+    @Request() req: { user: { id: string } },
+    @Body() dto: BulkCreatePromoCodesDto,
+  ) {
+    return this.adminService.bulkCreatePromoCodes(req.user.id, dto);
   }
 
   @Post('promo-codes/:code/deactivate')

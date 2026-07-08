@@ -268,6 +268,7 @@ export class PaymentsService {
     await this.authService.activateAccount(userId);
 
     this.notifications.accountActivated(userId);
+    await this.promo.afterRedemption(promoCode);
 
     return {
       success: true,
@@ -805,6 +806,15 @@ export class PaymentsService {
 
     const accessExpiresAt = await this.grantWeeklyAccess(payment.userId);
     await this.authService.activateAccount(payment.userId);
+
+    const storedPromo =
+      payment.gatewayResponse &&
+      typeof payment.gatewayResponse === 'object'
+        ? (payment.gatewayResponse as Record<string, unknown>).promoCode
+        : null;
+    if (typeof storedPromo === 'string' && storedPromo.trim()) {
+      await this.promo.afterRedemption(storedPromo);
+    }
 
     const { network } = this.extractPayDetails(payment);
     this.notifications.paymentConfirmed(payment.userId, {
