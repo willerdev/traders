@@ -379,25 +379,26 @@ export default function Mt5UserPage() {
       className={cn(
         "mt5-shell flex w-full max-w-lg flex-col bg-[var(--mt5-bg)] text-[var(--mt5-text)]",
         "min-h-[calc(100dvh-env(safe-area-inset-bottom,0px))]",
-        "max-lg:pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))]",
-        "md:min-h-[calc(100dvh-1rem)] md:max-w-2xl",
-        "lg:mx-0 lg:max-w-none lg:pb-0",
+        "max-md:pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))]",
+        "md:min-h-[calc(100dvh-1rem)] md:max-w-none md:mx-0 md:pb-0",
         tab === "trades" &&
-          "lg:h-[calc(100dvh-0.5rem)] lg:max-h-[calc(100dvh-0.5rem)] lg:min-h-0 lg:overflow-hidden lg:flex-1",
+          "md:h-[calc(100dvh-0.5rem)] md:max-h-[calc(100dvh-0.5rem)] md:min-h-0 md:overflow-hidden md:flex-1",
         tab === "chart" &&
-          "max-lg:min-h-[calc(100dvh-4.25rem-env(safe-area-inset-bottom,0px))]",
+          "max-md:h-[calc(100dvh-env(safe-area-inset-bottom,0px))] max-md:overflow-hidden max-md:pb-0",
+        tab === "chart" &&
+          "md:h-[calc(100dvh-0.5rem)] md:max-h-[calc(100dvh-0.5rem)] md:min-h-0 md:overflow-hidden md:flex-1",
       )}
     >
-      <div className={cn("lg:hidden", tab === "chart" && "max-lg:hidden")}>
+      <div className={cn("md:hidden", tab === "chart" && "max-md:hidden")}>
         <Mt5LiveSyncCard tradingActive compact />
       </div>
       {/* MT5-style header — hidden on desktop chart (Trade tab) and mobile Charts tab */}
       <div
-        className={cn(
-          "sticky top-0 z-20 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)]",
-          tab === "trades" && "lg:hidden",
-          tab === "chart" && "max-lg:hidden",
-        )}
+      className={cn(
+        "sticky top-0 z-20 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)]",
+        tab === "trades" && "md:hidden",
+        tab === "chart" && "hidden",
+      )}
       >
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -405,7 +406,7 @@ export default function Mt5UserPage() {
               <button
                 type="button"
                 onClick={() => setTab("trades")}
-                className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)] hover:text-[var(--mt5-text)] lg:flex"
+                className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)] hover:text-[var(--mt5-text)] md:flex"
                 aria-label="Back to Trade"
               >
                 <ChevronLeft className="h-5 w-5" />
@@ -447,7 +448,7 @@ export default function Mt5UserPage() {
               <button
                 type="button"
                 onClick={() => setTab("history")}
-                className="hidden rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-primary hover:bg-[var(--mt5-row-hover)] lg:inline"
+                className="hidden rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-primary hover:bg-[var(--mt5-row-hover)] md:inline"
               >
                 History
               </button>
@@ -464,13 +465,13 @@ export default function Mt5UserPage() {
         </div>
 
         {account && tab !== "quotes" && (
-          <div className={tab === "trades" ? "lg:hidden" : undefined}>
+          <div className={tab === "trades" ? "md:hidden" : undefined}>
             <Mt5AccountSummary account={account} />
           </div>
         )}
 
         {tab === "trades" && runningCount > 0 && !account && (
-          <div className="lg:hidden">
+          <div className="md:hidden">
             <Mt5SummaryBlock
             rows={[
               { label: "Positions", value: String(runningCount) },
@@ -530,10 +531,10 @@ export default function Mt5UserPage() {
         )}
 
         {tab !== "history" && (
-          <div className="hidden lg:block">
+          <div className="hidden md:block">
             <Mt5SubTabs
               tabs={mainTabs.map((t) => ({ id: t.id, label: t.label.toUpperCase() }))}
-              active={tab}
+              active={tab === "chart" ? "trades" : tab}
               onChange={setTab}
             />
           </div>
@@ -555,10 +556,10 @@ export default function Mt5UserPage() {
       {(tab === "chart" || tab === "trades") && (
         <div
           className={cn(
-            tab === "chart" &&
-              "flex min-h-0 flex-1 flex-col overflow-hidden max-lg:min-h-[calc(100dvh-4.25rem-env(safe-area-inset-bottom,0px))]",
-            tab === "trades" &&
-              "hidden lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden",
+            "flex min-h-0 flex-col overflow-hidden",
+            tab === "chart" && "h-full flex-1 max-md:min-h-0",
+            tab === "trades" && "hidden md:flex md:min-h-0 md:flex-1",
+            tab === "chart" && "md:flex md:min-h-0 md:flex-1",
           )}
         >
           <Mt5ChartTerminal
@@ -571,7 +572,8 @@ export default function Mt5UserPage() {
             onSelectSymbol={setSelectedChartSymbol}
             onOpenSetup={setSelectedSetup}
             onCloseTrade={handleCloseTrade}
-            showOrdersPanel={tab === "trades"}
+            showOrdersPanel={tab === "trades" || tab === "chart"}
+            chartOnly={tab === "chart"}
           />
         </div>
       )}
@@ -586,8 +588,8 @@ export default function Mt5UserPage() {
         className={cn(
           "flex-1 overflow-y-auto transition-opacity duration-200",
           refreshing && "opacity-[0.92]",
-          tab === "trades" && "lg:hidden",
-          tab === "chart" && "max-lg:hidden",
+          tab === "trades" && "md:hidden",
+          (tab === "chart" || tab === "history") && "hidden",
         )}
       >
         {loading && !data && tab !== "quotes" ? (
@@ -619,7 +621,7 @@ export default function Mt5UserPage() {
             onPartialClose={handlePartialClose}
             onOpenSetup={setSelectedSetup}
           />
-        ) : (
+        ) : tab === "history" ? (
           <HistoryPanel
             subTab={historySubTab}
             positions={historyPositions}
@@ -628,7 +630,7 @@ export default function Mt5UserPage() {
             loadingSignalId={historyLoadingId}
             onOpenSetup={(row) => void openSetupFromHistory(row)}
           />
-        )}
+        ) : null}
       </div>
 
       {selectedSetup && (
@@ -645,11 +647,13 @@ export default function Mt5UserPage() {
 
       <Mt5Assistant onActionsTaken={refreshAfterAssistant} />
 
-      <Mt5MobileBottomNav
-        active={mobileTab}
-        onChange={setMobileTab}
-        badges={{ trades: runningCount > 0 ? runningCount : undefined }}
-      />
+      <div className="md:hidden">
+        <Mt5MobileBottomNav
+          active={mobileTab}
+          onChange={setMobileTab}
+          badges={{ trades: runningCount > 0 ? runningCount : undefined }}
+        />
+      </div>
     </div>
   );
 }

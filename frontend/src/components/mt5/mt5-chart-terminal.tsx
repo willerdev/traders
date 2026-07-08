@@ -43,6 +43,8 @@ type Props = {
   onOpenSetup: (setup: SetupSummary) => void;
   onCloseTrade?: (trade: UserMt5Trade) => void;
   showOrdersPanel?: boolean;
+  /** Mobile Charts tab — chart fills viewport, no orders panel height cap */
+  chartOnly?: boolean;
 };
 
 function toSetupSummary(setup: OpenSetupItem): SetupSummary {
@@ -77,6 +79,7 @@ export function Mt5ChartTerminal({
   onOpenSetup,
   onCloseTrade,
   showOrdersPanel = true,
+  chartOnly = false,
 }: Props) {
   const chartRef = useRef<LightweightChartHandle>(null);
   const [timeframe, setTimeframe] = useState<ChartTimeframe>("M5");
@@ -204,13 +207,17 @@ export function Mt5ChartTerminal({
     onSelectSymbol(symbol);
   }
 
+  const desktopTerminal = showOrdersPanel && !chartOnly;
+
   return (
     <div
       className={cn(
         "flex min-h-0 flex-col bg-[var(--mt5-bg)]",
-        showOrdersPanel
-          ? "shrink-0 border-b border-[var(--mt5-divider)] lg:min-h-0 lg:flex-1 lg:overflow-hidden lg:border-b-0"
-          : "flex-1 overflow-hidden",
+        chartOnly
+          ? "h-full min-h-0 flex-1 overflow-hidden pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] md:pb-0"
+          : desktopTerminal
+            ? "shrink-0 border-b border-[var(--mt5-divider)] md:min-h-0 md:flex-1 md:overflow-hidden md:border-b-0"
+            : "h-full min-h-0 flex-1 overflow-hidden",
       )}
       data-mt5-chart-terminal
     >
@@ -272,10 +279,12 @@ export function Mt5ChartTerminal({
       {/* Chart fills remaining height on desktop */}
       <div
         className={cn(
-          "relative min-h-[200px] w-full",
-          showOrdersPanel
-            ? "h-[min(42vh,280px)] flex-1 lg:min-h-0"
-            : "min-h-0 flex-1",
+          "relative w-full",
+          chartOnly
+            ? "min-h-0 flex-1"
+            : desktopTerminal
+              ? "min-h-[200px] h-[min(42vh,280px)] flex-1 lg:min-h-0"
+              : "min-h-0 flex-1",
         )}
       >
         <div
@@ -322,7 +331,7 @@ export function Mt5ChartTerminal({
 
       {/* Desktop MT5-style terminal — hidden on phone */}
       {showOrdersPanel && (
-        <div className="hidden lg:flex lg:max-h-[32vh] lg:shrink-0 lg:flex-col lg:border-t lg:border-[var(--mt5-divider)]">
+        <div className="hidden md:flex md:max-h-[32vh] md:shrink-0 md:flex-col md:border-t md:border-[var(--mt5-divider)]">
           <div className="grid grid-cols-[1.2fr_0.8fr_0.6fr_0.5fr_0.7fr_0.7fr_0.7fr_0.7fr_0.6fr] gap-2 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--mt5-muted)]">
             <span>Symbol</span>
             <span>Ticket</span>

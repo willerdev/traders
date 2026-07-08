@@ -25,7 +25,7 @@ type Props = {
 export function Mt5MobileBottomNav({ active, onChange, badges }: Props) {
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-[52] border-t border-[var(--mt5-divider)] bg-[var(--mt5-surface)] lg:hidden"
+      className="fixed bottom-0 left-0 right-0 z-[52] border-t border-[var(--mt5-divider)] bg-[var(--mt5-surface)] md:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
       aria-label="MT5 navigation"
     >
