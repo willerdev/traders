@@ -96,7 +96,7 @@ export default function Mt5UserPage() {
     "trades",
     "history",
   ] as const);
-  const [historySubTab, setHistorySubTab] = useUrlTab("history", "deals", [
+  const [historySubTab, setHistorySubTab] = useUrlTab("history", "positions", [
     "positions",
     "orders",
     "deals",
@@ -596,7 +596,7 @@ export default function Mt5UserPage() {
           "flex-1 overflow-y-auto transition-opacity duration-200",
           refreshing && "opacity-[0.92]",
           tab === "trades" && "md:hidden",
-          (tab === "chart" || tab === "history") && "hidden",
+          tab === "chart" && "hidden",
         )}
       >
         {loading && !data && tab !== "quotes" ? (
@@ -624,9 +624,6 @@ export default function Mt5UserPage() {
             trades={runningTrades}
             actionKey={actionKey}
             onClose={handleCloseTrade}
-            onBreakeven={handleBreakeven}
-            onPartialClose={handlePartialClose}
-            onOpenSetup={setSelectedSetup}
             onViewChart={(trade) => {
               setSelectedChartSymbol(trade.symbol);
               setTab("chart");
@@ -969,22 +966,14 @@ function PositionsPanel({
   trades,
   actionKey,
   onClose,
-  onBreakeven,
-  onPartialClose,
-  onOpenSetup,
   onViewChart,
 }: {
   trades: UserMt5Trade[];
   actionKey: string | null;
   onClose: (t: UserMt5Trade) => void;
-  onBreakeven: (t: UserMt5Trade) => void;
-  onPartialClose: (t: UserMt5Trade, vol: number) => void;
-  onOpenSetup: (setup: SetupSummary) => void;
   onViewChart: (t: UserMt5Trade) => void;
 }) {
   const expand = useMt5Expand();
-  const [partialLot, setPartialLot] = useState<Record<string, string>>({});
-  const [partialOpen, setPartialOpen] = useState<string | null>(null);
 
   if (trades.length === 0) {
     return (
@@ -1007,44 +996,29 @@ function PositionsPanel({
         );
         const expanded = expand.isExpanded(key);
         const profit = trade.profit ?? 0;
-        const partialKey = partialLot[key] ?? "";
+
+        const swipeActions = [
+          ...(trade.canClose
+            ? [
+                {
+                  key: "close",
+                  label: "Close",
+                  tone: "danger" as const,
+                  disabled: actionKey === key,
+                  onClick: () => void onClose(trade),
+                },
+              ]
+            : []),
+          {
+            key: "chart",
+            label: "View chart",
+            tone: "primary" as const,
+            onClick: () => onViewChart(trade),
+          },
+        ];
 
         return (
-          <Mt5SwipeableRow
-            key={key}
-            actions={[
-              ...(trade.canClose
-                ? [
-                    {
-                      key: "close",
-                      label: "Close",
-                      tone: "danger" as const,
-                      disabled: actionKey === key,
-                      onClick: () => void onClose(trade),
-                    },
-                  ]
-                : []),
-              ...(trade.canPartialClose && trade.signalId
-                ? [
-                    {
-                      key: "partial",
-                      label: "Partial",
-                      tone: "neutral" as const,
-                      onClick: () => {
-                        expand.toggle(key);
-                        setPartialOpen(key);
-                      },
-                    },
-                  ]
-                : []),
-              {
-                key: "chart",
-                label: "Chart",
-                tone: "primary" as const,
-                onClick: () => onViewChart(trade),
-              },
-            ]}
-          >
+          <Mt5SwipeableRow key={key} actions={swipeActions}>
           <Mt5ExpandableRow
             id={key}
             expanded={expanded}
@@ -1084,97 +1058,27 @@ function PositionsPanel({
               </>
             }
             actions={
-              <>
-                {partialOpen === key && trade.signalId && (
-                  <div
-                    className="flex items-end gap-2 border-t border-[var(--mt5-divider)] px-4 py-2"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Input
-                      type="number"
-                      step="any"
-                      min="0.01"
-                      placeholder={`Lots (max ${trade.volume ?? "?"})`}
-                      value={partialKey}
-                      onChange={(e) =>
-                        setPartialLot((p) => ({ ...p, [key]: e.target.value }))
-                      }
-                      className="h-9 flex-1 border-[var(--mt5-divider)] bg-[var(--mt5-bg)] text-[var(--mt5-text)]"
-                    />
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={actionKey === `partial-${trade.signalId}`}
-                      onClick={() => {
-                        const vol = parseFloat(partialKey);
-                        if (isNaN(vol) || vol <= 0) return;
-                        void onPartialClose(trade, vol);
-                        setPartialOpen(null);
-                      }}
-                    >
-                      OK
-                    </Button>
-                  </div>
-                )}
-                <Mt5ActionStrip
-                  actions={[
-                    ...(trade.canSetBreakeven && trade.signalId
-                      ? [
-                          {
-                            key: "be",
-                            label: "Modify",
-                            variant: "buy" as const,
-                            loading: actionKey === `be-${trade.signalId}`,
-                            onClick: () => void onBreakeven(trade),
-                          },
-                        ]
-                      : []),
-                    ...(trade.canPartialClose && trade.signalId
-                      ? [
-                          {
-                            key: "partial",
-                            label: "Partial",
-                            variant: "neutral" as const,
-                            onClick: () =>
-                              setPartialOpen(partialOpen === key ? null : key),
-                          },
-                        ]
-                      : []),
-                    ...(trade.canClose
-                      ? [
-                          {
-                            key: "close",
-                            label: "Close",
-                            variant: "sell" as const,
-                            loading: actionKey === key,
-                            onClick: () => void onClose(trade),
-                          },
-                        ]
-                      : []),
-                    ...(trade.signalId
-                      ? [
-                          {
-                            key: "setup",
-                            label: "Setup",
-                            variant: "neutral" as const,
-                            onClick: () =>
-                              onOpenSetup({
-                                signalId: trade.signalId!,
-                                symbol: trade.symbol,
-                                direction: trade.direction,
-                                entryMin: trade.entryMin ?? 0,
-                                entryMax: trade.entryMax ?? 0,
-                                stopLoss: trade.stopLoss ?? 0,
-                                takeProfit: trade.takeProfit ?? 0,
-                                status: "OPEN",
-                                submittedAt: new Date().toISOString(),
-                              }),
-                          },
-                        ]
-                      : []),
-                  ]}
-                />
-              </>
+              <Mt5ActionStrip
+                actions={[
+                  ...(trade.canClose
+                    ? [
+                        {
+                          key: "close",
+                          label: "Close",
+                          variant: "sell" as const,
+                          loading: actionKey === key,
+                          onClick: () => void onClose(trade),
+                        },
+                      ]
+                    : []),
+                  {
+                    key: "chart",
+                    label: "View chart",
+                    variant: "buy" as const,
+                    onClick: () => onViewChart(trade),
+                  },
+                ]}
+              />
             }
           >
             <Mt5DetailGrid
@@ -1228,7 +1132,12 @@ function HistoryPanel({
 
   if (subTab === "positions") {
     if (positions.length === 0) {
-      return <Mt5Empty title="No closed positions" />;
+      return (
+        <Mt5Empty
+          title="No closed positions yet"
+          hint="Closed setup trades appear here after you close from Trade tab"
+        />
+      );
     }
     return (
       <div>
