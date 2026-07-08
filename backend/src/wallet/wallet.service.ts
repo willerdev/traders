@@ -236,6 +236,29 @@ export class WalletService {
     return { balance: newBalance };
   }
 
+  async getDepositMinimum(network: string) {
+    const platformMin = MIN_WALLET_TOPUP_USDT;
+    if (!this.nowPayments.isConfigured) {
+      return { platformMin, gatewayMin: platformMin, effectiveMin: platformMin };
+    }
+    try {
+      const { minAmount, fiatEquivalent } =
+        await this.nowPayments.getMinPaymentAmount(network, {
+          fiatEquivalent: 'usd',
+        });
+      const gatewayMin = Math.ceil(
+        (fiatEquivalent ?? minAmount ?? platformMin) * 100,
+      ) / 100;
+      const effectiveMin = Math.max(platformMin, gatewayMin);
+      return { platformMin, gatewayMin, effectiveMin, network };
+    } catch (err) {
+      this.logger.warn(
+        `Could not fetch NOWPayments min for ${network}: ${err instanceof Error ? err.message : err}`,
+      );
+      return { platformMin, gatewayMin: platformMin, effectiveMin: platformMin };
+    }
+  }
+
   async createDeposit(
     userId: string,
     network: string,
@@ -246,6 +269,19 @@ export class WalletService {
       throw new BadRequestException(
         `Minimum top-up is $${MIN_WALLET_TOPUP_USDT} USDT`,
       );
+    }
+
+    if (this.nowPayments.isConfigured) {
+      const { effectiveMin, gatewayMin } = await this.getDepositMinimum(network);
+      if (amount < effectiveMin) {
+        const hint =
+          gatewayMin > MIN_WALLET_TOPUP_USDT
+            ? ` NOWPayments requires at least $${gatewayMin.toFixed(2)} USDT on ${network}.`
+            : '';
+        throw new BadRequestException(
+          `Minimum deposit for ${network} is $${effectiveMin.toFixed(2)} USDT.${hint}`,
+        );
+      }
     }
 
     const payment = await this.prisma.payment.create({
@@ -314,9 +350,13 @@ export class WalletService {
         .delete({ where: { id: payment.id } })
         .catch(() => undefined);
       if (err instanceof NowPaymentsApiError) {
-        throw new BadRequestException(
-          err.message || 'Could not create deposit payment',
-        );
+        const msg = err.message || 'Could not create deposit payment';
+        if (/less than minimal/i.test(msg)) {
+          throw new BadRequestException(
+            `Amount is below the NOWPayments minimum for ${network}. Try a higher amount or switch network.`,
+          );
+        }
+        throw new BadRequestException(msg);
       }
       throw err;
     }

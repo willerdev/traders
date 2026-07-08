@@ -34,6 +34,12 @@ export class WalletController {
     );
   }
 
+  @Get('deposit/minimum')
+  @UseGuards(JwtAuthGuard)
+  depositMinimum(@Query('network') network?: string) {
+    return this.wallet.getDepositMinimum(network ?? 'TRC20');
+  }
+
   @Get('deposit/preview')
   @UseGuards(JwtAuthGuard)
   preview(

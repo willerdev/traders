@@ -139,6 +139,35 @@ export class NowPaymentsService {
     return NETWORK_CURRENCY[network.toUpperCase()] || 'usdttrc20';
   }
 
+  async getMinPaymentAmount(
+    network: string,
+    opts?: { fiatEquivalent?: string },
+  ): Promise<{ minAmount: number; fiatEquivalent?: number }> {
+    const currency = this.mapNetworkToCurrency(network);
+    const params = new URLSearchParams({
+      currency_from: currency,
+      currency_to: currency,
+      is_fixed_rate: 'false',
+      is_fee_paid_by_user: 'false',
+    });
+    if (opts?.fiatEquivalent) {
+      params.set('fiat_equivalent', opts.fiatEquivalent);
+    }
+
+    const result = await this.request<{
+      min_amount?: number;
+      fiat_equivalent?: number;
+    }>(`/min-amount?${params.toString()}`, { headers: this.headers() });
+
+    return {
+      minAmount: Number(result.min_amount ?? 0),
+      fiatEquivalent:
+        result.fiat_equivalent != null
+          ? Number(result.fiat_equivalent)
+          : undefined,
+    };
+  }
+
   async createPayment(params: {
     amount: number;
     orderId: string;

@@ -54,6 +54,8 @@ export function WalletDepositModal({
   const [payAmount, setPayAmount] = useState<number | null>(null);
   const [progress, setProgress] = useState<Progress>("waiting");
   const [copied, setCopied] = useState(false);
+  const [depositMin, setDepositMin] = useState(2);
+  const [gatewayMin, setGatewayMin] = useState(2);
 
   const reset = useCallback(() => {
     setStep("amount");
@@ -72,6 +74,25 @@ export function WalletDepositModal({
   useEffect(() => {
     if (!open) reset();
   }, [open, reset]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void api.wallet.depositMinimum(network).then((m) => {
+      if (cancelled) return;
+      setDepositMin(m.effectiveMin);
+      setGatewayMin(m.gatewayMin);
+      setAmount((prev) => {
+        const n = Number(prev);
+        return !Number.isFinite(n) || n < m.effectiveMin
+          ? String(m.effectiveMin)
+          : prev;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, network]);
 
   const pollStatus = useCallback(async () => {
     if (!paymentId) return;
@@ -102,8 +123,8 @@ export function WalletDepositModal({
     setLoading(true);
     try {
       const numAmount = Number(amount);
-      if (!Number.isFinite(numAmount) || numAmount < 1) {
-        throw new Error("Enter at least $2 USDT");
+      if (!Number.isFinite(numAmount) || numAmount < depositMin) {
+        throw new Error(`Enter at least ${formatCurrency(depositMin)} USDT`);
       }
       if (startPlan && numAmount < minPlanDeposit) {
         throw new Error(
@@ -209,11 +230,17 @@ export function WalletDepositModal({
             <>
               <div>
                 <label className="mb-1 block text-xs text-gray-400">
-                  Amount (USDT) — minimum $2
+                  Amount (USDT) — min {formatCurrency(depositMin)}
+                  {gatewayMin > 2 && (
+                    <span className="text-gray-500">
+                      {" "}
+                      (NOWPayments {network} minimum)
+                    </span>
+                  )}
                 </label>
                 <Input
                   type="number"
-                  min={2}
+                  min={depositMin}
                   step="0.01"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
@@ -253,7 +280,7 @@ export function WalletDepositModal({
               <Button
                 className="w-full"
                 onClick={() => setStep("network")}
-                disabled={!amount || Number(amount) < 2}
+                disabled={!amount || Number(amount) < depositMin}
               >
                 Continue
               </Button>
