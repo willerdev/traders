@@ -37,3 +37,6 @@ export type ChartPriceLine = {
 };
 
 export const MAX_HISTORICAL_BARS = 500;
+
+/** Default symbol when no setup / watchlist selection exists. */
+export const DEFAULT_CHART_SYMBOL = "XAUUSD";

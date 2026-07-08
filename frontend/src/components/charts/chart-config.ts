@@ -51,6 +51,10 @@ export function createChartOptions(mode: ChartThemeMode): DeepPartial<import("li
       borderColor: p.grid,
       timeVisible: true,
       secondsVisible: false,
+      /** Thinner candles + more bars visible on screen. */
+      barSpacing: 3.5,
+      minBarSpacing: 0.8,
+      rightOffset: 10,
     },
   };
 }
@@ -78,4 +82,21 @@ export function createCandlestickSeriesOptions(
         }
       : {}),
   };
+}
+
+/** After initial load, zoom to show more candles (wider history window). */
+export function applyDefaultVisibleRange(
+  chart: import("lightweight-charts").IChartApi,
+  barCount: number,
+): void {
+  if (barCount <= 0) return;
+  const ts = chart.timeScale();
+  const spacing = 3.5;
+  ts.applyOptions({ barSpacing: spacing, minBarSpacing: 0.8 });
+  ts.fitContent();
+  const visibleBars = Math.min(barCount, 140);
+  ts.setVisibleLogicalRange({
+    from: Math.max(0, barCount - visibleBars),
+    to: barCount + 4,
+  });
 }

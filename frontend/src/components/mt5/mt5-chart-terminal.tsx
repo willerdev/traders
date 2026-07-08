@@ -11,6 +11,7 @@ import type {
 import type { SetupSummary } from "@/components/dashboard/setup-detail-modal";
 import {
   LightweightChart,
+  type ChartLoadReason,
   type LightweightChartHandle,
 } from "@/components/charts/lightweight-chart";
 import { ChartSymbolPicker } from "@/components/charts/chart-symbol-picker";
@@ -94,6 +95,9 @@ export function Mt5ChartTerminal({
   const chartRef = useRef<LightweightChartHandle>(null);
   const [timeframe, setTimeframe] = useState<ChartTimeframe>("M5");
   const [chartLoading, setChartLoading] = useState(false);
+  const [chartLoadReason, setChartLoadReason] = useState<ChartLoadReason | null>(
+    null,
+  );
   const [chartStatus, setChartStatus] = useState<{
     source?: "metaapi" | "quote-fallback";
     error?: string | null;
@@ -290,7 +294,7 @@ export function Mt5ChartTerminal({
           ))}
         </div>
 
-        {chartLoading && (
+        {chartLoading && chartLoadReason !== "timeframe" && (
           <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--mt5-muted)]" />
         )}
       </div>
@@ -304,20 +308,38 @@ export function Mt5ChartTerminal({
             : "h-[min(42vh,280px)]",
         )}
       >
-        <LightweightChart
-          ref={chartRef}
-          symbol={selectedSymbol}
-          timeframe={timeframe}
-          seedPrice={liveQuote?.mid ?? liveQuote?.bid}
-          getQuote={() => liveQuote}
-          markers={markers}
-          priceLines={priceLines}
-          className="h-full w-full"
-          onLoadingChange={setChartLoading}
-          onChartStatusChange={setChartStatus}
-        />
-        {chartLoading && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[var(--mt5-bg)]/40">
+        <div
+          className={cn(
+            "h-full w-full transition-opacity duration-300",
+            chartLoading && chartLoadReason === "timeframe" && "opacity-95",
+          )}
+        >
+          <LightweightChart
+            ref={chartRef}
+            symbol={selectedSymbol}
+            timeframe={timeframe}
+            seedPrice={liveQuote?.mid ?? liveQuote?.bid}
+            getQuote={() => liveQuote}
+            markers={markers}
+            priceLines={priceLines}
+            className="h-full w-full"
+            onLoadingChange={(loading, reason) => {
+              setChartLoading(loading);
+              setChartLoadReason(loading ? (reason ?? null) : null);
+            }}
+            onChartStatusChange={setChartStatus}
+          />
+        </div>
+        {chartLoading && chartLoadReason === "timeframe" && (
+          <div className="pointer-events-none absolute inset-0 bg-[var(--mt5-bg)]/10 transition-opacity duration-300">
+            <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-md border border-[var(--mt5-divider)] bg-[var(--mt5-surface)]/95 px-2.5 py-1 text-[10px] font-medium text-[var(--mt5-muted)] shadow-sm backdrop-blur-sm">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Loading {timeframe}…
+            </div>
+          </div>
+        )}
+        {chartLoading && chartLoadReason !== "timeframe" && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[var(--mt5-bg)]/35 transition-opacity duration-300">
             <Loader2 className="h-6 w-6 animate-spin text-[var(--mt5-muted)]" />
           </div>
         )}

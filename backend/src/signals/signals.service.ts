@@ -5082,7 +5082,7 @@ export class SignalsService {
     }
 
     const account = await this.metaApi.getAccount(platformAccountId);
-    const requestedLimit = Math.min(limit ?? 200, 500);
+    const requestedLimit = Math.min(limit ?? 400, 500);
     const bars = await this.metaApi.getHistoricalCandles(
       account,
       canonical,

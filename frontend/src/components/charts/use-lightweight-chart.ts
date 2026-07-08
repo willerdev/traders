@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { IChartApi, ISeriesApi, CandlestickSeriesPartialOptions } from "lightweight-charts";
-import { createChartOptions, createCandlestickSeriesOptions, type ChartThemeMode } from "@/components/charts/chart-config";
+import { createChartOptions, createCandlestickSeriesOptions, applyDefaultVisibleRange, type ChartThemeMode } from "@/components/charts/chart-config";
 import { priceFormatForSymbol } from "@/components/charts/chart-price-format";
 import type {
   ChartMarker,
@@ -12,10 +12,18 @@ import type {
 
 type CandlestickSeries = ISeriesApi<"Candlestick">;
 
+export type SetChartDataOptions = {
+  fit?: boolean;
+  /** Keep the same on-screen time window (timeframe switches). */
+  preserveTimeRange?: boolean;
+  /** Initial zoom showing ~140 bars. */
+  applyDefaultZoom?: boolean;
+};
+
 export type UseLightweightChartResult = {
   containerRef: React.RefObject<HTMLDivElement | null>;
   ready: boolean;
-  setData: (bars: OHLCBar[], options?: { fit?: boolean }) => void;
+  setData: (bars: OHLCBar[], options?: SetChartDataOptions) => void;
   updateCandle: (bar: OHLCBar) => void;
   setMarkers: (markers: ChartMarker[]) => void;
   clearMarkers: () => void;
@@ -44,7 +52,13 @@ export function useLightweightChart(
   const pendingPriceLinesRef = useRef<ChartPriceLine[] | null>(null);
   const [ready, setReady] = useState(false);
 
-  const applyData = useCallback((bars: OHLCBar[], fit = false) => {
+  const applyData = useCallback((bars: OHLCBar[], options?: SetChartDataOptions) => {
+    const chart = chartRef.current;
+    const savedTimeRange =
+      options?.preserveTimeRange && chart
+        ? chart.timeScale().getVisibleRange()
+        : null;
+
     barsRef.current = bars;
     seriesRef.current?.setData(
       bars.map((b) => ({
@@ -55,8 +69,25 @@ export function useLightweightChart(
         close: b.close,
       })),
     );
-    if (fit) {
-      chartRef.current?.timeScale().fitContent();
+
+    if (!chart) return;
+
+    if (options?.applyDefaultZoom) {
+      applyDefaultVisibleRange(chart, bars.length);
+      return;
+    }
+
+    if (options?.fit) {
+      chart.timeScale().fitContent();
+      return;
+    }
+
+    if (savedTimeRange) {
+      try {
+        chart.timeScale().setVisibleRange(savedTimeRange);
+      } catch {
+        applyDefaultVisibleRange(chart, bars.length);
+      }
     }
   }, []);
 
@@ -86,7 +117,7 @@ export function useLightweightChart(
       seriesRef.current = series;
 
       if (pendingBarsRef.current) {
-        applyData(pendingBarsRef.current, true);
+        applyData(pendingBarsRef.current, { applyDefaultZoom: true });
         pendingBarsRef.current = null;
       }
       if (pendingMarkersRef.current) {
@@ -168,12 +199,12 @@ export function useLightweightChart(
   }, [symbol, ready, applySymbolFormat]);
 
   const setData = useCallback(
-    (bars: OHLCBar[], options?: { fit?: boolean }) => {
+    (bars: OHLCBar[], options?: SetChartDataOptions) => {
       if (!seriesRef.current) {
         pendingBarsRef.current = bars;
         return;
       }
-      applyData(bars, options?.fit ?? false);
+      applyData(bars, options);
     },
     [applyData],
   );
@@ -182,7 +213,7 @@ export function useLightweightChart(
     if (!seriesRef.current) return;
     const bars = barsRef.current;
     if (bars.length === 0) {
-      applyData([bar], true);
+      applyData([bar], { applyDefaultZoom: true });
       return;
     }
     const last = bars[bars.length - 1];

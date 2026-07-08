@@ -14,14 +14,15 @@ const TIMEFRAME_SECONDS: Record<ChartTimeframe, number> = {
 };
 
 const TIMEFRAME_VOL_MULT: Record<ChartTimeframe, number> = {
-  M1: 0.35,
-  M5: 0.55,
-  M15: 0.75,
-  H1: 1,
-  D1: 2.5,
+  M1: 0.1,
+  M5: 0.14,
+  M15: 0.18,
+  H1: 0.28,
+  D1: 0.45,
 };
 
-const INITIAL_OHLC_LIMIT = 200;
+const INITIAL_OHLC_LIMIT = 400;
+const FALLBACK_BAR_COUNT = 280;
 
 function alignedBarTime(nowSec: number, intervalSec: number): number {
   return Math.floor(nowSec / intervalSec) * intervalSec;
@@ -59,12 +60,12 @@ function volatilityForSymbol(
 ): number {
   const s = symbol.toUpperCase();
   let vol: number;
-  if (s.includes("XAU") || s.includes("GOLD")) vol = mid * 0.0012;
-  else if (s.includes("BTC")) vol = mid * 0.003;
-  else if (s.includes("NAS") || s.includes("US30") || s.includes("US500")) vol = mid * 0.0015;
-  else if (s.includes("HZ") || s.startsWith("R_")) vol = mid * 0.002;
-  else if (s.includes("JPY")) vol = mid * 0.001;
-  else vol = mid * 0.0015;
+  if (s.includes("XAU") || s.includes("GOLD")) vol = mid * 0.00035;
+  else if (s.includes("BTC")) vol = mid * 0.0008;
+  else if (s.includes("NAS") || s.includes("US30") || s.includes("US500")) vol = mid * 0.00045;
+  else if (s.includes("HZ") || s.startsWith("R_")) vol = mid * 0.00055;
+  else if (s.includes("JPY")) vol = mid * 0.0003;
+  else vol = mid * 0.00035;
   return vol * TIMEFRAME_VOL_MULT[timeframe];
 }
 
@@ -76,14 +77,18 @@ function buildBar(
   vol: number,
   wickSeed: number,
 ): OHLCBar {
-  let o = open;
+  const o = open;
   let c = close;
-  const minBody = vol * 0.25;
-  if (Math.abs(c - o) < minBody) {
-    c = o + (c >= o ? minBody : -minBody);
+  const flatThreshold = vol * 0.015;
+  if (Math.abs(c - o) < flatThreshold) {
+    c = o + (seededUnit(wickSeed + 2) - 0.5) * vol * 0.06;
   }
-  const high = Math.max(o, c) + seededUnit(wickSeed) * vol * 0.45;
-  const low = Math.min(o, c) - seededUnit(wickSeed + 1) * vol * 0.45;
+  const bodyTop = Math.max(o, c);
+  const bodyBot = Math.min(o, c);
+  const wickUp = seededUnit(wickSeed) * vol * 0.14;
+  const wickDown = seededUnit(wickSeed + 1) * vol * 0.14;
+  const high = bodyTop + wickUp;
+  const low = bodyBot - wickDown;
   return {
     time,
     open: roundPriceForSymbol(o, symbol),
@@ -98,22 +103,25 @@ function buildQuoteSeededBars(
   symbol: string,
   timeframe: ChartTimeframe,
   seedPrice: number,
-  barCount = 120,
+  barCount = FALLBACK_BAR_COUNT,
 ): OHLCBar[] {
   const interval = TIMEFRAME_SECONDS[timeframe];
   const now = Math.floor(Date.now() / 1000);
   const symSeed = seedFromSymbol(symbol);
-  const base = seedPrice;
-  const vol = volatilityForSymbol(symbol, base, timeframe);
+  const mean = seedPrice;
+  const vol = volatilityForSymbol(symbol, mean, timeframe);
   const bars: OHLCBar[] = [];
-  let price = base;
+  let price = mean;
 
   for (let i = barCount - 1; i >= 0; i -= 1) {
     const t = alignedBarTime(now - i * interval, interval);
-    const r1 = seededUnit(symSeed + i * 3);
-    const drift = Math.sin((i + symSeed) / 9) * vol * 0.6;
     const open = price;
-    const close = open + drift + (r1 - 0.5) * vol;
+    const reversion = (mean - price) * 0.012;
+    const micro =
+      (seededUnit(symSeed + i * 7) - 0.5) * vol * 0.22 +
+      (seededUnit(symSeed + i * 13) - 0.5) * vol * 0.12;
+    const slowTrend = Math.sin((i + symSeed) / 28) * vol * 0.08;
+    const close = open + reversion + micro + slowTrend;
     bars.push(buildBar(symbol, t, open, close, vol, symSeed + i * 11));
     price = close;
   }

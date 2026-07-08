@@ -46,6 +46,7 @@ import {
 import { Mt5Assistant } from "@/components/mt5/mt5-assistant";
 import { Mt5LiveSyncCard } from "@/components/mt5/mt5-live-sync-card";
 import { Mt5ChartTerminal } from "@/components/mt5/mt5-chart-terminal";
+import { DEFAULT_CHART_SYMBOL } from "@/components/charts/chart-types";
 
 type Tab = "quotes" | "setups" | "trades" | "history";
 type HistorySubTab = "positions" | "orders" | "deals";
@@ -147,7 +148,7 @@ export default function Mt5UserPage() {
     selectedChartSymbol ??
     runningTrades[0]?.symbol ??
     quotes[0]?.symbol ??
-    "EURUSD";
+    DEFAULT_CHART_SYMBOL;
 
   const historyPositions = useMemo(
     () => history.filter((h) => h.status === "WON" || h.status === "LOST"),

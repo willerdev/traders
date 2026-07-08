@@ -21,7 +21,10 @@ import type {
   ChartTimeframe,
   OHLCBar,
 } from "@/components/charts/chart-types";
-import { useLightweightChart } from "@/components/charts/use-lightweight-chart";
+import {
+  useLightweightChart,
+  type SetChartDataOptions,
+} from "@/components/charts/use-lightweight-chart";
 
 export type LightweightChartHandle = {
   setSymbol: (symbol: ChartSymbol) => void;
@@ -33,6 +36,8 @@ export type LightweightChartHandle = {
   reload: () => void;
 };
 
+export type ChartLoadReason = "initial" | "symbol" | "timeframe";
+
 type Props = {
   symbol: ChartSymbol;
   timeframe: ChartTimeframe;
@@ -41,12 +46,23 @@ type Props = {
   markers?: ChartMarker[];
   priceLines?: ChartPriceLine[];
   className?: string;
-  onLoadingChange?: (loading: boolean) => void;
+  onLoadingChange?: (loading: boolean, reason?: ChartLoadReason) => void;
   onChartStatusChange?: (status: {
     source?: "metaapi" | "quote-fallback";
     error?: string | null;
   }) => void;
 };
+
+function dataOptionsForLoad(reason: ChartLoadReason): SetChartDataOptions {
+  switch (reason) {
+    case "timeframe":
+      return { preserveTimeRange: true };
+    case "symbol":
+      return { applyDefaultZoom: true };
+    default:
+      return { applyDefaultZoom: true };
+  }
+}
 
 export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
   function LightweightChart(
@@ -71,6 +87,7 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
     const seedPriceRef = useRef(seedPrice);
     const getQuoteRef = useRef(getQuote);
     const loadGenRef = useRef(0);
+    const loadedKeyRef = useRef<string | null>(null);
     const setDataRef = useRef(chart.setData);
     const applySymbolFormatRef = useRef(chart.applySymbolFormat);
     const updateCandleRef = useRef(chart.updateCandle);
@@ -93,33 +110,43 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
     }, [seedPrice]);
 
     const loadBars = useCallback(
-      async (sym: string, tf: ChartTimeframe, seed?: number | null) => {
+      async (
+        sym: string,
+        tf: ChartTimeframe,
+        seed: number | null | undefined,
+        reason: ChartLoadReason,
+      ) => {
         const gen = ++loadGenRef.current;
-        onLoadingChange?.(true);
+        onLoadingChange?.(true, reason);
         try {
-          applySymbolFormatRef.current(sym);
+          if (reason === "symbol") {
+            applySymbolFormatRef.current(sym);
+          }
           const result = await loadChartData(sym, tf, seed);
           if (gen !== loadGenRef.current) return;
           if (result.bars.length > 0) {
-            setDataRef.current(result.bars, { fit: true });
+            setDataRef.current(result.bars, dataOptionsForLoad(reason));
+            loadedKeyRef.current = `${sym}:${tf}`;
             onChartStatusChange?.({
               source: result.source,
               error: result.error ?? null,
             });
-          } else {
+          } else if (reason !== "timeframe") {
             onChartStatusChange?.({
               source: result.source,
               error: result.error ?? "No chart data available",
             });
           }
         } catch (err) {
-          onChartStatusChange?.({
-            error:
-              err instanceof Error ? err.message : "Could not load chart data",
-          });
+          if (reason !== "timeframe") {
+            onChartStatusChange?.({
+              error:
+                err instanceof Error ? err.message : "Could not load chart data",
+            });
+          }
         } finally {
           if (gen === loadGenRef.current) {
-            onLoadingChange?.(false);
+            onLoadingChange?.(false, reason);
           }
         }
       },
@@ -132,6 +159,7 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
           next,
           timeframeRef.current,
           resolveSeedPrice(next, seedPriceRef.current),
+          "symbol",
         );
       },
       setTimeframe: (next) => {
@@ -139,6 +167,7 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
           symbolRef.current,
           next,
           resolveSeedPrice(symbolRef.current, seedPriceRef.current),
+          "timeframe",
         );
       },
       updateCandle: (bar) => updateCandleRef.current(bar),
@@ -156,28 +185,45 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
           symbolRef.current,
           timeframeRef.current,
           resolveSeedPrice(symbolRef.current, seedPriceRef.current),
+          "symbol",
         );
       },
     }));
 
     useEffect(() => {
       if (!chart.ready) return;
+      const key = `${symbol}:${timeframe}`;
+      if (loadedKeyRef.current === key) return;
+
+      const prev = loadedKeyRef.current;
+      let reason: ChartLoadReason = "initial";
+      if (prev) {
+        const [prevSym, prevTf] = prev.split(":");
+        if (prevSym === symbol && prevTf !== timeframe) reason = "timeframe";
+        else if (prevSym !== symbol) reason = "symbol";
+      }
+
       void loadBars(
         symbol,
         timeframe,
         resolveSeedPrice(symbol, seedPriceRef.current),
+        reason,
       );
     }, [chart.ready, symbol, timeframe, loadBars]);
 
     useEffect(() => {
       if (!chart.ready) return;
       const activeSymbol = symbol;
+      const activeTf = timeframe;
       const unsub = subscribeRealtimeUpdates(
         activeSymbol,
-        timeframe,
+        activeTf,
         () => getQuoteRef.current?.() ?? null,
         (bar) => {
-          if (symbolRef.current === activeSymbol) {
+          if (
+            symbolRef.current === activeSymbol &&
+            timeframeRef.current === activeTf
+          ) {
             updateCandleRef.current(bar);
           }
         },

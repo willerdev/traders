@@ -5,9 +5,9 @@ import { useCallback, useEffect, useState } from "react";
 const STORAGE_KEY = "trp-chart-watchlist";
 
 const DEFAULT_WATCHLIST = [
+  "XAUUSD",
   "EURUSD",
   "GBPUSD",
-  "XAUUSD",
   "USDJPY",
   "1HZ75V",
   "BTCUSD",
