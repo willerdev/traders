@@ -356,8 +356,10 @@ export default function Mt5UserPage() {
           : "Setups";
 
   return (
-    <div className="mt5-shell mx-auto flex min-h-[calc(100dvh-5.75rem-env(safe-area-inset-bottom,0px))] max-w-lg flex-col bg-[var(--mt5-bg)] text-[var(--mt5-text)] md:min-h-[calc(100dvh-1rem)] md:max-w-2xl lg:max-w-[96vw] xl:max-w-[1400px]">
-      <Mt5LiveSyncCard tradingActive compact />
+    <div className="mt5-shell flex min-h-[calc(100dvh-5.75rem-env(safe-area-inset-bottom,0px))] w-full max-w-lg flex-col bg-[var(--mt5-bg)] text-[var(--mt5-text)] md:min-h-[calc(100dvh-1rem)] md:max-w-2xl lg:mx-0 lg:max-w-none lg:min-h-[calc(100dvh-0.5rem)] lg:flex-1">
+      <div className="lg:hidden">
+        <Mt5LiveSyncCard tradingActive compact />
+      </div>
       {/* MT5-style header */}
       <div className="sticky top-0 z-20 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)]">
         <div className="flex items-center justify-between px-4 py-3">
@@ -424,10 +426,15 @@ export default function Mt5UserPage() {
           </div>
         </div>
 
-        {account && tab !== "quotes" && <Mt5AccountSummary account={account} />}
+        {account && tab !== "quotes" && (
+          <div className={tab === "trades" ? "lg:hidden" : undefined}>
+            <Mt5AccountSummary account={account} />
+          </div>
+        )}
 
         {tab === "trades" && runningCount > 0 && !account && (
-          <Mt5SummaryBlock
+          <div className="lg:hidden">
+            <Mt5SummaryBlock
             rows={[
               { label: "Positions", value: String(runningCount) },
               {
@@ -437,6 +444,7 @@ export default function Mt5UserPage() {
               },
             ]}
           />
+          </div>
         )}
 
         {tab === "history" && history.length > 0 && !account && (
@@ -506,18 +514,20 @@ export default function Mt5UserPage() {
       </div>
 
       {(tab === "quotes" || tab === "trades") && (
-        <Mt5ChartTerminal
-          quotes={quotes}
-          runningTrades={runningTrades}
-          limitTrades={limitTrades}
-          setups={setups}
-          account={account}
-          selectedSymbol={chartSymbol}
-          onSelectSymbol={setSelectedChartSymbol}
-          onOpenSetup={setSelectedSetup}
-          onCloseTrade={handleCloseTrade}
-          showOrdersPanel={tab === "trades"}
-        />
+        <div className={tab === "trades" ? "lg:flex lg:min-h-0 lg:flex-1 lg:flex-col" : undefined}>
+          <Mt5ChartTerminal
+            quotes={quotes}
+            runningTrades={runningTrades}
+            limitTrades={limitTrades}
+            setups={setups}
+            account={account}
+            selectedSymbol={chartSymbol}
+            onSelectSymbol={setSelectedChartSymbol}
+            onOpenSetup={setSelectedSetup}
+            onCloseTrade={handleCloseTrade}
+            showOrdersPanel={tab === "trades"}
+          />
+        </div>
       )}
 
       {error && (
