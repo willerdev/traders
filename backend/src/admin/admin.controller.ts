@@ -503,4 +503,37 @@ export class AdminController {
   ) {
     return this.uploadStorage.sendFile('kyc', filename, res);
   }
+
+  @Get('platform/investor-depositor-settings')
+  getInvestorDepositorSettings() {
+    return this.adminService.getInvestorDepositorSettings();
+  }
+
+  @Patch('platform/investor-depositor-settings')
+  updateInvestorDepositorSettings(
+    @Body()
+    body: {
+      investorFeeUsdt?: number;
+      depositorDailyYieldPercent?: number;
+      depositorMinDepositUsdt?: number;
+    },
+  ) {
+    return this.adminService.updateInvestorDepositorSettings(body);
+  }
+
+  @Post('system-signals')
+  publishSystemSignal(
+    @Body()
+    body: {
+      symbol: string;
+      direction: 'BUY' | 'SELL';
+      entryMin: number;
+      entryMax: number;
+      stopLoss: number;
+      description?: string;
+      openPrice?: number;
+    },
+  ) {
+    return this.adminService.publishSystemSignal(body);
+  }
 }

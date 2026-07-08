@@ -13,6 +13,8 @@ import {
   Users,
   Tag,
   Wallet,
+  LineChart,
+  PiggyBank,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +27,36 @@ type FeaturedPromo = {
   originalAmount: number;
   finalAmount: number;
 };
+
+const paths = [
+  {
+    icon: LineChart,
+    title: "Investor",
+    description:
+      "Link your MT5, pay $50, set your risk %. The platform trades system signals on your account at 1:2 RR.",
+    href: "/register?intent=investor",
+    cta: "Start as Investor",
+    accent: "border-cyan-500/30 bg-cyan-500/5",
+  },
+  {
+    icon: PiggyBank,
+    title: "Depositor",
+    description:
+      "Deposit USDT, pick your risk %, and see daily loss/gain over 5 days. Earn at the platform daily rate.",
+    href: "/register?intent=depositor",
+    cta: "Start Earning",
+    accent: "border-emerald-500/30 bg-emerald-500/5",
+  },
+  {
+    icon: Trophy,
+    title: "Trader",
+    description:
+      "Submit setups, climb the leaderboard, and get funded on a virtual account with weekly payouts.",
+    href: "/register?intent=trader",
+    cta: "Compete & Get Funded",
+    accent: "border-rank-gold/30 bg-rank-gold/5",
+  },
+];
 
 const features = [
   {
@@ -124,40 +156,67 @@ export default function HomePage() {
             </motion.div>
           )}
           <Badge variant="gold" className="mb-6">
-            Trader Talent Discovery Platform
+            Trade · Invest · Earn
           </Badge>
           <h1 className="text-4xl font-extrabold tracking-tight sm:text-6xl lg:text-7xl">
-            <span className="text-white">Prove Your Edge.</span>
+            <span className="text-white">Your path.</span>
             <br />
-            <span className="text-gradient">Get Funded.</span>
+            <span className="text-gradient">Your edge.</span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-400">
-            Submit trading setups before execution. Compete on a fair virtual
-            funded account. Climb from Bronze to Elite and earn weekly payouts
-            — no broker required.
+            Choose how you want to participate — automated MT5 investing,
+            stable daily earnings, or trader competition with funded accounts.
+            One account can use all three.
           </p>
+
+          <div className="mx-auto mt-12 grid max-w-5xl gap-4 sm:grid-cols-3">
+            {paths.map((path, i) => {
+              const Icon = path.icon;
+              return (
+                <motion.div
+                  key={path.title}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.15 + i * 0.08 }}
+                  className={`glass-card flex flex-col rounded-2xl border p-6 text-left ${path.accent}`}
+                >
+                  <div className="mb-4 inline-flex rounded-xl bg-white/5 p-3 text-primary">
+                    <Icon className="h-6 w-6" />
+                  </div>
+                  <h2 className="text-xl font-bold text-white">{path.title}</h2>
+                  <p className="mt-2 flex-1 text-sm text-gray-400">
+                    {path.description}
+                  </p>
+                  <Link href={path.href} className="mt-5">
+                    <Button variant="secondary" className="w-full gap-2">
+                      {path.cta}
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </Link>
+                </motion.div>
+              );
+            })}
+          </div>
+
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-            <Link href="/register">
-              <Button size="lg" className="gap-2">
-                {promo
-                  ? `Start Trading — ${promo.finalAmount} USDT with ${promo.code.toUpperCase()}`
-                  : `Start Trading — ${fee} USDT`}
-                <ArrowRight className="h-4 w-4" />
+            <Link href="/leaderboard">
+              <Button variant="ghost" size="lg">
+                View Leaderboard
               </Button>
             </Link>
-            <Link href="/leaderboard">
-              <Button variant="secondary" size="lg">
-                View Leaderboard
+            <Link href="/login">
+              <Button size="lg" variant="secondary">
+                Sign in
               </Button>
             </Link>
           </div>
           <p className="mt-4 flex items-center justify-center gap-1.5 text-sm text-gray-500">
             <Wallet className="h-4 w-4" />
-            Pay with crypto (USDT) — local payment methods coming soon
+            Pay with crypto (USDT) — deposits & withdrawals via NOWPayments
           </p>
         </motion.div>
 
-        {/* Stats bar */}
+        {/* Stats bar — trader path highlight */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

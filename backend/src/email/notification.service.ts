@@ -1031,4 +1031,403 @@ export class NotificationService {
       text,
     });
   }
+
+  walletDepositInitiated(
+    userId: string,
+    data: { amount: number; paymentId: string },
+  ) {
+    this.dispatch(
+      this.sendWalletDepositInitiated(userId, data),
+      'Wallet deposit initiated',
+    );
+  }
+
+  private async sendWalletDepositInitiated(
+    userId: string,
+    data: { amount: number; paymentId: string },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Wallet deposit started',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your deposit of <strong>$${data.amount.toFixed(2)} USDT</strong> is waiting for payment.</p>
+      <p>Complete the transfer in the Wallet page to fund your account.</p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'Open wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Wallet deposit initiated',
+      html,
+      text: `Deposit of $${data.amount.toFixed(2)} USDT initiated.`,
+    });
+  }
+
+  walletDepositConfirmed(
+    userId: string,
+    data: { amount: number; balance: number },
+  ) {
+    this.dispatch(
+      this.sendWalletDepositConfirmed(userId, data),
+      'Wallet deposit confirmed',
+    );
+  }
+
+  private async sendWalletDepositConfirmed(
+    userId: string,
+    data: { amount: number; balance: number },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Wallet deposit confirmed',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p><strong>$${data.amount.toFixed(2)} USDT</strong> has been added to your platform wallet.</p>
+      <p>Available balance: <strong>$${data.balance.toFixed(2)} USDT</strong></p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Wallet deposit confirmed',
+      html,
+      text: `Deposit confirmed. Balance: $${data.balance.toFixed(2)} USDT.`,
+    });
+  }
+
+  walletWithdrawRequested(
+    userId: string,
+    data: { amount: number; payoutId: string },
+  ) {
+    this.dispatch(
+      this.sendWalletWithdrawRequested(userId, data),
+      'Wallet withdraw requested',
+    );
+  }
+
+  private async sendWalletWithdrawRequested(
+    userId: string,
+    data: { amount: number; payoutId: string },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Withdrawal requested',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>We received your withdrawal request for <strong>$${data.amount.toFixed(2)} USDT</strong>.</p>
+      <p>You will receive an email when the transfer is processed.</p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Withdrawal requested',
+      html,
+      text: `Withdrawal of $${data.amount.toFixed(2)} USDT requested.`,
+    });
+  }
+
+  depositorPlanStarted(
+    userId: string,
+    data: {
+      amount: number;
+      riskPercent: number;
+      dailyYieldPercent: number;
+      endAt: string;
+    },
+  ) {
+    this.dispatch(
+      this.sendDepositorPlanStarted(userId, data),
+      'Depositor plan started',
+    );
+  }
+
+  private async sendDepositorPlanStarted(
+    userId: string,
+    data: {
+      amount: number;
+      riskPercent: number;
+      dailyYieldPercent: number;
+      endAt: string;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Earning plan started',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your 5-day earning plan is active with <strong>$${data.amount.toFixed(2)} USDT</strong> at ${data.riskPercent}% risk (1:2 RR transparency).</p>
+      <p>Platform daily rate: <strong>${data.dailyYieldPercent}%</strong></p>
+      <p>Plan ends: ${new Date(data.endAt).toLocaleDateString()}</p>
+      ${this.email.button(`${this.email.frontendUrl}/dashboard?tab=depositor`, 'View plan')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Your 5-day earning plan is active',
+      html,
+      text: `Earning plan started with $${data.amount.toFixed(2)} USDT.`,
+    });
+  }
+
+  depositorDailyEarning(
+    userId: string,
+    data: { dayIndex: number; amount: number; balance: number },
+  ) {
+    this.dispatch(
+      this.sendDepositorDailyEarning(userId, data),
+      'Daily earning credited',
+    );
+  }
+
+  private async sendDepositorDailyEarning(
+    userId: string,
+    data: { dayIndex: number; amount: number; balance: number },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      `Day ${data.dayIndex} earning credited`,
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Day ${data.dayIndex} platform earning: <strong>$${data.amount.toFixed(2)} USDT</strong></p>
+      <p>Wallet balance: <strong>$${data.balance.toFixed(2)} USDT</strong></p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Day ${data.dayIndex} earning — $${data.amount.toFixed(2)} USDT`,
+      html,
+      text: `Day ${data.dayIndex} earning: $${data.amount.toFixed(2)} USDT.`,
+    });
+  }
+
+  depositorPlanCompleted(userId: string, data: { amount: number }) {
+    this.dispatch(
+      this.sendDepositorPlanCompleted(userId, data),
+      'Depositor plan completed',
+    );
+  }
+
+  private async sendDepositorPlanCompleted(
+    userId: string,
+    data: { amount: number },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Earning plan completed',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your 5-day earning plan has completed. <strong>$${data.amount.toFixed(2)} USDT</strong> principal is now available in your wallet.</p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: '5-day earning plan completed',
+      html,
+      text: `Plan completed. $${data.amount.toFixed(2)} USDT available.`,
+    });
+  }
+
+  investorEnrollmentConfirmed(userId: string, data: { amount: number }) {
+    this.dispatch(
+      this.sendInvestorEnrollmentConfirmed(userId, data),
+      'Investor enrollment confirmed',
+    );
+  }
+
+  private async sendInvestorEnrollmentConfirmed(
+    userId: string,
+    data: { amount: number },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Investor program active',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your investor enrollment payment of <strong>$${data.amount.toFixed(2)} USDT</strong> was confirmed.</p>
+      <p>Link your MT5 account and set your risk % to start automated system trading at 1:2 RR.</p>
+      ${this.email.button(`${this.email.frontendUrl}/dashboard?tab=investor`, 'Set up investor account')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Investor program activated',
+      html,
+      text: `Investor enrollment confirmed ($${data.amount.toFixed(2)} USDT).`,
+    });
+  }
+
+  investorRiskUpdated(userId: string, data: { riskPercent: number }) {
+    this.dispatch(
+      this.sendInvestorRiskUpdated(userId, data),
+      'Investor risk updated',
+    );
+  }
+
+  private async sendInvestorRiskUpdated(
+    userId: string,
+    data: { riskPercent: number },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Risk setting updated',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your investor risk per trade is now <strong>${data.riskPercent}%</strong> (1:2 RR on system signals).</p>`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Investor risk % updated',
+      html,
+      text: `Risk updated to ${data.riskPercent}%.`,
+    });
+  }
+
+  investorPaused(userId: string) {
+    this.dispatch(this.sendInvestorPaused(userId), 'Investor paused');
+  }
+
+  private async sendInvestorPaused(userId: string) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Auto-trading paused',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Automated investor trading on your MT5 account is paused. New system signals will not be mirrored until you resume.</p>`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Investor auto-trading paused',
+      html,
+      text: 'Investor auto-trading paused.',
+    });
+  }
+
+  investorResumed(userId: string) {
+    this.dispatch(this.sendInvestorResumed(userId), 'Investor resumed');
+  }
+
+  private async sendInvestorResumed(userId: string) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Auto-trading resumed',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Automated investor trading is active again. New system signals will be mirrored to your linked MT5 account.</p>`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Investor auto-trading resumed',
+      html,
+      text: 'Investor auto-trading resumed.',
+    });
+  }
+
+  investorTradePlaced(
+    userId: string,
+    data: {
+      symbol: string;
+      direction: string;
+      volume: number;
+      signalId: string;
+    },
+  ) {
+    this.dispatch(
+      this.sendInvestorTradePlaced(userId, data),
+      'Investor trade placed',
+    );
+  }
+
+  private async sendInvestorTradePlaced(
+    userId: string,
+    data: {
+      symbol: string;
+      direction: string;
+      volume: number;
+      signalId: string;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'System trade placed on your MT5',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>A system signal was executed on your linked account:</p>
+      <p><strong>${this.escape(data.symbol)}</strong> ${this.escape(data.direction)} — ${data.volume} lot(s)</p>
+      <p>Setup ID: ${this.escape(data.signalId)}</p>`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Trade placed — ${data.symbol} ${data.direction}`,
+      html,
+      text: `System trade placed: ${data.symbol} ${data.direction}.`,
+    });
+  }
+
+  investorTradeSkipped(
+    userId: string,
+    data: { symbol: string; reason: string; signalId: string },
+  ) {
+    this.dispatch(
+      this.sendInvestorTradeSkipped(userId, data),
+      'Investor trade skipped',
+    );
+  }
+
+  private async sendInvestorTradeSkipped(
+    userId: string,
+    data: { symbol: string; reason: string; signalId: string },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'System trade skipped',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>A system signal on <strong>${this.escape(data.symbol)}</strong> could not be placed on your MT5 account.</p>
+      <p>Reason: ${this.escape(data.reason)}</p>`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Trade skipped — ${data.symbol}`,
+      html,
+      text: `Trade skipped: ${data.reason}`,
+    });
+  }
+
+  subscriptionPaymentConfirmed(
+    userId: string,
+    data: { purpose: string; amount: number; network?: string },
+  ) {
+    this.dispatch(
+      this.sendSubscriptionPaymentConfirmed(userId, data),
+      'Subscription payment confirmed',
+    );
+  }
+
+  private async sendSubscriptionPaymentConfirmed(
+    userId: string,
+    data: { purpose: string; amount: number; network?: string },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const labels: Record<string, string> = {
+      registration: 'Weekly trading access',
+      setup_plan_premium: 'Premium setup plan',
+      setup_plan_pro: 'Pro setup plan',
+      profit_share: 'Profit share enrollment',
+      mt5_sync: 'MT5 Live Sync',
+      investor_enrollment: 'Investor program',
+      wallet_deposit: 'Wallet deposit',
+    };
+    const label = labels[data.purpose] ?? data.purpose;
+    const html = this.email.layout(
+      'Payment confirmed',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your payment for <strong>${this.escape(label)}</strong> was confirmed.</p>
+      <p><strong>$${data.amount.toFixed(2)} USDT</strong>${data.network ? ` on ${this.escape(data.network)}` : ''}</p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Payment confirmed — ${label}`,
+      html,
+      text: `Payment confirmed for ${label}: $${data.amount.toFixed(2)} USDT.`,
+    });
+  }
 }

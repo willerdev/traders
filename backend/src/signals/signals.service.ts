@@ -54,6 +54,9 @@ import {
 import { CopyTradingService } from '../copy-trading/copy-trading.service';
 import { Mt5PoolService } from '../mt5-sync/mt5-pool.service';
 import { Mt5PoolModule } from '../mt5-sync/mt5-pool.module';
+import { InvestorTradingService } from '../investor/investor-trading.service';
+import { computeTwoToOnePrice } from '../common/rr.util';
+import { SignalSource } from '@prisma/client';
 
 @Injectable()
 export class SignalsService {
@@ -73,6 +76,7 @@ export class SignalsService {
     private tradeRisk: TradeRiskService,
     private copyTrading: CopyTradingService,
     private mt5Pool: Mt5PoolService,
+    private investorTrading: InvestorTradingService,
   ) {}
 
   private async mirrorToCopyPool(input: {
@@ -91,6 +95,35 @@ export class SignalsService {
     pending: boolean;
     orderKind?: string;
   }) {
+    const full = await this.prisma.signal.findUnique({
+      where: { id: input.signal.id },
+      select: { signalSource: true },
+    });
+
+    if (full?.signalSource === SignalSource.SYSTEM) {
+      try {
+        await this.investorTrading.mirrorToInvestors({
+          signalDbId: input.signal.id,
+          signalPublicId: input.signal.signalId,
+          symbol: input.signal.symbol,
+          direction: input.signal.direction,
+          entryMin: Number(input.signal.entryMin),
+          entryMax: Number(input.signal.entryMax),
+          stopLoss: Number(input.signal.stopLoss),
+          openPrice: input.openPrice,
+          pending: input.pending,
+          orderKind: input.orderKind,
+        });
+      } catch (err) {
+        this.logger.warn(
+          `Investor mirror failed for ${input.signal.signalId}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+      return;
+    }
+
     try {
       await this.copyTrading.maybeMirrorTrade({
         signalDbId: input.signal.id,
@@ -5669,6 +5702,102 @@ export class SignalsService {
       total: running.trades.length,
       results,
       refreshedAt: new Date().toISOString(),
+    };
+  }
+
+  private async resolveSystemUserId(): Promise<string> {
+    const existing = await this.prisma.user.findFirst({
+      where: { email: 'system-signals@traderrank.internal' },
+      select: { id: true },
+    });
+    if (existing) return existing.id;
+
+    const created = await this.prisma.user.create({
+      data: {
+        email: 'system-signals@traderrank.internal',
+        displayName: 'Platform Signals',
+        status: 'ACTIVE',
+        emailVerified: true,
+        registrationPaid: true,
+        role: 'ADMIN',
+      },
+    });
+    await this.prisma.virtualAccount.create({
+      data: { userId: created.id },
+    });
+    return created.id;
+  }
+
+  async publishSystemSignal(input: {
+    symbol: string;
+    direction: TradeDirection;
+    entryMin: number;
+    entryMax: number;
+    stopLoss: number;
+    description?: string;
+    openPrice?: number;
+  }) {
+    const userId = await this.resolveSystemUserId();
+    const entryMid = computeEntryMid(input.entryMin, input.entryMax);
+    const takeProfit = computeTwoToOnePrice(
+      input.direction,
+      input.entryMin,
+      input.entryMax,
+      input.stopLoss,
+    );
+    const openPrice = input.openPrice ?? entryMid;
+    const slDist = Math.abs(entryMid - input.stopLoss);
+    const rr = slDist > 0 ? Math.abs(takeProfit - entryMid) / slDist : 2;
+
+    const signal = await this.prisma.signal.create({
+      data: {
+        userId,
+        symbol: input.symbol,
+        direction: input.direction,
+        entryMin: input.entryMin,
+        entryMax: input.entryMax,
+        stopLoss: input.stopLoss,
+        takeProfit,
+        riskRewardRatio: rr,
+        description: input.description ?? 'Platform system signal (1:2 RR)',
+        screenshotUrl: '/uploads/system-signal.png',
+        status: 'OPEN',
+        signalSource: SignalSource.SYSTEM,
+        source: 'system',
+        resolvedAt: null,
+      },
+    });
+
+    const trade = await this.prisma.trade.create({
+      data: {
+        signalId: signal.id,
+        userId,
+        symbol: input.symbol,
+        direction: input.direction,
+        entryMin: input.entryMin,
+        entryMax: input.entryMax,
+        stopLoss: input.stopLoss,
+        takeProfit,
+        entryPrice: openPrice,
+        activatedAt: new Date(),
+      },
+    });
+
+    await this.priceMonitor.ensureTradeActivated(trade, signal, openPrice);
+
+    await this.mirrorToCopyPool({
+      signal,
+      user: { id: userId, displayName: 'Platform Signals' },
+      openPrice,
+      pending: false,
+    });
+
+    return {
+      signalId: signal.signalId,
+      symbol: signal.symbol,
+      direction: signal.direction,
+      takeProfit: Number(takeProfit),
+      openPrice,
     };
   }
 }

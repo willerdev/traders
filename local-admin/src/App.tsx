@@ -29,6 +29,7 @@ import {
   type MarketingEmailRow,
   type ReferralSettings,
   type ReferrerRow,
+  type InvestorDepositorSettings,
   type Mt5SyncAdminOverview,
 } from "./api";
 import { AdminImage } from "./AdminImage";
@@ -401,6 +402,21 @@ export default function App() {
   const [refPaidAmount, setRefPaidAmount] = useState("");
   const [refSaving, setRefSaving] = useState(false);
   const [expandedReferrerId, setExpandedReferrerId] = useState<string | null>(null);
+  const [platformSettings, setPlatformSettings] =
+    useState<InvestorDepositorSettings | null>(null);
+  const [platformInvestorFee, setPlatformInvestorFee] = useState("");
+  const [platformDailyYield, setPlatformDailyYield] = useState("");
+  const [platformMinDeposit, setPlatformMinDeposit] = useState("");
+  const [platformSaving, setPlatformSaving] = useState(false);
+  const [systemSymbol, setSystemSymbol] = useState("EURUSD");
+  const [systemDirection, setSystemDirection] = useState<"BUY" | "SELL">("BUY");
+  const [systemEntryMin, setSystemEntryMin] = useState("1.0850");
+  const [systemEntryMax, setSystemEntryMax] = useState("1.0860");
+  const [systemSl, setSystemSl] = useState("1.0820");
+  const [systemPublishing, setSystemPublishing] = useState(false);
+  const [systemPublishResult, setSystemPublishResult] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     const next = `#${tab}`;
@@ -702,6 +718,12 @@ export default function App() {
         setRefKycAmount(String(settings.kycRewardUsdt));
         setRefPaidAmount(String(settings.paidRewardUsdt));
         setReferrers(list);
+      } else if (active === "platform") {
+        const settings = await api.investorDepositorSettings();
+        setPlatformSettings(settings);
+        setPlatformInvestorFee(String(settings.investorFeeUsdt));
+        setPlatformDailyYield(String(settings.depositorDailyYieldPercent));
+        setPlatformMinDeposit(String(settings.depositorMinDepositUsdt));
       } else if (active === "mt5Copy") {
         if (copyDashboard) {
           void loadCopyDashboard({ terminalOnly: true });
@@ -3904,6 +3926,179 @@ export default function App() {
                     )}
                   </tbody>
                 </table>
+              </>
+            )}
+          </>
+        )}
+
+        {tab === "platform" && (
+          <>
+            <div className="toolbar toolbar-wrap">
+              <div>
+                <h2>Investor & depositor platform</h2>
+                <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                  Configure investor enrollment fee, depositor daily yield rate, and
+                  publish system AI signals (1:2 RR) to investor MT5 accounts.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => void loadTab("platform")}
+              >
+                Refresh
+              </button>
+            </div>
+
+            {!platformSettings ? (
+              <p className="muted">Loading platform settings…</p>
+            ) : (
+              <>
+                <div className="cards">
+                  <div className="card">
+                    <div className="label">Investor fee (USDT)</div>
+                    <input
+                      className="input"
+                      value={platformInvestorFee}
+                      onChange={(e) => setPlatformInvestorFee(e.target.value)}
+                    />
+                  </div>
+                  <div className="card">
+                    <div className="label">Depositor daily yield (%)</div>
+                    <input
+                      className="input"
+                      value={platformDailyYield}
+                      onChange={(e) => setPlatformDailyYield(e.target.value)}
+                    />
+                  </div>
+                  <div className="card">
+                    <div className="label">Minimum deposit (USDT)</div>
+                    <input
+                      className="input"
+                      value={platformMinDeposit}
+                      onChange={(e) => setPlatformMinDeposit(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="toolbar" style={{ marginTop: "1rem" }}>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={platformSaving}
+                    onClick={() => {
+                      setPlatformSaving(true);
+                      void api
+                        .updateInvestorDepositorSettings({
+                          investorFeeUsdt: Number(platformInvestorFee),
+                          depositorDailyYieldPercent: Number(platformDailyYield),
+                          depositorMinDepositUsdt: Number(platformMinDeposit),
+                        })
+                        .then((updated) => {
+                          setPlatformSettings(updated);
+                          setMessage("Platform settings saved.");
+                        })
+                        .catch((e) =>
+                          setMessage(
+                            e instanceof Error ? e.message : "Save failed",
+                          ),
+                        )
+                        .finally(() => setPlatformSaving(false));
+                    }}
+                  >
+                    {platformSaving ? "Saving…" : "Save settings"}
+                  </button>
+                </div>
+
+                <div className="panel" style={{ marginTop: "1.5rem" }}>
+                  <h3>Publish system signal</h3>
+                  <p className="muted">
+                    Creates an OPEN system setup with 1:2 RR take-profit and mirrors
+                    to all active investor MT5 accounts.
+                  </p>
+                  <div className="form-grid" style={{ marginTop: "0.75rem" }}>
+                    <label>
+                      Symbol
+                      <input
+                        className="input"
+                        value={systemSymbol}
+                        onChange={(e) => setSystemSymbol(e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      Direction
+                      <select
+                        className="input"
+                        value={systemDirection}
+                        onChange={(e) =>
+                          setSystemDirection(e.target.value as "BUY" | "SELL")
+                        }
+                      >
+                        <option value="BUY">BUY</option>
+                        <option value="SELL">SELL</option>
+                      </select>
+                    </label>
+                    <label>
+                      Entry min
+                      <input
+                        className="input"
+                        value={systemEntryMin}
+                        onChange={(e) => setSystemEntryMin(e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      Entry max
+                      <input
+                        className="input"
+                        value={systemEntryMax}
+                        onChange={(e) => setSystemEntryMax(e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      Stop loss
+                      <input
+                        className="input"
+                        value={systemSl}
+                        onChange={(e) => setSystemSl(e.target.value)}
+                      />
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    style={{ marginTop: "0.75rem" }}
+                    disabled={systemPublishing}
+                    onClick={() => {
+                      setSystemPublishing(true);
+                      setSystemPublishResult(null);
+                      void api
+                        .publishSystemSignal({
+                          symbol: systemSymbol.trim(),
+                          direction: systemDirection,
+                          entryMin: Number(systemEntryMin),
+                          entryMax: Number(systemEntryMax),
+                          stopLoss: Number(systemSl),
+                        })
+                        .then((res) =>
+                          setSystemPublishResult(
+                            `Published ${res.signalId} — ${res.symbol} ${res.direction}`,
+                          ),
+                        )
+                        .catch((e) =>
+                          setSystemPublishResult(
+                            e instanceof Error ? e.message : "Publish failed",
+                          ),
+                        )
+                        .finally(() => setSystemPublishing(false));
+                    }}
+                  >
+                    {systemPublishing ? "Publishing…" : "Publish & mirror to investors"}
+                  </button>
+                  {systemPublishResult && (
+                    <p className="muted" style={{ marginTop: "0.5rem" }}>
+                      {systemPublishResult}
+                    </p>
+                  )}
+                </div>
               </>
             )}
           </>

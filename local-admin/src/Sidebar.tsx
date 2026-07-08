@@ -13,6 +13,7 @@ export type Tab =
   | "promos"
   | "marketing"
   | "referrals"
+  | "platform"
   | "mt5Copy"
   | "mt5Sync"
   | "hub";
@@ -32,6 +33,7 @@ export const ADMIN_TABS: Tab[] = [
   "promos",
   "marketing",
   "referrals",
+  "platform",
   "mt5Copy",
   "mt5Sync",
   "hub",
@@ -100,6 +102,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "promos", label: "Promo codes", icon: "promos" },
   { id: "marketing", label: "Email marketing", icon: "marketing" },
   { id: "referrals", label: "Referrals", icon: "referrals" },
+  { id: "platform", label: "Investor & depositor", icon: "forecast" },
   { id: "mt5Copy", label: "MT5 Copy", icon: "mt5Copy" },
   { id: "mt5Sync", label: "MT5 Sync", icon: "mt5Sync" },
   { id: "hub", label: "Hub MT5", icon: "hub" },

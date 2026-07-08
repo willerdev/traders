@@ -483,6 +483,39 @@ export const api = {
       body: JSON.stringify(data),
     }),
   referrers: () => request<ReferrerRow[]>("/admin/referrals"),
+
+  investorDepositorSettings: () =>
+    request<InvestorDepositorSettings>(
+      "/admin/platform/investor-depositor-settings",
+    ),
+  updateInvestorDepositorSettings: (data: {
+    investorFeeUsdt?: number;
+    depositorDailyYieldPercent?: number;
+    depositorMinDepositUsdt?: number;
+  }) =>
+    request<InvestorDepositorSettings>(
+      "/admin/platform/investor-depositor-settings",
+      {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      },
+    ),
+  publishSystemSignal: (body: {
+    symbol: string;
+    direction: "BUY" | "SELL";
+    entryMin: number;
+    entryMax: number;
+    stopLoss: number;
+    description?: string;
+    openPrice?: number;
+  }) =>
+    request<{ signalId: string; symbol: string; direction: string }>(
+      "/admin/system-signals",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
 };
 
 export type PaymentForecast = {
@@ -541,6 +574,12 @@ export type PaymentForecast = {
     renewsAt: string | null;
     renewalAmountUsdt: number;
   }>;
+};
+
+export type InvestorDepositorSettings = {
+  investorFeeUsdt: number;
+  depositorDailyYieldPercent: number;
+  depositorMinDepositUsdt: number;
 };
 
 export type EmailAssessment = {

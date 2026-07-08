@@ -10,12 +10,14 @@ import {
   Settings,
   Wallet,
   X,
+  PiggyBank,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const cashRoutes = ["/tp-claims", "/payouts", "/settings"] as const;
+const cashRoutes = ["/wallet", "/tp-claims", "/payouts", "/settings"] as const;
 
 const cashMenuItems = [
+  { href: "/wallet", label: "Wallet", icon: PiggyBank },
   { href: "/tp-claims", label: "Claims", icon: ClipboardCheck },
   { href: "/payouts", label: "Payouts", icon: Wallet },
   { href: "/settings", label: "Account", icon: Settings },
@@ -148,7 +150,7 @@ export function MobileBottomNav() {
           style={{ boxShadow: "var(--nav-dock-shadow)" }}
         >
           <div className="mb-3 flex items-center justify-between">
-            <p className="text-sm font-semibold">Cash</p>
+            <p className="text-sm font-semibold">Wallet</p>
             <button
               type="button"
               onClick={() => setCashOpen(false)}
@@ -218,7 +220,7 @@ export function MobileBottomNav() {
             textOnly
           />
           <SideNavItem
-            label="Cash"
+            label="Wallet"
             icon={Wallet}
             active={cashActive || cashOpen}
             onClick={() => setCashOpen(!cashOpen)}

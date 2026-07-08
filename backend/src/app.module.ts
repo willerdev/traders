@@ -26,6 +26,8 @@ import { ReferralsModule } from './referrals/referrals.module';
 import { Mt5SyncModule } from './mt5-sync/mt5-sync.module';
 import { PublicModule } from './public/public.module';
 import { PresenceModule } from './presence/presence.module';
+import { WalletModule } from './wallet/wallet.module';
+import { InvestorModule } from './investor/investor.module';
 
 @Module({
   imports: [
@@ -56,6 +58,8 @@ import { PresenceModule } from './presence/presence.module';
     Mt5SyncModule,
     PublicModule,
     PresenceModule,
+    WalletModule,
+    InvestorModule,
   ],
 })
 export class AppModule {}

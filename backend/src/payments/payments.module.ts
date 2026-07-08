@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { PaymentsController } from './payments.controller';
 import { NowPaymentsService } from './nowpayments.service';
@@ -10,9 +10,18 @@ import { AuthModule } from '../auth/auth.module';
 import { EmailModule } from '../email/email.module';
 import { ProfitShareModule } from '../profit-share/profit-share.module';
 import { Mt5SyncBillingModule } from '../mt5-sync/mt5-sync-billing.module';
+import { WalletModule } from '../wallet/wallet.module';
+import { InvestorModule } from '../investor/investor.module';
 
 @Module({
-  imports: [AuthModule, EmailModule, ProfitShareModule, Mt5SyncBillingModule],
+  imports: [
+    AuthModule,
+    EmailModule,
+    ProfitShareModule,
+    Mt5SyncBillingModule,
+    forwardRef(() => WalletModule),
+    forwardRef(() => InvestorModule),
+  ],
   controllers: [PaymentsController],
   providers: [
     PaymentsService,

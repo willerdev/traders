@@ -757,6 +757,70 @@ class ApiClient {
       this.request<Mt5SyncStatus>("/payments/mt5-sync/status"),
   };
 
+  wallet = {
+    summary: () => this.request<WalletSummary>("/wallet/summary"),
+    transactions: (take = 50, skip = 0) =>
+      this.request<{ items: WalletLedgerItem[]; total: number }>(
+        `/wallet/transactions?take=${take}&skip=${skip}`,
+      ),
+    previewDeposit: (amount: number, riskPercent: number) =>
+      this.request<DepositorPlanPreview>(
+        `/wallet/deposit/preview?amount=${amount}&riskPercent=${riskPercent}`,
+      ),
+    deposit: (data: {
+      network: string;
+      amount: number;
+      riskPercent?: number;
+    }) =>
+      this.request<WalletDepositCheckout>("/wallet/deposit", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    createPlan: (amount: number, riskPercent: number) =>
+      this.request<DepositorPlanPreview>("/wallet/deposit/plan", {
+        method: "POST",
+        body: JSON.stringify({ amount, riskPercent }),
+      }),
+    withdraw: (amount: number, walletAddress?: string) =>
+      this.request<{
+        status: string;
+        payoutId: string;
+        amount: number;
+        balance: number;
+      }>("/wallet/withdraw", {
+        method: "POST",
+        body: JSON.stringify({
+          amount,
+          ...(walletAddress?.trim()
+            ? { walletAddress: walletAddress.trim() }
+            : {}),
+        }),
+      }),
+  };
+
+  investor = {
+    status: () => this.request<InvestorStatus>("/investor/status"),
+    enrollCheckout: (network: string) =>
+      this.request<InvestorCheckout>("/investor/enroll/checkout", {
+        method: "POST",
+        body: JSON.stringify({ network }),
+      }),
+    updateSettings: (riskPercent: number) =>
+      this.request<{ riskPercent: number; paused: boolean }>(
+        "/investor/settings",
+        {
+          method: "PATCH",
+          body: JSON.stringify({ riskPercent }),
+        },
+      ),
+    pause: () =>
+      this.request<{ paused: boolean }>("/investor/pause", { method: "POST" }),
+    resume: () =>
+      this.request<{ paused: boolean }>("/investor/resume", {
+        method: "POST",
+      }),
+  };
+
   mt5Sync = {
     setEnabled: (enabled: boolean) =>
       this.request<Mt5SyncStatus>("/mt5-sync/enabled", {
@@ -1073,6 +1137,107 @@ export interface WalletTransaction {
   description: string;
   balanceAfter: number | null;
   createdAt: string;
+}
+
+export interface WalletSummary {
+  availableBalance: number;
+  lockedBalance: number;
+  subscriptionPaid: number;
+  totalDeposited: number;
+  totalEarned: number;
+  totalWithdrawn: number;
+  platformDailyYieldPercent: number;
+  minDepositUsdt: number;
+  activePlan: {
+    id: string;
+    amount: number;
+    riskPercent: number;
+    dailyYieldPercent: number;
+    startAt: string;
+    endAt: string;
+    status: string;
+    credits: Array<{ dayIndex: number; amount: number; creditedAt: string }>;
+  } | null;
+}
+
+export interface WalletLedgerItem {
+  id: string;
+  amount: number;
+  type: string;
+  description: string;
+  referenceId: string | null;
+  balanceAfter: number | null;
+  createdAt: string;
+}
+
+export interface DepositorPlanPreview {
+  amount: number;
+  riskPercent: number;
+  maxLossPerDay: number;
+  maxGainPerDay: number;
+  rr: string;
+  planDays: number;
+  dailyYieldPercent: number;
+  projectedDailyEarning: number;
+  projectedTotalEarning: number;
+  days: Array<{
+    day: number;
+    maxLoss: number;
+    maxGain: number;
+    projectedEarning?: number;
+  }>;
+}
+
+export interface WalletDepositCheckout {
+  paymentId: string;
+  amount: number;
+  currency: string;
+  network: string;
+  payAddress?: string;
+  payAmount?: number;
+  payCurrency?: string;
+  gatewayPaymentId?: number;
+  liveStatus?: string;
+}
+
+export interface InvestorStatus {
+  active: boolean;
+  enrolledAt: string | null;
+  feeUsdt: number;
+  mt5Linked: boolean;
+  mt5Connected: boolean;
+  mt5HealthMessage: string | null;
+  settings: {
+    riskPercent: number;
+    useTwoToOneRr: boolean;
+    paused: boolean;
+  } | null;
+  recentTrades: Array<{
+    id: string;
+    signalId: string;
+    symbol: string;
+    direction: string;
+    status: string;
+    profit: number | null;
+    notes: string | null;
+    executedAt: string | null;
+    closedAt: string | null;
+  }>;
+}
+
+export interface InvestorCheckout {
+  paymentId?: string;
+  amount?: number;
+  currency?: string;
+  network?: string;
+  payAddress?: string;
+  payAmount?: number;
+  payCurrency?: string;
+  gatewayPaymentId?: number;
+  liveStatus?: string;
+  message?: string;
+  active?: boolean;
+  enrolledAt?: string | null;
 }
 
 export interface SignalRecord {

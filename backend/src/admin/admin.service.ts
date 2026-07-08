@@ -1311,4 +1311,68 @@ export class AdminService {
       },
     });
   }
+
+  async getInvestorDepositorSettings() {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    return {
+      investorFeeUsdt: Number(config?.investorFeeUsdt ?? 50),
+      depositorDailyYieldPercent: Number(config?.depositorDailyYieldPercent ?? 0.5),
+      depositorMinDepositUsdt: Number(config?.depositorMinDepositUsdt ?? 50),
+    };
+  }
+
+  async updateInvestorDepositorSettings(input: {
+    investorFeeUsdt?: number;
+    depositorDailyYieldPercent?: number;
+    depositorMinDepositUsdt?: number;
+  }) {
+    const data: Record<string, number> = {};
+    if (input.investorFeeUsdt != null) {
+      if (input.investorFeeUsdt <= 0) {
+        throw new BadRequestException('Investor fee must be positive');
+      }
+      data.investorFeeUsdt = input.investorFeeUsdt;
+    }
+    if (input.depositorDailyYieldPercent != null) {
+      if (
+        input.depositorDailyYieldPercent < 0 ||
+        input.depositorDailyYieldPercent > 100
+      ) {
+        throw new BadRequestException('Daily yield must be 0–100%');
+      }
+      data.depositorDailyYieldPercent = input.depositorDailyYieldPercent;
+    }
+    if (input.depositorMinDepositUsdt != null) {
+      if (input.depositorMinDepositUsdt <= 0) {
+        throw new BadRequestException('Minimum deposit must be positive');
+      }
+      data.depositorMinDepositUsdt = input.depositorMinDepositUsdt;
+    }
+
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException('Nothing to update');
+    }
+
+    await this.prisma.platformConfig.upsert({
+      where: { id: 'default' },
+      create: { id: 'default', ...data },
+      update: data,
+    });
+
+    return this.getInvestorDepositorSettings();
+  }
+
+  publishSystemSignal(body: {
+    symbol: string;
+    direction: 'BUY' | 'SELL';
+    entryMin: number;
+    entryMax: number;
+    stopLoss: number;
+    description?: string;
+    openPrice?: number;
+  }) {
+    return this.signals.publishSystemSignal(body);
+  }
 }

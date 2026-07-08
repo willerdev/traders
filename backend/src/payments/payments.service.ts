@@ -4,6 +4,8 @@ import {
   NotFoundException,
   ServiceUnavailableException,
   Logger,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -29,6 +31,8 @@ import { ProfitShareService } from '../profit-share/profit-share.service';
 import { resolveProfitShareConfig } from '../common/profit-share.util';
 import { ReferralsService } from '../referrals/referrals.service';
 import { Mt5SyncBillingService } from '../mt5-sync/mt5-sync-billing.service';
+import { WalletService } from '../wallet/wallet.service';
+import { InvestorService } from '../investor/investor.service';
 
 @Injectable()
 export class PaymentsService {
@@ -51,6 +55,10 @@ export class PaymentsService {
     private profitShare: ProfitShareService,
     private referrals: ReferralsService,
     private mt5SyncBilling: Mt5SyncBillingService,
+    @Inject(forwardRef(() => WalletService))
+    private walletService: WalletService,
+    @Inject(forwardRef(() => InvestorService))
+    private investorService: InvestorService,
   ) {}
 
   private ipnUrl() {
@@ -462,6 +470,36 @@ export class PaymentsService {
     return purpose === 'mt5_sync';
   }
 
+  private isWalletDepositPurpose(purpose: string | null | undefined) {
+    return purpose === 'wallet_deposit';
+  }
+
+  private isInvestorEnrollmentPurpose(purpose: string | null | undefined) {
+    return purpose === 'investor_enrollment';
+  }
+
+  private notifySubscriptionPayment(
+    payment: { userId: string; purpose: string; amount: unknown },
+    network?: string,
+  ) {
+    this.notifications.subscriptionPaymentConfirmed(payment.userId, {
+      purpose: payment.purpose,
+      amount: Number(payment.amount),
+      network,
+    });
+    void this.prisma.walletTransaction
+      .create({
+        data: {
+          userId: payment.userId,
+          amount: -Number(payment.amount),
+          type: 'SUBSCRIPTION',
+          referenceId: payment.purpose,
+          description: `Subscription — ${payment.purpose.replace(/_/g, ' ')}`,
+        },
+      })
+      .catch(() => undefined);
+  }
+
   private async profitShareFee(): Promise<number> {
     const config = await this.prisma.platformConfig.findUnique({
       where: { id: 'default' },
@@ -822,6 +860,7 @@ export class PaymentsService {
       amount: Number(payment.amount),
       network,
     });
+    this.notifySubscriptionPayment(payment, network);
 
     this.logger.log(
       `Registration payment ${paymentId} confirmed via ${opts?.source ?? 'nowpayments'}${opts?.txHash ? ` (tx ${opts.txHash.slice(0, 12)}…)` : ''}`,
@@ -877,6 +916,9 @@ export class PaymentsService {
 
     await this.activateSetupPlanSubscription(payment.userId, plan);
 
+    const { network } = this.extractPayDetails(payment);
+    this.notifySubscriptionPayment(payment, network);
+
     this.logger.log(
       `Setup plan ${plan} payment ${paymentId} confirmed via ${opts?.source ?? 'nowpayments'}`,
     );
@@ -925,6 +967,9 @@ export class PaymentsService {
     });
 
     await this.profitShare.activate(payment.userId);
+
+    const { network } = this.extractPayDetails(payment);
+    this.notifySubscriptionPayment(payment, network);
 
     this.logger.log(
       `Profit share payment ${paymentId} confirmed via ${opts?.source ?? 'nowpayments'}`,
@@ -1067,6 +1112,9 @@ export class PaymentsService {
     });
 
     await this.mt5SyncBilling.activate(payment.userId);
+
+    const { network } = this.extractPayDetails(payment);
+    this.notifySubscriptionPayment(payment, network);
 
     this.logger.log(
       `MT5 Live Sync payment ${paymentId} confirmed via ${opts?.source ?? 'nowpayments'}`,
@@ -1220,6 +1268,22 @@ export class PaymentsService {
         txHash: opts?.txHash,
         source: opts?.source ?? 'ipn',
       });
+    }
+
+    if (this.isWalletDepositPurpose(payment.purpose)) {
+      return this.walletService.confirmWalletDeposit(
+        payment.id,
+        gatewayPayload,
+        { gatewayId, txHash: opts?.txHash },
+      );
+    }
+
+    if (this.isInvestorEnrollmentPurpose(payment.purpose)) {
+      return this.investorService.confirmEnrollment(
+        payment.id,
+        gatewayPayload,
+        { gatewayId, txHash: opts?.txHash },
+      );
     }
 
     return this.confirmRegistrationPayment(payment.id, gatewayPayload, {

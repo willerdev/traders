@@ -24,6 +24,7 @@ import { ChatFab } from "@/components/layout/chat-fab";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", shortLabel: "Home", icon: LayoutDashboard },
+  { href: "/wallet", label: "Wallet", shortLabel: "Wallet", icon: Wallet },
   {
     href: "/mt5",
     label: "MT5",

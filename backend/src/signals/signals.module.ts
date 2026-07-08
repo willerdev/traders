@@ -13,6 +13,7 @@ import { PlatformNotificationsModule } from '../platform-notifications/platform-
 import { CopyTradingModule } from '../copy-trading/copy-trading.module';
 import { LeaderboardModule } from '../leaderboard/leaderboard.module';
 import { Mt5PoolModule } from '../mt5-sync/mt5-pool.module';
+import { InvestorModule } from '../investor/investor.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { Mt5PoolModule } from '../mt5-sync/mt5-pool.module';
     CopyTradingModule,
     LeaderboardModule,
     Mt5PoolModule,
+    forwardRef(() => InvestorModule),
   ],
   controllers: [SignalsController],
   providers: [

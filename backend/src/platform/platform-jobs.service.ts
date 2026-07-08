@@ -8,6 +8,8 @@ import { Mt5SyncService } from '../mt5-sync/mt5-sync.service';
 import { currentWeekYear, getWeekNumber } from '../common/week.util';
 import { WEEKLY_ACCESS_MS } from '../common/weekly-access.util';
 
+import { WalletService } from '../wallet/wallet.service';
+
 @Injectable()
 export class PlatformJobsService implements OnModuleInit {
   private readonly logger = new Logger(PlatformJobsService.name);
@@ -18,6 +20,7 @@ export class PlatformJobsService implements OnModuleInit {
     private prisma: PrismaService,
     private copyTrading: CopyTradingService,
     private mt5Sync: Mt5SyncService,
+    private walletService: WalletService,
   ) {}
 
   async onModuleInit() {
@@ -164,6 +167,23 @@ export class PlatformJobsService implements OnModuleInit {
     } catch (err) {
       this.logger.error(
         `MT5 sync poll failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  /** Daily at 00:10 UTC — credit depositor plan earnings. */
+  @Cron('10 0 * * *')
+  async depositorDailyEarningsJob() {
+    try {
+      const result = await this.walletService.creditDailyEarnings();
+      if (result.credited > 0) {
+        this.logger.log(
+          `Depositor daily earnings credited: ${result.credited} plan day(s)`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Depositor earnings job failed: ${err instanceof Error ? err.message : err}`,
       );
     }
   }
