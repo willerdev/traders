@@ -140,7 +140,7 @@ export class WalletService {
       .reduce((s, p) => s + Number(p.amount), 0);
 
     const totalDeposited = sumByTypes(['DEPOSITOR_DEPOSIT', 'DEPOSIT']);
-    const totalEarned = sumByTypes(['DEPOSITOR_EARNING']);
+    const totalEarned = sumByTypes(['DEPOSITOR_EARNING', 'INVESTOR_EARNING']);
     const totalWithdrawn = Math.abs(
       sumByTypes(['DEPOSITOR_WITHDRAW', 'PAYOUT']),
     );
@@ -172,6 +172,9 @@ export class WalletService {
         : null,
       platformDailyYieldPercent: Number(
         config?.depositorDailyYieldPercent ?? 0.5,
+      ),
+      investorDailyYieldPercent: Number(
+        config?.investorDailyYieldPercent ?? 0.5,
       ),
       minDepositUsdt: Number(config?.depositorMinDepositUsdt ?? 50),
     };
@@ -570,6 +573,55 @@ export class WalletService {
     }
 
     return { credited };
+  }
+
+  async getDailyIncomeJournal(userId: string, take = 50, skip = 0) {
+    const [investorCredits, depositorCredits, investorTotal, depositorTotal] =
+      await Promise.all([
+        this.prisma.investorDailyCredit.findMany({
+          where: { userId },
+          orderBy: { creditDate: 'desc' },
+        }),
+        this.prisma.depositorDailyCredit.findMany({
+          where: { plan: { userId } },
+          include: { plan: { select: { amount: true, dailyYieldPercent: true } } },
+          orderBy: { creditedAt: 'desc' },
+        }),
+        this.prisma.investorDailyCredit.count({ where: { userId } }),
+        this.prisma.depositorDailyCredit.count({
+          where: { plan: { userId } },
+        }),
+      ]);
+
+    const items = [
+      ...investorCredits.map((c) => ({
+        id: c.id,
+        source: 'INVESTOR' as const,
+        amount: Number(c.amount),
+        yieldPercent: Number(c.yieldPercent),
+        baseBalance: Number(c.baseBalance),
+        creditDate: c.creditDate.toISOString().slice(0, 10),
+        dayIndex: null as number | null,
+        creditedAt: c.creditedAt.toISOString(),
+      })),
+      ...depositorCredits.map((c) => ({
+        id: c.id,
+        source: 'DEPOSITOR' as const,
+        amount: Number(c.amount),
+        yieldPercent: Number(c.plan.dailyYieldPercent),
+        baseBalance: Number(c.plan.amount),
+        creditDate: c.creditedAt.toISOString().slice(0, 10),
+        dayIndex: c.dayIndex,
+        creditedAt: c.creditedAt.toISOString(),
+      })),
+    ]
+      .sort(
+        (a, b) =>
+          new Date(b.creditedAt).getTime() - new Date(a.creditedAt).getTime(),
+      )
+      .slice(skip, skip + take);
+
+    return { items, total: investorTotal + depositorTotal };
   }
 
   private async completePlan(planId: string, userId: string, amount: number) {

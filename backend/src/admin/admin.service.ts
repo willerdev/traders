@@ -1318,6 +1318,9 @@ export class AdminService {
     });
     return {
       investorFeeUsdt: Number(config?.investorFeeUsdt ?? 50),
+      investorDailyYieldPercent: Number(
+        config?.investorDailyYieldPercent ?? 0.5,
+      ),
       depositorDailyYieldPercent: Number(config?.depositorDailyYieldPercent ?? 0.5),
       depositorMinDepositUsdt: Number(config?.depositorMinDepositUsdt ?? 50),
     };
@@ -1325,6 +1328,7 @@ export class AdminService {
 
   async updateInvestorDepositorSettings(input: {
     investorFeeUsdt?: number;
+    investorDailyYieldPercent?: number;
     depositorDailyYieldPercent?: number;
     depositorMinDepositUsdt?: number;
   }) {
@@ -1334,6 +1338,15 @@ export class AdminService {
         throw new BadRequestException('Investor fee must be positive');
       }
       data.investorFeeUsdt = input.investorFeeUsdt;
+    }
+    if (input.investorDailyYieldPercent != null) {
+      if (
+        input.investorDailyYieldPercent < 0 ||
+        input.investorDailyYieldPercent > 100
+      ) {
+        throw new BadRequestException('Investor daily yield must be 0–100%');
+      }
+      data.investorDailyYieldPercent = input.investorDailyYieldPercent;
     }
     if (input.depositorDailyYieldPercent != null) {
       if (
@@ -1362,6 +1375,207 @@ export class AdminService {
     });
 
     return this.getInvestorDepositorSettings();
+  }
+
+  async listInvestors(search?: string, limit = 50, offset = 0) {
+    const take = Math.min(Math.max(limit, 1), 100);
+    const skip = Math.max(offset, 0);
+    const searchTerm = search?.trim() ?? '';
+    const platformYield = Number(
+      (
+        await this.prisma.platformConfig.findUnique({
+          where: { id: 'default' },
+        })
+      )?.investorDailyYieldPercent ?? 0.5,
+    );
+
+    const where = {
+      investorActive: true,
+      ...(searchTerm
+        ? {
+            OR: [
+              { email: { contains: searchTerm, mode: 'insensitive' as const } },
+              {
+                displayName: {
+                  contains: searchTerm,
+                  mode: 'insensitive' as const,
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+
+    const [users, count] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        orderBy: { investorEnrolledAt: 'desc' },
+        take,
+        skip,
+        select: {
+          id: true,
+          email: true,
+          displayName: true,
+          investorEnrolledAt: true,
+          investorSettings: {
+            select: { dailyYieldPercent: true, riskPercent: true, paused: true },
+          },
+          platformWallet: { select: { availableBalance: true } },
+          _count: { select: { investorDailyCredits: true } },
+        },
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return {
+      items: users.map((u) => ({
+        id: u.id,
+        email: u.email,
+        displayName: u.displayName,
+        enrolledAt: u.investorEnrolledAt?.toISOString() ?? null,
+        walletBalance: Number(u.platformWallet?.availableBalance ?? 0),
+        dailyYieldPercent:
+          u.investorSettings?.dailyYieldPercent != null
+            ? Number(u.investorSettings.dailyYieldPercent)
+            : null,
+        effectiveDailyYieldPercent:
+          u.investorSettings?.dailyYieldPercent != null
+            ? Number(u.investorSettings.dailyYieldPercent)
+            : platformYield,
+        platformDailyYieldPercent: platformYield,
+        riskPercent: u.investorSettings
+          ? Number(u.investorSettings.riskPercent)
+          : null,
+        paused: u.investorSettings?.paused ?? false,
+        incomeEntries: u._count.investorDailyCredits,
+      })),
+      count,
+      limit: take,
+      offset: skip,
+    };
+  }
+
+  async updateInvestorYield(
+    userId: string,
+    dailyYieldPercent: number | null,
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user?.investorActive) {
+      throw new BadRequestException('User is not an active investor');
+    }
+    if (dailyYieldPercent != null) {
+      if (dailyYieldPercent < 0 || dailyYieldPercent > 100) {
+        throw new BadRequestException('Daily yield must be 0–100%');
+      }
+    }
+
+    const settings = await this.prisma.investorSettings.upsert({
+      where: { userId },
+      create: {
+        userId,
+        dailyYieldPercent:
+          dailyYieldPercent != null ? dailyYieldPercent : undefined,
+      },
+      update: {
+        dailyYieldPercent,
+      },
+    });
+
+    const platformYield = Number(
+      (
+        await this.prisma.platformConfig.findUnique({
+          where: { id: 'default' },
+        })
+      )?.investorDailyYieldPercent ?? 0.5,
+    );
+
+    return {
+      userId,
+      dailyYieldPercent:
+        settings.dailyYieldPercent != null
+          ? Number(settings.dailyYieldPercent)
+          : null,
+      effectiveDailyYieldPercent:
+        settings.dailyYieldPercent != null
+          ? Number(settings.dailyYieldPercent)
+          : platformYield,
+    };
+  }
+
+  async getIncomeJournal(
+    limit = 50,
+    offset = 0,
+    userId?: string,
+    source?: 'INVESTOR' | 'DEPOSITOR',
+  ) {
+    const take = Math.min(Math.max(limit, 1), 100);
+    const skip = Math.max(offset, 0);
+
+    const investorWhere = userId ? { userId } : {};
+    const depositorWhere = userId ? { plan: { userId } } : {};
+
+    const [investorCredits, depositorCredits] = await Promise.all([
+      source === 'DEPOSITOR'
+        ? Promise.resolve([])
+        : this.prisma.investorDailyCredit.findMany({
+            where: investorWhere,
+            include: {
+              user: { select: { id: true, email: true, displayName: true } },
+            },
+            orderBy: { creditedAt: 'desc' },
+            take: 200,
+          }),
+      source === 'INVESTOR'
+        ? Promise.resolve([])
+        : this.prisma.depositorDailyCredit.findMany({
+            where: depositorWhere,
+            include: {
+              plan: {
+                include: {
+                  user: { select: { id: true, email: true, displayName: true } },
+                },
+              },
+            },
+            orderBy: { creditedAt: 'desc' },
+            take: 200,
+          }),
+    ]);
+
+    const items = [
+      ...investorCredits.map((c) => ({
+        id: c.id,
+        source: 'INVESTOR' as const,
+        userId: c.userId,
+        userEmail: c.user.email,
+        displayName: c.user.displayName,
+        amount: Number(c.amount),
+        yieldPercent: Number(c.yieldPercent),
+        baseBalance: Number(c.baseBalance),
+        creditDate: c.creditDate.toISOString().slice(0, 10),
+        dayIndex: null as number | null,
+        creditedAt: c.creditedAt.toISOString(),
+      })),
+      ...depositorCredits.map((c) => ({
+        id: c.id,
+        source: 'DEPOSITOR' as const,
+        userId: c.plan.userId,
+        userEmail: c.plan.user.email,
+        displayName: c.plan.user.displayName,
+        amount: Number(c.amount),
+        yieldPercent: Number(c.plan.dailyYieldPercent),
+        baseBalance: Number(c.plan.amount),
+        creditDate: c.creditedAt.toISOString().slice(0, 10),
+        dayIndex: c.dayIndex,
+        creditedAt: c.creditedAt.toISOString(),
+      })),
+    ]
+      .sort(
+        (a, b) =>
+          new Date(b.creditedAt).getTime() - new Date(a.creditedAt).getTime(),
+      )
+      .slice(skip, skip + take);
+
+    return { items, count: items.length, limit: take, offset: skip };
   }
 
   publishSystemSignal(body: {

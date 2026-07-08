@@ -30,6 +30,8 @@ import {
   type ReferralSettings,
   type ReferrerRow,
   type InvestorDepositorSettings,
+  type InvestorRow,
+  type IncomeJournalEntry,
   type Mt5SyncAdminOverview,
 } from "./api";
 import { AdminImage } from "./AdminImage";
@@ -405,9 +407,16 @@ export default function App() {
   const [platformSettings, setPlatformSettings] =
     useState<InvestorDepositorSettings | null>(null);
   const [platformInvestorFee, setPlatformInvestorFee] = useState("");
+  const [platformInvestorYield, setPlatformInvestorYield] = useState("");
   const [platformDailyYield, setPlatformDailyYield] = useState("");
   const [platformMinDeposit, setPlatformMinDeposit] = useState("");
   const [platformSaving, setPlatformSaving] = useState(false);
+  const [investors, setInvestors] = useState<InvestorRow[]>([]);
+  const [investorYieldDrafts, setInvestorYieldDrafts] = useState<Record<string, string>>({});
+  const [incomeJournal, setIncomeJournal] = useState<IncomeJournalEntry[]>([]);
+  const [incomeJournalSource, setIncomeJournalSource] = useState<
+    "" | "INVESTOR" | "DEPOSITOR"
+  >("");
   const [systemSymbol, setSystemSymbol] = useState("EURUSD");
   const [systemDirection, setSystemDirection] = useState<"BUY" | "SELL">("BUY");
   const [systemEntryMin, setSystemEntryMin] = useState("1.0850");
@@ -719,11 +728,26 @@ export default function App() {
         setRefPaidAmount(String(settings.paidRewardUsdt));
         setReferrers(list);
       } else if (active === "platform") {
-        const settings = await api.investorDepositorSettings();
+        const [settings, investorList, journal] = await Promise.all([
+          api.investorDepositorSettings(),
+          api.listInvestors({ limit: 50 }),
+          api.incomeJournal({ limit: 50 }),
+        ]);
         setPlatformSettings(settings);
         setPlatformInvestorFee(String(settings.investorFeeUsdt));
+        setPlatformInvestorYield(String(settings.investorDailyYieldPercent));
         setPlatformDailyYield(String(settings.depositorDailyYieldPercent));
         setPlatformMinDeposit(String(settings.depositorMinDepositUsdt));
+        setInvestors(investorList.items);
+        setInvestorYieldDrafts(
+          Object.fromEntries(
+            investorList.items.map((i) => [
+              i.id,
+              i.dailyYieldPercent != null ? String(i.dailyYieldPercent) : "",
+            ]),
+          ),
+        );
+        setIncomeJournal(journal.items);
       } else if (active === "mt5Copy") {
         if (copyDashboard) {
           void loadCopyDashboard({ terminalOnly: true });
@@ -3964,6 +3988,14 @@ export default function App() {
                     />
                   </div>
                   <div className="card">
+                    <div className="label">Investor daily yield (%)</div>
+                    <input
+                      className="input"
+                      value={platformInvestorYield}
+                      onChange={(e) => setPlatformInvestorYield(e.target.value)}
+                    />
+                  </div>
+                  <div className="card">
                     <div className="label">Depositor daily yield (%)</div>
                     <input
                       className="input"
@@ -3990,6 +4022,7 @@ export default function App() {
                       void api
                         .updateInvestorDepositorSettings({
                           investorFeeUsdt: Number(platformInvestorFee),
+                          investorDailyYieldPercent: Number(platformInvestorYield),
                           depositorDailyYieldPercent: Number(platformDailyYield),
                           depositorMinDepositUsdt: Number(platformMinDeposit),
                         })
@@ -4007,6 +4040,174 @@ export default function App() {
                   >
                     {platformSaving ? "Saving…" : "Save settings"}
                   </button>
+                </div>
+
+                <div className="panel" style={{ marginTop: "1.5rem" }}>
+                  <h3>Active investors — daily earning rate</h3>
+                  <p className="muted">
+                    Set a custom daily yield % per investor. Leave blank to use
+                    the platform default ({platformSettings.investorDailyYieldPercent}
+                    %).
+                  </p>
+                  {investors.length === 0 ? (
+                    <p className="muted">No active investors yet.</p>
+                  ) : (
+                    <table className="data-table" style={{ marginTop: "0.75rem" }}>
+                      <thead>
+                        <tr>
+                          <th>User</th>
+                          <th>Wallet</th>
+                          <th>Effective yield %</th>
+                          <th>Custom yield %</th>
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {investors.map((inv) => (
+                          <tr key={inv.id}>
+                            <td>
+                              <div>{inv.displayName}</div>
+                              <div className="muted" style={{ fontSize: "0.8rem" }}>
+                                {inv.email ?? inv.id.slice(0, 8)}
+                              </div>
+                            </td>
+                            <td>{fmtMoney(inv.walletBalance)}</td>
+                            <td>{inv.effectiveDailyYieldPercent}%</td>
+                            <td>
+                              <input
+                                className="input"
+                                style={{ maxWidth: "6rem" }}
+                                placeholder="Default"
+                                value={investorYieldDrafts[inv.id] ?? ""}
+                                onChange={(e) =>
+                                  setInvestorYieldDrafts((prev) => ({
+                                    ...prev,
+                                    [inv.id]: e.target.value,
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className="btn-secondary"
+                                onClick={() => {
+                                  const raw = investorYieldDrafts[inv.id]?.trim();
+                                  const dailyYieldPercent =
+                                    raw === "" ? null : Number(raw);
+                                  void api
+                                    .updateInvestorYield(inv.id, dailyYieldPercent)
+                                    .then((res) => {
+                                      setInvestors((prev) =>
+                                        prev.map((row) =>
+                                          row.id === inv.id
+                                            ? {
+                                                ...row,
+                                                dailyYieldPercent:
+                                                  res.dailyYieldPercent,
+                                                effectiveDailyYieldPercent:
+                                                  res.effectiveDailyYieldPercent,
+                                              }
+                                            : row,
+                                        ),
+                                      );
+                                      setMessage(
+                                        `Investor yield updated for ${inv.displayName}.`,
+                                      );
+                                    })
+                                    .catch((e) =>
+                                      setMessage(
+                                        e instanceof Error
+                                          ? e.message
+                                          : "Update failed",
+                                      ),
+                                    );
+                                }}
+                              >
+                                Save
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                <div className="panel" style={{ marginTop: "1.5rem" }}>
+                  <div className="toolbar toolbar-wrap">
+                    <div>
+                      <h3>Daily income journal</h3>
+                      <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                        Investor and depositor daily earnings credited to wallets.
+                      </p>
+                    </div>
+                    <div style={{ display: "flex", gap: "0.5rem" }}>
+                      <select
+                        className="input"
+                        value={incomeJournalSource}
+                        onChange={(e) =>
+                          setIncomeJournalSource(
+                            e.target.value as "" | "INVESTOR" | "DEPOSITOR",
+                          )
+                        }
+                      >
+                        <option value="">All sources</option>
+                        <option value="INVESTOR">Investor</option>
+                        <option value="DEPOSITOR">Depositor</option>
+                      </select>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => {
+                          void api
+                            .incomeJournal({
+                              limit: 50,
+                              source: incomeJournalSource || undefined,
+                            })
+                            .then((res) => setIncomeJournal(res.items));
+                        }}
+                      >
+                        Refresh
+                      </button>
+                    </div>
+                  </div>
+                  {incomeJournal.length === 0 ? (
+                    <p className="muted">No daily income entries yet.</p>
+                  ) : (
+                    <table className="data-table" style={{ marginTop: "0.75rem" }}>
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>User</th>
+                          <th>Source</th>
+                          <th>Amount</th>
+                          <th>Yield %</th>
+                          <th>Base</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {incomeJournal.map((entry) => (
+                          <tr key={`${entry.source}-${entry.id}`}>
+                            <td>{entry.creditDate}</td>
+                            <td>
+                              <div>{entry.displayName}</div>
+                              <div className="muted" style={{ fontSize: "0.8rem" }}>
+                                {entry.userEmail ?? entry.userId.slice(0, 8)}
+                              </div>
+                            </td>
+                            <td>
+                              {entry.source}
+                              {entry.dayIndex != null ? ` · day ${entry.dayIndex}` : ""}
+                            </td>
+                            <td>{fmtMoney(entry.amount)}</td>
+                            <td>{entry.yieldPercent}%</td>
+                            <td>{fmtMoney(entry.baseBalance)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
 
                 <div className="panel" style={{ marginTop: "1.5rem" }}>

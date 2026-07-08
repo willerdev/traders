@@ -80,6 +80,20 @@ export class WalletController {
     );
   }
 
+  @Get('income-journal')
+  @UseGuards(JwtAuthGuard)
+  incomeJournal(
+    @Request() req: { user: { id: string } },
+    @Query('take') take?: string,
+    @Query('skip') skip?: string,
+  ) {
+    return this.wallet.getDailyIncomeJournal(
+      req.user.id,
+      take ? Number(take) : 50,
+      skip ? Number(skip) : 0,
+    );
+  }
+
   @Post('withdraw')
   @UseGuards(JwtAuthGuard)
   withdraw(

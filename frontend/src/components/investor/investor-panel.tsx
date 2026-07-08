@@ -11,6 +11,7 @@ import {
   PaymentSourceSelector,
   type PaymentSource,
 } from "@/components/wallet/payment-source-selector";
+import { DailyIncomeJournal } from "@/components/wallet/daily-income-journal";
 import { cn, formatCurrency } from "@/lib/utils";
 import Link from "next/link";
 import {
@@ -132,7 +133,8 @@ export function InvestorPanel() {
           <p className="text-sm text-gray-400">
             Link your MT5 account, pay a one-time{" "}
             {formatCurrency(feeUsdt)} fee, and let the platform trade system
-            signals on your account at 1:2 RR with your chosen risk %.
+            signals on your account at 1:2 RR with your chosen risk %. Daily
+            wallet earning: {status?.dailyYieldPercent ?? 0.5}% of your balance.
           </p>
 
           {checkout?.payAddress ? (
@@ -258,6 +260,11 @@ export function InvestorPanel() {
               </span>
             )}
           </p>
+          <p className="text-sm text-gray-400">
+            Daily wallet earning:{" "}
+            <span className="text-white">{status.dailyYieldPercent}%</span> of
+            available balance
+          </p>
           {!status.mt5Linked && (
             <Mt5ConnectForm
               compact
@@ -320,6 +327,8 @@ export function InvestorPanel() {
           </CardContent>
         </Card>
       )}
+
+      <DailyIncomeJournal compact />
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { api, type WalletLedgerItem, type WalletSummary } from "@/lib/api";
 import { WalletBalanceCard } from "@/components/wallet/wallet-balance-card";
 import { WalletDepositModal } from "@/components/wallet/wallet-deposit-modal";
 import { WalletWithdrawModal } from "@/components/wallet/wallet-withdraw-modal";
+import { DailyIncomeJournal } from "@/components/wallet/daily-income-journal";
 import { formatCurrency } from "@/lib/utils";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { Loader2 } from "lucide-react";
@@ -113,6 +114,8 @@ export default function WalletPage() {
           </div>
         </CardContent>
       </Card>
+
+      <DailyIncomeJournal />
 
       <Card id="wallet-activity">
         <CardHeader>

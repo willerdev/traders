@@ -514,11 +514,48 @@ export class AdminController {
     @Body()
     body: {
       investorFeeUsdt?: number;
+      investorDailyYieldPercent?: number;
       depositorDailyYieldPercent?: number;
       depositorMinDepositUsdt?: number;
     },
   ) {
     return this.adminService.updateInvestorDepositorSettings(body);
+  }
+
+  @Get('investors')
+  listInvestors(
+    @Query('search') search?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.adminService.listInvestors(
+      search,
+      limit ? Number(limit) : 50,
+      offset ? Number(offset) : 0,
+    );
+  }
+
+  @Patch('investors/:userId/yield')
+  updateInvestorYield(
+    @Param('userId') userId: string,
+    @Body() body: { dailyYieldPercent: number | null },
+  ) {
+    return this.adminService.updateInvestorYield(userId, body.dailyYieldPercent);
+  }
+
+  @Get('income-journal')
+  getIncomeJournal(
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('userId') userId?: string,
+    @Query('source') source?: 'INVESTOR' | 'DEPOSITOR',
+  ) {
+    return this.adminService.getIncomeJournal(
+      limit ? Number(limit) : 50,
+      offset ? Number(offset) : 0,
+      userId,
+      source,
+    );
   }
 
   @Post('system-signals')

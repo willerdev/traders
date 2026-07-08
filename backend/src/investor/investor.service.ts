@@ -83,11 +83,21 @@ export class InvestorService {
     }
 
     const fee = await this.investorFee();
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    const platformDailyYield = Number(config?.investorDailyYieldPercent ?? 0.5);
+    const effectiveDailyYield =
+      user.investorSettings?.dailyYieldPercent != null
+        ? Number(user.investorSettings.dailyYieldPercent)
+        : platformDailyYield;
 
     return {
       active: user.investorActive,
       enrolledAt: user.investorEnrolledAt?.toISOString() ?? null,
       feeUsdt: fee,
+      dailyYieldPercent: effectiveDailyYield,
+      platformDailyYieldPercent: platformDailyYield,
       mt5Linked: Boolean(user.metaApiAccountId),
       mt5Connected,
       mt5HealthMessage,
@@ -345,5 +355,88 @@ export class InvestorService {
     }
 
     return { paused };
+  }
+
+  private utcToday() {
+    const now = new Date();
+    return new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+  }
+
+  async platformInvestorDailyYield() {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    return Number(config?.investorDailyYieldPercent ?? 0.5);
+  }
+
+  async creditDailyEarnings() {
+    const today = this.utcToday();
+    const platformYield = await this.platformInvestorDailyYield();
+
+    const investors = await this.prisma.user.findMany({
+      where: { investorActive: true },
+      include: { investorSettings: true, platformWallet: true },
+    });
+
+    let credited = 0;
+    for (const user of investors) {
+      const existing = await this.prisma.investorDailyCredit.findUnique({
+        where: {
+          userId_creditDate: { userId: user.id, creditDate: today },
+        },
+      });
+      if (existing) continue;
+
+      const yieldPercent =
+        user.investorSettings?.dailyYieldPercent != null
+          ? Number(user.investorSettings.dailyYieldPercent)
+          : platformYield;
+
+      const baseBalance = Number(user.platformWallet?.availableBalance ?? 0);
+      if (baseBalance <= 0 || yieldPercent <= 0) continue;
+
+      const earningAmount = (baseBalance * yieldPercent) / 100;
+      if (earningAmount <= 0) continue;
+
+      const wallet = await this.walletService.getOrCreateWallet(user.id);
+      const newBalance = Number(wallet.availableBalance) + earningAmount;
+
+      await this.prisma.$transaction([
+        this.prisma.investorDailyCredit.create({
+          data: {
+            userId: user.id,
+            amount: earningAmount,
+            yieldPercent,
+            baseBalance,
+            creditDate: today,
+          },
+        }),
+        this.prisma.platformWallet.update({
+          where: { userId: user.id },
+          data: { availableBalance: newBalance },
+        }),
+        this.prisma.walletTransaction.create({
+          data: {
+            userId: user.id,
+            amount: earningAmount,
+            type: 'INVESTOR_EARNING',
+            referenceId: user.id,
+            description: `Investor daily earning — $${earningAmount.toFixed(2)} USDT`,
+            balanceAfter: newBalance,
+          },
+        }),
+      ]);
+
+      this.notifications.investorDailyEarning(user.id, {
+        amount: earningAmount,
+        yieldPercent,
+        balance: newBalance,
+      });
+      credited++;
+    }
+
+    return { credited };
   }
 }

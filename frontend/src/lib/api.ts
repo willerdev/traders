@@ -807,6 +807,10 @@ class ApiClient {
             : {}),
         }),
       }),
+    incomeJournal: (take = 50, skip = 0) =>
+      this.request<{ items: DailyIncomeEntry[]; total: number }>(
+        `/wallet/income-journal?take=${take}&skip=${skip}`,
+      ),
   };
 
   investor = {
@@ -1158,6 +1162,7 @@ export interface WalletSummary {
   totalEarned: number;
   totalWithdrawn: number;
   platformDailyYieldPercent: number;
+  investorDailyYieldPercent: number;
   minDepositUsdt: number;
   activePlan: {
     id: string;
@@ -1211,10 +1216,23 @@ export interface WalletDepositCheckout {
   liveStatus?: string;
 }
 
+export interface DailyIncomeEntry {
+  id: string;
+  source: "INVESTOR" | "DEPOSITOR";
+  amount: number;
+  yieldPercent: number;
+  baseBalance: number;
+  creditDate: string;
+  dayIndex: number | null;
+  creditedAt: string;
+}
+
 export interface InvestorStatus {
   active: boolean;
   enrolledAt: string | null;
   feeUsdt: number;
+  dailyYieldPercent: number;
+  platformDailyYieldPercent: number;
   mt5Linked: boolean;
   mt5Connected: boolean;
   mt5HealthMessage: string | null;

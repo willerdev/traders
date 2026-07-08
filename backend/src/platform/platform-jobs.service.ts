@@ -9,6 +9,7 @@ import { currentWeekYear, getWeekNumber } from '../common/week.util';
 import { WEEKLY_ACCESS_MS } from '../common/weekly-access.util';
 
 import { WalletService } from '../wallet/wallet.service';
+import { InvestorService } from '../investor/investor.service';
 
 @Injectable()
 export class PlatformJobsService implements OnModuleInit {
@@ -21,6 +22,7 @@ export class PlatformJobsService implements OnModuleInit {
     private copyTrading: CopyTradingService,
     private mt5Sync: Mt5SyncService,
     private walletService: WalletService,
+    private investorService: InvestorService,
   ) {}
 
   async onModuleInit() {
@@ -184,6 +186,23 @@ export class PlatformJobsService implements OnModuleInit {
     } catch (err) {
       this.logger.error(
         `Depositor earnings job failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  /** Daily at 00:15 UTC — credit investor daily earnings. */
+  @Cron('15 0 * * *')
+  async investorDailyEarningsJob() {
+    try {
+      const result = await this.investorService.creditDailyEarnings();
+      if (result.credited > 0) {
+        this.logger.log(
+          `Investor daily earnings credited: ${result.credited} investor(s)`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Investor earnings job failed: ${err instanceof Error ? err.message : err}`,
       );
     }
   }

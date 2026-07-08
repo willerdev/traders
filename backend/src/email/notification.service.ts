@@ -1177,6 +1177,37 @@ export class NotificationService {
     );
   }
 
+  investorDailyEarning(
+    userId: string,
+    data: { amount: number; yieldPercent: number; balance: number },
+  ) {
+    this.dispatch(
+      this.sendInvestorDailyEarning(userId, data),
+      'Investor daily earning credited',
+    );
+  }
+
+  private async sendInvestorDailyEarning(
+    userId: string,
+    data: { amount: number; yieldPercent: number; balance: number },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Investor daily earning credited',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your investor daily earning at <strong>${data.yieldPercent}%</strong>: <strong>$${data.amount.toFixed(2)} USDT</strong></p>
+      <p>Wallet balance: <strong>$${data.balance.toFixed(2)} USDT</strong></p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Investor earning — $${data.amount.toFixed(2)} USDT`,
+      html,
+      text: `Investor daily earning: $${data.amount.toFixed(2)} USDT.`,
+    });
+  }
+
   private async sendDepositorDailyEarning(
     userId: string,
     data: { dayIndex: number; amount: number; balance: number },

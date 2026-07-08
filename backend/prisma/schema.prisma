@@ -96,6 +96,7 @@ enum WalletTxType {
   DEPOSITOR_DEPOSIT
   DEPOSITOR_EARNING
   DEPOSITOR_WITHDRAW
+  INVESTOR_EARNING
   SUBSCRIPTION
 }
 
@@ -206,6 +207,7 @@ model User {
   investorSettings InvestorSettings?
   depositorPlans DepositorPlan[]
   investorTrades InvestorTrade[]
+  investorDailyCredits InvestorDailyCredit[]
   signals        Signal[]
   tradeScores    TradeScore[]
   rankings       Ranking[]
@@ -730,6 +732,7 @@ model PlatformConfig {
   mt5SyncFeeUsdt         Decimal @default(5) @db.Decimal(10, 2)
   weeklyTierPayoutsEnabled Boolean @default(false)
   investorFeeUsdt          Decimal @default(50) @db.Decimal(10, 2)
+  investorDailyYieldPercent Decimal @default(0.5) @db.Decimal(5, 2)
   depositorDailyYieldPercent Decimal @default(0.5) @db.Decimal(5, 2)
   depositorMinDepositUsdt  Decimal @default(50) @db.Decimal(10, 2)
 
@@ -786,6 +789,7 @@ model InvestorSettings {
   id              String   @id @default(cuid())
   userId          String   @unique
   riskPercent     Decimal  @default(2) @db.Decimal(5, 2)
+  dailyYieldPercent Decimal? @db.Decimal(5, 2)
   useTwoToOneRr   Boolean  @default(true)
   paused          Boolean  @default(false)
   lastHealthAt    DateTime?
@@ -827,6 +831,22 @@ model InvestorTrade {
   @@index([userId])
   @@index([status])
   @@map("investor_trades")
+}
+
+model InvestorDailyCredit {
+  id           String   @id @default(cuid())
+  userId       String
+  amount       Decimal  @db.Decimal(12, 2)
+  yieldPercent Decimal  @db.Decimal(5, 2)
+  baseBalance  Decimal  @db.Decimal(12, 2)
+  creditDate   DateTime @db.Date
+  creditedAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, creditDate])
+  @@index([userId, creditDate])
+  @@map("investor_daily_credits")
 }
 
 model PromoCode {

@@ -490,6 +490,7 @@ export const api = {
     ),
   updateInvestorDepositorSettings: (data: {
     investorFeeUsdt?: number;
+    investorDailyYieldPercent?: number;
     depositorDailyYieldPercent?: number;
     depositorMinDepositUsdt?: number;
   }) =>
@@ -500,6 +501,36 @@ export const api = {
         body: JSON.stringify(data),
       },
     ),
+  listInvestors: (params?: { search?: string; limit?: number; offset?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.search) q.set("search", params.search);
+    if (params?.limit != null) q.set("limit", String(params.limit));
+    if (params?.offset != null) q.set("offset", String(params.offset));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return request<InvestorListResult>(`/admin/investors${suffix}`);
+  },
+  updateInvestorYield: (userId: string, dailyYieldPercent: number | null) =>
+    request<{ userId: string; dailyYieldPercent: number | null; effectiveDailyYieldPercent: number }>(
+      `/admin/investors/${encodeURIComponent(userId)}/yield`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ dailyYieldPercent }),
+      },
+    ),
+  incomeJournal: (params?: {
+    limit?: number;
+    offset?: number;
+    userId?: string;
+    source?: "INVESTOR" | "DEPOSITOR";
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.limit != null) q.set("limit", String(params.limit));
+    if (params?.offset != null) q.set("offset", String(params.offset));
+    if (params?.userId) q.set("userId", params.userId);
+    if (params?.source) q.set("source", params.source);
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return request<IncomeJournalResult>(`/admin/income-journal${suffix}`);
+  },
   publishSystemSignal: (body: {
     symbol: string;
     direction: "BUY" | "SELL";
@@ -578,8 +609,51 @@ export type PaymentForecast = {
 
 export type InvestorDepositorSettings = {
   investorFeeUsdt: number;
+  investorDailyYieldPercent: number;
   depositorDailyYieldPercent: number;
   depositorMinDepositUsdt: number;
+};
+
+export type InvestorRow = {
+  id: string;
+  email: string | null;
+  displayName: string;
+  enrolledAt: string | null;
+  walletBalance: number;
+  dailyYieldPercent: number | null;
+  effectiveDailyYieldPercent: number;
+  platformDailyYieldPercent: number;
+  riskPercent: number | null;
+  paused: boolean;
+  incomeEntries: number;
+};
+
+export type InvestorListResult = {
+  items: InvestorRow[];
+  count: number;
+  limit: number;
+  offset: number;
+};
+
+export type IncomeJournalEntry = {
+  id: string;
+  source: "INVESTOR" | "DEPOSITOR";
+  userId: string;
+  userEmail: string | null;
+  displayName: string;
+  amount: number;
+  yieldPercent: number;
+  baseBalance: number;
+  creditDate: string;
+  dayIndex: number | null;
+  creditedAt: string;
+};
+
+export type IncomeJournalResult = {
+  items: IncomeJournalEntry[];
+  count: number;
+  limit: number;
+  offset: number;
 };
 
 export type EmailAssessment = {
