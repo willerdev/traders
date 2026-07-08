@@ -1,6 +1,13 @@
 "use client";
 
-import { ArrowUpDown, BarChart3, ChartLine, History } from "lucide-react";
+import Link from "next/link";
+import {
+  ArrowUpDown,
+  BarChart3,
+  ChartLine,
+  History,
+  Home,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type Mt5MobileTab = "quotes" | "chart" | "trades" | "history";
@@ -29,7 +36,19 @@ export function Mt5MobileBottomNav({ active, onChange, badges }: Props) {
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
       aria-label="MT5 navigation"
     >
-      <div className="mx-auto grid max-w-lg grid-cols-4 items-end px-2 pb-2 pt-1.5">
+      <div className="mx-auto grid max-w-lg grid-cols-5 items-end px-1 pb-2 pt-1.5">
+        <Link
+          href="/dashboard"
+          className="flex flex-col items-center gap-1 rounded-lg py-1 transition-transform active:scale-95"
+        >
+          <span className="relative flex h-8 min-w-[2.75rem] items-center justify-center rounded-full text-[var(--mt5-muted)]">
+            <Home className="h-[18px] w-[18px]" strokeWidth={1.75} />
+          </span>
+          <span className="text-[10px] font-medium leading-none text-[var(--mt5-muted)]">
+            Home
+          </span>
+        </Link>
+
         {TABS.map(({ id, label, icon: Icon }) => {
           const isActive = active === id;
           const badge = badges?.[id];
@@ -43,7 +62,7 @@ export function Mt5MobileBottomNav({ active, onChange, badges }: Props) {
             >
               <span
                 className={cn(
-                  "relative flex h-8 min-w-[3rem] items-center justify-center rounded-full transition-all duration-200",
+                  "relative flex h-8 min-w-[2.75rem] items-center justify-center rounded-full transition-all duration-200",
                   isActive
                     ? "bg-primary text-white shadow-sm shadow-primary/30"
                     : "text-[var(--mt5-muted)]",

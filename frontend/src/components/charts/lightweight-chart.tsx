@@ -400,7 +400,7 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
         )}
         {drag.pending && (
           <div
-            className="absolute bottom-3 left-2 right-2 z-20 flex flex-wrap items-center justify-center gap-2 rounded-lg border border-[var(--mt5-divider)] bg-[var(--mt5-surface)]/98 px-3 py-2 shadow-lg backdrop-blur-sm sm:left-1/2 sm:right-auto sm:max-w-md sm:-translate-x-1/2"
+            className="absolute bottom-3 left-2 right-2 z-20 flex flex-wrap items-center justify-center gap-2 rounded-lg border border-[var(--mt5-divider)] bg-[var(--mt5-surface)]/98 px-3 py-2 shadow-lg backdrop-blur-sm max-md:bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] sm:left-1/2 sm:right-auto sm:max-w-md sm:-translate-x-1/2"
             role="dialog"
             aria-label="Confirm stop modification"
           >
@@ -437,7 +437,7 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
           </div>
         )}
         {dragError && (
-          <div className="pointer-events-none absolute bottom-2 left-2 right-2 rounded-md border border-[#ff5252]/30 bg-[#ff5252]/10 px-2 py-1 text-[10px] text-[#ff5252]">
+          <div className="pointer-events-none absolute bottom-2 left-2 right-2 z-20 rounded-md border border-[#ff5252]/30 bg-[#ff5252]/10 px-2 py-1 text-[10px] text-[#ff5252] max-md:bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))]">
             {dragError}
           </div>
         )}

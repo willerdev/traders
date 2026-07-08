@@ -2390,14 +2390,6 @@ export class SignalsService {
     const nextTp =
       dto.takeProfit !== undefined ? dto.takeProfit : Number(signal.takeProfit);
 
-    this.validateLiveStopLevels(
-      signal.direction,
-      entryMin,
-      entryMax,
-      nextSl,
-      nextTp,
-    );
-
     const resolution = await this.getSetupResolution(userId, signalId);
     if (!resolution.canAdjustStops) {
       throw new BadRequestException(
@@ -2409,9 +2401,35 @@ export class SignalsService {
       status?: string;
       positionId?: string;
       orderId?: string;
+      openPrice?: number;
+      entryPrice?: number;
       stopLoss?: number;
       takeProfit?: number;
     } | null;
+
+    const openPx =
+      live?.openPrice ??
+      live?.entryPrice ??
+      (signal.trade?.entryPrice != null
+        ? Number(signal.trade.entryPrice)
+        : null);
+
+    if (live?.status === 'open' && openPx != null && Number.isFinite(openPx)) {
+      this.validatePositionStopLevels(
+        signal.direction,
+        openPx,
+        dto.stopLoss !== undefined ? nextSl : undefined,
+        dto.takeProfit !== undefined ? nextTp : undefined,
+      );
+    } else {
+      this.validateLiveStopLevels(
+        signal.direction,
+        entryMin,
+        entryMax,
+        nextSl,
+        nextTp,
+      );
+    }
 
     let metaApplied = false;
     let hubApplied = false;
@@ -2423,11 +2441,17 @@ export class SignalsService {
     if (this.metaApi.isConfigured && accountId && live) {
       try {
         const account = await this.metaApi.ensureAccountReady(accountId);
+        const spec = await this.metaApi.getSymbolSpecification(
+          account,
+          signal.symbol,
+        );
+        const specDigits = spec.digits;
         if (live.status === 'open' && live.positionId) {
           await this.metaApi.modifyPositionStops(account, {
             positionId: live.positionId,
             ...(dto.stopLoss !== undefined ? { stopLoss: nextSl } : {}),
             ...(dto.takeProfit !== undefined ? { takeProfit: nextTp } : {}),
+            specDigits,
           });
           metaApplied = true;
         } else if (live.status === 'pending' && live.orderId) {
@@ -2435,6 +2459,7 @@ export class SignalsService {
             orderId: live.orderId,
             ...(dto.stopLoss !== undefined ? { stopLoss: nextSl } : {}),
             ...(dto.takeProfit !== undefined ? { takeProfit: nextTp } : {}),
+            specDigits,
           });
           metaApplied = true;
         }
@@ -2569,9 +2594,9 @@ export class SignalsService {
     }
 
     if (direction === 'BUY') {
-      if (stopLoss != null && Number.isFinite(stopLoss) && stopLoss >= openPrice) {
+      if (stopLoss != null && Number.isFinite(stopLoss) && stopLoss > openPrice) {
         throw new BadRequestException(
-          'For BUY positions, stop loss must be below the entry price',
+          'For BUY positions, stop loss cannot be above the entry price',
         );
       }
       if (takeProfit != null && Number.isFinite(takeProfit) && takeProfit <= openPrice) {
@@ -2580,9 +2605,9 @@ export class SignalsService {
         );
       }
     } else {
-      if (stopLoss != null && Number.isFinite(stopLoss) && stopLoss <= openPrice) {
+      if (stopLoss != null && Number.isFinite(stopLoss) && stopLoss < openPrice) {
         throw new BadRequestException(
-          'For SELL positions, stop loss must be above the entry price',
+          'For SELL positions, stop loss cannot be below the entry price',
         );
       }
       if (takeProfit != null && Number.isFinite(takeProfit) && takeProfit >= openPrice) {
@@ -5779,10 +5804,13 @@ export class SignalsService {
         dto.takeProfit !== undefined ? nextTp : undefined,
       );
 
+      const spec = await this.metaApi.getSymbolSpecification(account, pos.symbol);
+
       await this.metaApi.modifyPositionStops(account, {
         positionId,
         ...(dto.stopLoss !== undefined ? { stopLoss: dto.stopLoss } : {}),
         ...(dto.takeProfit !== undefined ? { takeProfit: dto.takeProfit } : {}),
+        specDigits: spec.digits,
       });
 
       return {
@@ -5824,10 +5852,13 @@ export class SignalsService {
       dto.takeProfit !== undefined ? nextTp : undefined,
     );
 
+    const spec = await this.metaApi.getSymbolSpecification(account, order.symbol);
+
     await this.metaApi.modifyPendingOrderStops(account, {
       orderId: positionId,
       ...(dto.stopLoss !== undefined ? { stopLoss: dto.stopLoss } : {}),
       ...(dto.takeProfit !== undefined ? { takeProfit: dto.takeProfit } : {}),
+      specDigits: spec.digits,
     });
 
     return {

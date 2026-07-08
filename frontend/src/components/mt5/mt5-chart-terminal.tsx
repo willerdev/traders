@@ -104,6 +104,7 @@ export function Mt5ChartTerminal({
     x: number;
     y: number;
   } | null>(null);
+  const [chartBounds, setChartBounds] = useState({ width: 320, height: 400 });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartLoadReason, setChartLoadReason] = useState<ChartLoadReason | null>(
@@ -268,6 +269,7 @@ export function Mt5ChartTerminal({
     const area = chartAreaRef.current;
     if (!area) return;
     const rect = area.getBoundingClientRect();
+    setChartBounds({ width: rect.width, height: rect.height });
     const anchor = clampRadialAnchor(
       point.clientX - rect.left,
       point.clientY - rect.top,
@@ -287,13 +289,6 @@ export function Mt5ChartTerminal({
         chartRef.current?.fitContent();
         setRadialOpen(false);
         break;
-      case "crosshair":
-      case "indicators":
-      case "objects":
-        setRadialOpen(false);
-        break;
-      default:
-        setRadialOpen(false);
     }
   }
 
@@ -424,6 +419,7 @@ export function Mt5ChartTerminal({
         <Mt5ChartRadialMenu
           open={radialOpen}
           anchor={radialAnchor}
+          bounds={chartBounds}
           activeTimeframe={timeframe}
           onClose={() => setRadialOpen(false)}
           onTimeframe={(tf) => {

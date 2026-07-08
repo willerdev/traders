@@ -577,7 +577,10 @@ export default function Mt5UserPage() {
             onCloseTrade={handleCloseTrade}
             showOrdersPanel={tab === "trades" || tab === "chart"}
             chartOnly={tab === "chart"}
-            onStopsUpdated={() => void loadRunning()}
+            onStopsUpdated={() => {
+              void loadRunning();
+              void load({ background: true });
+            }}
           />
         </div>
       )}
