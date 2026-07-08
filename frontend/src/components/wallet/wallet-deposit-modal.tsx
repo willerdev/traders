@@ -54,12 +54,14 @@ export function WalletDepositModal({
   const [payAmount, setPayAmount] = useState<number | null>(null);
   const [progress, setProgress] = useState<Progress>("waiting");
   const [copied, setCopied] = useState(false);
-  const [depositMin, setDepositMin] = useState(2);
-  const [gatewayMin, setGatewayMin] = useState(2);
+  const [depositMin, setDepositMin] = useState(10);
+
+  const belowMinMessage = (net: string) =>
+    `Amount is below the minimum for ${net}. Try a higher amount or switch network.`;
 
   const reset = useCallback(() => {
     setStep("amount");
-    setAmount("2");
+    setAmount("10");
     setStartPlan(false);
     setRiskPercent("2");
     setNetwork("TRC20");
@@ -80,13 +82,10 @@ export function WalletDepositModal({
     let cancelled = false;
     void api.wallet.depositMinimum(network).then((m) => {
       if (cancelled) return;
-      setDepositMin(m.effectiveMin);
-      setGatewayMin(m.gatewayMin);
+      setDepositMin(m.minUsdt);
       setAmount((prev) => {
         const n = Number(prev);
-        return !Number.isFinite(n) || n < m.effectiveMin
-          ? String(m.effectiveMin)
-          : prev;
+        return !Number.isFinite(n) || n < m.minUsdt ? String(m.minUsdt) : prev;
       });
     });
     return () => {
@@ -124,7 +123,7 @@ export function WalletDepositModal({
     try {
       const numAmount = Number(amount);
       if (!Number.isFinite(numAmount) || numAmount < depositMin) {
-        throw new Error(`Enter at least ${formatCurrency(depositMin)} USDT`);
+        throw new Error(belowMinMessage(network));
       }
       if (startPlan && numAmount < minPlanDeposit) {
         throw new Error(
@@ -230,13 +229,8 @@ export function WalletDepositModal({
             <>
               <div>
                 <label className="mb-1 block text-xs text-gray-400">
-                  Amount (USDT) — min {formatCurrency(depositMin)}
-                  {gatewayMin > 2 && (
-                    <span className="text-gray-500">
-                      {" "}
-                      (NOWPayments {network} minimum)
-                    </span>
-                  )}
+                  Amount (USDT) — minimum {formatCurrency(depositMin)} on{" "}
+                  {network}
                 </label>
                 <Input
                   type="number"

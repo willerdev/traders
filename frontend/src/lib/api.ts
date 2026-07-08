@@ -771,12 +771,9 @@ class ApiClient {
         `/wallet/transactions?take=${take}&skip=${skip}`,
       ),
     depositMinimum: (network: string) =>
-      this.request<{
-        platformMin: number;
-        gatewayMin: number;
-        effectiveMin: number;
-        network?: string;
-      }>(`/wallet/deposit/minimum?network=${encodeURIComponent(network)}`),
+      this.request<{ minUsdt: number; network: string }>(
+        `/wallet/deposit/minimum?network=${encodeURIComponent(network)}`,
+      ),
     previewDeposit: (amount: number, riskPercent: number) =>
       this.request<DepositorPlanPreview>(
         `/wallet/deposit/preview?amount=${amount}&riskPercent=${riskPercent}`,

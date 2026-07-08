@@ -21,7 +21,7 @@ import { resolvePayoutDestination } from '../common/payout.util';
 import { ComplianceService } from '../compliance/compliance.service';
 
 const PLAN_DAYS = 5;
-const MIN_WALLET_TOPUP_USDT = 2;
+const DEPOSIT_MIN_FALLBACK_USDT = 10;
 
 @Injectable()
 export class WalletService {
@@ -236,26 +236,38 @@ export class WalletService {
     return { balance: newBalance };
   }
 
+  private depositBelowMinMessage(network: string) {
+    return `Amount is below the minimum for ${network}. Try a higher amount or switch network.`;
+  }
+
   async getDepositMinimum(network: string) {
-    const platformMin = MIN_WALLET_TOPUP_USDT;
     if (!this.nowPayments.isConfigured) {
-      return { platformMin, gatewayMin: platformMin, effectiveMin: platformMin };
+      return {
+        minUsdt: DEPOSIT_MIN_FALLBACK_USDT,
+        network: network.toUpperCase(),
+      };
     }
     try {
       const { minAmount, fiatEquivalent } =
         await this.nowPayments.getMinPaymentAmount(network, {
           fiatEquivalent: 'usd',
         });
-      const gatewayMin = Math.ceil(
-        (fiatEquivalent ?? minAmount ?? platformMin) * 100,
-      ) / 100;
-      const effectiveMin = Math.max(platformMin, gatewayMin);
-      return { platformMin, gatewayMin, effectiveMin, network };
+      const minUsdt =
+        Math.ceil(
+          (fiatEquivalent ?? minAmount ?? DEPOSIT_MIN_FALLBACK_USDT) * 100,
+        ) / 100;
+      return {
+        minUsdt: minUsdt > 0 ? minUsdt : DEPOSIT_MIN_FALLBACK_USDT,
+        network: network.toUpperCase(),
+      };
     } catch (err) {
       this.logger.warn(
-        `Could not fetch NOWPayments min for ${network}: ${err instanceof Error ? err.message : err}`,
+        `Could not fetch deposit min for ${network}: ${err instanceof Error ? err.message : err}`,
       );
-      return { platformMin, gatewayMin: platformMin, effectiveMin: platformMin };
+      return {
+        minUsdt: DEPOSIT_MIN_FALLBACK_USDT,
+        network: network.toUpperCase(),
+      };
     }
   }
 
@@ -265,23 +277,13 @@ export class WalletService {
     amount: number,
     riskPercent?: number,
   ) {
-    if (amount < MIN_WALLET_TOPUP_USDT) {
-      throw new BadRequestException(
-        `Minimum top-up is $${MIN_WALLET_TOPUP_USDT} USDT`,
-      );
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Deposit amount must be greater than zero');
     }
 
-    if (this.nowPayments.isConfigured) {
-      const { effectiveMin, gatewayMin } = await this.getDepositMinimum(network);
-      if (amount < effectiveMin) {
-        const hint =
-          gatewayMin > MIN_WALLET_TOPUP_USDT
-            ? ` NOWPayments requires at least $${gatewayMin.toFixed(2)} USDT on ${network}.`
-            : '';
-        throw new BadRequestException(
-          `Minimum deposit for ${network} is $${effectiveMin.toFixed(2)} USDT.${hint}`,
-        );
-      }
+    const { minUsdt } = await this.getDepositMinimum(network);
+    if (amount < minUsdt) {
+      throw new BadRequestException(this.depositBelowMinMessage(network));
     }
 
     const payment = await this.prisma.payment.create({
@@ -350,13 +352,12 @@ export class WalletService {
         .delete({ where: { id: payment.id } })
         .catch(() => undefined);
       if (err instanceof NowPaymentsApiError) {
-        const msg = err.message || 'Could not create deposit payment';
-        if (/less than minimal/i.test(msg)) {
-          throw new BadRequestException(
-            `Amount is below the NOWPayments minimum for ${network}. Try a higher amount or switch network.`,
-          );
+        if (/less than minimal/i.test(err.message || '')) {
+          throw new BadRequestException(this.depositBelowMinMessage(network));
         }
-        throw new BadRequestException(msg);
+        throw new BadRequestException(
+          err.message || 'Could not create deposit payment',
+        );
       }
       throw err;
     }
