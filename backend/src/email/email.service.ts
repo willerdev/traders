@@ -9,33 +9,66 @@ export type SendEmailParams = {
   text?: string;
 };
 
+export type SendEmailResult = {
+  ok: boolean;
+  error?: string;
+};
+
+function normalizeEnv(value: string | undefined | null): string {
+  if (!value?.trim()) return "";
+  return value.trim().replace(/^['"]|['"]$/g, "");
+}
+
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  readonly from: string;
   readonly frontendUrl: string;
 
   constructor(private config: ConfigService) {
-    this.from =
-      this.config.get<string>('EMAIL_FROM')?.trim() ||
-      'TraderRank Pro <notifications@thetradeguard.com>';
     this.frontendUrl = resolvePublicAppUrl({
-      PUBLIC_APP_URL: this.config.get<string>('PUBLIC_APP_URL'),
-      FRONTEND_URL: this.config.get<string>('FRONTEND_URL'),
+      PUBLIC_APP_URL: this.config.get<string>("PUBLIC_APP_URL"),
+      FRONTEND_URL: this.config.get<string>("FRONTEND_URL"),
     });
   }
 
   /** Read at call time so Render/env updates are picked up without a stale constructor cache. */
   private apiKey(): string {
-    return (
-      this.config.get<string>('RESEND_API_KEY') ||
-      process.env.RESEND_API_KEY ||
-      ''
-    ).trim();
+    return normalizeEnv(
+      this.config.get<string>("RESEND_API_KEY") || process.env.RESEND_API_KEY,
+    );
+  }
+
+  /** Read at call time — supports `EMAIL_FROM` or `EMAIL_FROM_NAME` + bare address. */
+  get from(): string {
+    const raw = normalizeEnv(
+      this.config.get<string>("EMAIL_FROM") || process.env.EMAIL_FROM,
+    );
+    if (raw) return raw;
+
+    const address = normalizeEnv(
+      this.config.get<string>("EMAIL_FROM_ADDRESS") ||
+        process.env.EMAIL_FROM_ADDRESS,
+    );
+    const name = normalizeEnv(
+      this.config.get<string>("EMAIL_FROM_NAME") ||
+        process.env.EMAIL_FROM_NAME ||
+        "TraderRank Pro",
+    );
+    if (address) return `${name} <${address}>`;
+
+    return "TraderRank Pro <notifications@thetradeguard.com>";
   }
 
   get isConfigured(): boolean {
     return this.apiKey().length > 0;
+  }
+
+  serverHint(): string {
+    return (
+      normalizeEnv(process.env.API_PUBLIC_URL) ||
+      normalizeEnv(process.env.RENDER_EXTERNAL_URL) ||
+      "this API server"
+    );
   }
 
   layout(title: string, bodyHtml: string): string {
@@ -83,24 +116,32 @@ export class EmailService {
   }
 
   async send(params: SendEmailParams): Promise<boolean> {
+    return (await this.sendDetailed(params)).ok;
+  }
+
+  async sendDetailed(params: SendEmailParams): Promise<SendEmailResult> {
     const key = this.apiKey();
     if (!key) {
-      this.logger.warn('RESEND_API_KEY not set — email skipped');
-      return false;
+      const hint = this.serverHint();
+      this.logger.warn(`RESEND_API_KEY not set on ${hint} — email skipped`);
+      return {
+        ok: false,
+        error: `RESEND_API_KEY is not set on ${hint}. Add it to the traders-api service on Render (not traders-web), then redeploy.`,
+      };
     }
 
     const to = params.to.trim().toLowerCase();
-    if (!to || !to.includes('@')) {
+    if (!to || !to.includes("@")) {
       this.logger.warn(`Invalid email recipient: ${to}`);
-      return false;
+      return { ok: false, error: `Invalid recipient address: ${to || "(empty)"}` };
     }
 
     try {
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
         headers: {
           Authorization: `Bearer ${key}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           from: this.from,
@@ -111,22 +152,31 @@ export class EmailService {
         }),
       });
 
-      const body = await res.json().catch(() => ({}));
+      const body = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        name?: string;
+      };
 
       if (!res.ok) {
+        const detail =
+          body.message ||
+          body.name ||
+          `Resend HTTP ${res.status}`;
         this.logger.error(
           `Resend ${res.status}: ${JSON.stringify(body).slice(0, 300)}`,
         );
-        return false;
+        return {
+          ok: false,
+          error: `Resend rejected the email (${detail}). Check EMAIL_FROM (${this.from}) and verify the domain in your Resend dashboard.`,
+        };
       }
 
       this.logger.log(`Email sent to ${to}: ${params.subject}`);
-      return true;
+      return { ok: true };
     } catch (err) {
-      this.logger.error(
-        `Email send failed: ${err instanceof Error ? err.message : err}`,
-      );
-      return false;
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Email send failed: ${message}`);
+      return { ok: false, error: `Email send failed: ${message}` };
     }
   }
 }

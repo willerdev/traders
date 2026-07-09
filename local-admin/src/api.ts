@@ -1281,6 +1281,8 @@ export type MarketingAudienceInfo = {
 
 export type MarketingSchedule = {
   emailConfigured: boolean;
+  emailFrom?: string;
+  apiServer?: string;
   cadence: string;
   inactiveAfterDays: number;
   nextRuns: { runsAt: string; label: string }[];

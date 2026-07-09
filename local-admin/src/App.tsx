@@ -3717,6 +3717,35 @@ export default function App() {
               <p className="muted">Loading schedule…</p>
             ) : (
               <>
+                {!marketingSchedule.emailConfigured ? (
+                  <div
+                    className="kyc-card"
+                    style={{
+                      marginBottom: "1rem",
+                      borderColor: "#f59e0b",
+                      background: "rgba(245, 158, 11, 0.08)",
+                    }}
+                  >
+                    <strong style={{ color: "#fbbf24" }}>Email not configured on this API</strong>
+                    <p className="muted" style={{ margin: "0.5rem 0 0" }}>
+                      {marketingSchedule.apiServer
+                        ? `Connected to ${marketingSchedule.apiServer}. `
+                        : ""}
+                      Add <code>RESEND_API_KEY</code> to that backend service, or point local admin
+                      at production: set{" "}
+                      <code>VITE_PROXY_TARGET=https://traders-c53s.onrender.com</code> in{" "}
+                      <code>local-admin/.env</code> and restart <code>npm run dev</code>.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="muted" style={{ margin: "0 0 1rem" }}>
+                    Sending from {marketingSchedule.emailFrom ?? "configured sender"}
+                    {marketingSchedule.apiServer
+                      ? ` via ${marketingSchedule.apiServer}`
+                      : ""}
+                    .
+                  </p>
+                )}
                 <div className="cards">
                   {marketingSchedule.nextRuns.slice(0, 2).map((run) => (
                     <div className="card" key={run.runsAt}>

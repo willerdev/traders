@@ -230,6 +230,8 @@ export class MarketingService {
 
     return {
       emailConfigured: this.email.isConfigured,
+      emailFrom: this.email.from,
+      apiServer: this.email.serverHint(),
       cadence:
         'Twice weekly — Monday and Thursday at 10:00 UTC (unpaid, idle traders, and incomplete KYC)',
       inactiveAfterDays: INACTIVE_AFTER_DAYS,
@@ -283,16 +285,17 @@ export class MarketingService {
       <p style="color:#94a3b8;font-size:13px;">Sent at ${new Date().toISOString()}</p>`,
     );
 
-    const ok = await this.email.send({
+    const result = await this.email.sendDetailed({
       to: email,
       subject: 'TraderRank Pro — email test',
       html,
       text: 'TraderRank Pro email test — if you received this, Resend is working.',
     });
 
-    if (!ok) {
+    if (!result.ok) {
       throw new BadRequestException(
-        'Email could not be sent — check RESEND_API_KEY and EMAIL_FROM on the API server',
+        result.error ||
+          'Email could not be sent — check RESEND_API_KEY and EMAIL_FROM on the API server',
       );
     }
 
