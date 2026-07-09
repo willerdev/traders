@@ -256,6 +256,16 @@ export class SignalsService {
     }
   }
 
+  private async clearMatchingSetupDrafts(
+    userId: string,
+    screenshotUrl: string,
+  ) {
+    if (!screenshotUrl?.trim()) return;
+    await this.prisma.signalDraft.deleteMany({
+      where: { userId, screenshotUrl: screenshotUrl.trim() },
+    });
+  }
+
   async submit(userId: string, dto: CreateSignalDto) {
     dto = { ...dto, symbol: normalizeChartSymbol(dto.symbol) };
     this.validateEntryRange(dto);
@@ -304,6 +314,8 @@ export class SignalsService {
         data: { ...signalData, status: 'REJECTED_DUPLICATE' },
       });
 
+      await this.clearMatchingSetupDrafts(userId, dto.screenshotUrl);
+
       return {
         status: 'duplicate_signal',
         signalId: rejected.signalId,
@@ -351,6 +363,8 @@ export class SignalsService {
         takeProfit: dto.takeProfit,
       },
     });
+
+    await this.clearMatchingSetupDrafts(userId, dto.screenshotUrl);
 
     const trade = await this.prisma.trade.findUnique({
       where: { signalId: signal.id },

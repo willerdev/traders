@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { CheckCircle2, Loader2, X } from "lucide-react";
+import { WalletWithdrawFeeNotice } from "@/components/wallet/wallet-withdraw-fee-notice";
 
 export function WalletWithdrawModal({
   open,
@@ -100,6 +101,7 @@ export function WalletWithdrawModal({
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                 />
+                <WalletWithdrawFeeNotice amount={amount} className="mt-2" />
               </div>
               <div>
                 <label className="mb-1 block text-xs text-gray-400">

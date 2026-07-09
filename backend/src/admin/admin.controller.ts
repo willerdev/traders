@@ -253,6 +253,16 @@ export class AdminController {
     );
   }
 
+  @Post('payouts/:payoutId/refund')
+  @RequireAdminPermission('payout')
+  refundPayout(
+    @Param('payoutId') payoutId: string,
+    @Request() req: { user: { id: string } },
+    @Body('reason') reason?: string,
+  ) {
+    return this.adminService.refundPayout(payoutId, req.user.id, reason);
+  }
+
   @Get('nowpayments/wallet')
   getNowPaymentsWallet() {
     return this.adminService.getNowPaymentsWallet();

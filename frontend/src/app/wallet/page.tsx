@@ -7,6 +7,7 @@ import { api, type WalletLedgerItem, type WalletSummary } from "@/lib/api";
 import { WalletBalanceCard } from "@/components/wallet/wallet-balance-card";
 import { WalletDepositModal } from "@/components/wallet/wallet-deposit-modal";
 import { WalletWithdrawModal } from "@/components/wallet/wallet-withdraw-modal";
+import { WalletWithdrawFeeNotice } from "@/components/wallet/wallet-withdraw-fee-notice";
 import { formatCurrency } from "@/lib/utils";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { syncApiAuthToken, useAuthStore } from "@/stores/auth";
@@ -125,6 +126,10 @@ export default function WalletPage() {
           onWithdraw={() => setWithdrawOpen(true)}
           onDeposit={() => setDepositOpen(true)}
         />
+      )}
+
+      {summary && (
+        <WalletWithdrawFeeNotice />
       )}
 
       {summary && (

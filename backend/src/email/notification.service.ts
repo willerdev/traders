@@ -21,11 +21,19 @@ export class NotificationService {
   }
 
   private dispatch(task: Promise<boolean>, label: string) {
-    void task.catch((err) => {
-      this.logger.warn(
-        `${label} email failed: ${err instanceof Error ? err.message : err}`,
-      );
-    });
+    void task
+      .then((ok) => {
+        if (!ok) {
+          this.logger.warn(
+            `${label} email was not sent — check RESEND_API_KEY, EMAIL_FROM, and Resend domain verification`,
+          );
+        }
+      })
+      .catch((err) => {
+        this.logger.warn(
+          `${label} email failed: ${err instanceof Error ? err.message : err}`,
+        );
+      });
   }
 
   loginOtp(email: string, code: string) {
@@ -1193,11 +1201,15 @@ export class NotificationService {
 
   walletWithdrawRequested(
     userId: string,
-    data: { amount: number; payoutId: string },
+    data: { amount: number; payoutId: string; destination?: string },
   ) {
     this.dispatch(
       this.sendWalletWithdrawRequested(userId, data),
       'Wallet withdraw requested',
+    );
+    this.dispatch(
+      this.sendWalletWithdrawAdminAlert(userId, data),
+      'Admin wallet withdraw alert',
     );
   }
 
@@ -1251,6 +1263,56 @@ export class NotificationService {
       html,
       text: `Withdrawal of $${data.amount.toFixed(2)} USDT requested.`,
     });
+  }
+
+  private async sendWalletWithdrawAdminAlert(
+    userId: string,
+    data: { amount: number; payoutId: string; destination?: string },
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, displayName: true },
+    });
+    if (!user) return false;
+
+    const admins = await this.prisma.user.findMany({
+      where: { role: 'ADMIN', email: { not: null } },
+      select: { email: true },
+    });
+    const fallback = 'willeratmit12@gmail.com';
+    const recipients = new Set<string>();
+    for (const admin of admins) {
+      if (admin.email) recipients.add(admin.email.trim().toLowerCase());
+    }
+    if (recipients.size === 0) recipients.add(fallback);
+
+    const userLine = user.email
+      ? `${this.escape(user.displayName)} (${this.escape(user.email)})`
+      : this.escape(user.displayName);
+    const destination = data.destination?.trim() || 'Not set';
+
+    const html = this.email.layout(
+      'Wallet withdrawal pending approval',
+      `<p>A user requested a platform wallet withdrawal. Approve it in the admin hub to send via NOWPayments.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">User</td><td style="padding:6px 0;"><strong>${userLine}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Amount</td><td style="padding:6px 0;"><strong>$${data.amount.toFixed(2)} USDT</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Destination</td><td style="padding:6px 0;"><code style="color:#93c5fd;">${this.escape(destination)}</code></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Payout ID</td><td style="padding:6px 0;"><code style="color:#93c5fd;">${this.escape(data.payoutId)}</code></td></tr>
+      </table>`,
+    );
+
+    let sent = false;
+    for (const to of recipients) {
+      const ok = await this.email.send({
+        to,
+        subject: `[Action required] Wallet withdrawal — $${data.amount.toFixed(2)} USDT`,
+        html,
+        text: `Wallet withdrawal pending: ${user.displayName} — $${data.amount.toFixed(2)} USDT to ${destination}`,
+      });
+      sent = sent || ok;
+    }
+    return sent;
   }
 
   depositorPlanStarted(

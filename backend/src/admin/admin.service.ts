@@ -1044,6 +1044,23 @@ export class AdminService {
     return result;
   }
 
+  async refundPayout(payoutId: string, adminId: string, reason?: string) {
+    const result = await this.payoutService.refundWalletWithdrawal(
+      payoutId,
+      adminId,
+      reason,
+    );
+
+    await this.logAction(adminId, 'PAYOUT_REFUNDED', payoutId, {
+      userId: result.payout.userId,
+      amount: result.amount,
+      balance: result.balance,
+      reason: reason?.trim() || null,
+    });
+
+    return result;
+  }
+
   getNowPaymentsWallet() {
     return this.custodyDeposits.getWalletSummary();
   }

@@ -48,6 +48,26 @@ export class NowPaymentsService {
     return Boolean(this.apiKey);
   }
 
+  get isPayoutConfigured(): boolean {
+    return this.isConfigured && Boolean(this.payoutEmail()) && Boolean(this.payoutPassword());
+  }
+
+  private payoutEmail(): string {
+    return (
+      this.config.get<string>('NOWPAYMENTS_PAYOUT_EMAIL') ||
+      process.env.NOWPAYMENTS_PAYOUT_EMAIL ||
+      ''
+    ).trim();
+  }
+
+  private payoutPassword(): string {
+    return (
+      this.config.get<string>('NOWPAYMENTS_PAYOUT_PASSWORD') ||
+      process.env.NOWPAYMENTS_PAYOUT_PASSWORD ||
+      ''
+    ).trim();
+  }
+
   private headers(extra: Record<string, string> = {}) {
     return {
       'x-api-key': this.apiKey,
@@ -291,12 +311,12 @@ export class NowPaymentsService {
       return this.payoutToken;
     }
 
-    const email = this.config.get<string>('NOWPAYMENTS_PAYOUT_EMAIL');
-    const password = this.config.get<string>('NOWPAYMENTS_PAYOUT_PASSWORD');
+    const email = this.payoutEmail();
+    const password = this.payoutPassword();
 
     if (!email || !password) {
       throw new Error(
-        'NOWPayments payout credentials not configured (NOWPAYMENTS_PAYOUT_EMAIL / NOWPAYMENTS_PAYOUT_PASSWORD)',
+        'NOWPayments payout credentials not configured — set NOWPAYMENTS_PAYOUT_EMAIL and NOWPAYMENTS_PAYOUT_PASSWORD on the API server (your NOWPayments account login), then restart',
       );
     }
 

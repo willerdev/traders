@@ -15,6 +15,8 @@ import { api, type SignalDraft, type MatchedDuplicateSignal, type HubQuote } fro
 import { hasTradingAccess } from "@/lib/trading-access";
 import { normalizeSetupFields, setupValidationError } from "@/lib/chart-setup";
 import { compressSetupImage } from "@/lib/compress-setup-image";
+import { usePendingSetupSubmit } from "@/hooks/use-pending-setup-submit";
+import { blobToFile, clearPendingSetupSubmit } from "@/lib/pending-setup-submit";
 import { WeeklyAccessGate } from "@/components/payments/weekly-access-gate";
 import {
   SubmitReviewCard,
@@ -131,11 +133,13 @@ function setupPreviewUrl(screenshotUrl: string | null | undefined): string {
 export default function SubmitSignalPage() {
   const router = useRouter();
   const { ready } = useRequireAuth();
+  const userId = useAuthStore((s) => s.user?.id);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formCardRef = useRef<HTMLDivElement>(null);
   const skipAutoSave = useRef(false);
   const saveGenerationRef = useRef(0);
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const submittedScreenshotRef = useRef<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -182,6 +186,78 @@ export default function SubmitSignalPage() {
 
   const progress = calcProgress(form, screenshotUrl);
 
+  const loadDrafts = useCallback(async () => {
+    try {
+      const list = await api.signals.listDrafts();
+      setDrafts(list);
+    } catch {
+      /* drafts are optional */
+    } finally {
+      setDraftsLoading(false);
+    }
+  }, []);
+
+  const applySubmitSuccess = useCallback(
+    async (result: SubmitResult) => {
+      skipAutoSave.current = true;
+      pauseAutoSave(8000);
+
+      const submittedShot = submittedScreenshotRef.current;
+
+      if (draftId) {
+        try {
+          await api.signals.deleteDraft(draftId);
+        } catch {
+          /* backend also clears matching drafts */
+        }
+      }
+
+      setDrafts((prev) =>
+        submittedShot
+          ? prev.filter((d) => d.screenshotUrl !== submittedShot)
+          : prev.filter((d) => d.id !== draftId),
+      );
+      setDraftId(null);
+      submittedScreenshotRef.current = null;
+
+      clearFormState();
+      if (userId) {
+        await clearPendingSetupSubmit(userId);
+      }
+      await loadDrafts();
+
+      setStep("edit");
+      setReview(null);
+      setSuccess(result);
+      setError("");
+    },
+    [draftId, loadDrafts, userId],
+  );
+
+  const {
+    pending: pendingSubmit,
+    autoRetrying,
+    runSubmit,
+    retryNow,
+    dismissPending,
+  } = usePendingSetupSubmit({
+    userId,
+    enabled: ready && !success,
+    onSuccess: (result) => {
+      void applySubmitSuccess(result);
+    },
+    onDuplicate: (message, matched) => {
+      setDuplicateMatch(matched);
+      setError(message);
+      setStep("edit");
+      setReview(null);
+      void loadDrafts();
+    },
+    onError: (message) => {
+      setError(message);
+    },
+  });
+
   const refreshAccountStatus = useCallback(async () => {
     try {
       const dash = await api.users.dashboard();
@@ -197,17 +273,6 @@ export default function SubmitSignalPage() {
       }
     } catch {
       setAccountReady(false);
-    }
-  }, []);
-
-  const loadDrafts = useCallback(async () => {
-    try {
-      const list = await api.signals.listDrafts();
-      setDrafts(list);
-    } catch {
-      /* drafts are optional */
-    } finally {
-      setDraftsLoading(false);
     }
   }, []);
 
@@ -430,7 +495,18 @@ export default function SubmitSignalPage() {
   }, [buildDraftPayload, draftId, form, screenshotUrl]);
 
   useEffect(() => {
-    if (!ready || success || step === "review") return;
+    if (
+      !ready ||
+      success ||
+      step === "review" ||
+      step === "verify" ||
+      loading ||
+      uploading ||
+      analyzing ||
+      skipAutoSave.current
+    ) {
+      return;
+    }
     autoSaveTimerRef.current = setTimeout(() => {
       void saveDraftNow();
     }, 1500);
@@ -440,7 +516,18 @@ export default function SubmitSignalPage() {
         autoSaveTimerRef.current = null;
       }
     };
-  }, [form, screenshotUrl, aiFilled, ready, success, step, saveDraftNow]);
+  }, [
+    analyzing,
+    form,
+    loading,
+    ready,
+    saveDraftNow,
+    screenshotUrl,
+    aiFilled,
+    success,
+    step,
+    uploading,
+  ]);
 
   const entryMin = parseFloat(form.entryMin);
   const entryMax = parseFloat(form.entryMax);
@@ -502,11 +589,11 @@ export default function SubmitSignalPage() {
         formCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     } catch (err) {
-      setError(
+      const message =
         err instanceof Error
           ? err.message
-          : "Upload or AI analysis failed — fill in the fields manually",
-      );
+          : "Upload or AI analysis failed — fill in the fields manually";
+      setError(message);
     } finally {
       setUploading(false);
       setAnalyzing(false);
@@ -628,6 +715,41 @@ export default function SubmitSignalPage() {
     }
   }
 
+  async function retryAiIngest() {
+    if (!setupFile) return;
+    setError("");
+    setAnalyzing(true);
+    setUploading(true);
+    try {
+      const ingest = await api.uploads.ingestSetup(setupFile);
+      setScreenshotUrl(ingest.url);
+      const fixed = normalizeSetupFields({
+        direction: ingest.analysis.direction,
+        entryMin: ingest.analysis.entryMin,
+        entryMax: ingest.analysis.entryMax,
+        stopLoss: ingest.analysis.stopLoss,
+        takeProfit: ingest.analysis.takeProfit,
+      });
+      setForm({
+        symbol: ingest.analysis.symbol,
+        direction: fixed.direction,
+        entryMin: String(fixed.entryMin),
+        entryMax: String(fixed.entryMax),
+        stopLoss: String(fixed.stopLoss),
+        takeProfit: String(fixed.takeProfit),
+        description: ingest.analysis.description,
+      });
+      setAiSuggestedDirection(fixed.direction);
+      setAiFilled(true);
+      setStep("verify");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "AI analysis failed again");
+    } finally {
+      setAnalyzing(false);
+      setUploading(false);
+    }
+  }
+
   function buildReviewPayload(): ReviewPayload | null {
     const fixed = normalizeSetupFields(
       {
@@ -737,68 +859,72 @@ export default function SubmitSignalPage() {
     if (!review) return;
     setError("");
     setDuplicateMatch(null);
+    submittedScreenshotRef.current = review.screenshotUrl || screenshotUrl || null;
     setLoading(true);
 
     try {
-      let imageUrl = review.screenshotUrl;
-      if (setupFile && !imageUrl) {
-        setUploading(true);
-        const upload = await api.uploads.setup(setupFile);
-        imageUrl = upload.url;
-        setUploading(false);
+      const outcome = await runSubmit(review, setupFile);
+
+      if (outcome.ok) {
+        return;
       }
 
-      const result = await api.signals.submit({
-        symbol: review.symbol,
-        direction: review.direction,
-        entryMin: review.entryMin,
-        entryMax: review.entryMax,
-        stopLoss: review.stopLoss,
-        takeProfit: review.takeProfit,
-        riskRewardRatio: review.riskRewardRatio,
-        description: review.description,
-        screenshotUrl: imageUrl,
-      });
-
-      if ("status" in result && result.status === "duplicate_signal") {
-        setDuplicateMatch(result.matchedSignal);
-        setError(result.message);
-        setStep("edit");
-        setReview(null);
-      } else if ("signalId" in result) {
-        if (draftId) {
-          try {
-            pauseAutoSave();
-            await api.signals.deleteDraft(draftId);
-            setDrafts((prev) => prev.filter((d) => d.id !== draftId));
-            setDraftId(null);
-          } catch {
-            /* submitted successfully anyway */
-          }
-        }
-        setStep("edit");
-        setReview(null);
-        setSuccess({
-          signalId: result.signalId as string,
-          entryRange:
-            "entryRange" in result
-              ? (result.entryRange as { min: number; max: number })
-              : { min: review.entryMin, max: review.entryMax },
-          execution:
-            "execution" in result && result.execution
-              ? result.execution
-              : { status: "pending", forwarded: false },
-          executionHub: "executionHub" in result ? result.executionHub : undefined,
-          executionValidation:
-            "executionValidation" in result ? result.executionValidation : undefined,
-        });
+      if ("duplicate" in outcome && outcome.duplicate) {
+        return;
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Submission failed");
+
+      setError(outcome.message ?? "Submission failed");
     } finally {
       setLoading(false);
       setUploading(false);
     }
+  }
+
+  async function handleRetrySubmit() {
+    if (!review && !pendingSubmit?.review) return;
+    setError("");
+    setDuplicateMatch(null);
+    setLoading(true);
+    try {
+      const activeReview = review ?? pendingSubmit!.review;
+      if (!review) {
+        setReview(activeReview);
+        setStep("review");
+      }
+      submittedScreenshotRef.current =
+        activeReview.screenshotUrl || screenshotUrl || null;
+      const outcome = await retryNow(activeReview, setupFile);
+      if (!outcome.ok && !("duplicate" in outcome && outcome.duplicate)) {
+        setError(outcome.message ?? "Retry failed");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function restorePendingSubmit() {
+    if (!pendingSubmit) return;
+    const r = pendingSubmit.review;
+    setForm({
+      symbol: r.symbol,
+      direction: r.direction,
+      entryMin: String(r.entryMin),
+      entryMax: String(r.entryMax),
+      stopLoss: String(r.stopLoss),
+      takeProfit: String(r.takeProfit),
+      description: r.description,
+    });
+    setScreenshotUrl(pendingSubmit.screenshotUrl || r.screenshotUrl);
+    if (pendingSubmit.imageBlob) {
+      const file = blobToFile(pendingSubmit.imageBlob);
+      setSetupFile(file);
+      setSetupPreview(URL.createObjectURL(file));
+    } else if (r.previewUrl) {
+      setSetupPreview(r.previewUrl);
+    }
+    setReview(r);
+    setStep("review");
+    setError(pendingSubmit.lastError);
   }
 
   async function handleResendToMt5() {
@@ -1115,10 +1241,59 @@ export default function SubmitSignalPage() {
         )}
 
         <div ref={formCardRef}>
+        {pendingSubmit && step !== "review" && !success && (
+          <Card className="mb-4 border-amber-500/30 bg-amber-500/5">
+            <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1 text-sm">
+                <p className="font-medium text-amber-200">
+                  Saved setup waiting to submit
+                </p>
+                <p className="text-muted">
+                  {pendingSubmit.review.symbol} {pendingSubmit.review.direction} —{" "}
+                  {pendingSubmit.lastError || "Submission interrupted"}
+                </p>
+                {autoRetrying ? (
+                  <p className="text-xs text-amber-200/80">Retrying automatically…</p>
+                ) : (
+                  <p className="text-xs text-gray-500">
+                    Auto-retry scheduled · you can retry manually anytime
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" onClick={restorePendingSubmit}>
+                  Open review
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="gap-1.5"
+                  disabled={loading || autoRetrying}
+                  onClick={() => void handleRetrySubmit()}
+                >
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${loading || autoRetrying ? "animate-spin" : ""}`}
+                  />
+                  Retry now
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => void dismissPending()}
+                >
+                  Dismiss
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {step === "review" && review ? (
           <SubmitReviewCard
             review={review}
-            loading={loading || uploading}
+            loading={loading || uploading || autoRetrying}
             error={error}
             onEdit={() => {
               setStep("verify");
@@ -1126,6 +1301,13 @@ export default function SubmitSignalPage() {
               setDuplicateMatch(null);
             }}
             onConfirm={() => void handleConfirmSubmit()}
+            showRetry={Boolean(error || pendingSubmit)}
+            onRetry={() => void handleRetrySubmit()}
+            retryHint={
+              pendingSubmit
+                ? "Your setup and chart are saved on this device. We will keep retrying in the background if the server is slow."
+                : undefined
+            }
           />
         ) : step === "verify" ? (
           <SetupVerifyCard
@@ -1443,9 +1625,45 @@ export default function SubmitSignalPage() {
               )}
 
               {error && !duplicateMatch && (
-                <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  {error}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    {error}
+                  </div>
+                  {(pendingSubmit || /internal server error|try again|timeout/i.test(error)) && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="w-full gap-2"
+                      disabled={loading || autoRetrying}
+                      onClick={() => {
+                        if (pendingSubmit && !review) {
+                          restorePendingSubmit();
+                          return;
+                        }
+                        void handleRetrySubmit();
+                      }}
+                    >
+                      <RefreshCw
+                        className={`h-4 w-4 ${loading || autoRetrying ? "animate-spin" : ""}`}
+                      />
+                      {pendingSubmit ? "Retry saved submission" : "Try again"}
+                    </Button>
+                  )}
+                  {setupFile && !aiFilled && error && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="w-full gap-2"
+                      disabled={analyzing || uploading}
+                      onClick={() => void retryAiIngest()}
+                    >
+                      <RefreshCw
+                        className={`h-4 w-4 ${analyzing ? "animate-spin" : ""}`}
+                      />
+                      Retry AI chart analysis
+                    </Button>
+                  )}
                 </div>
               )}
 

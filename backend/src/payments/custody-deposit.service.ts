@@ -40,6 +40,7 @@ export class CustodyDepositService {
     if (!this.nowPayments.isConfigured) {
       return {
         configured: false,
+        payoutConfigured: false,
         message: 'NOWPayments not configured — set NOWPAYMENTS_API_KEY',
         usdtBalance: 0,
         balances: {},
@@ -47,6 +48,8 @@ export class CustodyDepositService {
         pendingCryptoPayoutCount: 0,
       };
     }
+
+    const payoutConfigured = this.nowPayments.isPayoutConfigured;
 
     const [balances, pendingAgg] = await Promise.all([
       this.nowPayments.getBalance(),
@@ -63,6 +66,10 @@ export class CustodyDepositService {
 
     return {
       configured: true,
+      payoutConfigured,
+      message: payoutConfigured
+        ? undefined
+        : 'Wallet withdrawals need NOWPAYMENTS_PAYOUT_EMAIL and NOWPAYMENTS_PAYOUT_PASSWORD on the API server (your NOWPayments login)',
       usdtBalance: this.nowPayments.sumUsdtBalance(balances),
       balances,
       pendingCryptoPayoutTotal: Number(pendingAgg._sum.traderShare ?? 0),

@@ -49,6 +49,34 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleString();
 }
 
+function payoutSourceLabel(p: PayoutRow) {
+  switch (p.source) {
+    case "DEPOSITOR":
+      return "Wallet withdrawal";
+    case "PROFIT_SHARE":
+      return "Profit share";
+    case "TP_REWARD":
+      return p.notes?.replace(/^TP reward — /, "") ?? "TP reward";
+    default:
+      return "Weekly tier";
+  }
+}
+
+function payoutNeedsDestination(p: PayoutRow) {
+  return p.source === "DEPOSITOR";
+}
+
+function canApprovePayout(p: PayoutRow, payoutGatewayReady = true) {
+  if (p.user.kyc?.status !== "APPROVED") return false;
+  if (payoutNeedsDestination(p) && !p.walletAddress?.trim()) return false;
+  if (payoutNeedsDestination(p) && !payoutGatewayReady) return false;
+  return true;
+}
+
+function canRefundPayout(p: PayoutRow) {
+  return p.source === "DEPOSITOR" && p.status !== "REJECTED";
+}
+
 function fmtPercent(value: number | null | undefined, asFraction = false) {
   if (value == null || !Number.isFinite(value)) return "—";
   const pct = asFraction ? value * 100 : value;
@@ -324,6 +352,15 @@ export default function App() {
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [approvePayoutModal, setApprovePayoutModal] = useState<PayoutRow | null>(null);
   const [approvePayoutLoading, setApprovePayoutLoading] = useState(false);
+  const [approvePayoutError, setApprovePayoutError] = useState("");
+  const [refundPayoutModal, setRefundPayoutModal] = useState<PayoutRow | null>(null);
+  const [refundPayoutReason, setRefundPayoutReason] = useState("");
+  const [refundPayoutLoading, setRefundPayoutLoading] = useState(false);
+  const [refundPayoutError, setRefundPayoutError] = useState("");
+  const [creditWalletEmail, setCreditWalletEmail] = useState("");
+  const [creditWalletAmount, setCreditWalletAmount] = useState("");
+  const [creditWalletNote, setCreditWalletNote] = useState("");
+  const [creditWalletLoading, setCreditWalletLoading] = useState(false);
   const [tpClaims, setTpClaims] = useState<TpClaimRow[]>([]);
   const [promoCodes, setPromoCodes] = useState<PromoCodeRow[]>([]);
   const [promoUsage, setPromoUsage] = useState<PromoUsageRow[]>([]);
@@ -1159,6 +1196,7 @@ export default function App() {
 
   function openApprovePayoutModal(payout: PayoutRow) {
     setMessage("");
+    setApprovePayoutError("");
     setApprovePayoutModal(payout);
   }
 
@@ -1167,29 +1205,85 @@ export default function App() {
     setApprovePayoutModal(null);
   }
 
+  function closeRefundPayoutModal(force = false) {
+    if (!force && refundPayoutLoading) return;
+    setRefundPayoutModal(null);
+    setRefundPayoutReason("");
+  }
+
+  async function confirmRefundPayout() {
+    if (!refundPayoutModal) return;
+    const payout = refundPayoutModal;
+    setRefundPayoutLoading(true);
+    setMessage("");
+    setRefundPayoutError("");
+    try {
+      const res = await api.refundPayout(
+        payout.id,
+        refundPayoutReason.trim() || undefined,
+      );
+      setPayouts((rows) =>
+        rows.map((row) =>
+          row.id === payout.id ? { ...row, status: "REJECTED" } : row,
+        ),
+      );
+      closeRefundPayoutModal(true);
+      setMessage(res.message);
+      void api.payouts().then((r) => setPayouts(r.items)).catch(() => {});
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Refund failed";
+      setRefundPayoutError(msg);
+      setMessage(msg);
+    } finally {
+      setRefundPayoutLoading(false);
+    }
+  }
+
   async function confirmApprovePayout() {
     if (!approvePayoutModal) return;
     const payout = approvePayoutModal;
     setApprovePayoutLoading(true);
     setMessage("");
+    setApprovePayoutError("");
     try {
       const res = await api.approvePayout(payout.id);
+      const nextStatus =
+        res.verificationRequired || res.payout?.status === "APPROVED"
+          ? "APPROVED"
+          : "PAID";
       setPayouts((rows) =>
         rows.map((row) =>
           row.id === payout.id
-            ? { ...row, status: "PAID", processedAt: new Date().toISOString() }
+            ? {
+                ...row,
+                status: nextStatus,
+                gatewayPayoutId: res.gatewayPayoutId ?? row.gatewayPayoutId,
+              }
             : row,
         ),
       );
       closeApprovePayoutModal(true);
-      setMessage(
-        res.alreadyProcessed
-          ? "Payout was already confirmed."
-          : "Payout confirmed.",
-      );
+      if (res.verificationRequired) {
+        setMessage(
+          res.message ??
+            "Payout queued on NOWPayments — enter the 2FA code to release funds.",
+        );
+        setVerifyPayoutId(payout.id);
+        setVerifyCode("");
+      } else {
+        setMessage(
+          res.alreadyProcessed
+            ? "Payout was already confirmed."
+            : res.creditedToWallet
+              ? "Reward credited to the user's platform wallet."
+              : res.message ?? "Payout confirmed.",
+        );
+      }
       void api.payouts().then((r) => setPayouts(r.items)).catch(() => {});
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Payout confirmation failed");
+      const msg = err instanceof Error ? err.message : "Payout confirmation failed";
+      setApprovePayoutError(msg);
+      setMessage(msg);
     } finally {
       setApprovePayoutLoading(false);
     }
@@ -2513,6 +2607,90 @@ export default function App() {
             </div>
 
             <div className="kyc-card" style={{ marginBottom: "1rem" }}>
+              <h3 style={{ margin: "0 0 0.5rem" }}>Credit user wallet</h3>
+              <p className="muted" style={{ margin: "0 0 0.75rem" }}>
+                Add USDT to any user&apos;s platform wallet — use for bonuses, corrections,
+                or manual refunds.
+              </p>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "0.5rem",
+                  alignItems: "end",
+                }}
+              >
+                <label>
+                  <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                    User email
+                  </span>
+                  <input
+                    type="email"
+                    value={creditWalletEmail}
+                    onChange={(e) => setCreditWalletEmail(e.target.value)}
+                    placeholder="trader@example.com"
+                    style={{ minWidth: "14rem" }}
+                  />
+                </label>
+                <label>
+                  <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                    Amount (USDT)
+                  </span>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={creditWalletAmount}
+                    onChange={(e) => setCreditWalletAmount(e.target.value)}
+                    style={{ width: "7rem" }}
+                  />
+                </label>
+                <label>
+                  <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                    Note (optional)
+                  </span>
+                  <input
+                    value={creditWalletNote}
+                    onChange={(e) => setCreditWalletNote(e.target.value)}
+                    placeholder="Bonus, correction…"
+                    style={{ minWidth: "12rem" }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={
+                    creditWalletLoading ||
+                    !creditWalletEmail.trim() ||
+                    !creditWalletAmount
+                  }
+                  onClick={() => {
+                    setCreditWalletLoading(true);
+                    setMessage("");
+                    void api
+                      .creditUserWallet({
+                        email: creditWalletEmail.trim(),
+                        amount: Number(creditWalletAmount),
+                        description: creditWalletNote.trim() || undefined,
+                      })
+                      .then((res) => {
+                        setMessage(
+                          `Credited ${fmtMoney(res.amount)} to ${res.displayName} — balance ${fmtMoney(res.balance)}.`,
+                        );
+                        setCreditWalletEmail("");
+                        setCreditWalletAmount("");
+                        setCreditWalletNote("");
+                      })
+                      .catch((err: Error) => setMessage(err.message))
+                      .finally(() => setCreditWalletLoading(false));
+                  }}
+                >
+                  {creditWalletLoading ? "Crediting…" : "Credit wallet"}
+                </button>
+              </div>
+            </div>
+
+            <div className="kyc-card" style={{ marginBottom: "1rem" }}>
               <h3 style={{ margin: "0 0 0.5rem" }}>Weekly tier payouts</h3>
               <p className="muted" style={{ margin: "0 0 0.75rem" }}>
                 When enabled, the Monday job creates $10 / $50 / $100 USDT payouts
@@ -2580,6 +2758,12 @@ export default function App() {
                   </p>
                   {!npWallet.configured && (
                     <p className="muted">{npWallet.message}</p>
+                  )}
+                  {npWallet.configured && npWallet.payoutConfigured === false && (
+                    <p className="message error" style={{ marginTop: "0.5rem" }}>
+                      {npWallet.message ??
+                        "Set NOWPAYMENTS_PAYOUT_EMAIL and NOWPAYMENTS_PAYOUT_PASSWORD on the API server, then restart it — wallet withdrawals cannot be sent until then."}
+                    </p>
                   )}
                 </>
               ) : (
@@ -2859,11 +3043,7 @@ export default function App() {
                 {payouts.map((p) => (
                   <tr key={p.id}>
                     <td>{p.user.displayName}</td>
-                    <td className="muted">
-                      {p.source === "TP_REWARD"
-                        ? p.notes?.replace(/^TP reward — /, "") ?? "TP reward"
-                        : "Weekly tier"}
-                    </td>
+                    <td className="muted">{payoutSourceLabel(p)}</td>
                     <td>{fmtMoney(p.traderShare)}</td>
                     <td>{p.payoutMethod === "MOBILE_MONEY" ? "Mobile money" : p.payoutMethod === "TRC20" ? "TRC20" : "—"}</td>
                     <td className="muted">{p.walletAddress || "—"}</td>
@@ -2882,17 +3062,58 @@ export default function App() {
                           >
                             Approve
                           </button>
+                          {canRefundPayout(p) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMessage("");
+                                setRefundPayoutReason("");
+                                setRefundPayoutError("");
+                                setRefundPayoutModal(p);
+                              }}
+                            >
+                              Refund
+                            </button>
+                          )}
                         </div>
                       )}
                       {p.status === "APPROVED" && p.gatewayPayoutId && (
+                        <div className="row-actions">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setVerifyPayoutId(p.id);
+                              setVerifyCode("");
+                            }}
+                          >
+                            Enter 2FA
+                          </button>
+                          {canRefundPayout(p) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMessage("");
+                                setRefundPayoutReason("");
+                                setRefundPayoutError("");
+                                setRefundPayoutModal(p);
+                              }}
+                            >
+                              Refund
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {p.status === "PAID" && canRefundPayout(p) && (
                         <button
                           type="button"
                           onClick={() => {
-                            setVerifyPayoutId(p.id);
-                            setVerifyCode("");
+                            setMessage("");
+                            setRefundPayoutReason("");
+                            setRefundPayoutError("");
+                            setRefundPayoutModal(p);
                           }}
                         >
-                          Enter 2FA
+                          Refund
                         </button>
                       )}
                     </td>
@@ -5188,6 +5409,79 @@ export default function App() {
         </div>
       )}
 
+      {refundPayoutModal && (
+        <div
+          className="modal-overlay"
+          role="presentation"
+          onClick={() => closeRefundPayoutModal()}
+        >
+          <div
+            className="modal"
+            role="dialog"
+            aria-labelledby="refund-payout-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="refund-payout-modal-title">Refund wallet withdrawal</h3>
+            <p>
+              <strong>{refundPayoutModal.user.displayName}</strong>
+              <br />
+              <span className="muted">{refundPayoutModal.user.email}</span>
+            </p>
+            <p className="muted">
+              Credits <strong>{fmtMoney(refundPayoutModal.traderShare)}</strong> back to
+              the user&apos;s platform wallet and marks this payout as refunded. Use when
+              funds were not sent on-chain or the withdrawal should be cancelled.
+            </p>
+            <dl className="modal-meta">
+              <div>
+                <dt>Status</dt>
+                <dd>{refundPayoutModal.status}</dd>
+              </div>
+              <div>
+                <dt>Destination</dt>
+                <dd style={{ wordBreak: "break-all" }}>
+                  {refundPayoutModal.walletAddress || "—"}
+                </dd>
+              </div>
+            </dl>
+            <label>
+              <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                Reason (optional)
+              </span>
+              <input
+                value={refundPayoutReason}
+                onChange={(e) => setRefundPayoutReason(e.target.value)}
+                placeholder="Not sent on-chain, duplicate approval…"
+                style={{ width: "100%", marginTop: "0.25rem" }}
+              />
+            </label>
+            {refundPayoutError && (
+              <p className="message error" style={{ marginTop: "0.75rem" }}>
+                {refundPayoutError}
+              </p>
+            )}
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="secondary"
+                disabled={refundPayoutLoading}
+                onClick={() => closeRefundPayoutModal()}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={refundPayoutLoading}
+                onClick={() => void confirmRefundPayout()}
+              >
+                {refundPayoutLoading ? "Refunding…" : "Refund to wallet"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {approvePayoutModal && (
         <div
           className="modal-overlay"
@@ -5240,16 +5534,34 @@ export default function App() {
                 <dd>{approvePayoutModal.notes || "—"}</dd>
               </div>
             </dl>
+            <p className="muted">
+              {payoutNeedsDestination(approvePayoutModal)
+                ? "This will send USDT from NOWPayments to the user's saved payout destination."
+                : "This will credit the user's platform wallet (not an on-chain transfer)."}
+            </p>
             {(approvePayoutModal.user.kyc?.status !== "APPROVED" ||
-              !approvePayoutModal.walletAddress) && (
+              (payoutNeedsDestination(approvePayoutModal) &&
+                !approvePayoutModal.walletAddress) ||
+              (payoutNeedsDestination(approvePayoutModal) &&
+                npWallet?.payoutConfigured === false)) && (
               <p className="muted">
                 Cannot approve yet:
                 {approvePayoutModal.user.kyc?.status !== "APPROVED"
                   ? " KYC is not approved."
                   : ""}
-                {!approvePayoutModal.walletAddress
+                {payoutNeedsDestination(approvePayoutModal) &&
+                !approvePayoutModal.walletAddress
                   ? " Payout destination is missing."
                   : ""}
+                {payoutNeedsDestination(approvePayoutModal) &&
+                npWallet?.payoutConfigured === false
+                  ? " NOWPayments payout login is not configured on the API server."
+                  : ""}
+              </p>
+            )}
+            {approvePayoutError && (
+              <p className="message error" style={{ marginTop: "0.75rem" }}>
+                {approvePayoutError}
               </p>
             )}
             <div className="modal-actions">
@@ -5266,8 +5578,10 @@ export default function App() {
                 className="primary"
                 disabled={
                   approvePayoutLoading ||
-                  approvePayoutModal.user.kyc?.status !== "APPROVED" ||
-                  !approvePayoutModal.walletAddress
+                  !canApprovePayout(
+                    approvePayoutModal,
+                    npWallet?.payoutConfigured !== false,
+                  )
                 }
                 onClick={() => void confirmApprovePayout()}
               >

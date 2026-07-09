@@ -49,11 +49,6 @@ export class WalletService {
     return url;
   }
 
-  private payoutIpnUrl() {
-    const base = resolvePublicApiBaseUrl(this.config);
-    return `${base}/api/v1/payouts/ipn`;
-  }
-
   async getOrCreateWallet(userId: string) {
     return this.prisma.platformWallet.upsert({
       where: { userId },
@@ -852,30 +847,8 @@ export class WalletService {
     this.notifications.walletWithdrawRequested(userId, {
       amount,
       payoutId: payout.id,
+      destination,
     });
-
-    if (this.nowPayments.isConfigured && method === 'TRC20') {
-      try {
-        const result = await this.nowPayments.createPayout({
-          address: destination,
-          amount,
-          currency: 'usdttrc20',
-          ipnCallbackUrl: this.payoutIpnUrl(),
-        });
-        await this.prisma.payout.update({
-          where: { id: payout.id },
-          data: {
-            gatewayPayoutId: result.id,
-            status: 'APPROVED',
-            notes: `${payout.notes} — NOWPayments payout ${result.id}`,
-          },
-        });
-      } catch (err) {
-        this.logger.warn(
-          `NOWPayments payout failed for ${payout.id}: ${err instanceof Error ? err.message : err}`,
-        );
-      }
-    }
 
     return {
       status: 'requested',

@@ -657,11 +657,20 @@ export class CopyTradingService {
 
     if (pool.length > 0) {
       const { weekNumber, year } = currentWeekYear();
-      const leaderboard = await this.leaderboard.getLeaderboard(
-        weekNumber,
-        year,
-        100,
-      );
+      let leaderboard: Awaited<
+        ReturnType<LeaderboardService['getLeaderboard']>
+      > = [];
+      try {
+        leaderboard = await this.leaderboard.getLeaderboard(
+          weekNumber,
+          year,
+          100,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Copy targets: leaderboard unavailable: ${err instanceof Error ? err.message : err}`,
+        );
+      }
       const leaderboardByUser = new Map(
         leaderboard.map((row) => [row.userId, row]),
       );

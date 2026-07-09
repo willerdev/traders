@@ -3,7 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { AlertCircle, ArrowLeft, CheckCircle2, Lock } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle2, Lock, RefreshCw } from "lucide-react";
 import { TradeExecutionNotice } from "@/components/trading/trade-execution-notice";
 
 export type ReviewPayload = {
@@ -25,12 +25,18 @@ export function SubmitReviewCard({
   error,
   onEdit,
   onConfirm,
+  onRetry,
+  showRetry,
+  retryHint,
 }: {
   review: ReviewPayload;
   loading: boolean;
   error: string;
   onEdit: () => void;
   onConfirm: () => void;
+  onRetry?: () => void;
+  showRetry?: boolean;
+  retryHint?: string;
 }) {
   return (
     <Card className="border-primary/30">
@@ -102,13 +108,18 @@ export function SubmitReviewCard({
         </div>
 
         {error && (
-          <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            {error}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+            {retryHint && (
+              <p className="text-xs text-muted">{retryHint}</p>
+            )}
           </div>
         )}
 
-        <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <Button
             type="button"
             variant="secondary"
@@ -119,6 +130,19 @@ export function SubmitReviewCard({
             <ArrowLeft className="h-4 w-4" />
             Edit direction & levels
           </Button>
+          {showRetry && onRetry && (
+            <Button
+              type="button"
+              className="gap-2 sm:flex-1"
+              size="lg"
+              variant={error ? "default" : "secondary"}
+              onClick={onRetry}
+              disabled={loading}
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              {loading ? "Retrying…" : "Retry submission"}
+            </Button>
+          )}
           <Button
             type="button"
             className="gap-2 sm:flex-1"

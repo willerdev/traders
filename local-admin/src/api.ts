@@ -37,6 +37,9 @@ function formatApiError(data: unknown, status: number): string {
   if (status === 502 || status === 503) {
     return "API server unreachable — start the backend (port 4000) or check VITE_PROXY_TARGET";
   }
+  if (status === 404) {
+    return "API endpoint not found — restart local backend or deploy latest code to production";
+  }
   return `Request failed (${status})`;
 }
 
@@ -251,6 +254,17 @@ export const api = {
     request<{ message: string }>(`/admin/payouts/${payoutId}/verify`, {
       method: "POST",
       body: JSON.stringify({ code }),
+    }),
+
+  refundPayout: (payoutId: string, reason?: string) =>
+    request<{
+      message: string;
+      amount: number;
+      balance: number;
+      payout: { id: string; status: string };
+    }>(`/admin/payouts/${payoutId}/refund`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
     }),
 
   nowPaymentsWallet: () =>
@@ -894,6 +908,7 @@ export type PayoutRow = {
 export type ApprovePayoutResponse = {
   verificationRequired?: boolean;
   alreadyProcessed?: boolean;
+  creditedToWallet?: boolean;
   gatewayPayoutId?: string;
   message?: string;
   payout?: { status: string };
@@ -901,6 +916,7 @@ export type ApprovePayoutResponse = {
 
 export type NowPaymentsWalletSummary = {
   configured: boolean;
+  payoutConfigured?: boolean;
   message?: string;
   usdtBalance: number;
   balances?: Record<string, { amount?: number; pendingAmount?: number }>;

@@ -76,7 +76,14 @@ export class LeaderboardService implements OnModuleInit {
     await this.prisma.leaderboard.deleteMany({ where: { weekNumber, year } });
 
     if (entries.length > 0) {
-      await this.prisma.leaderboard.createMany({ data: entries });
+      try {
+        await this.prisma.leaderboard.createMany({ data: entries });
+      } catch (err) {
+        this.logger.warn(
+          `Leaderboard refresh skipped (week ${weekNumber}/${year}): ${err instanceof Error ? err.message : err}`,
+        );
+        return entries;
+      }
     }
 
     if (previousRankByUser.size > 0) {
