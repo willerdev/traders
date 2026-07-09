@@ -878,4 +878,8 @@ export class UpdateStaffPermissionsDto {
   @IsOptional()
   @IsBoolean()
   canManageSetups?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  canManageCopy?: boolean;
 }

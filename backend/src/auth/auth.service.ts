@@ -511,6 +511,7 @@ export class AuthService {
     adminCanApprovePayouts?: boolean;
     adminCanApproveTpClaims?: boolean;
     adminCanManageSetups?: boolean;
+    adminCanManageCopy?: boolean;
   }) {
     const payload = {
       sub: user.id,
@@ -537,6 +538,7 @@ export class AuthService {
         adminCanApprovePayouts: Boolean(user.adminCanApprovePayouts),
         adminCanApproveTpClaims: Boolean(user.adminCanApproveTpClaims),
         adminCanManageSetups: Boolean(user.adminCanManageSetups),
+        adminCanManageCopy: Boolean(user.adminCanManageCopy),
       }),
     };
   }

@@ -365,6 +365,23 @@ class ApiClient {
       }),
     copyDashboard: () =>
       this.request<CopyTradingDashboard>("/signals/metaapi/copy-dashboard"),
+    copySettings: () =>
+      this.request<CopySettings>("/admin/hub/metaapi/copy-settings"),
+    updateCopySettings: (body: Partial<CopySettings>) =>
+      this.request<CopySettings>("/admin/hub/metaapi/copy-settings", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    addCopyPoolTrader: (userId: string) =>
+      this.request<CopyPoolMutationResult>("/admin/hub/metaapi/copy-pool", {
+        method: "POST",
+        body: JSON.stringify({ userId }),
+      }),
+    removeCopyPoolTrader: (userId: string) =>
+      this.request<CopyPoolMutationResult>(
+        `/admin/hub/metaapi/copy-pool/${encodeURIComponent(userId)}`,
+        { method: "DELETE" },
+      ),
     claim: (
       signalId: string,
       outcome: "tp" | "sl",
@@ -809,21 +826,48 @@ class ApiClient {
         method: "POST",
         body: JSON.stringify({ amount, riskPercent }),
       }),
-    withdraw: (amount: number, walletAddress?: string) =>
+    withdraw: (amount: number, savedWalletId: string) =>
       this.request<{
         status: string;
         payoutId: string;
         amount: number;
+        fee: number;
+        netPayout: number;
         balance: number;
       }>("/wallet/withdraw", {
         method: "POST",
-        body: JSON.stringify({
-          amount,
-          ...(walletAddress?.trim()
-            ? { walletAddress: walletAddress.trim() }
-            : {}),
-        }),
+        body: JSON.stringify({ amount, savedWalletId }),
       }),
+    withdrawalWallets: () =>
+      this.request<SavedWithdrawalWallet[]>("/wallet/withdrawal-wallets"),
+    requestWithdrawalWalletVerification: (data: {
+      label: string;
+      address: string;
+      network: string;
+    }) =>
+      this.request<{
+        sessionId: string;
+        email: string;
+        network: string;
+        message: string;
+        expiresIn: number;
+      }>("/wallet/withdrawal-wallets/request-verification", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    confirmWithdrawalWallet: (sessionId: string, code: string) =>
+      this.request<{ wallet: SavedWithdrawalWallet; message: string }>(
+        "/wallet/withdrawal-wallets/confirm",
+        {
+          method: "POST",
+          body: JSON.stringify({ sessionId, code }),
+        },
+      ),
+    removeWithdrawalWallet: (id: string) =>
+      this.request<{ ok: boolean; message: string }>(
+        `/wallet/withdrawal-wallets/${id}`,
+        { method: "DELETE" },
+      ),
     incomeJournal: (take = 50, skip = 0) =>
       this.request<{ items: DailyIncomeEntry[]; total: number }>(
         `/wallet/income-journal?take=${take}&skip=${skip}`,
@@ -1081,6 +1125,17 @@ export interface Mt5SyncStatus {
   } | null;
 }
 
+export interface AdminPermissionsView {
+  fullAdmin?: boolean;
+  hubAccess?: boolean;
+  kyc?: boolean;
+  payout?: boolean;
+  tpClaim?: boolean;
+  setup?: boolean;
+  copy?: boolean;
+  managePermissions?: boolean;
+}
+
 export interface DashboardData {
   user: {
     id: string;
@@ -1094,6 +1149,7 @@ export interface DashboardData {
     accessExpiresAt?: string | null;
     tradingAccessActive?: boolean;
     tradingDaysRemaining?: number | null;
+    adminPermissions?: AdminPermissionsView;
   };
   onboarding?: OnboardingStatus;
   account: {
@@ -1206,6 +1262,17 @@ export interface WalletLedgerItem {
   description: string;
   referenceId: string | null;
   balanceAfter: number | null;
+  createdAt: string;
+}
+
+export type WithdrawalWalletNetwork = "TRC20" | "ERC20" | "BEP20";
+
+export interface SavedWithdrawalWallet {
+  id: string;
+  label: string;
+  address: string;
+  network: WithdrawalWalletNetwork;
+  verifiedAt: string;
   createdAt: string;
 }
 
@@ -1842,11 +1909,56 @@ export interface CopyTradeJournalEntry {
   createdAt: string;
 }
 
+export interface CopyPoolTraderRow {
+  userId: string;
+  displayName: string;
+  addedAt: string;
+  addedById: string | null;
+  rank: number | null;
+  tier: string | null;
+  score: number | null;
+  winRate: number | null;
+  profit: number | null;
+}
+
+export interface CopyPoolMutationResult {
+  ok: boolean;
+  poolTraders: CopyPoolTraderRow[];
+  leaders: CopyTradingLeader[];
+}
+
+export interface CopySettings {
+  copyRiskPercent: number;
+  copyNotifyEmail: string;
+  copyUseTwoToOneRr?: boolean;
+  copyAutoBreakevenEnabled?: boolean;
+  copyEmailAlertsEnabled?: boolean;
+  copyTradesEnabled?: boolean;
+  copyHealthReady?: boolean;
+  copyHealthMessage?: string | null;
+  copyHealthCheckedAt?: string | null;
+}
+
 export interface CopyTradingDashboard {
   configured: boolean;
   copyAccountId: string | null;
+  copyAccountSource?: "env" | "auto";
   message?: string;
   riskPercent?: number;
+  poolMode?: "manual" | "auto";
+  poolTraders?: CopyPoolTraderRow[];
+  weeklyLeaderboard?: CopyTradingLeader[];
+  copyRiskPercent?: number;
+  copyNotifyEmail?: string;
+  copyUseTwoToOneRr?: boolean;
+  copyAutoBreakevenEnabled?: boolean;
+  copyEmailAlertsEnabled?: boolean;
+  copyTradesEnabled?: boolean;
+  copyHealth?: {
+    ready: boolean;
+    message?: string | null;
+    checkedAt?: string | null;
+  };
   leaders: CopyTradingLeader[];
   terminal: {
     configured: boolean;

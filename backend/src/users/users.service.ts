@@ -22,6 +22,7 @@ import {
 } from '../common/weekly-access.util';
 import { ProfitShareService } from '../profit-share/profit-share.service';
 import { Mt5PoolService } from '../mt5-sync/mt5-pool.service';
+import { resolveAdminPermissions } from '../admin/admin-permissions.util';
 
 @Injectable()
 export class UsersService {
@@ -86,6 +87,7 @@ export class UsersService {
         accessExpiresAt: user.accessExpiresAt?.toISOString() ?? null,
         tradingAccessActive: hasActiveTradingAccess(user),
         tradingDaysRemaining: tradingAccessDaysRemaining(user.accessExpiresAt),
+        adminPermissions: resolveAdminPermissions(user),
       },
       onboarding: {
         emailVerified: user.emailVerified,

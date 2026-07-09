@@ -9,17 +9,20 @@ import {
   Crown,
   Loader2,
   RefreshCw,
+  Settings2,
   TrendingDown,
   TrendingUp,
   Wallet,
 } from "lucide-react";
 import { api, type CopyTradingDashboard } from "@/lib/api";
-import { useAuthStore } from "@/stores/auth";
+import { canAccessMt5Copy } from "@/lib/copy-access";
+import { useAuthStore, useDashboardStore } from "@/stores/auth";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { useUrlTab } from "@/hooks/use-url-tab";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { formatCurrency, cn } from "@/lib/utils";
 import { RISK_PERCENT } from "@/lib/platform-rules";
 
@@ -36,24 +39,36 @@ function statusBadge(status: string) {
   return "bg-white/10 text-gray-400";
 }
 
-export default function Mt5Page() {
+export default function Mt5CopyPage() {
   const router = useRouter();
   const { ready, hasHydrated } = useRequireAuth();
   const userRole = useAuthStore((s) => s.user?.role);
+  const authPermissions = useAuthStore((s) => s.user?.adminPermissions);
+  const dashboardPermissions = useDashboardStore((s) => s.data?.user?.adminPermissions);
+  const adminPermissions = dashboardPermissions ?? authPermissions;
+  const canManage = canAccessMt5Copy({ role: userRole, adminPermissions });
+
   const [data, setData] = useState<CopyTradingDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [poolUserId, setPoolUserId] = useState("");
+  const [poolBusy, setPoolBusy] = useState(false);
+  const [copyRiskInput, setCopyRiskInput] = useState("");
   const [tab, setTab] = useUrlTab("tab", "overview", [
     "overview",
     "positions",
     "journal",
+    "settings",
   ] as const);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setData(await api.signals.copyDashboard());
+      const next = await api.signals.copyDashboard();
+      setData(next);
+      setCopyRiskInput(String(next.copyRiskPercent ?? next.riskPercent ?? RISK_PERCENT));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load MT5 data");
     } finally {
@@ -64,15 +79,118 @@ export default function Mt5Page() {
   useEffect(() => {
     if (!hasHydrated) return;
     if (!ready) return;
-    if (userRole !== "ADMIN") {
+    if (!canManage) {
       router.replace("/dashboard");
       return;
     }
     void load();
-  }, [hasHydrated, ready, userRole, router, load]);
+  }, [hasHydrated, ready, canManage, router, load]);
+
+  async function toggleCopyTrading() {
+    if (!data) return;
+    setSettingsBusy(true);
+    setError(null);
+    try {
+      const enabled = !(data.copyTradesEnabled ?? true);
+      const updated = await api.signals.updateCopySettings({
+        copyTradesEnabled: enabled,
+      });
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              copyTradesEnabled: updated.copyTradesEnabled,
+            }
+          : prev,
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update copy settings");
+    } finally {
+      setSettingsBusy(false);
+    }
+  }
+
+  async function saveCopySettings() {
+    setSettingsBusy(true);
+    setError(null);
+    try {
+      const copyRiskPercent = Number(copyRiskInput);
+      const updated = await api.signals.updateCopySettings({
+        copyRiskPercent,
+        copyUseTwoToOneRr: data?.copyUseTwoToOneRr ?? true,
+      });
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              copyRiskPercent: updated.copyRiskPercent,
+              copyUseTwoToOneRr: updated.copyUseTwoToOneRr,
+              riskPercent: updated.copyRiskPercent,
+            }
+          : prev,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save settings");
+    } finally {
+      setSettingsBusy(false);
+    }
+  }
+
+  async function toggleTwoToOneRr() {
+    setSettingsBusy(true);
+    setError(null);
+    try {
+      const next = !(data?.copyUseTwoToOneRr ?? true);
+      const updated = await api.signals.updateCopySettings({
+        copyUseTwoToOneRr: next,
+      });
+      setData((prev) =>
+        prev ? { ...prev, copyUseTwoToOneRr: updated.copyUseTwoToOneRr } : prev,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update RR setting");
+    } finally {
+      setSettingsBusy(false);
+    }
+  }
+
+  async function addPoolTrader() {
+    const userId = poolUserId.trim();
+    if (!userId) return;
+    setPoolBusy(true);
+    setError(null);
+    try {
+      await api.signals.addCopyPoolTrader(userId);
+      setPoolUserId("");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not add trader to pool");
+    } finally {
+      setPoolBusy(false);
+    }
+  }
+
+  async function removePoolTrader(userId: string) {
+    if (!confirm("Remove this trader from the copy pool?")) return;
+    setPoolBusy(true);
+    setError(null);
+    try {
+      await api.signals.removeCopyPoolTrader(userId);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not remove trader");
+    } finally {
+      setPoolBusy(false);
+    }
+  }
 
   if (!hasHydrated || !ready) {
     return <AuthLoadingScreen />;
+  }
+
+  if (!canManage) {
+    return null;
   }
 
   if (loading && !data) {
@@ -89,6 +207,8 @@ export default function Mt5Page() {
   const equity = info?.equity ?? 0;
   const floating = data?.stats.floatingProfit ?? 0;
   const realized = data?.stats.totalRealizedProfit ?? 0;
+  const copyEnabled = data?.copyTradesEnabled ?? true;
+  const isCopyOwner = userRole !== "ADMIN" && Boolean(adminPermissions?.copy);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
@@ -98,11 +218,13 @@ export default function Mt5Page() {
         className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
       >
         <div>
-          <h1 className="text-2xl font-bold text-white">MT5 Copy Pool</h1>
+          <h1 className="text-2xl font-bold text-white">
+            {isCopyOwner ? "Your MT5 Copy Account" : "MT5 Copy Pool"}
+          </h1>
           <p className="mt-1 max-w-2xl text-sm text-gray-400">
-            Second live account — mirrors traders in the admin copy pool (or top 3
-            weekly by default) at {data?.riskPercent ?? RISK_PERCENT}% risk per trade
-            on account equity.
+            {isCopyOwner
+              ? `Live copy account — balance, positions, and journal at ${data?.riskPercent ?? RISK_PERCENT}% risk per trade.`
+              : `Second live account — mirrors traders in the copy pool (or top 3 weekly by default) at ${data?.riskPercent ?? RISK_PERCENT}% risk per trade on account equity.`}
           </p>
         </div>
         <Button variant="secondary" size="sm" onClick={() => void load()} className="gap-2">
@@ -192,6 +314,11 @@ export default function Mt5Page() {
           <CardTitle className="flex items-center gap-2 text-base">
             <Crown className="h-4 w-4 text-amber-400" />
             Traders being copied
+            {data?.poolMode && (
+              <Badge variant="secondary" className="ml-2 text-[10px]">
+                {data.poolMode === "manual" ? "Manual pool" : "Auto top 3"}
+              </Badge>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -223,15 +350,21 @@ export default function Mt5Page() {
         </CardContent>
       </Card>
 
-      <div className="mb-4 flex gap-2">
-        {(["overview", "positions", "journal"] as const).map((t) => (
+      <div className="mb-4 flex flex-wrap gap-2">
+        {(["overview", "positions", "journal", "settings"] as const).map((t) => (
           <Button
             key={t}
             size="sm"
             variant={tab === t ? "default" : "secondary"}
             onClick={() => setTab(t)}
           >
-            {t === "overview" ? "Overview" : t === "positions" ? "Positions" : "Journal"}
+            {t === "overview"
+              ? "Overview"
+              : t === "positions"
+                ? "Positions"
+                : t === "journal"
+                  ? "Journal"
+                  : "Settings"}
           </Button>
         ))}
       </div>
@@ -425,11 +558,164 @@ export default function Mt5Page() {
             </table>
             {(data?.journal.length ?? 0) === 0 && (
               <p className="py-8 text-center text-sm text-gray-500">
-                Trades from top-3 traders will appear here when they execute on MetaAPI.
+                Copy trades will appear here when signals are mirrored.
               </p>
             )}
           </CardContent>
         </Card>
+      )}
+
+      {tab === "settings" && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Settings2 className="h-4 w-4" />
+                Copy trading
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.02] px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-white">Mirror new trades</p>
+                  <p className="text-xs text-gray-500">
+                    {copyEnabled ? "Copy trading is active" : "Copy trading is paused"}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant={copyEnabled ? "secondary" : "default"}
+                  disabled={settingsBusy}
+                  onClick={() => void toggleCopyTrading()}
+                >
+                  {copyEnabled ? "Pause" : "Resume"}
+                </Button>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-gray-400">Risk per trade (%)</label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    min={0.1}
+                    max={10}
+                    step={0.1}
+                    value={copyRiskInput}
+                    onChange={(e) => setCopyRiskInput(e.target.value)}
+                  />
+                  <Button
+                    size="sm"
+                    disabled={settingsBusy}
+                    onClick={() => void saveCopySettings()}
+                  >
+                    Save
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.02] px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-white">Use 1:2 RR take profit</p>
+                  <p className="text-xs text-gray-500">
+                    Override signal TP with calculated 1:2 RR target
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant={data?.copyUseTwoToOneRr ? "default" : "secondary"}
+                  disabled={settingsBusy}
+                  onClick={() => void toggleTwoToOneRr()}
+                >
+                  {data?.copyUseTwoToOneRr ? "On" : "Off"}
+                </Button>
+              </div>
+
+              <div className="rounded-lg border border-white/10 bg-white/[0.02] px-4 py-3 text-sm">
+                <p className="font-medium text-white">Pool health</p>
+                <p
+                  className={cn(
+                    "mt-1 text-xs",
+                    data?.copyHealth?.ready ? "text-emerald-400" : "text-amber-300",
+                  )}
+                >
+                  {data?.copyHealth?.message ?? "No health check yet"}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Manual copy pool</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Trader user ID"
+                  value={poolUserId}
+                  onChange={(e) => setPoolUserId(e.target.value)}
+                />
+                <Button
+                  size="sm"
+                  disabled={poolBusy || !poolUserId.trim()}
+                  onClick={() => void addPoolTrader()}
+                >
+                  Add
+                </Button>
+              </div>
+
+              {(data?.poolTraders?.length ?? 0) === 0 ? (
+                <p className="text-sm text-gray-500">
+                  No manual pool traders — weekly top 3 is used automatically.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {data?.poolTraders?.map((trader) => (
+                    <li
+                      key={trader.userId}
+                      className="flex items-center justify-between rounded-lg border border-white/10 px-3 py-2"
+                    >
+                      <div>
+                        <p className="text-sm text-white">{trader.displayName}</p>
+                        <p className="font-mono text-xs text-gray-500">{trader.userId}</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={poolBusy}
+                        onClick={() => void removePoolTrader(trader.userId)}
+                      >
+                        Remove
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {(data?.weeklyLeaderboard?.length ?? 0) > 0 && (
+                <div>
+                  <p className="mb-2 text-xs text-gray-500">Weekly leaderboard (add by ID)</p>
+                  <ul className="max-h-40 space-y-1 overflow-y-auto text-xs text-gray-400">
+                    {data?.weeklyLeaderboard?.slice(0, 10).map((leader) => (
+                      <li key={leader.userId} className="flex justify-between gap-2">
+                        <span>
+                          #{leader.rank} {leader.displayName}
+                        </span>
+                        <button
+                          type="button"
+                          className="text-primary hover:underline"
+                          onClick={() => setPoolUserId(leader.userId)}
+                        >
+                          Use ID
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   );

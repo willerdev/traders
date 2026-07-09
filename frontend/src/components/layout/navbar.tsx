@@ -23,6 +23,10 @@ import { UserAvatar } from "@/components/layout/user-avatar";
 import { PlatformNotificationsBell } from "@/components/layout/platform-notifications-bell";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import { ChatFab } from "@/components/layout/chat-fab";
+import {
+  mt5NavHref,
+  type AdminPermissionsView,
+} from "@/lib/copy-access";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", shortLabel: "Home", icon: LayoutDashboard },
@@ -45,10 +49,25 @@ const navItems = [
 
 type NavItem = (typeof navItems)[number];
 
-function visibleNavItems(role?: string | null): NavItem[] {
-  return navItems.filter(
-    (item) => !("adminOnly" in item && item.adminOnly) || role === "ADMIN",
-  );
+function resolveNavItems(
+  role?: string | null,
+  adminPermissions?: AdminPermissionsView | null,
+): NavItem[] {
+  const mt5Href = mt5NavHref({ role, adminPermissions });
+  return navItems
+    .filter(
+      (item) => !("adminOnly" in item && item.adminOnly) || role === "ADMIN",
+    )
+    .map((item) =>
+      item.href === "/mt5" ? { ...item, href: mt5Href as "/mt5" | "/mt5/copy" } : item,
+    );
+}
+
+function visibleNavItems(
+  role?: string | null,
+  adminPermissions?: AdminPermissionsView | null,
+): NavItem[] {
+  return resolveNavItems(role, adminPermissions);
 }
 
 function PublicHeader() {
@@ -125,7 +144,10 @@ function SidebarNav({
 
 function Sidebar({ pathname }: { pathname: string }) {
   const { logout, user } = useAuthStore();
-  const items = visibleNavItems(user?.role);
+  const dashboardUser = useDashboardStore((s) => s.data?.user);
+  const adminPermissions =
+    dashboardUser?.adminPermissions ?? user?.adminPermissions;
+  const items = visibleNavItems(user?.role, adminPermissions);
 
   return (
     <aside

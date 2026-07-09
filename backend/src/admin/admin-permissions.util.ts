@@ -6,7 +6,8 @@ export type AdminPermission =
   | 'kyc'
   | 'payout'
   | 'tp_claim'
-  | 'setup';
+  | 'setup'
+  | 'copy';
 
 export type AdminPermissionsView = {
   fullAdmin: boolean;
@@ -15,6 +16,7 @@ export type AdminPermissionsView = {
   payout: boolean;
   tpClaim: boolean;
   setup: boolean;
+  copy: boolean;
   managePermissions: boolean;
 };
 
@@ -25,7 +27,12 @@ export type AdminUserFlags = Pick<
   | 'adminCanApprovePayouts'
   | 'adminCanApproveTpClaims'
   | 'adminCanManageSetups'
+  | 'adminCanManageCopy'
 >;
+
+export function canManageCopyTrading(user: AdminUserFlags): boolean {
+  return user.role === UserRole.ADMIN || user.adminCanManageCopy;
+}
 
 export function hasAdminHubAccess(user: AdminUserFlags): boolean {
   return (
@@ -48,6 +55,7 @@ export function resolveAdminPermissions(
     payout: fullAdmin || user.adminCanApprovePayouts,
     tpClaim: fullAdmin || user.adminCanApproveTpClaims,
     setup: fullAdmin || user.adminCanManageSetups,
+    copy: canManageCopyTrading(user),
     managePermissions: fullAdmin,
   };
 }
@@ -76,6 +84,9 @@ export function userHasAdminPermission(
   }
   if (permission === 'setup') {
     return user.adminCanManageSetups;
+  }
+  if (permission === 'copy') {
+    return user.adminCanManageCopy;
   }
   return false;
 }

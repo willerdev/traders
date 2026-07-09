@@ -9,8 +9,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { IsNotEmpty, IsString } from 'class-validator';
-import { JwtAuthGuard, RolesGuard } from '../auth/guards';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { JwtAuthGuard, AdminPermissionGuard } from '../auth/guards';
+import { RequireAdminPermission } from '../auth/decorators/admin-permission.decorator';
 import { UpdateCopySettingsDto } from '../common/dto';
 import { CopyTradingService } from './copy-trading.service';
 
@@ -21,8 +21,8 @@ class AddCopyPoolTraderDto {
 }
 
 @Controller('admin/hub/metaapi/copy-pool')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN')
+@UseGuards(JwtAuthGuard, AdminPermissionGuard)
+@RequireAdminPermission('full', 'copy')
 export class AdminCopyPoolController {
   constructor(private copyTrading: CopyTradingService) {}
 
@@ -41,8 +41,8 @@ export class AdminCopyPoolController {
 }
 
 @Controller('admin/hub/metaapi/copy-settings')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN')
+@UseGuards(JwtAuthGuard, AdminPermissionGuard)
+@RequireAdminPermission('full', 'copy')
 export class AdminCopySettingsController {
   constructor(private copyTrading: CopyTradingService) {}
 

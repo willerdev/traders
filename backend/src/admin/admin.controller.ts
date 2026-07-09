@@ -357,6 +357,7 @@ export class AdminController {
   }
 
   @Get('hub/metaapi/copy-dashboard')
+  @RequireAdminPermission('full', 'copy')
   getCopyTradingDashboard(
     @Query('includeTerminal') includeTerminal?: string,
   ) {

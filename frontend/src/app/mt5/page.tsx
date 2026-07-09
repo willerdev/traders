@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
   Loader2,
@@ -13,7 +14,8 @@ import {
   type UserMt5QuoteItem,
   type UserMt5Trade,
 } from "@/lib/api";
-import { useAuthStore } from "@/stores/auth";
+import { useAuthStore, useDashboardStore } from "@/stores/auth";
+import { shouldRedirectMt5ToCopy } from "@/lib/copy-access";
 import { useMt5Terminal } from "@/hooks/use-mt5-terminal";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { useUrlTab } from "@/hooks/use-url-tab";
@@ -86,8 +88,11 @@ function orderTypeLabel(row: UserMt5HistoryItem) {
 }
 
 export default function Mt5UserPage() {
+  const router = useRouter();
   const { ready, hasHydrated } = useRequireAuth();
   const userRole = useAuthStore((s) => s.user?.role);
+  const adminPermissions = useAuthStore((s) => s.user?.adminPermissions);
+  const dashboardPermissions = useDashboardStore((s) => s.data?.user?.adminPermissions);
   const userId = useAuthStore((s) => s.user?.id);
   const [tab, setTab] = useUrlTab("tab", "chart", [
     "quotes",
@@ -135,6 +140,18 @@ export default function Mt5UserPage() {
     load,
     loadRunning,
   } = useMt5Terminal(userId, ready, hasHydrated, tab, accessGranted);
+
+  useEffect(() => {
+    if (!ready || !hasHydrated) return;
+    if (
+      shouldRedirectMt5ToCopy({
+        role: userRole,
+        adminPermissions: dashboardPermissions ?? adminPermissions,
+      })
+    ) {
+      router.replace("/mt5/copy");
+    }
+  }, [ready, hasHydrated, userRole, adminPermissions, dashboardPermissions, router]);
 
   useEffect(() => {
     if (!ready) return;

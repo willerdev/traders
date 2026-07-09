@@ -26,8 +26,8 @@ import {
   TradeLifecycleWebhookDto,
   HubActionDto,
 } from '../common/dto';
-import { JwtAuthGuard, RolesGuard } from '../auth/guards';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { JwtAuthGuard, AdminPermissionGuard } from '../auth/guards';
+import { RequireAdminPermission } from '../auth/decorators/admin-permission.decorator';
 
 @Controller('signals')
 export class SignalsController {
@@ -394,8 +394,8 @@ export class SignalsController {
   }
 
   @Get('metaapi/copy-dashboard')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @UseGuards(JwtAuthGuard, AdminPermissionGuard)
+  @RequireAdminPermission('full', 'copy')
   getCopyTradingDashboard() {
     return this.signalsService.getCopyTradingDashboard();
   }

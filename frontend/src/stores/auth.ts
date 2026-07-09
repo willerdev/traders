@@ -10,6 +10,7 @@ interface User {
   role: string;
   status: string;
   avatarUrl?: string | null;
+  adminPermissions?: import("@/lib/api").AdminPermissionsView;
 }
 
 interface AuthState {
@@ -141,6 +142,7 @@ export const useDashboardStore = create<DashboardState>((set) => ({
           ...auth.user,
           displayName: data.user.displayName,
           avatarUrl: data.user.avatarUrl ?? null,
+          adminPermissions: data.user.adminPermissions ?? auth.user.adminPermissions,
         });
       }
     } catch (err) {

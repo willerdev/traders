@@ -14,6 +14,8 @@ import {
   ScrollText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { mt5NavHref } from "@/lib/copy-access";
+import { useAuthStore, useDashboardStore } from "@/stores/auth";
 
 const cashRoutes = ["/wallet", "/journal", "/tp-claims", "/payouts", "/settings", "/invest"] as const;
 
@@ -30,7 +32,7 @@ const sideTabs = [
   { href: "/invest", label: "Invest", icon: TrendingUp },
 ] as const;
 
-const mt5Tab = { href: "/mt5", label: "MT5" };
+const mt5Tab = { href: "/mt5", label: "MT5" } as const;
 
 function isMt5Path(pathname: string) {
   return pathname === "/mt5" || pathname.startsWith("/mt5/");
@@ -110,6 +112,13 @@ function SideNavItem({
 export function MobileBottomNav() {
   const pathname = usePathname();
   const [cashAt, setCashAt] = useState<string | null>(null);
+  const user = useAuthStore((s) => s.user);
+  const dashboardUser = useDashboardStore((s) => s.data?.user);
+  const mt5Href = mt5NavHref({
+    role: user?.role,
+    adminPermissions:
+      dashboardUser?.adminPermissions ?? user?.adminPermissions,
+  });
 
   const cashOpen = cashAt === pathname;
   const setCashOpen = (open: boolean) => setCashAt(open ? pathname : null);
@@ -221,7 +230,7 @@ export function MobileBottomNav() {
             active={investActive}
           />
           <SideNavItem
-            href={mt5Tab.href}
+            href={mt5Href}
             label={mt5Tab.label}
             active={mt5Active}
             textOnly

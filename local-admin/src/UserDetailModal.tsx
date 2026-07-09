@@ -54,6 +54,7 @@ export function UserDetailModal({
   const [staffPayout, setStaffPayout] = useState(false);
   const [staffTpClaim, setStaffTpClaim] = useState(false);
   const [staffSetups, setStaffSetups] = useState(false);
+  const [staffCopy, setStaffCopy] = useState(false);
   const [permissionsMessage, setPermissionsMessage] = useState("");
 
   const reload = () => {
@@ -102,6 +103,7 @@ export function UserDetailModal({
     setStaffPayout(Boolean(detail.adminCanApprovePayouts));
     setStaffTpClaim(Boolean(detail.adminCanApproveTpClaims));
     setStaffSetups(Boolean(detail.adminCanManageSetups));
+    setStaffCopy(Boolean(detail.adminCanManageCopy));
   }, [detail]);
 
   if (!userId) return null;
@@ -151,6 +153,7 @@ export function UserDetailModal({
         canApprovePayouts: staffPayout,
         canApproveTpClaims: staffTpClaim,
         canManageSetups: staffSetups,
+        canManageCopy: staffCopy,
       });
       setDetail((prev) =>
         prev
@@ -160,6 +163,7 @@ export function UserDetailModal({
               adminCanApprovePayouts: updated.adminCanApprovePayouts,
               adminCanApproveTpClaims: updated.adminCanApproveTpClaims,
               adminCanManageSetups: updated.adminCanManageSetups,
+              adminCanManageCopy: updated.adminCanManageCopy,
             }
           : prev,
       );
@@ -266,6 +270,15 @@ export function UserDetailModal({
                       onChange={(e) => setStaffSetups(e.target.checked)}
                     />
                     <span>Setup reviewer — view setups and send to MT5 Copy</span>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <input
+                      type="checkbox"
+                      checked={staffCopy}
+                      disabled={permissionsBusy}
+                      onChange={(e) => setStaffCopy(e.target.checked)}
+                    />
+                    <span>MT5 Copy owner — manage copy pool, settings, and journal</span>
                   </label>
                 </div>
                 {permissionsMessage && (

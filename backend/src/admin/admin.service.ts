@@ -529,6 +529,7 @@ export class AdminService {
         adminCanApprovePayouts: true,
         adminCanApproveTpClaims: true,
         adminCanManageSetups: true,
+        adminCanManageCopy: true,
       },
     });
     if (!user) {
@@ -559,6 +560,7 @@ export class AdminService {
         adminCanApprovePayouts: true,
         adminCanApproveTpClaims: true,
         adminCanManageSetups: true,
+        adminCanManageCopy: true,
       },
     });
     if (!existing) {
@@ -575,6 +577,7 @@ export class AdminService {
       adminCanApprovePayouts?: boolean;
       adminCanApproveTpClaims?: boolean;
       adminCanManageSetups?: boolean;
+      adminCanManageCopy?: boolean;
     } = {};
     if (dto.canApproveKyc !== undefined) {
       data.adminCanApproveKyc = dto.canApproveKyc;
@@ -587,6 +590,9 @@ export class AdminService {
     }
     if (dto.canManageSetups !== undefined) {
       data.adminCanManageSetups = dto.canManageSetups;
+    }
+    if (dto.canManageCopy !== undefined) {
+      data.adminCanManageCopy = dto.canManageCopy;
     }
     if (Object.keys(data).length === 0) {
       throw new BadRequestException('Nothing to update');
@@ -604,6 +610,7 @@ export class AdminService {
         adminCanApprovePayouts: true,
         adminCanApproveTpClaims: true,
         adminCanManageSetups: true,
+        adminCanManageCopy: true,
       },
     });
 
@@ -620,6 +627,11 @@ export class AdminService {
     if (updated.adminCanManageSetups && !existing.adminCanManageSetups) {
       newlyGranted.push(
         'Setup reviewer — view trader setups and send to MT5 Copy',
+      );
+    }
+    if (updated.adminCanManageCopy && !existing.adminCanManageCopy) {
+      newlyGranted.push(
+        'MT5 Copy owner — manage copy pool, settings, and journal',
       );
     }
 
@@ -822,6 +834,7 @@ export class AdminService {
       adminCanApprovePayouts: user.adminCanApprovePayouts,
       adminCanApproveTpClaims: user.adminCanApproveTpClaims,
       adminCanManageSetups: user.adminCanManageSetups,
+      adminCanManageCopy: user.adminCanManageCopy,
       walletAddress: user.walletAddress,
       registrationPaid: user.registrationPaid,
       accessExpiresAt: user.accessExpiresAt?.toISOString() ?? null,

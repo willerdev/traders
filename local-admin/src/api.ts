@@ -88,6 +88,7 @@ export type AdminPermissionsView = {
   payout: boolean;
   tpClaim: boolean;
   setup: boolean;
+  copy: boolean;
   managePermissions: boolean;
 };
 
@@ -174,6 +175,7 @@ export const api = {
       canApprovePayouts?: boolean;
       canApproveTpClaims?: boolean;
       canManageSetups?: boolean;
+      canManageCopy?: boolean;
     },
   ) =>
     request<{
@@ -185,6 +187,7 @@ export const api = {
       adminCanApprovePayouts: boolean;
       adminCanApproveTpClaims: boolean;
       adminCanManageSetups: boolean;
+      adminCanManageCopy: boolean;
       permissions: AdminPermissionsView;
       emailSent?: boolean;
     }>(`/admin/users/${userId}/staff-permissions`, {
@@ -704,6 +707,7 @@ export type UserRow = {
   adminCanApprovePayouts?: boolean;
   adminCanApproveTpClaims?: boolean;
   adminCanManageSetups?: boolean;
+  adminCanManageCopy?: boolean;
   registrationPaid: boolean;
   accessExpiresAt?: string | null;
   createdAt: string;
@@ -724,6 +728,7 @@ export type AdminUserDetail = {
   adminCanApprovePayouts?: boolean;
   adminCanApproveTpClaims?: boolean;
   adminCanManageSetups?: boolean;
+  adminCanManageCopy?: boolean;
   walletAddress: string | null;
   registrationPaid: boolean;
   accessExpiresAt?: string | null;
