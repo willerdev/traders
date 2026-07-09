@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
-import { WalletWithdrawFeeNotice } from "@/components/wallet/wallet-withdraw-fee-notice";
+import { WalletWithdrawFeeNotice, WALLET_WITHDRAWAL_FEE_USD, walletWithdrawNetAmount } from "@/components/wallet/wallet-withdraw-fee-notice";
 
 export function WalletWithdrawForm({
   availableBalance,
@@ -46,6 +46,10 @@ export function WalletWithdrawForm({
     );
   }
 
+  const gross = Number(amount);
+  const net = walletWithdrawNetAmount(amount);
+  const minWithdraw = WALLET_WITHDRAWAL_FEE_USD + 0.01;
+
   return (
     <div className="space-y-3">
       <div>
@@ -55,6 +59,8 @@ export function WalletWithdrawForm({
         <Input
           type="number"
           max={availableBalance}
+          min={minWithdraw}
+          step={0.01}
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
         />
@@ -73,10 +79,15 @@ export function WalletWithdrawForm({
       {error && <p className="text-sm text-danger">{error}</p>}
       <Button
         onClick={() => void submit()}
-        disabled={loading || !amount || Number(amount) <= 0}
+        disabled={
+          loading ||
+          !Number.isFinite(gross) ||
+          gross < minWithdraw ||
+          gross > availableBalance
+        }
       >
         {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-        Withdraw
+        {net != null ? `Withdraw ${formatCurrency(net)}` : "Withdraw"}
       </Button>
     </div>
   );

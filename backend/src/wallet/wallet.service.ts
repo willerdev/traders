@@ -22,6 +22,7 @@ import { NotificationService } from '../email/notification.service';
 import { resolvePayoutDestination } from '../common/payout.util';
 import { ComplianceService } from '../compliance/compliance.service';
 import { PaymentsService } from '../payments/payments.service';
+import { WALLET_WITHDRAWAL_FEE_USD } from '../common/constants';
 
 const PLAN_DAYS = 5;
 const DEPOSIT_MIN_FALLBACK_USDT = 10;
@@ -792,12 +793,24 @@ export class WalletService {
   async withdraw(userId: string, amount: number, walletAddress?: string) {
     await this.compliance.requireKycForPayout(userId);
 
-    if (amount <= 0) {
+    const grossAmount = Math.round(amount * 100) / 100;
+    const fee = WALLET_WITHDRAWAL_FEE_USD;
+    const netPayout = Math.round((grossAmount - fee) * 100) / 100;
+
+    if (grossAmount <= 0) {
       throw new BadRequestException('Withdrawal amount must be positive');
+    }
+    if (grossAmount <= fee) {
+      throw new BadRequestException(
+        `Minimum withdrawal is $${(fee + 0.01).toFixed(2)} USDT (includes $${fee.toFixed(2)} processing fee)`,
+      );
+    }
+    if (netPayout <= 0) {
+      throw new BadRequestException('Withdrawal amount is too small after fees');
     }
 
     const wallet = await this.getOrCreateWallet(userId);
-    if (Number(wallet.availableBalance) < amount) {
+    if (Number(wallet.availableBalance) < grossAmount) {
       throw new BadRequestException('Insufficient available balance');
     }
 
@@ -809,7 +822,7 @@ export class WalletService {
       walletAddress,
     );
 
-    const newBalance = Number(wallet.availableBalance) - amount;
+    const newBalance = Number(wallet.availableBalance) - grossAmount;
     const { weekNumber, year } = this.isoWeekYear(new Date());
 
     const payout = await this.prisma.$transaction(async (tx) => {
@@ -820,9 +833,9 @@ export class WalletService {
       await tx.walletTransaction.create({
         data: {
           userId,
-          amount: -amount,
+          amount: -grossAmount,
           type: 'DEPOSITOR_WITHDRAW',
-          description: `Wallet withdrawal — $${amount.toFixed(2)} USDT`,
+          description: `Wallet withdrawal — $${grossAmount.toFixed(2)} USDT ($${fee.toFixed(2)} fee, $${netPayout.toFixed(2)} payout)`,
           balanceAfter: newBalance,
         },
       });
@@ -830,22 +843,22 @@ export class WalletService {
         data: {
           userId,
           source: 'DEPOSITOR',
-          virtualProfit: amount,
-          traderShare: amount,
-          platformShare: 0,
-          traderPercent: 100,
+          virtualProfit: grossAmount,
+          traderShare: netPayout,
+          platformShare: fee,
+          traderPercent: Math.round((netPayout / grossAmount) * 10000) / 100,
           weekNumber,
           year,
           status: 'PENDING',
           walletAddress: destination,
           payoutMethod: method,
-          notes: `Platform wallet withdrawal — $${amount.toFixed(2)} USDT`,
+          notes: `Platform wallet withdrawal — $${grossAmount.toFixed(2)} USDT gross, $${fee.toFixed(2)} fee, $${netPayout.toFixed(2)} USDT payout`,
         },
       });
     });
 
     this.notifications.walletWithdrawRequested(userId, {
-      amount,
+      amount: grossAmount,
       payoutId: payout.id,
       destination,
     });
@@ -853,7 +866,9 @@ export class WalletService {
     return {
       status: 'requested',
       payoutId: payout.id,
-      amount,
+      amount: grossAmount,
+      fee,
+      netPayout,
       balance: newBalance,
     };
   }

@@ -24,6 +24,8 @@ export const STARTING_BALANCE = 1000;
 export const RISK_PERCENT = 5;
 export const MAX_RISK_PER_TRADE = 50;
 export const REGISTRATION_FEE_USDT = 5;
+/** Deducted from every platform wallet withdrawal before on-chain payout. */
+export const WALLET_WITHDRAWAL_FEE_USD = 3;
 export const TP_REWARD_USD = 5;
 export const PROFIT_SHARE_FEE_USDT = 50;
 export const PROFIT_SHARE_PERCENT = 50;

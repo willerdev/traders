@@ -598,7 +598,7 @@ export class PayoutService {
       throw new BadRequestException('This payout was already refunded');
     }
 
-    const amount = Number(payout.traderShare);
+    const amount = Number(payout.virtualProfit);
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new BadRequestException('Invalid payout amount');
     }

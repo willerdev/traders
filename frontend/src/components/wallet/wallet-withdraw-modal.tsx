@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { CheckCircle2, Loader2, X } from "lucide-react";
-import { WalletWithdrawFeeNotice } from "@/components/wallet/wallet-withdraw-fee-notice";
+import { WalletWithdrawFeeNotice, WALLET_WITHDRAWAL_FEE_USD, walletWithdrawNetAmount } from "@/components/wallet/wallet-withdraw-fee-notice";
 
 export function WalletWithdrawModal({
   open,
@@ -53,6 +53,15 @@ export function WalletWithdrawModal({
 
   if (!open) return null;
 
+  const gross = Number(amount);
+  const net = walletWithdrawNetAmount(amount);
+  const minWithdraw = WALLET_WITHDRAWAL_FEE_USD + 0.01;
+  const canSubmit =
+    !loading &&
+    Number.isFinite(gross) &&
+    gross >= minWithdraw &&
+    gross <= availableBalance;
+
   return (
     <div
       className="modal-overlay fixed inset-0 z-[120] flex items-end justify-center p-0 sm:items-center sm:p-4"
@@ -97,7 +106,8 @@ export function WalletWithdrawModal({
                 <Input
                   type="number"
                   max={availableBalance}
-                  min={0.01}
+                  min={minWithdraw}
+                  step={0.01}
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                 />
@@ -117,12 +127,14 @@ export function WalletWithdrawModal({
               <Button
                 className="w-full"
                 onClick={() => void submit()}
-                disabled={
-                  loading || !amount || Number(amount) <= 0 || Number(amount) > availableBalance
-                }
+                disabled={!canSubmit}
               >
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Withdraw {amount ? formatCurrency(Number(amount)) : ""}
+                {net != null
+                  ? `Withdraw ${formatCurrency(net)}`
+                  : amount
+                    ? `Withdraw ${formatCurrency(gross)}`
+                    : "Withdraw"}
               </Button>
             </>
           )}
