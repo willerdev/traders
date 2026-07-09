@@ -493,6 +493,7 @@ export const api = {
     investorDailyYieldPercent?: number;
     depositorDailyYieldPercent?: number;
     depositorMinDepositUsdt?: number;
+    loginOtpEnabled?: boolean;
   }) =>
     request<InvestorDepositorSettings>(
       "/admin/platform/investor-depositor-settings",
@@ -629,6 +630,7 @@ export type InvestorDepositorSettings = {
   investorDailyYieldPercent: number;
   depositorDailyYieldPercent: number;
   depositorMinDepositUsdt: number;
+  loginOtpEnabled: boolean;
 };
 
 export type InvestorRow = {

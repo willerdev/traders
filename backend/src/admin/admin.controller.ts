@@ -517,6 +517,7 @@ export class AdminController {
       investorDailyYieldPercent?: number;
       depositorDailyYieldPercent?: number;
       depositorMinDepositUsdt?: number;
+      loginOtpEnabled?: boolean;
     },
   ) {
     return this.adminService.updateInvestorDepositorSettings(body);

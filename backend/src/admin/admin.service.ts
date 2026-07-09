@@ -1315,9 +1315,16 @@ export class AdminService {
   }
 
   async getInvestorDepositorSettings() {
+    await this.ensureLoginOtpColumn();
     const config = await this.prisma.platformConfig.findUnique({
       where: { id: 'default' },
     });
+    const otpRows = await this.prisma.$queryRaw<Array<{ enabled: boolean }>>`
+      SELECT COALESCE("login_otp_enabled", true) AS enabled
+      FROM "platform_config"
+      WHERE id = 'default'
+      LIMIT 1
+    `;
     return {
       investorFeeUsdt: Number(config?.investorFeeUsdt ?? 50),
       investorDailyYieldPercent: Number(
@@ -1325,6 +1332,7 @@ export class AdminService {
       ),
       depositorDailyYieldPercent: Number(config?.depositorDailyYieldPercent ?? 0.5),
       depositorMinDepositUsdt: Number(config?.depositorMinDepositUsdt ?? 50),
+      loginOtpEnabled: otpRows[0]?.enabled ?? true,
     };
   }
 
@@ -1333,7 +1341,9 @@ export class AdminService {
     investorDailyYieldPercent?: number;
     depositorDailyYieldPercent?: number;
     depositorMinDepositUsdt?: number;
+    loginOtpEnabled?: boolean;
   }) {
+    await this.ensureLoginOtpColumn();
     const data: Record<string, number> = {};
     if (input.investorFeeUsdt != null) {
       if (input.investorFeeUsdt <= 0) {
@@ -1366,7 +1376,8 @@ export class AdminService {
       data.depositorMinDepositUsdt = input.depositorMinDepositUsdt;
     }
 
-    if (Object.keys(data).length === 0) {
+    const hasOtpUpdate = typeof input.loginOtpEnabled === 'boolean';
+    if (Object.keys(data).length === 0 && !hasOtpUpdate) {
       throw new BadRequestException('Nothing to update');
     }
 
@@ -1376,7 +1387,27 @@ export class AdminService {
       update: data,
     });
 
+    if (hasOtpUpdate) {
+      await this.prisma.$executeRaw`
+        UPDATE "platform_config"
+        SET "login_otp_enabled" = ${input.loginOtpEnabled === true}
+        WHERE id = 'default'
+      `;
+    }
+
     return this.getInvestorDepositorSettings();
+  }
+
+  private async ensureLoginOtpColumn() {
+    await this.prisma.$executeRawUnsafe(`
+      ALTER TABLE "platform_config"
+      ADD COLUMN IF NOT EXISTS "login_otp_enabled" BOOLEAN NOT NULL DEFAULT true
+    `);
+    await this.prisma.$executeRawUnsafe(`
+      INSERT INTO "platform_config" ("id", "login_otp_enabled")
+      VALUES ('default', true)
+      ON CONFLICT ("id") DO NOTHING
+    `);
   }
 
   async listInvestors(search?: string, limit = 50, offset = 0) {

@@ -410,6 +410,7 @@ export default function App() {
   const [platformInvestorYield, setPlatformInvestorYield] = useState("");
   const [platformDailyYield, setPlatformDailyYield] = useState("");
   const [platformMinDeposit, setPlatformMinDeposit] = useState("");
+  const [loginOtpEnabled, setLoginOtpEnabled] = useState(true);
   const [platformSaving, setPlatformSaving] = useState(false);
   const [investors, setInvestors] = useState<InvestorRow[]>([]);
   const [investorYieldDrafts, setInvestorYieldDrafts] = useState<Record<string, string>>({});
@@ -742,6 +743,7 @@ export default function App() {
         setPlatformInvestorYield(String(settings.investorDailyYieldPercent));
         setPlatformDailyYield(String(settings.depositorDailyYieldPercent));
         setPlatformMinDeposit(String(settings.depositorMinDepositUsdt));
+        setLoginOtpEnabled(settings.loginOtpEnabled);
         setInvestors(investorList.items);
         setInvestorYieldDrafts(
           Object.fromEntries(
@@ -4029,6 +4031,7 @@ export default function App() {
                           investorDailyYieldPercent: Number(platformInvestorYield),
                           depositorDailyYieldPercent: Number(platformDailyYield),
                           depositorMinDepositUsdt: Number(platformMinDeposit),
+                          loginOtpEnabled,
                         })
                         .then((updated) => {
                           setPlatformSettings(updated);
@@ -4044,6 +4047,27 @@ export default function App() {
                   >
                     {platformSaving ? "Saving…" : "Save settings"}
                   </button>
+                </div>
+                <div className="panel" style={{ marginTop: "1rem" }}>
+                  <h3>Login OTP</h3>
+                  <p className="muted">
+                    Require 6-digit email OTP for user sign-ins (admins still sign in directly).
+                  </p>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      marginTop: "0.75rem",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={loginOtpEnabled}
+                      onChange={(e) => setLoginOtpEnabled(e.target.checked)}
+                    />
+                    Enable login OTP
+                  </label>
                 </div>
 
                 <div className="panel" style={{ marginTop: "1.5rem" }}>
