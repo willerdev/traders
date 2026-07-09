@@ -18,7 +18,7 @@ import { useMt5Terminal } from "@/hooks/use-mt5-terminal";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { useUrlTab } from "@/hooks/use-url-tab";
 import { hasTradingAccess } from "@/lib/trading-access";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { WeeklyAccessGate } from "@/components/payments/weekly-access-gate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -149,6 +149,7 @@ export default function Mt5UserPage() {
   );
   const floating = data?.stats.floatingProfit ?? 0;
   const account = data?.account;
+  const investor = data?.investor;
   const limitCount = data?.stats.limitCount ?? 0;
   const runningCount = data?.stats.runningCount ?? runningTrades.length;
 
@@ -469,7 +470,28 @@ export default function Mt5UserPage() {
 
         {account && tab !== "quotes" && (
           <div className={tab === "trades" ? "md:hidden" : undefined}>
-            <Mt5AccountSummary account={account} />
+            <Mt5AccountSummary account={account} investor={investor} />
+          </div>
+        )}
+
+        {!account && investor && investor.investmentDeposited > 0 && tab !== "quotes" && (
+          <div className={tab === "trades" ? "md:hidden" : undefined}>
+            <Mt5SummaryBlock
+              rows={[
+                {
+                  label: "Investment",
+                  value: formatCurrency(investor.investmentDeposited),
+                },
+                ...(investor.mt5Balance != null
+                  ? [
+                      {
+                        label: "MT5 balance",
+                        value: `${fmtMt5Price(investor.mt5Balance)} ${investor.currency}`,
+                      },
+                    ]
+                  : []),
+              ]}
+            />
           </div>
         )}
 

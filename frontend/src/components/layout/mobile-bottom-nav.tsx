@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   ClipboardCheck,
   Home,
-  Send,
+  TrendingUp,
   Settings,
   Wallet,
   X,
@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const cashRoutes = ["/wallet", "/journal", "/tp-claims", "/payouts", "/settings"] as const;
+const cashRoutes = ["/wallet", "/journal", "/tp-claims", "/payouts", "/settings", "/invest"] as const;
 
 const cashMenuItems = [
   { href: "/wallet", label: "Wallet", icon: PiggyBank },
@@ -27,7 +27,7 @@ const cashMenuItems = [
 
 const sideTabs = [
   { href: "/dashboard", label: "Home", icon: Home },
-  { href: "/submit", label: "Submit", icon: Send },
+  { href: "/invest", label: "Invest", icon: TrendingUp },
 ] as const;
 
 const mt5Tab = { href: "/mt5", label: "MT5" };
@@ -117,6 +117,7 @@ export function MobileBottomNav() {
   const cashActive = cashRoutes.some(
     (r) => pathname === r || pathname.startsWith(`${r}/`),
   );
+  const investActive = pathname === "/invest" || pathname.startsWith("/invest/");
   const mt5Active = isMt5Path(pathname);
 
   useEffect(() => {
@@ -217,7 +218,7 @@ export function MobileBottomNav() {
             href={sideTabs[1].href}
             label={sideTabs[1].label}
             icon={sideTabs[1].icon}
-            active={pathname === sideTabs[1].href}
+            active={investActive}
           />
           <SideNavItem
             href={mt5Tab.href}

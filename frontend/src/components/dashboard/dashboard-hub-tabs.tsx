@@ -10,7 +10,7 @@ const tabs: Array<{
   href?: string;
 }> = [
   { id: "trader", label: "Trader" },
-  { id: "investor", label: "Investor" },
+  { id: "investor", label: "Investor", href: "/invest" },
   { id: "depositor", label: "Depositor" },
   { id: "wallet", label: "Wallet", href: "/wallet" },
 ];

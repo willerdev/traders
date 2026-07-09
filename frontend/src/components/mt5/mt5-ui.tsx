@@ -312,6 +312,7 @@ export function Mt5Empty({
 
 export function Mt5AccountSummary({
   account,
+  investor,
 }: {
   account: {
     startingBalance: number;
@@ -321,8 +322,30 @@ export function Mt5AccountSummary({
     totalProfit: number;
     equity: number;
   };
+  investor?: {
+    investmentDeposited: number;
+    walletBalance: number;
+    mt5Balance?: number;
+    currency: string;
+  };
 }) {
   const rows = [
+    ...(investor && investor.investmentDeposited > 0
+      ? [
+          {
+            label: "Investment",
+            value: formatCurrency(investor.investmentDeposited),
+          },
+        ]
+      : []),
+    ...(investor?.mt5Balance != null
+      ? [
+          {
+            label: "MT5 balance",
+            value: `${fmtMt5Price(investor.mt5Balance)} ${investor.currency}`,
+          },
+        ]
+      : []),
     {
       label: "Balance",
       value: fmtMt5Price(account.startingBalance + account.realizedProfit),

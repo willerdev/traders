@@ -55,6 +55,7 @@ export class InvestorService {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
+        platformWallet: true,
         investorSettings: true,
         investorTrades: {
           orderBy: { createdAt: 'desc' },
@@ -92,6 +93,8 @@ export class InvestorService {
         ? Number(user.investorSettings.dailyYieldPercent)
         : platformDailyYield;
 
+    const financials = await this.getInvestorFinancials(userId, user);
+
     return {
       active: user.investorActive,
       enrolledAt: user.investorEnrolledAt?.toISOString() ?? null,
@@ -101,6 +104,7 @@ export class InvestorService {
       mt5Linked: Boolean(user.metaApiAccountId),
       mt5Connected,
       mt5HealthMessage,
+      ...financials,
       settings: user.investorSettings
         ? {
             riskPercent: Number(user.investorSettings.riskPercent),
@@ -119,6 +123,87 @@ export class InvestorService {
         executedAt: t.executedAt?.toISOString() ?? null,
         closedAt: t.closedAt?.toISOString() ?? null,
       })),
+    };
+  }
+
+  private async getInvestorFinancials(
+    userId: string,
+    user: {
+      metaApiAccountId: string | null;
+      platformWallet: { availableBalance: unknown } | null;
+    },
+  ) {
+    const [
+      enrollmentAgg,
+      depositAgg,
+      tradingProfitAgg,
+      walletEarningsAgg,
+    ] = await Promise.all([
+      this.prisma.payment.aggregate({
+        where: {
+          userId,
+          purpose: 'investor_enrollment',
+          status: 'CONFIRMED',
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.walletTransaction.aggregate({
+        where: {
+          userId,
+          type: { in: ['DEPOSIT', 'DEPOSITOR_DEPOSIT'] },
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.investorTrade.aggregate({
+        where: { userId, status: 'CLOSED', profit: { not: null } },
+        _sum: { profit: true },
+      }),
+      this.prisma.investorDailyCredit.aggregate({
+        where: { userId },
+        _sum: { amount: true },
+      }),
+    ]);
+
+    const enrollmentPaid = Number(enrollmentAgg._sum.amount ?? 0);
+    const walletDeposited = Number(depositAgg._sum.amount ?? 0);
+    const walletBalance = Number(user.platformWallet?.availableBalance ?? 0);
+    const investmentDeposited = enrollmentPaid + walletDeposited;
+    const tradingProfit = Number(tradingProfitAgg._sum.profit ?? 0);
+    const walletEarnings = Number(walletEarningsAgg._sum.amount ?? 0);
+    const totalProfit = tradingProfit + walletEarnings;
+
+    let mt5Balance: number | null = null;
+    let mt5Equity: number | null = null;
+    let currency = 'USD';
+
+    const accountId = user.metaApiAccountId?.trim();
+    if (accountId && this.metaApi.isConfigured) {
+      try {
+        const account = await this.metaApi.getAccount(accountId);
+        const info = await this.metaApi.getAccountInformation(account);
+        mt5Balance = info.balance;
+        mt5Equity = info.equity;
+        currency = info.currency;
+      } catch (err) {
+        this.logger.warn(
+          `Investor MT5 balance read failed for ${userId}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+    }
+
+    return {
+      investmentDeposited,
+      enrollmentPaid,
+      walletDeposited,
+      walletBalance,
+      tradingProfit,
+      walletEarnings,
+      totalProfit,
+      mt5Balance,
+      mt5Equity,
+      currency,
     };
   }
 
@@ -438,5 +523,21 @@ export class InvestorService {
     }
 
     return { credited };
+  }
+
+  /** Enrollment + wallet deposits for MT5 investor display. */
+  async getMt5InvestmentSummary(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        investorActive: true,
+        metaApiAccountId: true,
+        platformWallet: { select: { availableBalance: true } },
+      },
+    });
+    if (!user?.investorActive) return null;
+
+    const financials = await this.getInvestorFinancials(userId, user);
+    return financials;
   }
 }

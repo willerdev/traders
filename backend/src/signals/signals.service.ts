@@ -55,6 +55,7 @@ import { CopyTradingService } from '../copy-trading/copy-trading.service';
 import { Mt5PoolService } from '../mt5-sync/mt5-pool.service';
 import { Mt5PoolModule } from '../mt5-sync/mt5-pool.module';
 import { InvestorTradingService } from '../investor/investor-trading.service';
+import { InvestorService } from '../investor/investor.service';
 import { computeTwoToOnePrice } from '../common/rr.util';
 import { SignalSource } from '@prisma/client';
 
@@ -77,6 +78,7 @@ export class SignalsService {
     private copyTrading: CopyTradingService,
     private mt5Pool: Mt5PoolService,
     private investorTrading: InvestorTradingService,
+    private investorService: InvestorService,
   ) {}
 
   private async mirrorToCopyPool(input: {
@@ -5538,6 +5540,8 @@ export class SignalsService {
     const limitCount = trades.filter((t) => t.kind === 'limit').length;
     const runningCount = trades.filter((t) => t.kind === 'running').length;
 
+    const investor = await this.investorService.getMt5InvestmentSummary(userId);
+
     const accountLedger = await this.buildMt5UserAccountSummary(
       userId,
       floatingProfit,
@@ -5548,6 +5552,7 @@ export class SignalsService {
       syncActive,
       message: terminalError,
       account: accountLedger,
+      investor: investor ?? undefined,
       setups: {
         items: setups,
         count: setups.length,

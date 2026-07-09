@@ -1276,6 +1276,16 @@ export interface InvestorStatus {
   mt5Linked: boolean;
   mt5Connected: boolean;
   mt5HealthMessage: string | null;
+  investmentDeposited: number;
+  enrollmentPaid: number;
+  walletDeposited: number;
+  walletBalance: number;
+  tradingProfit: number;
+  walletEarnings: number;
+  totalProfit: number;
+  mt5Balance: number | null;
+  mt5Equity: number | null;
+  currency: string;
   settings: {
     riskPercent: number;
     useTwoToOneRr: boolean;
@@ -2008,10 +2018,21 @@ export interface UserMt5AccountSummary {
   equity: number;
 }
 
+export interface UserMt5InvestorSummary {
+  investmentDeposited: number;
+  enrollmentPaid: number;
+  walletDeposited: number;
+  walletBalance: number;
+  mt5Balance?: number;
+  mt5Equity?: number;
+  currency: string;
+}
+
 export interface UserMt5Terminal {
   configured: boolean;
   message?: string;
   account?: UserMt5AccountSummary;
+  investor?: UserMt5InvestorSummary;
   setups: {
     items: OpenSetupItem[];
     count: number;

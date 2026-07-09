@@ -25,13 +25,18 @@ import {
   DashboardHubTabs,
   useDashboardTab,
 } from "@/components/dashboard/dashboard-hub-tabs";
-import { InvestorPanel } from "@/components/investor/investor-panel";
 import { DepositorPanel } from "@/components/depositor/depositor-panel";
 
 function DashboardBody() {
   const tab = useDashboardTab();
   const router = useRouter();
   const { data, loading, error, fetchDashboard } = useDashboardStore();
+
+  useEffect(() => {
+    if (tab === "investor") {
+      router.replace("/invest");
+    }
+  }, [tab, router]);
 
   async function handleRegistrationComplete() {
     await fetchDashboard();
@@ -40,6 +45,14 @@ function DashboardBody() {
     if (token && user && fresh?.user.status) {
       useAuthStore.getState().setAuth(token, { ...user, status: fresh.user.status });
     }
+  }
+
+  if (tab === "investor") {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <div className="h-7 w-7 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
   }
 
   if (loading && !data) {
@@ -77,7 +90,6 @@ function DashboardBody() {
     <div className="mx-auto max-w-7xl space-y-4 px-4 py-4 sm:px-6 sm:py-5">
       <DashboardHubTabs active={tab} />
 
-      {tab === "investor" && <InvestorPanel />}
       {tab === "depositor" && <DepositorPanel />}
 
       {tab === "trader" && (

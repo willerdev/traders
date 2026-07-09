@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RecentPayoutsShowcase } from "@/components/marketing/recent-payouts-showcase";
 import { api } from "@/lib/api";
+import { useAuthStore } from "@/stores/auth";
 
 type FeaturedPromo = {
   code: string;
@@ -108,6 +109,17 @@ const tiers = [
 export default function HomePage() {
   const [fee, setFee] = useState(5);
   const [promo, setPromo] = useState<FeaturedPromo | null>(null);
+  const isLoggedIn = Boolean(useAuthStore((s) => s.token));
+
+  const pathLinks = paths.map((path) => {
+    if (path.title === "Investor" && isLoggedIn) {
+      return { ...path, href: "/invest", cta: "Open Invest" };
+    }
+    if (path.title === "Depositor" && isLoggedIn) {
+      return { ...path, href: "/dashboard?tab=depositor", cta: "Open Depositor" };
+    }
+    return path;
+  });
 
   useEffect(() => {
     api.payments
@@ -170,7 +182,7 @@ export default function HomePage() {
           </p>
 
           <div className="mx-auto mt-12 grid max-w-5xl gap-4 sm:grid-cols-3">
-            {paths.map((path, i) => {
+            {pathLinks.map((path, i) => {
               const Icon = path.icon;
               return (
                 <motion.div
