@@ -17,18 +17,6 @@ type DemoTrader = {
 
 export const DEMO_LEADERBOARD_TRADERS: DemoTrader[] = [
   {
-    email: 'leaderboard.demo1@traderrank.pro',
-    displayName: 'GoldRushFX',
-    score: 148,
-    tier: 'GOLD',
-    totalProfit: 124.5,
-    winRate: 72,
-    maxDrawdown: 4.2,
-    totalTrades: 18,
-    winningTrades: 13,
-    losingTrades: 5,
-  },
-  {
     email: 'leaderboard.demo2@traderrank.pro',
     displayName: 'PipMaster_Ke',
     score: 121,
@@ -92,6 +80,10 @@ export async function ensureDemoLeaderboardTraders(
       where: { email: demo.email },
     });
 
+    if (existing?.status === 'BANNED') {
+      continue;
+    }
+
     if (!existing) {
       await prisma.user.create({
         data: {
@@ -141,6 +133,7 @@ export async function ensureDemoLeaderboardTraders(
 
   const { weekNumber, year } = currentWeekYear();
   const accounts = await prisma.virtualAccount.findMany({
+    where: { user: { status: { not: 'BANNED' } } },
     include: { user: { select: { displayName: true } } },
     orderBy: [{ score: 'desc' }, { winRate: 'desc' }],
   });

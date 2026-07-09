@@ -1170,6 +1170,8 @@ export class AdminService {
       data: { status: 'BANNED' },
     });
 
+    await this.prisma.leaderboard.deleteMany({ where: { userId } });
+
     await this.logAction(adminId, 'USER_BANNED', userId, {
       reason,
       email: existing.email,
@@ -1217,6 +1219,7 @@ export class AdminService {
         where: { id: userId },
         data: { status: 'BANNED' },
       });
+      await this.prisma.leaderboard.deleteMany({ where: { userId } });
       await this.logAction(adminId, 'USER_BANNED', userId, {
         reason,
         email: user.email,

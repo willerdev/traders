@@ -53,6 +53,7 @@ export class LeaderboardService implements OnModuleInit {
     );
 
     const accounts = await this.prisma.virtualAccount.findMany({
+      where: { user: { status: { not: 'BANNED' } } },
       include: {
         user: { select: { id: true, displayName: true, email: true } },
       },
