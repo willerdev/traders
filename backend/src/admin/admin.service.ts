@@ -1320,7 +1320,7 @@ export class AdminService {
       where: { id: 'default' },
     });
     const otpRows = await this.prisma.$queryRaw<Array<{ enabled: boolean }>>`
-      SELECT COALESCE("login_otp_enabled", true) AS enabled
+      SELECT COALESCE("login_otp_enabled", false) AS enabled
       FROM "platform_config"
       WHERE id = 'default'
       LIMIT 1
@@ -1332,7 +1332,7 @@ export class AdminService {
       ),
       depositorDailyYieldPercent: Number(config?.depositorDailyYieldPercent ?? 0.5),
       depositorMinDepositUsdt: Number(config?.depositorMinDepositUsdt ?? 50),
-      loginOtpEnabled: otpRows[0]?.enabled ?? true,
+      loginOtpEnabled: otpRows[0]?.enabled ?? false,
     };
   }
 
@@ -1401,11 +1401,11 @@ export class AdminService {
   private async ensureLoginOtpColumn() {
     await this.prisma.$executeRawUnsafe(`
       ALTER TABLE "platform_config"
-      ADD COLUMN IF NOT EXISTS "login_otp_enabled" BOOLEAN NOT NULL DEFAULT true
+      ADD COLUMN IF NOT EXISTS "login_otp_enabled" BOOLEAN NOT NULL DEFAULT false
     `);
     await this.prisma.$executeRawUnsafe(`
       INSERT INTO "platform_config" ("id", "login_otp_enabled")
-      VALUES ('default', true)
+      VALUES ('default', false)
       ON CONFLICT ("id") DO NOTHING
     `);
   }

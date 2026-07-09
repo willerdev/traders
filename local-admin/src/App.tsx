@@ -410,7 +410,7 @@ export default function App() {
   const [platformInvestorYield, setPlatformInvestorYield] = useState("");
   const [platformDailyYield, setPlatformDailyYield] = useState("");
   const [platformMinDeposit, setPlatformMinDeposit] = useState("");
-  const [loginOtpEnabled, setLoginOtpEnabled] = useState(true);
+  const [loginOtpEnabled, setLoginOtpEnabled] = useState(false);
   const [platformSaving, setPlatformSaving] = useState(false);
   const [investors, setInvestors] = useState<InvestorRow[]>([]);
   const [investorYieldDrafts, setInvestorYieldDrafts] = useState<Record<string, string>>({});

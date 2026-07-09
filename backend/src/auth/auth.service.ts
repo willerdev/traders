@@ -58,14 +58,14 @@ export class AuthService {
   private async isLoginOtpEnabled(): Promise<boolean> {
     try {
       const rows = await this.prisma.$queryRaw<Array<{ enabled: boolean }>>`
-        SELECT COALESCE("login_otp_enabled", true) AS enabled
+        SELECT COALESCE("login_otp_enabled", false) AS enabled
         FROM "platform_config"
         WHERE id = 'default'
         LIMIT 1
       `;
-      return rows[0]?.enabled ?? true;
+      return rows[0]?.enabled ?? false;
     } catch {
-      return true;
+      return false;
     }
   }
 
