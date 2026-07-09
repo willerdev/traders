@@ -783,6 +783,71 @@ export class ListSetupFeedQueryDto {
   limit?: number;
 }
 
+/** Third-party signal ingest — POST /api/v1/feeds/signals */
+export class IngestExternalSignalDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  pair?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  symbol?: string;
+
+  @IsEnum(TradeDirection)
+  direction: TradeDirection;
+
+  /** Single entry price (alias: entry_price). */
+  @IsOptional()
+  @IsNumber()
+  entry?: number;
+
+  @IsOptional()
+  @IsNumber()
+  entry_price?: number;
+
+  @IsOptional()
+  @IsNumber()
+  entry_min?: number;
+
+  @IsOptional()
+  @IsNumber()
+  entry_max?: number;
+
+  @IsOptional()
+  @IsNumber()
+  sl?: number;
+
+  @IsOptional()
+  @IsNumber()
+  stop_loss?: number;
+
+  @IsOptional()
+  @IsNumber()
+  tp?: number;
+
+  @IsOptional()
+  @IsNumber()
+  take_profit?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  comment?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  description?: string;
+
+  /** Optional idempotency key — if a setup with this signalId exists, returns it unchanged. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  external_id?: string;
+}
+
 export class SendMessageDto {
   @IsString()
   @IsNotEmpty()

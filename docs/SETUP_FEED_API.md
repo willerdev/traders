@@ -2,6 +2,8 @@
 
 Third-party integrators can read trader-submitted setups from TraderRank Pro using a shared API key. Responses include the **pair/symbol**, **entry zone**, **stop loss**, and **take profit** for each setup.
 
+**Post signals in:** see [SIGNAL_INGEST_API.md](./SIGNAL_INGEST_API.md) for `POST /api/v1/feeds/signals` (pair, entry, SL, TP, comment).
+
 ## Quick start (production)
 
 | | |
@@ -9,6 +11,7 @@ Third-party integrators can read trader-submitted setups from TraderRank Pro usi
 | **API host** | `https://traders-c53s.onrender.com` |
 | **Feed base** | `https://traders-c53s.onrender.com/api/v1/feeds` |
 | **List setups** | `GET /api/v1/feeds/setups` |
+| **Post signal** | `POST /api/v1/feeds/signals` |
 | **Auth header** | `X-Api-Key: <your SETUP_FEED_API_KEY>` |
 
 **Copy-paste test** (replace the key with yours, or export it first):

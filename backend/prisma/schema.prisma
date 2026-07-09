@@ -103,6 +103,7 @@ enum WalletTxType {
 enum SignalSource {
   TRADER
   SYSTEM
+  EXTERNAL
 }
 
 enum DepositorPlanStatus {
@@ -227,6 +228,8 @@ model User {
   messageThreadState MessageThreadState?
   loginOtps          LoginOtp[]
   passwordResets     PasswordReset[]
+  savedWithdrawalWallets SavedWithdrawalWallet[]
+  withdrawalWalletOtps WithdrawalWalletOtp[]
   custodyDeposits    CustodyDeposit[]
   copyTradesSource   CopyTrade[] @relation("CopyTradeSource")
   copyPoolEntry      CopyPoolTrader? @relation("CopyPoolTrader")
@@ -282,6 +285,42 @@ model LoginOtp {
 
   @@index([userId, expiresAt])
   @@map("login_otps")
+}
+
+model WithdrawalWalletOtp {
+  id        String    @id @default(cuid())
+  userId    String
+  email     String
+  codeHash  String
+  label     String
+  address   String
+  network   String
+  expiresAt DateTime
+  attempts  Int       @default(0)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("withdrawal_wallet_otps")
+}
+
+model SavedWithdrawalWallet {
+  id         String   @id @default(cuid())
+  userId     String
+  label      String
+  address    String
+  network    String
+  verifiedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, address, network])
+  @@index([userId])
+  @@map("saved_withdrawal_wallets")
 }
 
 model PasswordReset {

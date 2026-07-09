@@ -10,7 +10,7 @@ import {
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
-import { CreateSignalDto, ClaimSetupDto, TradeOutcomeWebhookDto, TradeLifecycleItemDto, TradeLifecycleWebhookDto, HubActionDto, UpdateSetupStopsDto, ModifyMt5PositionStopsDto } from '../common/dto';
+import { CreateSignalDto, ClaimSetupDto, TradeOutcomeWebhookDto, TradeLifecycleItemDto, TradeLifecycleWebhookDto, HubActionDto, UpdateSetupStopsDto, ModifyMt5PositionStopsDto, IngestExternalSignalDto } from '../common/dto';
 import { createHash } from 'crypto';
 import { ComplianceService } from '../compliance/compliance.service';
 import { ForwardSignalResult, SignalHubService } from './signal-hub.service';
@@ -6094,5 +6094,177 @@ export class SignalsService {
       takeProfit: Number(takeProfit),
       openPrice,
     };
+  }
+
+  async ingestExternalSignal(dto: IngestExternalSignalDto) {
+    const symbol = normalizeChartSymbol(
+      (dto.symbol ?? dto.pair ?? '').trim(),
+    );
+    if (!symbol) {
+      throw new BadRequestException('pair or symbol is required');
+    }
+
+    const stopLoss = dto.stop_loss ?? dto.sl;
+    const takeProfit = dto.take_profit ?? dto.tp;
+    if (stopLoss == null || !Number.isFinite(stopLoss)) {
+      throw new BadRequestException('sl or stop_loss is required');
+    }
+    if (takeProfit == null || !Number.isFinite(takeProfit)) {
+      throw new BadRequestException('tp or take_profit is required');
+    }
+
+    let entryMin = dto.entry_min;
+    let entryMax = dto.entry_max;
+    const singleEntry = dto.entry ?? dto.entry_price;
+    if (entryMin == null && entryMax == null) {
+      if (singleEntry == null || !Number.isFinite(singleEntry)) {
+        throw new BadRequestException(
+          'entry (or entry_price), or entry_min + entry_max, is required',
+        );
+      }
+      const spread = Math.max(Math.abs(singleEntry) * 0.00005, 1e-5);
+      entryMin = singleEntry - spread;
+      entryMax = singleEntry + spread;
+    } else if (entryMin == null || entryMax == null) {
+      throw new BadRequestException(
+        'Provide both entry_min and entry_max, or a single entry price',
+      );
+    }
+
+    const description =
+      (dto.comment ?? dto.description ?? 'External API signal').trim() ||
+      'External API signal';
+
+    const externalId = dto.external_id?.trim();
+    if (externalId) {
+      const existing = await this.prisma.signal.findUnique({
+        where: { signalId: externalId },
+        include: { trade: true },
+      });
+      if (existing) {
+        return {
+          status: 'exists',
+          signalId: existing.signalId,
+          symbol: existing.symbol,
+          direction: existing.direction,
+          entry: {
+            min: Number(existing.entryMin),
+            max: Number(existing.entryMax),
+          },
+          stopLoss: Number(existing.stopLoss),
+          takeProfit: Number(existing.takeProfit),
+          comment: existing.description,
+          setupStatus: existing.status,
+        };
+      }
+    }
+
+    const createDto: CreateSignalDto = {
+      symbol,
+      direction: dto.direction,
+      entryMin,
+      entryMax,
+      stopLoss,
+      takeProfit,
+      riskRewardRatio: 0,
+      description,
+      screenshotUrl: '/uploads/external-signal.png',
+    };
+
+    this.validateEntryRange(createDto);
+
+    const mid = computeEntryMid(entryMin, entryMax);
+    const slDist = Math.abs(mid - stopLoss);
+    createDto.riskRewardRatio =
+      slDist > 0
+        ? Math.round((Math.abs(takeProfit - mid) / slDist) * 100) / 100
+        : 0;
+
+    const userId = await this.resolveExternalSignalUserId();
+
+    const signal = await this.prisma.signal.create({
+      data: {
+        ...(externalId ? { signalId: externalId } : {}),
+        userId,
+        symbol: createDto.symbol,
+        direction: createDto.direction,
+        entryMin: createDto.entryMin,
+        entryMax: createDto.entryMax,
+        stopLoss: createDto.stopLoss,
+        takeProfit: createDto.takeProfit,
+        riskRewardRatio: createDto.riskRewardRatio,
+        description: createDto.description,
+        screenshotUrl: createDto.screenshotUrl,
+        status: 'OPEN',
+        signalSource: SignalSource.EXTERNAL,
+        source: 'external_api',
+      },
+    });
+
+    await this.prisma.trade.create({
+      data: {
+        signalId: signal.id,
+        userId,
+        symbol: createDto.symbol,
+        direction: createDto.direction,
+        entryMin: createDto.entryMin,
+        entryMax: createDto.entryMax,
+        stopLoss: createDto.stopLoss,
+        takeProfit: createDto.takeProfit,
+      },
+    });
+
+    this.queueSetupExecutionInBackground({
+      signalId: signal.id,
+      userId,
+      dto: createDto,
+    });
+
+    return {
+      status: 'created',
+      signalId: signal.signalId,
+      symbol: signal.symbol,
+      direction: signal.direction,
+      entry: {
+        min: Number(signal.entryMin),
+        max: Number(signal.entryMax),
+        mid,
+      },
+      stopLoss: Number(signal.stopLoss),
+      takeProfit: Number(signal.takeProfit),
+      riskRewardRatio: Number(signal.riskRewardRatio),
+      comment: signal.description,
+      setupStatus: signal.status,
+      submittedAt: signal.submittedAt.toISOString(),
+    };
+  }
+
+  private async resolveExternalSignalUserId(): Promise<string> {
+    const email =
+      process.env.EXTERNAL_SIGNAL_USER_EMAIL?.trim() ||
+      'external-signals@traderrank.internal';
+    const displayName =
+      process.env.EXTERNAL_SIGNAL_SENDER_NAME?.trim() || 'API Signals';
+
+    const existing = await this.prisma.user.findFirst({
+      where: { email },
+      select: { id: true },
+    });
+    if (existing) return existing.id;
+
+    const created = await this.prisma.user.create({
+      data: {
+        email,
+        displayName,
+        status: 'ACTIVE',
+        emailVerified: true,
+        registrationPaid: true,
+        role: 'TRADER',
+      },
+    });
+    await this.prisma.virtualAccount.create({
+      data: { userId: created.id },
+    });
+    return created.id;
   }
 }
