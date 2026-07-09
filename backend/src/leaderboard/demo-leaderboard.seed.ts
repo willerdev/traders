@@ -17,18 +17,6 @@ type DemoTrader = {
 
 export const DEMO_LEADERBOARD_TRADERS: DemoTrader[] = [
   {
-    email: 'leaderboard.demo2@traderrank.pro',
-    displayName: 'PipMaster_Ke',
-    score: 121,
-    tier: 'SILVER',
-    totalProfit: 86.25,
-    winRate: 65,
-    maxDrawdown: 6.1,
-    totalTrades: 14,
-    winningTrades: 9,
-    losingTrades: 5,
-  },
-  {
     email: 'leaderboard.demo3@traderrank.pro',
     displayName: 'XAU_Sniper',
     score: 98,
