@@ -7,9 +7,10 @@ import { CopyTradingModule } from '../copy-trading/copy-trading.module';
 import { Mt5SyncModule } from '../mt5-sync/mt5-sync.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { InvestorModule } from '../investor/investor.module';
+import { AbuseHunterService } from './abuse-hunter.service';
 
 @Module({
   imports: [LeaderboardModule, PayoutsModule, PrismaModule, CopyTradingModule, Mt5SyncModule, WalletModule, InvestorModule],
-  providers: [PlatformJobsService],
+  providers: [PlatformJobsService, AbuseHunterService],
 })
 export class PlatformModule {}

@@ -15,37 +15,12 @@ type DemoTrader = {
   losingTrades: number;
 };
 
-export const DEMO_LEADERBOARD_TRADERS: DemoTrader[] = [
-  {
-    email: 'leaderboard.demo4@traderrank.pro',
-    displayName: 'VolatilityQueen',
-    score: 76,
-    tier: 'BRONZE',
-    totalProfit: 31.75,
-    winRate: 54,
-    maxDrawdown: 9.8,
-    totalTrades: 11,
-    winningTrades: 6,
-    losingTrades: 5,
-  },
-  {
-    email: 'leaderboard.demo5@traderrank.pro',
-    displayName: 'TrendLineTom',
-    score: 55,
-    tier: 'BRONZE',
-    totalProfit: 18.5,
-    winRate: 50,
-    maxDrawdown: 11.2,
-    totalTrades: 10,
-    winningTrades: 5,
-    losingTrades: 5,
-  },
-];
+export const DEMO_LEADERBOARD_TRADERS: DemoTrader[] = [];
 
 export async function ensureDemoLeaderboardTraders(
   prisma: PrismaClient,
 ): Promise<number> {
-  if (process.env.SEED_DEMO_LEADERBOARD === 'false') {
+  if (process.env.SEED_DEMO_LEADERBOARD !== 'true') {
     return 0;
   }
 

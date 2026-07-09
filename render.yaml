@@ -77,6 +77,10 @@ services:
         value: us-east-1
       - key: S3_PUBLIC_URL
         sync: false
+      - key: SEED_DEMO_LEADERBOARD
+        value: "false"
+      - key: ABUSE_HUNTER_ENABLED
+        value: "true"
 
   - type: web
     name: traders-web

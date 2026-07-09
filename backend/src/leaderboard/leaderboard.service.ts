@@ -2,7 +2,6 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SignalHubService } from '../signals/signal-hub.service';
 import { currentWeekYear } from '../common/week.util';
-import { ensureDemoLeaderboardTraders } from './demo-leaderboard.seed';
 import { NotificationService } from '../email/notification.service';
 import { PlatformNotificationsService } from '../platform-notifications/platform-notifications.service';
 import { isDemoLeaderboardUser } from '../common/demo-user.util';
@@ -21,17 +20,7 @@ export class LeaderboardService implements OnModuleInit {
   async onModuleInit() {
     const { weekNumber, year } = currentWeekYear();
     try {
-      let entries = await this.refreshLeaderboard(weekNumber, year);
-
-      if (entries.length < 3) {
-        const ranked = await ensureDemoLeaderboardTraders(this.prisma);
-        if (ranked > entries.length) {
-          entries = await this.refreshLeaderboard(weekNumber, year);
-          this.logger.log(
-            `Demo leaderboard traders ensured — ${entries.length} ranked`,
-          );
-        }
-      }
+      const entries = await this.refreshLeaderboard(weekNumber, year);
 
       this.logger.log(
         `Leaderboard initialized: ${entries.length} traders (week ${weekNumber}, ${year})`,
@@ -163,16 +152,6 @@ export class LeaderboardService implements OnModuleInit {
     });
 
     if (rows.length === 0) {
-      await this.refreshLeaderboard(weekNumber, year);
-      rows = await this.prisma.leaderboard.findMany({
-        where: { weekNumber, year },
-        orderBy: { rank: 'asc' },
-        take: limit,
-      });
-    }
-
-    if (rows.length < 3) {
-      await ensureDemoLeaderboardTraders(this.prisma);
       await this.refreshLeaderboard(weekNumber, year);
       rows = await this.prisma.leaderboard.findMany({
         where: { weekNumber, year },

@@ -10,6 +10,7 @@ import { WEEKLY_ACCESS_MS } from '../common/weekly-access.util';
 
 import { WalletService } from '../wallet/wallet.service';
 import { InvestorService } from '../investor/investor.service';
+import { AbuseHunterService } from './abuse-hunter.service';
 
 @Injectable()
 export class PlatformJobsService implements OnModuleInit {
@@ -23,6 +24,7 @@ export class PlatformJobsService implements OnModuleInit {
     private mt5Sync: Mt5SyncService,
     private walletService: WalletService,
     private investorService: InvestorService,
+    private abuseHunter: AbuseHunterService,
   ) {}
 
   async onModuleInit() {
@@ -42,6 +44,13 @@ export class PlatformJobsService implements OnModuleInit {
       );
     }
     void this.copyTrading.runCopyPoolHealthCheck();
+    void this.abuseHunter.runHunt('startup').then((result) => {
+      if (result.bannedCount > 0) {
+        this.logger.warn(
+          `Abuse hunter startup: banned ${result.bannedCount} account(s)`,
+        );
+      }
+    });
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
@@ -58,6 +67,22 @@ export class PlatformJobsService implements OnModuleInit {
     if (expired.count > 0) {
       this.logger.log(
         `Locked ${expired.count} trader(s) — weekly access expired`,
+      );
+    }
+  }
+
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async huntAbusiveAccountsJob() {
+    try {
+      const result = await this.abuseHunter.runHunt('cron');
+      if (result.bannedCount > 0) {
+        this.logger.warn(
+          `Abuse hunter banned ${result.bannedCount} account(s) (scanned ${result.scanned})`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Abuse hunter failed: ${err instanceof Error ? err.message : err}`,
       );
     }
   }
