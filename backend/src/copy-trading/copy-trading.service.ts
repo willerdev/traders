@@ -42,6 +42,8 @@ export type CopyMirrorInput = {
   openPrice: number;
   pending: boolean;
   orderKind?: string;
+  /** Platform/API feed — mirror to copy account without copy-pool membership. */
+  platformFeed?: boolean;
 };
 
 export type CopyTargetLeader = {
@@ -213,6 +215,117 @@ export class CopyTradingService {
     }
 
     return this.getCopySettings();
+  }
+
+  /** Copy account readiness for platform/API feed signals (no copy-pool leaders required). */
+  async evaluateCopyAccountHealth(): Promise<CopyPoolHealth> {
+    const checkedAt = new Date().toISOString();
+    const cfg = await this.getCopyConfig();
+    const copyAccountId = await this.metaApi.resolveCopyAccountIdAsync();
+
+    if (!cfg.copyTradesEnabled) {
+      return {
+        ready: false,
+        message: 'Copy trading paused by admin',
+        checkedAt,
+        copyAccountId: copyAccountId ?? null,
+        accountConnected: false,
+        tradeAllowed: false,
+        leaderCount: 0,
+        paused: true,
+      };
+    }
+
+    if (!this.metaApi.isConfigured) {
+      return {
+        ready: false,
+        message: 'MetaAPI is not configured',
+        checkedAt,
+        copyAccountId: null,
+        accountConnected: false,
+        tradeAllowed: false,
+        leaderCount: 0,
+      };
+    }
+
+    if (!copyAccountId) {
+      return {
+        ready: false,
+        message: 'No copy MT5 account is available',
+        checkedAt,
+        copyAccountId: null,
+        accountConnected: false,
+        tradeAllowed: false,
+        leaderCount: 0,
+      };
+    }
+
+    try {
+      const account = await this.metaApi.getAccount(copyAccountId);
+      const connected =
+        account.state === 'DEPLOYED' &&
+        account.connectionStatus === 'CONNECTED';
+
+      if (!connected) {
+        return {
+          ready: false,
+          message: `Copy account not connected (${account.connectionStatus}, ${account.state})`,
+          checkedAt,
+          copyAccountId,
+          accountConnected: false,
+          tradeAllowed: false,
+          leaderCount: 0,
+        };
+      }
+
+      const terminal = await this.metaApi.getTerminalState(copyAccountId);
+      const tradeAllowed = terminal.information?.tradeAllowed ?? false;
+
+      if (!tradeAllowed) {
+        return {
+          ready: false,
+          message: 'Copy account is connected but trading is disabled by the broker',
+          checkedAt,
+          copyAccountId,
+          accountConnected: true,
+          tradeAllowed: false,
+          leaderCount: 0,
+        };
+      }
+
+      if (terminal.error) {
+        return {
+          ready: false,
+          message: terminal.error,
+          checkedAt,
+          copyAccountId,
+          accountConnected: true,
+          tradeAllowed: false,
+          leaderCount: 0,
+        };
+      }
+
+      return {
+        ready: true,
+        message: `Ready — copy account ${copyAccountId.slice(0, 8)}…`,
+        checkedAt,
+        copyAccountId,
+        accountConnected: true,
+        tradeAllowed: true,
+        leaderCount: 0,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        ready: false,
+        message,
+        checkedAt,
+        copyAccountId,
+        accountConnected: false,
+        tradeAllowed: false,
+        leaderCount: 0,
+      };
+    }
   }
 
   async evaluateCopyPoolHealth(): Promise<CopyPoolHealth> {
@@ -728,7 +841,9 @@ export class CopyTradingService {
       return;
     }
 
-    const health = await this.evaluateCopyPoolHealth();
+    const health = input.platformFeed
+      ? await this.evaluateCopyAccountHealth()
+      : await this.evaluateCopyPoolHealth();
     if (!health.ready) {
       this.logger.debug(
         `Copy skip ${input.signalPublicId}: pool not ready — ${health.message}`,
@@ -749,7 +864,9 @@ export class CopyTradingService {
       return;
     }
 
-    const source = await this.resolveSourceRank(input.sourceUserId);
+    const source = input.platformFeed
+      ? { rank: 0, displayName: input.sourceDisplayName }
+      : await this.resolveSourceRank(input.sourceUserId);
     if (!source) {
       this.logger.debug(
         `Copy skip ${input.signalPublicId}: trader not in copy pool`,
@@ -825,7 +942,9 @@ export class CopyTradingService {
           tp1Price: tp1,
           entryPrice: openPrice,
           status: CopyTradeStatus.PENDING,
-          notes: `Mirroring #${source.rank} ${source.displayName} (max ${riskPercent}% risk${copyUseTwoToOneRr ? ', 1:2 RR TP' : ''})`,
+          notes: input.platformFeed
+            ? `API feed from ${source.displayName} (max ${riskPercent}% risk${copyUseTwoToOneRr ? ', 1:2 RR TP' : ''})`
+            : `Mirroring #${source.rank} ${source.displayName} (max ${riskPercent}% risk${copyUseTwoToOneRr ? ', 1:2 RR TP' : ''})`,
         },
       });
     } else {
@@ -835,7 +954,9 @@ export class CopyTradingService {
           status: CopyTradeStatus.PENDING,
           takeProfit: tp,
           tp1Price: tp1,
-          notes: `Retry mirroring #${source.rank} ${source.displayName} (max ${riskPercent}% risk${copyUseTwoToOneRr ? ', 1:2 RR TP' : ''})`,
+          notes: input.platformFeed
+            ? `Retry API feed from ${source.displayName} (max ${riskPercent}% risk${copyUseTwoToOneRr ? ', 1:2 RR TP' : ''})`
+            : `Retry mirroring #${source.rank} ${source.displayName} (max ${riskPercent}% risk${copyUseTwoToOneRr ? ', 1:2 RR TP' : ''})`,
         },
       });
     }

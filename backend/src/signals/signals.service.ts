@@ -102,7 +102,11 @@ export class SignalsService {
       select: { signalSource: true },
     });
 
-    if (full?.signalSource === SignalSource.SYSTEM) {
+    const mirrorsInvestors =
+      full?.signalSource === SignalSource.SYSTEM ||
+      full?.signalSource === SignalSource.EXTERNAL;
+
+    if (mirrorsInvestors) {
       try {
         await this.investorTrading.mirrorToInvestors({
           signalDbId: input.signal.id,
@@ -123,8 +127,13 @@ export class SignalsService {
           }`,
         );
       }
-      return;
     }
+
+    const mirrorsCopyPool =
+      full?.signalSource === SignalSource.TRADER ||
+      full?.signalSource === SignalSource.EXTERNAL;
+
+    if (!mirrorsCopyPool) return;
 
     try {
       await this.copyTrading.maybeMirrorTrade({
@@ -141,6 +150,7 @@ export class SignalsService {
         openPrice: input.openPrice,
         pending: input.pending,
         orderKind: input.orderKind,
+        platformFeed: full?.signalSource === SignalSource.EXTERNAL,
       });
     } catch (err) {
       this.logger.warn(
@@ -6181,6 +6191,15 @@ export class SignalsService {
         : 0;
 
     const userId = await this.resolveExternalSignalUserId();
+    const displayName =
+      process.env.EXTERNAL_SIGNAL_SENDER_NAME?.trim() || 'API Signals';
+    const openPrice =
+      singleEntry != null && Number.isFinite(singleEntry)
+        ? singleEntry
+        : createDto.direction === 'BUY'
+          ? entryMin
+          : entryMax;
+    const pending = true;
 
     const signal = await this.prisma.signal.create({
       data: {
@@ -6211,13 +6230,21 @@ export class SignalsService {
         entryMax: createDto.entryMax,
         stopLoss: createDto.stopLoss,
         takeProfit: createDto.takeProfit,
+        entryPrice: openPrice,
       },
     });
 
-    this.queueSetupExecutionInBackground({
-      signalId: signal.id,
-      userId,
-      dto: createDto,
+    void this.mirrorToCopyPool({
+      signal,
+      user: { id: userId, displayName },
+      openPrice,
+      pending,
+    }).catch((err) => {
+      this.logger.warn(
+        `External signal mirror failed for ${signal.signalId}: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
     });
 
     return {
@@ -6236,6 +6263,12 @@ export class SignalsService {
       comment: signal.description,
       setupStatus: signal.status,
       submittedAt: signal.submittedAt.toISOString(),
+      mirrored: {
+        investors: true,
+        mt5Copy: true,
+        openPrice,
+        pending,
+      },
     };
   }
 
