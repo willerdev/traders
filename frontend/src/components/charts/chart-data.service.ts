@@ -23,6 +23,7 @@ const TIMEFRAME_VOL_MULT: Record<ChartTimeframe, number> = {
 
 const INITIAL_OHLC_LIMIT = 400;
 const FALLBACK_BAR_COUNT = 280;
+const VISIBILITY_RESYNC_LIMIT = 120;
 
 function alignedBarTime(nowSec: number, intervalSec: number): number {
   return Math.floor(nowSec / intervalSec) * intervalSec;
@@ -274,25 +275,49 @@ export function subscribeRealtimeUpdates(
   timeframe: ChartTimeframe,
   getQuote: () => RealtimeQuote | null,
   onBar: (bar: OHLCBar, isNewBar: boolean) => void,
-  options?: { isActive?: () => boolean },
+  options?: {
+    isActive?: () => boolean;
+    onResync?: (bars: OHLCBar[]) => void;
+  },
 ): () => void {
   const interval = TIMEFRAME_SECONDS[timeframe];
   let lastBar: OHLCBar | null = null;
   let lastBarTime = 0;
   let cancelled = false;
+  let resyncing = false;
+  let tabHidden = typeof document !== "undefined" && document.hidden;
 
   const canRun = () => !cancelled && (options?.isActive?.() ?? true);
 
   const applyBar = (bar: OHLCBar, isNew: boolean) => {
-    if (!canRun()) return;
+    if (!canRun() || resyncing) return;
     lastBar = bar;
     lastBarTime = bar.time;
     onBar(bar, isNew);
   };
 
+  /** Refresh recent candles after tab sleep or drift — replaces tail via onResync. */
+  const resyncRecentBarsFromApi = async () => {
+    if (!canRun()) return;
+    resyncing = true;
+    try {
+      const res = await api.signals.mt5Ohlc(symbol, timeframe, VISIBILITY_RESYNC_LIMIT);
+      const bars = res.bars;
+      if (bars.length === 0) return;
+
+      lastBar = bars[bars.length - 1];
+      lastBarTime = lastBar.time;
+      options?.onResync?.(bars);
+    } catch {
+      /* keep ticking from live quote */
+    } finally {
+      resyncing = false;
+    }
+  };
+
   /** Refresh only the latest closed + forming bars — never replace full history. */
   const syncLastBarsFromApi = async () => {
-    if (!canRun()) return;
+    if (!canRun() || tabHidden) return;
     try {
       const res = await api.signals.mt5Ohlc(symbol, timeframe, 2);
       const bars = res.bars;
@@ -307,7 +332,7 @@ export function subscribeRealtimeUpdates(
   };
 
   const tick = () => {
-    if (!canRun()) return;
+    if (!canRun() || tabHidden || resyncing) return;
     const mid = quoteMid(getQuote());
     if (mid == null || !Number.isFinite(mid)) return;
 
@@ -318,12 +343,22 @@ export function subscribeRealtimeUpdates(
     applyBar(next, isNew);
   };
 
+  const onVisibilityChange = () => {
+    const wasHidden = tabHidden;
+    tabHidden = document.hidden;
+    if (wasHidden && !tabHidden) {
+      void resyncRecentBarsFromApi();
+    }
+  };
+
   const tickId = window.setInterval(tick, 1000);
   const syncId = window.setInterval(() => void syncLastBarsFromApi(), 15_000);
+  document.addEventListener("visibilitychange", onVisibilityChange);
 
   return () => {
     cancelled = true;
     window.clearInterval(tickId);
     window.clearInterval(syncId);
+    document.removeEventListener("visibilitychange", onVisibilityChange);
   };
 }

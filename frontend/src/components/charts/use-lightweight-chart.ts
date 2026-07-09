@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { IChartApi, ISeriesApi, CandlestickSeriesPartialOptions } from "lightweight-charts";
 import { createChartOptions, createCandlestickSeriesOptions, applyDefaultVisibleRange, type ChartThemeMode } from "@/components/charts/chart-config";
 import { priceFormatForSymbol } from "@/components/charts/chart-price-format";
+import { MAX_HISTORICAL_BARS } from "@/components/charts/chart-types";
 import type {
   ChartMarker,
   ChartPriceLine,
@@ -24,6 +25,7 @@ export type UseLightweightChartResult = {
   containerRef: React.RefObject<HTMLDivElement | null>;
   ready: boolean;
   setData: (bars: OHLCBar[], options?: SetChartDataOptions) => void;
+  resyncBars: (bars: OHLCBar[], options?: SetChartDataOptions) => void;
   updateCandle: (bar: OHLCBar) => void;
   setMarkers: (markers: ChartMarker[]) => void;
   clearMarkers: () => void;
@@ -165,7 +167,32 @@ export function useLightweightChart(
       if (!disposed) setReady(true);
     })();
 
+    const remeasureChart = () => {
+      const chart = chartRef.current;
+      const container = containerRef.current;
+      if (!chart || !container) return;
+      const { width, height } = container.getBoundingClientRect();
+      if (width > 0 && height > 0) {
+        chart.applyOptions({ width, height });
+      }
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      requestAnimationFrame(() => {
+        remeasureChart();
+        requestAnimationFrame(remeasureChart);
+      });
+    };
+
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    window.addEventListener("pageshow", onVisible);
+
     return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+      window.removeEventListener("pageshow", onVisible);
       disposed = true;
       setReady(false);
       ro?.disconnect();
@@ -214,6 +241,33 @@ export function useLightweightChart(
     [applyData],
   );
 
+  const resyncBars = useCallback(
+    (tail: OHLCBar[], options?: SetChartDataOptions) => {
+      if (tail.length === 0) return;
+      if (!seriesRef.current) {
+        pendingBarsRef.current = tail;
+        return;
+      }
+
+      const firstTailTime = tail[0].time;
+      const byTime = new Map<number, OHLCBar>();
+      for (const bar of barsRef.current) {
+        if (bar.time < firstTailTime) {
+          byTime.set(bar.time, bar);
+        }
+      }
+      for (const bar of tail) {
+        byTime.set(bar.time, bar);
+      }
+      let merged = [...byTime.values()].sort((a, b) => a.time - b.time);
+      if (merged.length > MAX_HISTORICAL_BARS) {
+        merged = merged.slice(merged.length - MAX_HISTORICAL_BARS);
+      }
+      applyData(merged, options);
+    },
+    [applyData],
+  );
+
   const updateCandle = useCallback((bar: OHLCBar) => {
     if (!seriesRef.current) return;
     const bars = barsRef.current;
@@ -222,11 +276,14 @@ export function useLightweightChart(
       return;
     }
     const last = bars[bars.length - 1];
+    if (last && bar.time < last.time) {
+      return;
+    }
     if (last && last.time === bar.time) {
       bars[bars.length - 1] = bar;
     } else if (!last || bar.time > last.time) {
       bars.push(bar);
-      if (bars.length > 500) bars.shift();
+      if (bars.length > MAX_HISTORICAL_BARS) bars.shift();
     }
     seriesRef.current.update({
       time: bar.time as import("lightweight-charts").UTCTimestamp,
@@ -325,6 +382,7 @@ export function useLightweightChart(
     containerRef,
     ready,
     setData,
+    resyncBars,
     updateCandle,
     setMarkers,
     clearMarkers,

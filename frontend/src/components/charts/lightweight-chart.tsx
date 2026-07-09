@@ -109,6 +109,7 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
     const onLoadingChangeRef = useRef(onLoadingChange);
     const onChartStatusChangeRef = useRef(onChartStatusChange);
     const setDataRef = useRef(chart.setData);
+    const resyncBarsRef = useRef(chart.resyncBars);
     const applySymbolFormatRef = useRef(chart.applySymbolFormat);
     const updateCandleRef = useRef(chart.updateCandle);
     const setMarkersRef = useRef(chart.setMarkers);
@@ -121,6 +122,7 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
     onLoadingChangeRef.current = onLoadingChange;
     onChartStatusChangeRef.current = onChartStatusChange;
     setDataRef.current = chart.setData;
+    resyncBarsRef.current = chart.resyncBars;
     applySymbolFormatRef.current = chart.applySymbolFormat;
     updateCandleRef.current = chart.updateCandle;
     setMarkersRef.current = chart.setMarkers;
@@ -338,7 +340,19 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
           }
           updateCandleRef.current(bar);
         },
-        { isActive: () => historyReadyRef.current },
+        {
+          isActive: () => historyReadyRef.current,
+          onResync: (bars) => {
+            if (
+              !historyReadyRef.current ||
+              symbolRef.current !== activeSymbol ||
+              timeframeRef.current !== activeTf
+            ) {
+              return;
+            }
+            resyncBarsRef.current(bars, { preserveTimeRange: true });
+          },
+        },
       );
       return unsub;
     }, [symbol, timeframe, chart.ready]);
