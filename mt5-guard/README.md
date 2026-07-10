@@ -18,6 +18,8 @@ npm install
 npm start
 ```
 
+**Expo Go:** This project targets **Expo SDK 56** so it runs in the Play Store / App Store Expo Go app. SDK 57 is not yet available in store builds of Expo Go — updating the app on your phone will not help until Expo ships that release.
+
 ## Environment
 
 | Variable | Default |
