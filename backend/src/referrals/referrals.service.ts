@@ -9,7 +9,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { NotificationService } from '../email/notification.service';
 import { PlatformNotificationsService } from '../platform-notifications/platform-notifications.service';
-import { WalletService } from '../wallet/wallet.service';
 
 const DEFAULT_KYC_REWARD = 0.5;
 const DEFAULT_PAID_REWARD = 1;
@@ -23,7 +22,6 @@ export class ReferralsService {
     private email: EmailService,
     private notifications: NotificationService,
     private platformNotifications: PlatformNotificationsService,
-    private walletService: WalletService,
   ) {}
 
   private async rewardAmounts() {
@@ -516,21 +514,35 @@ export class ReferralsService {
         `Referral settlement — ${kycCount} KYC × $${kycReward} + ${paidCount} sub × $${paidReward}` +
         (note?.trim() ? ` — ${note.trim()}` : '');
 
-      const { balance } = await this.walletService.creditReferralSettlement(
-        referrerId,
-        amount,
-        settlement.id,
-        description,
-      );
-
-      const walletTx = await this.prisma.walletTransaction.findFirst({
-        where: { userId: referrerId, referenceId: settlement.id, type: 'REFERRAL_REWARD' },
-        orderBy: { createdAt: 'desc' },
+      let wallet = await this.prisma.platformWallet.findUnique({
+        where: { userId: referrerId },
+      });
+      if (!wallet) {
+        wallet = await this.prisma.platformWallet.create({
+          data: { userId: referrerId },
+        });
+      }
+      const balance = Number(wallet.availableBalance) + amount;
+      const walletTx = await this.prisma.$transaction(async (tx) => {
+        await tx.platformWallet.update({
+          where: { userId: referrerId },
+          data: { availableBalance: balance },
+        });
+        return tx.walletTransaction.create({
+          data: {
+            userId: referrerId,
+            amount,
+            type: 'REFERRAL_REWARD',
+            description,
+            referenceId: settlement.id,
+            balanceAfter: balance,
+          },
+        });
       });
 
       await this.prisma.referralSettlement.update({
         where: { id: settlement.id },
-        data: { walletTxId: walletTx?.id ?? null },
+        data: { walletTxId: walletTx.id },
       });
 
       this.notifications.referralSettlementPaid(referrerId, {
