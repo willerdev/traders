@@ -7,7 +7,6 @@ import { computeOneToOneTakeProfit } from "@/lib/mt5-order-stops";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MT5_BUY, MT5_SELL, fmtMt5Price } from "@/components/mt5/mt5-ui";
-import { cn } from "@/lib/utils";
 
 type Direction = "BUY" | "SELL";
 

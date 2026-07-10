@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
   Loader2,
@@ -15,7 +14,7 @@ import {
   type UserMt5Trade,
 } from "@/lib/api";
 import { useAuthStore, useDashboardStore } from "@/stores/auth";
-import { shouldRedirectMt5ToCopy } from "@/lib/copy-access";
+import { canAccessMt5Copy } from "@/lib/copy-access";
 import { useMt5Terminal } from "@/hooks/use-mt5-terminal";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { useUrlTab } from "@/hooks/use-url-tab";
@@ -93,14 +92,12 @@ function orderTypeLabel(row: UserMt5HistoryItem) {
 }
 
 export default function Mt5UserPage() {
-  const router = useRouter();
   const { ready, hasHydrated } = useRequireAuth();
   const userRole = useAuthStore((s) => s.user?.role);
   const adminPermissions = useAuthStore((s) => s.user?.adminPermissions);
   const dashboardPermissions = useDashboardStore((s) => s.data?.user?.adminPermissions);
   const fetchDashboard = useDashboardStore((s) => s.fetchDashboard);
   const userId = useAuthStore((s) => s.user?.id);
-  const [permissionsReady, setPermissionsReady] = useState(false);
   const [tab, setTab] = useUrlTab("tab", "chart", [
     "quotes",
     "chart",
@@ -136,12 +133,10 @@ export default function Mt5UserPage() {
 
   const accessGranted = tradingAccess === true;
   const effectivePermissions = dashboardPermissions ?? adminPermissions;
-  const redirectToCopy =
-    permissionsReady &&
-    shouldRedirectMt5ToCopy({
-      role: userRole,
-      adminPermissions: effectivePermissions,
-    });
+  const canManageCopy = canAccessMt5Copy({
+    role: userRole,
+    adminPermissions: effectivePermissions,
+  });
 
   const {
     data,
@@ -153,23 +148,12 @@ export default function Mt5UserPage() {
     setError,
     load,
     loadRunning,
-  } = useMt5Terminal(
-    userId,
-    ready,
-    hasHydrated,
-    tab,
-    accessGranted && permissionsReady && !redirectToCopy,
-  );
+  } = useMt5Terminal(userId, ready, hasHydrated, tab, accessGranted);
 
   useEffect(() => {
     if (!ready || !hasHydrated) return;
-    void fetchDashboard().finally(() => setPermissionsReady(true));
+    void fetchDashboard();
   }, [ready, hasHydrated, fetchDashboard]);
-
-  useEffect(() => {
-    if (!redirectToCopy) return;
-    router.replace("/mt5/copy");
-  }, [redirectToCopy, router]);
 
   useEffect(() => {
     if (!ready) return;
@@ -393,14 +377,6 @@ export default function Mt5UserPage() {
     );
   }
 
-  if (!permissionsReady || redirectToCopy) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   const mainTabs: { id: Tab; label: string; count?: number }[] = [
     { id: "quotes", label: "Quotes", count: quotes.length },
     { id: "setups", label: "Setups", count: setups.length },
@@ -483,14 +459,14 @@ export default function Mt5UserPage() {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            {userRole === "ADMIN" && (
+            {canManageCopy && (
               <Link href="/mt5/copy">
                 <Button
                   variant="ghost"
                   size="sm"
                   className="h-8 text-[10px] text-[var(--mt5-muted)]"
                 >
-                  Copy
+                  Copy pool
                 </Button>
               </Link>
             )}
@@ -536,16 +512,8 @@ export default function Mt5UserPage() {
 
         {!account && investor && investor.investmentDeposited > 0 && tab !== "quotes" && (
           <div className={tab === "trades" ? "md:hidden" : undefined}>
-            <div className="border-b border-[var(--mt5-divider)]">
-              <div className="flex items-center justify-between px-4 pt-3">
-                <span className="text-[11px] font-medium uppercase tracking-wide text-[var(--mt5-muted)]">
-                  Account
-                </span>
-                <Mt5AccountModeBadge mode="real" detail="Investor" />
-              </div>
-              <Mt5SummaryBlock
-                className="border-b-0"
-                rows={[
+            <Mt5SummaryBlock
+              rows={[
                 {
                   label: "Investment",
                   value: formatCurrency(investor.investmentDeposited),
@@ -559,8 +527,7 @@ export default function Mt5UserPage() {
                     ]
                   : []),
               ]}
-              />
-            </div>
+            />
           </div>
         )}
 

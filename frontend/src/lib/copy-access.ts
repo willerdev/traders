@@ -26,9 +26,11 @@ export function shouldRedirectMt5ToCopy(input?: {
   return input.role !== "ADMIN";
 }
 
-export function mt5NavHref(input?: {
-  role?: string | null;
-  adminPermissions?: AdminPermissionsView | null;
-} | null): string {
-  return shouldRedirectMt5ToCopy(input) ? "/mt5/copy" : "/mt5";
+export function mt5NavHref(
+  _input?: {
+    role?: string | null;
+    adminPermissions?: AdminPermissionsView | null;
+  } | null,
+): string {
+  return "/mt5";
 }

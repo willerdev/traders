@@ -6,11 +6,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
-import {
-  mt5AccountModeDetail,
-  mt5AccountModeFromSource,
-  type Mt5AccountMode,
-} from "@/lib/mt5-account-mode";
+import type { Mt5AccountMode } from "@/lib/mt5-account-mode";
 import type { UserMt5AccountSource, UserMt5InvestorSummary } from "@/lib/api";
 
 /* MT5 palette — blue wins/buy, red losses/sell in both themes */
@@ -363,12 +359,6 @@ export function Mt5AccountSummary({
   investor?: UserMt5InvestorSummary;
   accountSource?: UserMt5AccountSource;
 }) {
-  const mode = mt5AccountModeFromSource(accountSource, investor);
-  const detail =
-    mt5AccountModeDetail(accountSource) ??
-    (mode === "real" && investor?.investmentDeposited
-      ? "Investor"
-      : null);
   const liveBroker =
     accountSource === "copy_live" ||
     accountSource === "linked_live" ||
@@ -414,17 +404,7 @@ export function Mt5AccountSummary({
     },
   ];
 
-  return (
-    <div className="border-b border-[var(--mt5-divider)]">
-      <div className="flex items-center justify-between px-4 pt-3">
-        <span className="text-[11px] font-medium uppercase tracking-wide text-[var(--mt5-muted)]">
-          Account
-        </span>
-        <Mt5AccountModeBadge mode={mode} detail={detail} />
-      </div>
-      <Mt5SummaryBlock rows={rows} className="border-b-0" />
-    </div>
-  );
+  return <Mt5SummaryBlock rows={rows} />;
 }
 
 export function Mt5FloatingHeader({
