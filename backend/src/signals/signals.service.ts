@@ -30,7 +30,14 @@ import {
 } from '../common/rr.util';
 import { NotificationService } from '../email/notification.service';
 import { PlatformNotificationsService } from '../platform-notifications/platform-notifications.service';
-import { Signal, SubscriptionPlan, Trade, TradeDirection, User } from '@prisma/client';
+import {
+  Signal,
+  SubscriptionPlan,
+  Trade,
+  TradeDirection,
+  User,
+  UserRole,
+} from '@prisma/client';
 import { MetaApiService } from '../metaapi/metaapi.service';
 import {
   buildMetaApiTradeIdentifiers,
@@ -5202,6 +5209,8 @@ export class SignalsService {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
+        role: true,
+        adminCanManageCopy: true,
         displayName: true,
         metaApiAccountId: true,
         mt5SyncActive: true,
@@ -5217,8 +5226,54 @@ export class SignalsService {
       syncActive && user.metaApiAccountId?.trim()
         ? user.metaApiAccountId.trim()
         : platformAccountId;
+    const copyOwner =
+      user.adminCanManageCopy && user.role !== UserRole.ADMIN;
 
-    return { user, syncActive, platformAccountId, terminalAccountId };
+    return {
+      user,
+      syncActive,
+      platformAccountId,
+      terminalAccountId,
+      copyOwner,
+    };
+  }
+
+  private buildMt5LiveAccountSummary(
+    information: { balance: number; equity: number; currency: string },
+    floatingProfit: number,
+  ) {
+    const balance = Number(information.balance);
+    const equity = Number(information.equity);
+    return {
+      startingBalance: balance,
+      currency: information.currency || 'USD',
+      realizedProfit: 0,
+      floatingProfit,
+      totalProfit: floatingProfit,
+      equity,
+    };
+  }
+
+  private async resolveCopyOwnerAccountSummary(floatingProfit?: number) {
+    const copyAccountId = await this.metaApi.resolveCopyAccountIdAsync();
+    if (!this.metaApi.isConfigured || !copyAccountId) {
+      return null;
+    }
+
+    const terminal = await this.metaApi.getTerminalState(copyAccountId);
+    if (!terminal.information) {
+      return null;
+    }
+
+    const float =
+      floatingProfit ??
+      (terminal.positions ?? []).reduce(
+        (sum, p) =>
+          sum + p.profit + p.unrealizedProfit + p.swap + p.commission,
+        0,
+      );
+
+    return this.buildMt5LiveAccountSummary(terminal.information, float);
   }
 
   /** MetaAPI `profit` already includes unrealized price P/L (MT5 Profit column). */
@@ -5260,7 +5315,7 @@ export class SignalsService {
   async getUserMt5Terminal(userId: string) {
     await this.compliance.requireActiveTrader(userId);
 
-    const { user, syncActive, platformAccountId, terminalAccountId } =
+    const { user, syncActive, platformAccountId, terminalAccountId, copyOwner } =
       await this.resolveUserMt5TerminalContext(userId);
 
     const platformTrader = {
@@ -5566,14 +5621,18 @@ export class SignalsService {
 
     const investor = await this.investorService.getMt5InvestmentSummary(userId);
 
-    const accountLedger = await this.buildMt5UserAccountSummary(
-      userId,
-      floatingProfit,
-    );
+    const copyAccountLedger = copyOwner
+      ? await this.resolveCopyOwnerAccountSummary(floatingProfit)
+      : null;
+    const accountLedger =
+      copyAccountLedger ??
+      (await this.buildMt5UserAccountSummary(userId, floatingProfit));
 
     return {
       configured: this.metaApi.isConfigured && Boolean(terminalAccountId),
       syncActive,
+      copyOwner,
+      accountSource: copyAccountLedger ? 'copy_live' : 'virtual',
       message: terminalError,
       account: accountLedger,
       investor: investor ?? undefined,
@@ -5599,14 +5658,20 @@ export class SignalsService {
   async getUserMt5RunningTrades(userId: string) {
     await this.compliance.requireActiveTrader(userId);
 
-    const { user, syncActive, terminalAccountId } =
+    const { user, syncActive, terminalAccountId, copyOwner } =
       await this.resolveUserMt5TerminalContext(userId);
 
     if (!this.metaApi.isConfigured || !terminalAccountId) {
-      const accountLedger = await this.buildMt5UserAccountSummary(userId, 0);
+      const copyAccountLedger = copyOwner
+        ? await this.resolveCopyOwnerAccountSummary(0)
+        : null;
+      const accountLedger =
+        copyAccountLedger ??
+        (await this.buildMt5UserAccountSummary(userId, 0));
       return {
         trades: [],
         account: accountLedger,
+        accountSource: copyAccountLedger ? 'copy_live' : 'virtual',
         stats: { runningCount: 0, floatingProfit: 0 },
         syncActive,
         refreshedAt: new Date().toISOString(),
@@ -5695,14 +5760,17 @@ export class SignalsService {
 
     const floatingProfit = trades.reduce((sum, t) => sum + (t.profit ?? 0), 0);
 
-    const accountLedger = await this.buildMt5UserAccountSummary(
-      userId,
-      floatingProfit,
-    );
+    const copyAccountLedger = copyOwner
+      ? await this.resolveCopyOwnerAccountSummary(floatingProfit)
+      : null;
+    const accountLedger =
+      copyAccountLedger ??
+      (await this.buildMt5UserAccountSummary(userId, floatingProfit));
 
     return {
       trades,
       account: accountLedger,
+      accountSource: copyAccountLedger ? 'copy_live' : 'virtual',
       stats: {
         runningCount: trades.length,
         floatingProfit,

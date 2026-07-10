@@ -313,6 +313,7 @@ export function Mt5Empty({
 export function Mt5AccountSummary({
   account,
   investor,
+  accountSource,
 }: {
   account: {
     startingBalance: number;
@@ -328,7 +329,9 @@ export function Mt5AccountSummary({
     mt5Balance?: number;
     currency: string;
   };
+  accountSource?: "virtual" | "copy_live" | "linked_live";
 }) {
+  const liveCopy = accountSource === "copy_live";
   const rows = [
     ...(investor && investor.investmentDeposited > 0
       ? [
@@ -347,8 +350,12 @@ export function Mt5AccountSummary({
         ]
       : []),
     {
-      label: "Balance",
-      value: fmtMt5Price(account.startingBalance + account.realizedProfit),
+      label: liveCopy ? "Live balance" : "Balance",
+      value: fmtMt5Price(
+        liveCopy
+          ? account.startingBalance
+          : account.startingBalance + account.realizedProfit,
+      ),
     },
     {
       label: "Profit",

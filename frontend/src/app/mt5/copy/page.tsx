@@ -45,8 +45,10 @@ export default function Mt5CopyPage() {
   const userRole = useAuthStore((s) => s.user?.role);
   const authPermissions = useAuthStore((s) => s.user?.adminPermissions);
   const dashboardPermissions = useDashboardStore((s) => s.data?.user?.adminPermissions);
+  const fetchDashboard = useDashboardStore((s) => s.fetchDashboard);
   const adminPermissions = dashboardPermissions ?? authPermissions;
-  const canManage = canAccessMt5Copy({ role: userRole, adminPermissions });
+  const [permissionsReady, setPermissionsReady] = useState(false);
+  const canManage = permissionsReady && canAccessMt5Copy({ role: userRole, adminPermissions });
 
   const [data, setData] = useState<CopyTradingDashboard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,12 +81,19 @@ export default function Mt5CopyPage() {
   useEffect(() => {
     if (!hasHydrated) return;
     if (!ready) return;
+    void fetchDashboard().finally(() => setPermissionsReady(true));
+  }, [hasHydrated, ready, fetchDashboard]);
+
+  useEffect(() => {
+    if (!hasHydrated) return;
+    if (!ready) return;
+    if (!permissionsReady) return;
     if (!canManage) {
       router.replace("/dashboard");
       return;
     }
     void load();
-  }, [hasHydrated, ready, canManage, router, load]);
+  }, [hasHydrated, ready, permissionsReady, canManage, router, load]);
 
   async function toggleCopyTrading() {
     if (!data) return;
@@ -185,7 +194,7 @@ export default function Mt5CopyPage() {
     }
   }
 
-  if (!hasHydrated || !ready) {
+  if (!hasHydrated || !ready || !permissionsReady) {
     return <AuthLoadingScreen />;
   }
 

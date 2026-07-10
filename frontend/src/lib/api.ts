@@ -2031,6 +2031,7 @@ export interface UserMt5Trade {
 export interface UserMt5RunningResult {
   trades: UserMt5Trade[];
   account?: UserMt5AccountSummary;
+  accountSource?: UserMt5AccountSource;
   stats: {
     runningCount: number;
     floatingProfit: number;
@@ -2135,6 +2136,8 @@ export interface UserMt5AccountSummary {
   equity: number;
 }
 
+export type UserMt5AccountSource = "virtual" | "copy_live" | "linked_live";
+
 export interface UserMt5InvestorSummary {
   investmentDeposited: number;
   enrollmentPaid: number;
@@ -2147,6 +2150,8 @@ export interface UserMt5InvestorSummary {
 
 export interface UserMt5Terminal {
   configured: boolean;
+  copyOwner?: boolean;
+  accountSource?: UserMt5AccountSource;
   message?: string;
   account?: UserMt5AccountSummary;
   investor?: UserMt5InvestorSummary;

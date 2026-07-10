@@ -93,7 +93,9 @@ export default function Mt5UserPage() {
   const userRole = useAuthStore((s) => s.user?.role);
   const adminPermissions = useAuthStore((s) => s.user?.adminPermissions);
   const dashboardPermissions = useDashboardStore((s) => s.data?.user?.adminPermissions);
+  const fetchDashboard = useDashboardStore((s) => s.fetchDashboard);
   const userId = useAuthStore((s) => s.user?.id);
+  const [permissionsReady, setPermissionsReady] = useState(false);
   const [tab, setTab] = useUrlTab("tab", "chart", [
     "quotes",
     "chart",
@@ -128,6 +130,13 @@ export default function Mt5UserPage() {
   }, []);
 
   const accessGranted = tradingAccess === true;
+  const effectivePermissions = dashboardPermissions ?? adminPermissions;
+  const redirectToCopy =
+    permissionsReady &&
+    shouldRedirectMt5ToCopy({
+      role: userRole,
+      adminPermissions: effectivePermissions,
+    });
 
   const {
     data,
@@ -139,19 +148,23 @@ export default function Mt5UserPage() {
     setError,
     load,
     loadRunning,
-  } = useMt5Terminal(userId, ready, hasHydrated, tab, accessGranted);
+  } = useMt5Terminal(
+    userId,
+    ready,
+    hasHydrated,
+    tab,
+    accessGranted && permissionsReady && !redirectToCopy,
+  );
 
   useEffect(() => {
     if (!ready || !hasHydrated) return;
-    if (
-      shouldRedirectMt5ToCopy({
-        role: userRole,
-        adminPermissions: dashboardPermissions ?? adminPermissions,
-      })
-    ) {
-      router.replace("/mt5/copy");
-    }
-  }, [ready, hasHydrated, userRole, adminPermissions, dashboardPermissions, router]);
+    void fetchDashboard().finally(() => setPermissionsReady(true));
+  }, [ready, hasHydrated, fetchDashboard]);
+
+  useEffect(() => {
+    if (!redirectToCopy) return;
+    router.replace("/mt5/copy");
+  }, [redirectToCopy, router]);
 
   useEffect(() => {
     if (!ready) return;
@@ -166,6 +179,7 @@ export default function Mt5UserPage() {
   );
   const floating = data?.stats.floatingProfit ?? 0;
   const account = data?.account;
+  const accountSource = data?.accountSource;
   const investor = data?.investor;
   const limitCount = data?.stats.limitCount ?? 0;
   const runningCount = data?.stats.runningCount ?? runningTrades.length;
@@ -368,6 +382,14 @@ export default function Mt5UserPage() {
     );
   }
 
+  if (!permissionsReady || redirectToCopy) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   const mainTabs: { id: Tab; label: string; count?: number }[] = [
     { id: "quotes", label: "Quotes", count: quotes.length },
     { id: "setups", label: "Setups", count: setups.length },
@@ -487,7 +509,11 @@ export default function Mt5UserPage() {
 
         {account && tab !== "quotes" && (
           <div className={tab === "trades" ? "md:hidden" : undefined}>
-            <Mt5AccountSummary account={account} investor={investor} />
+            <Mt5AccountSummary
+              account={account}
+              investor={investor}
+              accountSource={accountSource}
+            />
           </div>
         )}
 
