@@ -363,6 +363,22 @@ class ApiClient {
       this.request<CloseAllMt5Result>("/signals/mt5/positions/close-all", {
         method: "POST",
       }),
+    mt5OrderPreview: (symbol: string, direction: "BUY" | "SELL") => {
+      const q = new URLSearchParams({ symbol, direction });
+      return this.request<Mt5MarketOrderPreview>(
+        `/signals/mt5/order-preview?${q}`,
+      );
+    },
+    placeMt5Order: (body: {
+      symbol: string;
+      direction: "BUY" | "SELL";
+      stopLoss: number;
+      takeProfit: number;
+    }) =>
+      this.request<PlaceTradeResult>("/signals/mt5/orders", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
     copyDashboard: () =>
       this.request<CopyTradingDashboard>("/signals/metaapi/copy-dashboard"),
     copySettings: () =>
@@ -2205,6 +2221,26 @@ export interface PlaceTradeResult {
     comment?: string;
     orderKind?: string;
   };
+}
+
+export interface Mt5MarketOrderPreview {
+  symbol: string;
+  direction: "BUY" | "SELL";
+  entry: number;
+  stopLoss: number;
+  takeProfit: number;
+  defaultSlPips: number;
+  riskRewardRatio: number;
+  quote: { symbol: string; bid: number; ask: number; time: string };
+  risk: {
+    volume: number;
+    riskPercent: number;
+    riskAmount: number;
+    estimatedLossAtSl: number;
+    accountEquity: number;
+    currency: string;
+  };
+  refreshedAt: string;
 }
 
 export interface OpenSetupItem {

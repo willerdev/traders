@@ -674,6 +674,10 @@ export default function Mt5UserPage() {
               void loadRunning();
               void load({ background: true });
             }}
+            onTradePlaced={() => {
+              void loadRunning();
+              void load({ background: true });
+            }}
           />
         </div>
       )}

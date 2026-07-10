@@ -20,6 +20,7 @@ import {
   ClaimSetupDto,
   UpdateSetupStopsDto,
   ModifyMt5PositionStopsDto,
+  PlaceMt5MarketOrderDto,
   InvalidateSetupDto,
   PartialCloseSetupDto,
   TradeOutcomeWebhookDto,
@@ -353,6 +354,29 @@ export class SignalsController {
   @UseGuards(JwtAuthGuard)
   getUserMt5Terminal(@Request() req: { user: { id: string } }) {
     return this.signalsService.getUserMt5Terminal(req.user.id);
+  }
+
+  @Get('mt5/order-preview')
+  @UseGuards(JwtAuthGuard)
+  previewMt5MarketOrder(
+    @Request() req: { user: { id: string } },
+    @Query('symbol') symbol: string,
+    @Query('direction') direction: string,
+  ) {
+    return this.signalsService.previewMt5MarketOrder(
+      req.user.id,
+      symbol,
+      direction,
+    );
+  }
+
+  @Post('mt5/orders')
+  @UseGuards(JwtAuthGuard)
+  placeMt5MarketOrder(
+    @Request() req: { user: { id: string } },
+    @Body() dto: PlaceMt5MarketOrderDto,
+  ) {
+    return this.signalsService.placeMt5MarketOrder(req.user.id, dto);
   }
 
   @Post('mt5/positions/close-all')

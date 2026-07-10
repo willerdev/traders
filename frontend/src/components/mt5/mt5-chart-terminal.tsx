@@ -50,6 +50,7 @@ import {
 } from "@/lib/mt5-account-mode";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
+import { Mt5PlaceOrderModal } from "@/components/mt5/mt5-place-order-modal";
 
 type Props = {
   quotes: UserMt5QuoteItem[];
@@ -67,6 +68,7 @@ type Props = {
   /** Mobile Charts tab — chart fills viewport, no orders panel height cap */
   chartOnly?: boolean;
   onStopsUpdated?: () => void;
+  onTradePlaced?: () => void;
 };
 
 function toSetupSummary(setup: OpenSetupItem): SetupSummary {
@@ -105,8 +107,10 @@ export function Mt5ChartTerminal({
   showOrdersPanel = true,
   chartOnly = false,
   onStopsUpdated,
+  onTradePlaced,
 }: Props) {
   const chartRef = useRef<LightweightChartHandle>(null);
+  const [orderModal, setOrderModal] = useState<"BUY" | "SELL" | null>(null);
   const chartAreaRef = useRef<HTMLDivElement>(null);
   const symbolSearchRef = useRef<HTMLInputElement>(null);
   const [timeframe, setTimeframe] = useState<ChartTimeframe>("M5");
@@ -310,6 +314,27 @@ export function Mt5ChartTerminal({
 
   const desktopTerminal = showOrdersPanel && !chartOnly;
 
+  const orderActionBar = (
+    <div className="flex shrink-0 gap-2 border-t border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-2">
+      <button
+        type="button"
+        onClick={() => setOrderModal("BUY")}
+        className="flex-1 rounded-md py-2.5 text-sm font-bold uppercase tracking-wide text-white shadow-sm transition-opacity hover:opacity-90"
+        style={{ backgroundColor: MT5_BUY }}
+      >
+        Buy
+      </button>
+      <button
+        type="button"
+        onClick={() => setOrderModal("SELL")}
+        className="flex-1 rounded-md py-2.5 text-sm font-bold uppercase tracking-wide text-white shadow-sm transition-opacity hover:opacity-90"
+        style={{ backgroundColor: MT5_SELL }}
+      >
+        Sell
+      </button>
+    </div>
+  );
+
   return (
     <div
       className={cn(
@@ -484,6 +509,8 @@ export function Mt5ChartTerminal({
         )}
       </div>
 
+      {chartOnly && orderActionBar}
+
       {/* Desktop MT5-style terminal — hidden on phone */}
       {showOrdersPanel && (
         <div className="hidden md:flex md:max-h-[32vh] md:shrink-0 md:flex-col md:border-t md:border-[var(--mt5-divider)]">
@@ -628,6 +655,21 @@ export function Mt5ChartTerminal({
             </span>
           </div>
         </div>
+      )}
+
+      {showOrdersPanel && !chartOnly && orderActionBar}
+
+      {orderModal && (
+        <Mt5PlaceOrderModal
+          symbol={selectedSymbol}
+          direction={orderModal}
+          open
+          onClose={() => setOrderModal(null)}
+          onPlaced={() => {
+            onTradePlaced?.();
+            onStopsUpdated?.();
+          }}
+        />
       )}
     </div>
   );

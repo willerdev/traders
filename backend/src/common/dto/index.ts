@@ -754,6 +754,21 @@ export class ModifyMt5PositionStopsDto {
   takeProfit?: number;
 }
 
+export class PlaceMt5MarketOrderDto {
+  @IsString()
+  @MaxLength(32)
+  symbol: string;
+
+  @IsEnum(TradeDirection)
+  direction: TradeDirection;
+
+  @IsNumber()
+  stopLoss: number;
+
+  @IsNumber()
+  takeProfit: number;
+}
+
 export class PartialCloseSetupDto {
   @IsNumber()
   @Min(0.01)

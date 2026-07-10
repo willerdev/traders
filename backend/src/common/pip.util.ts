@@ -21,3 +21,11 @@ export function entryMidpointPipDistance(
   const bMid = (bMin + bMax) / 2;
   return Math.abs(aMid - bMid) / pipSize;
 }
+
+/** Default stop distance for quick MT5 chart orders (in pips). */
+export function defaultMt5ChartSlPips(symbol: string): number {
+  const s = symbol.toUpperCase();
+  if (s.includes('XAU') || s.includes('GOLD')) return 50;
+  if (/^(NAS100|US30|US500|SPX500|USTEC|DE40|UK100|1HZ)/.test(s)) return 15;
+  return 20;
+}

@@ -10,7 +10,7 @@ import {
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
-import { CreateSignalDto, ClaimSetupDto, TradeOutcomeWebhookDto, TradeLifecycleItemDto, TradeLifecycleWebhookDto, HubActionDto, UpdateSetupStopsDto, ModifyMt5PositionStopsDto, IngestExternalSignalDto } from '../common/dto';
+import { CreateSignalDto, ClaimSetupDto, TradeOutcomeWebhookDto, TradeLifecycleItemDto, TradeLifecycleWebhookDto, HubActionDto, UpdateSetupStopsDto, ModifyMt5PositionStopsDto, PlaceMt5MarketOrderDto, IngestExternalSignalDto } from '../common/dto';
 import { createHash } from 'crypto';
 import { ComplianceService } from '../compliance/compliance.service';
 import { ForwardSignalResult, SignalHubService } from './signal-hub.service';
@@ -28,6 +28,7 @@ import {
   isOneToOneClaimValidForSetup,
   priceReachedOneToOne,
 } from '../common/rr.util';
+import { getPipSize, defaultMt5ChartSlPips } from '../common/pip.util';
 import { NotificationService } from '../email/notification.service';
 import { PlatformNotificationsService } from '../platform-notifications/platform-notifications.service';
 import {
@@ -5866,6 +5867,339 @@ export class SignalsService {
       },
       syncActive,
       refreshedAt: new Date().toISOString(),
+    };
+  }
+
+  private computeMt5ChartDefaultStops(
+    direction: TradeDirection,
+    entry: number,
+    symbol: string,
+    digits: number,
+  ) {
+    const pipSize = getPipSize(symbol);
+    const slDistance = defaultMt5ChartSlPips(symbol) * pipSize;
+    const stopLoss = roundToSymbolDigits(
+      direction === 'BUY' ? entry - slDistance : entry + slDistance,
+      digits,
+    );
+    const takeProfit = roundToSymbolDigits(
+      computeOneToOnePrice(direction, entry, entry, stopLoss),
+      digits,
+    );
+    return { stopLoss, takeProfit, slPips: defaultMt5ChartSlPips(symbol) };
+  }
+
+  private validateMt5ChartStops(
+    direction: TradeDirection,
+    entry: number,
+    stopLoss: number,
+    takeProfit: number,
+  ) {
+    if (direction === 'BUY') {
+      if (stopLoss >= entry) {
+        throw new BadRequestException(
+          'Stop loss must be below entry for a BUY order',
+        );
+      }
+      if (takeProfit <= entry) {
+        throw new BadRequestException(
+          'Take profit must be above entry for a BUY order',
+        );
+      }
+      return;
+    }
+    if (stopLoss <= entry) {
+      throw new BadRequestException(
+        'Stop loss must be above entry for a SELL order',
+      );
+    }
+    if (takeProfit >= entry) {
+      throw new BadRequestException(
+        'Take profit must be below entry for a SELL order',
+      );
+    }
+  }
+
+  private async resolveMt5ChartTradingAccount(userId: string) {
+    const { user, copyOwner } = await this.resolveUserMt5TerminalContext(userId);
+    if (copyOwner) {
+      throw new BadRequestException(
+        'Quick chart orders are not available on the MT5 Copy account',
+      );
+    }
+
+    const dbUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { virtualAccount: true },
+    });
+    if (!dbUser) throw new NotFoundException('User not found');
+
+    const accountId = this.metaApi.resolveAccountId(dbUser.metaApiAccountId);
+    if (!accountId) {
+      throw new BadRequestException(
+        'No trading account linked — choose one in Settings → Live trading account',
+      );
+    }
+
+    return { user: dbUser, accountId };
+  }
+
+  async previewMt5MarketOrder(
+    userId: string,
+    symbolRaw: string,
+    directionRaw: string,
+  ) {
+    await this.compliance.requireActiveTrader(userId);
+
+    if (!this.metaApi.isConfigured) {
+      throw new ServiceUnavailableException(
+        'Live trading is not configured on the server',
+      );
+    }
+
+    const symbol = normalizeChartSymbol(symbolRaw?.trim() || '');
+    if (!symbol) {
+      throw new BadRequestException('Symbol is required');
+    }
+
+    const direction =
+      directionRaw?.toUpperCase() === 'SELL'
+        ? TradeDirection.SELL
+        : directionRaw?.toUpperCase() === 'BUY'
+          ? TradeDirection.BUY
+          : null;
+    if (!direction) {
+      throw new BadRequestException('Direction must be BUY or SELL');
+    }
+
+    const { user, accountId } = await this.resolveMt5ChartTradingAccount(userId);
+    const account = await this.metaApi.getAccount(accountId);
+    const price = await this.metaApi.getSymbolPrice(account, symbol);
+    const spec = await this.metaApi.getSymbolSpecification(account, symbol);
+    const digits = spec.digits ?? 5;
+    const entry = direction === TradeDirection.BUY ? price.ask : price.bid;
+    const defaults = this.computeMt5ChartDefaultStops(
+      direction,
+      entry,
+      symbol,
+      digits,
+    );
+
+    const riskPercent = Number(
+      user.virtualAccount?.riskPercent ?? RISK_PERCENT,
+    );
+    const maxRiskAmount = Number(
+      user.virtualAccount?.maxRiskPerTrade ?? MAX_RISK_PER_TRADE,
+    );
+
+    const sizing = await this.tradeRisk.calculatePositionSize({
+      account,
+      symbol,
+      direction,
+      entryPrice: entry,
+      stopLoss: defaults.stopLoss,
+      takeProfit: defaults.takeProfit,
+      riskPercent: Math.max(riskPercent, RISK_PERCENT),
+      maxRiskAmount,
+      skipAiReview: true,
+    });
+
+    return {
+      symbol,
+      direction,
+      entry,
+      stopLoss: defaults.stopLoss,
+      takeProfit: defaults.takeProfit,
+      defaultSlPips: defaults.slPips,
+      riskRewardRatio: 1,
+      quote: price,
+      risk: {
+        volume: sizing.volume,
+        riskPercent: sizing.riskPercent,
+        riskAmount: sizing.riskAmount,
+        estimatedLossAtSl: sizing.estimatedLossAtSl,
+        accountEquity: sizing.accountEquity,
+        currency: sizing.currency,
+      },
+      refreshedAt: new Date().toISOString(),
+    };
+  }
+
+  async placeMt5MarketOrder(userId: string, dto: PlaceMt5MarketOrderDto) {
+    await this.compliance.requireActiveTrader(userId);
+
+    if (!this.metaApi.isConfigured) {
+      throw new ServiceUnavailableException(
+        'Live trading is not configured on the server',
+      );
+    }
+
+    const symbol = normalizeChartSymbol(dto.symbol?.trim() || '');
+    if (!symbol) {
+      throw new BadRequestException('Symbol is required');
+    }
+
+    const { user, accountId } = await this.resolveMt5ChartTradingAccount(userId);
+    const account = await this.metaApi.getAccount(accountId);
+    const price = await this.metaApi.getSymbolPrice(account, symbol);
+    const spec = await this.metaApi.getSymbolSpecification(account, symbol);
+    const digits = spec.digits ?? 5;
+    const entry = dto.direction === TradeDirection.BUY ? price.ask : price.bid;
+
+    const stopLoss = roundToSymbolDigits(Number(dto.stopLoss), digits);
+    const takeProfit = roundToSymbolDigits(Number(dto.takeProfit), digits);
+    this.validateMt5ChartStops(dto.direction, entry, stopLoss, takeProfit);
+
+    const risk = Math.abs(entry - stopLoss);
+    const reward = Math.abs(takeProfit - entry);
+    const riskRewardRatio =
+      risk > 0 ? Number((reward / risk).toFixed(2)) : 0;
+
+    const riskPercent = Number(
+      user.virtualAccount?.riskPercent ?? RISK_PERCENT,
+    );
+    const maxRiskAmount = Number(
+      user.virtualAccount?.maxRiskPerTrade ?? MAX_RISK_PER_TRADE,
+    );
+
+    const screenshotHash = createHash('sha256')
+      .update(`mt5-chart:${userId}:${symbol}:${Date.now()}`)
+      .digest('hex');
+
+    const signal = await this.prisma.signal.create({
+      data: {
+        userId,
+        symbol,
+        direction: dto.direction,
+        entryMin: entry,
+        entryMax: entry,
+        stopLoss,
+        takeProfit,
+        riskRewardRatio,
+        description: `MT5 chart ${dto.direction} — ${symbol}`,
+        screenshotUrl: MT5_SYNC_PLACEHOLDER_SCREENSHOT,
+        screenshotHash,
+        source: 'mt5_chart',
+        status: 'OPEN',
+      },
+    });
+
+    const { comment: orderComment, clientId } = buildMetaApiTradeIdentifiers({
+      displayName: user.displayName,
+      userId,
+      signalId: signal.signalId,
+      symbol,
+    });
+
+    const riskInput = {
+      account,
+      symbol,
+      direction: dto.direction,
+      stopLoss,
+      takeProfit,
+      riskPercent: Math.max(riskPercent, RISK_PERCENT),
+      maxRiskAmount,
+      skipAiReview: true,
+    };
+
+    const sizing = await this.tradeRisk.calculatePositionSize({
+      ...riskInput,
+      entryPrice: entry,
+    });
+
+    let placed;
+    try {
+      placed = await this.metaApi.placeMarketOrder({
+        account,
+        symbol,
+        direction: dto.direction,
+        volume: sizing.volume,
+        stopLoss,
+        takeProfit,
+        price,
+        specDigits: spec.digits,
+        comment: orderComment,
+        clientId,
+      });
+    } catch (err) {
+      await this.prisma.signal.delete({ where: { id: signal.id } });
+      throw err;
+    }
+
+    const result = placed.trade;
+    const now = new Date();
+    const entryPrice = entry;
+
+    const trade = await this.prisma.trade.create({
+      data: {
+        signalId: signal.id,
+        userId,
+        symbol,
+        direction: dto.direction,
+        entryMin: entryPrice,
+        entryMax: entryPrice,
+        stopLoss,
+        takeProfit,
+        entryPrice,
+        activatedAt: now,
+      },
+    });
+
+    await this.prisma.signal.update({
+      where: { id: signal.id },
+      data: {
+        metaApiAccountId: account.id,
+        metaApiOrderId: result.orderId ?? null,
+        metaApiPositionId: result.positionId ?? result.orderId ?? null,
+        metaApiExecutedAt: now,
+      },
+    });
+
+    await this.priceMonitor.ensureTradeActivated(trade, signal, entryPrice);
+
+    await this.mirrorToCopyPool({
+      signal,
+      user,
+      openPrice: entryPrice,
+      pending: false,
+    });
+
+    return {
+      status: 'placed',
+      signalId: signal.signalId,
+      symbol,
+      direction: dto.direction,
+      entryPrice,
+      stopLoss,
+      takeProfit,
+      pending: false,
+      orderKind:
+        dto.direction === TradeDirection.BUY
+          ? 'ORDER_TYPE_BUY'
+          : 'ORDER_TYPE_SELL',
+      quote: price,
+      risk: {
+        volume: sizing.volume,
+        riskPercent: sizing.riskPercent,
+        riskAmount: sizing.riskAmount,
+        estimatedLossAtSl: sizing.estimatedLossAtSl,
+        accountEquity: sizing.accountEquity,
+        currency: sizing.currency,
+        aiManaged: sizing.aiManaged,
+        notes: sizing.aiNotes,
+      },
+      metaApi: {
+        accountId: account.id,
+        accountName: account.name,
+        orderId: result.orderId,
+        positionId: result.positionId,
+        message: result.message,
+        comment: orderComment,
+        orderKind:
+          dto.direction === TradeDirection.BUY
+            ? 'ORDER_TYPE_BUY'
+            : 'ORDER_TYPE_SELL',
+      },
     };
   }
 
