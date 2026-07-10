@@ -29,6 +29,7 @@ import {
   type MarketingEmailRow,
   type ReferralSettings,
   type ReferrerRow,
+  type ReferralSettlementRow,
   type Mt5SyncAdminOverview,
 } from "./api";
 import { AdminImage } from "./AdminImage";
@@ -435,10 +436,14 @@ export default function App() {
   const [referralSettings, setReferralSettings] =
     useState<ReferralSettings | null>(null);
   const [referrers, setReferrers] = useState<ReferrerRow[]>([]);
+  const [referralSettlements, setReferralSettlements] = useState<
+    ReferralSettlementRow[]
+  >([]);
   const [refKycAmount, setRefKycAmount] = useState("");
   const [refPaidAmount, setRefPaidAmount] = useState("");
   const [refSaving, setRefSaving] = useState(false);
   const [expandedReferrerId, setExpandedReferrerId] = useState<string | null>(null);
+  const [settlingReferrerId, setSettlingReferrerId] = useState<string | null>(null);
 
   useEffect(() => {
     const next = `#${tab}`;
@@ -732,14 +737,16 @@ export default function App() {
         setMarketingHistory(history.items);
         setMarketingHistoryCount(history.count);
       } else if (active === "referrals") {
-        const [settings, list] = await Promise.all([
+        const [settings, list, settlements] = await Promise.all([
           api.referralSettings(),
           api.referrers(),
+          api.referralSettlements(),
         ]);
         setReferralSettings(settings);
         setRefKycAmount(String(settings.kycRewardUsdt));
         setRefPaidAmount(String(settings.paidRewardUsdt));
         setReferrers(list);
+        setReferralSettlements(settlements);
       } else if (active === "mt5Copy") {
         if (copyDashboard) {
           void loadCopyDashboard({ terminalOnly: true });
@@ -3945,8 +3952,10 @@ export default function App() {
               <div>
                 <h2>Referral program</h2>
                 <p className="muted" style={{ margin: "0.35rem 0 0" }}>
-                  Traders share a personal link. They earn USDT when invited users
-                  complete KYC and when they pay their subscription.
+                  Traders share a personal link. Unpaid progress accrues when
+                  invitees complete KYC or subscribe. Pay settles that progress
+                  into their wallet and resets unpaid to zero — invites stay
+                  linked so they keep earning from new milestones.
                 </p>
               </div>
               <button
@@ -3968,14 +3977,29 @@ export default function App() {
                     <div className="value">{referralSettings.totalReferredUsers}</div>
                   </div>
                   <div className="card">
-                    <div className="label">Rewards paid</div>
+                    <div className="label">Unpaid now</div>
                     <div className="value">
-                      {fmtMoney(referralSettings.totalRewardsPaidUsdt)}
+                      {fmtMoney(referralSettings.unpaidUsdt)}
+                    </div>
+                    <div className="muted" style={{ fontSize: "0.75rem", marginTop: 4 }}>
+                      {referralSettings.unpaidKyc} KYC · {referralSettings.unpaidPaid} sub
                     </div>
                   </div>
                   <div className="card">
-                    <div className="label">Reward payouts</div>
-                    <div className="value">{referralSettings.totalRewardsCount}</div>
+                    <div className="label">Settled (admin pays)</div>
+                    <div className="value">
+                      {fmtMoney(referralSettings.totalSettledUsdt)}
+                    </div>
+                    <div className="muted" style={{ fontSize: "0.75rem", marginTop: 4 }}>
+                      {referralSettings.totalSettlements} payout
+                      {referralSettings.totalSettlements === 1 ? "" : "s"}
+                    </div>
+                  </div>
+                  <div className="card">
+                    <div className="label">Wallet credits (all)</div>
+                    <div className="value">
+                      {fmtMoney(referralSettings.totalRewardsPaidUsdt)}
+                    </div>
                   </div>
                 </div>
 
@@ -4055,8 +4079,8 @@ export default function App() {
                       {refSaving ? "Saving…" : "Save reward amounts"}
                     </button>
                     <p className="muted" style={{ margin: 0, fontSize: "0.78rem" }}>
-                      Applies immediately to all future referral rewards. Already-paid
-                      rewards are not changed.
+                      Applies to unpaid progress and future milestones. Past
+                      settlements keep the rates they were paid at.
                     </p>
                   </div>
                 </div>
@@ -4068,9 +4092,9 @@ export default function App() {
                       <th>Trader</th>
                       <th>Code</th>
                       <th>Invited</th>
-                      <th>KYC done</th>
-                      <th>Subscribed</th>
-                      <th>Earned</th>
+                      <th>KYC / Sub</th>
+                      <th>Unpaid</th>
+                      <th>Settled</th>
                       <th />
                     </tr>
                   </thead>
@@ -4095,10 +4119,56 @@ export default function App() {
                               <code>{r.referralCode ?? "—"}</code>
                             </td>
                             <td>{r.totalReferred}</td>
-                            <td>{r.kycCompleted}</td>
-                            <td>{r.subscribed}</td>
-                            <td>{fmtMoney(r.totalEarnedUsdt)}</td>
                             <td>
+                              {r.kycCompleted} / {r.subscribed}
+                            </td>
+                            <td>
+                              <strong>{fmtMoney(r.unpaidUsdt)}</strong>
+                              {r.unpaidUsdt > 0 ? (
+                                <div className="muted" style={{ fontSize: "0.72rem" }}>
+                                  {r.unpaidKyc} KYC · {r.unpaidPaid} sub
+                                </div>
+                              ) : null}
+                            </td>
+                            <td>{fmtMoney(r.totalSettledUsdt)}</td>
+                            <td style={{ whiteSpace: "nowrap" }}>
+                              <button
+                                type="button"
+                                className="primary"
+                                disabled={
+                                  r.unpaidUsdt <= 0 || settlingReferrerId === r.userId
+                                }
+                                style={{ marginRight: 6 }}
+                                onClick={() => {
+                                  const ok = window.confirm(
+                                    `Pay ${fmtMoney(r.unpaidUsdt)} to ${r.displayName}?\n\n` +
+                                      `${r.unpaidKyc} KYC + ${r.unpaidPaid} subscription reward(s) will be credited to their wallet.\n` +
+                                      `Unpaid progress resets to $0; their invites stay linked.`,
+                                  );
+                                  if (!ok) return;
+                                  setSettlingReferrerId(r.userId);
+                                  void api
+                                    .settleReferrer(r.userId)
+                                    .then((res) => {
+                                      setMessage(
+                                        `Paid ${fmtMoney(res.amountUsdt)} to ${res.displayName} — unpaid reset to $0`,
+                                      );
+                                      return loadTab("referrals");
+                                    })
+                                    .catch((err) =>
+                                      setMessage(
+                                        err instanceof Error
+                                          ? err.message
+                                          : "Settlement failed",
+                                      ),
+                                    )
+                                    .finally(() => setSettlingReferrerId(null));
+                                }}
+                              >
+                                {settlingReferrerId === r.userId
+                                  ? "Paying…"
+                                  : "Pay unpaid"}
+                              </button>
                               <button
                                 type="button"
                                 className="btn-secondary"
@@ -4124,6 +4194,7 @@ export default function App() {
                                         gap: "1rem",
                                         padding: "0.35rem 0",
                                         fontSize: "0.85rem",
+                                        flexWrap: "wrap",
                                       }}
                                     >
                                       <span style={{ minWidth: 180 }}>{x.displayName}</span>
@@ -4144,6 +4215,16 @@ export default function App() {
                                       >
                                         {x.subscribed ? "Subscribed" : "Not subscribed"}
                                       </span>
+                                      {x.kycPendingPay ? (
+                                        <span className={badgeClass("pending")}>
+                                          KYC unpaid
+                                        </span>
+                                      ) : null}
+                                      {x.paidPendingPay ? (
+                                        <span className={badgeClass("pending")}>
+                                          Sub unpaid
+                                        </span>
+                                      ) : null}
                                     </div>
                                   ))}
                                 </div>
@@ -4151,6 +4232,51 @@ export default function App() {
                             </tr>
                           )}
                         </Fragment>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+
+                <h3 style={{ margin: "1.75rem 0 0.5rem" }}>
+                  Settlement history ({referralSettlements.length})
+                </h3>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>When</th>
+                      <th>Trader</th>
+                      <th>Amount</th>
+                      <th>Breakdown</th>
+                      <th>Paid by</th>
+                      <th>Note</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {referralSettlements.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="muted">
+                          No settlements yet — use Pay unpaid on a referrer above.
+                        </td>
+                      </tr>
+                    ) : (
+                      referralSettlements.map((s) => (
+                        <tr key={s.id}>
+                          <td>{fmtDate(s.createdAt)}</td>
+                          <td>
+                            {s.displayName}
+                            <div className="muted" style={{ fontSize: "0.75rem" }}>
+                              {s.email ?? "—"}
+                            </div>
+                          </td>
+                          <td>{fmtMoney(s.amountUsdt)}</td>
+                          <td>
+                            {s.kycCount} KYC × {fmtMoney(s.kycRewardUsdt)}
+                            {" · "}
+                            {s.paidCount} sub × {fmtMoney(s.paidRewardUsdt)}
+                          </td>
+                          <td>{s.paidByAdminName}</td>
+                          <td className="muted">{s.note ?? "—"}</td>
+                        </tr>
                       ))
                     )}
                   </tbody>

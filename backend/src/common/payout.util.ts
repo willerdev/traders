@@ -2,9 +2,43 @@ import { BadRequestException } from '@nestjs/common';
 import { PayoutMethod } from '@prisma/client';
 
 const TRC20_REGEX = /^T[1-9A-HJ-NP-Za-km-z]{33}$/;
+const EVM_REGEX = /^0x[a-fA-F0-9]{40}$/;
+
+export const WITHDRAWAL_WALLET_NETWORKS = ['TRC20', 'ERC20', 'BEP20'] as const;
+export type WithdrawalWalletNetwork = (typeof WITHDRAWAL_WALLET_NETWORKS)[number];
 
 export function isValidTrc20Address(address: string): boolean {
   return TRC20_REGEX.test(address.trim());
+}
+
+export function isValidEvmAddress(address: string): boolean {
+  return EVM_REGEX.test(address.trim());
+}
+
+export function validateWithdrawalWalletAddress(
+  network: string,
+  address: string,
+): void {
+  const normalizedNetwork = network.trim().toUpperCase();
+  const trimmed = address.trim();
+
+  if (normalizedNetwork === 'TRC20') {
+    if (!isValidTrc20Address(trimmed)) {
+      throw new BadRequestException('Enter a valid USDT TRC20 address (starts with T, 34 characters)');
+    }
+    return;
+  }
+
+  if (normalizedNetwork === 'ERC20' || normalizedNetwork === 'BEP20') {
+    if (!isValidEvmAddress(trimmed)) {
+      throw new BadRequestException(`Enter a valid ${normalizedNetwork} wallet address (0x…)`);
+    }
+    return;
+  }
+
+  throw new BadRequestException(
+    `Unsupported network. Choose one of: ${WITHDRAWAL_WALLET_NETWORKS.join(', ')}`,
+  );
 }
 
 export function formatMobileMoneyDestination(

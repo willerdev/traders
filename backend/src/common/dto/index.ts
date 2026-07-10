@@ -62,6 +62,13 @@ export class UpdateReferralSettingsDto {
   paidRewardUsdt?: number;
 }
 
+export class SettleReferralDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
+}
+
 export class UpdateCopySettingsDto {
   @IsOptional()
   @IsNumber()

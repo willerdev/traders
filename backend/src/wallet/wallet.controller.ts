@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  Param,
   Post,
   Query,
   Request,
@@ -9,10 +11,14 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards';
 import { WalletService } from './wallet.service';
+import { SavedWithdrawalWalletService } from './saved-withdrawal-wallet.service';
 
 @Controller('wallet')
 export class WalletController {
-  constructor(private wallet: WalletService) {}
+  constructor(
+    private wallet: WalletService,
+    private savedWallets: SavedWithdrawalWalletService,
+  ) {}
 
   @Get('summary')
   @UseGuards(JwtAuthGuard)
@@ -113,12 +119,49 @@ export class WalletController {
   @UseGuards(JwtAuthGuard)
   withdraw(
     @Request() req: { user: { id: string } },
-    @Body() body: { amount: number; walletAddress?: string },
+    @Body() body: { amount: number; savedWalletId: string },
   ) {
     return this.wallet.withdraw(
       req.user.id,
       body.amount,
-      body.walletAddress,
+      body.savedWalletId,
     );
+  }
+
+  @Get('withdrawal-wallets')
+  @UseGuards(JwtAuthGuard)
+  listWithdrawalWallets(@Request() req: { user: { id: string } }) {
+    return this.savedWallets.list(req.user.id);
+  }
+
+  @Post('withdrawal-wallets/request-verification')
+  @UseGuards(JwtAuthGuard)
+  requestWithdrawalWalletVerification(
+    @Request() req: { user: { id: string } },
+    @Body() body: { label: string; address: string; network: string },
+  ) {
+    return this.savedWallets.requestVerification(req.user.id, body);
+  }
+
+  @Post('withdrawal-wallets/confirm')
+  @UseGuards(JwtAuthGuard)
+  confirmWithdrawalWallet(
+    @Request() req: { user: { id: string } },
+    @Body() body: { sessionId: string; code: string },
+  ) {
+    return this.savedWallets.confirmVerification(
+      req.user.id,
+      body.sessionId,
+      body.code,
+    );
+  }
+
+  @Delete('withdrawal-wallets/:id')
+  @UseGuards(JwtAuthGuard)
+  removeWithdrawalWallet(
+    @Request() req: { user: { id: string } },
+    @Param('id') walletId: string,
+  ) {
+    return this.savedWallets.remove(req.user.id, walletId);
   }
 }

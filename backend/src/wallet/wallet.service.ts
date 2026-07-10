@@ -19,10 +19,10 @@ import {
   resolvePublicApiBaseUrl,
 } from '../common/public-url.util';
 import { NotificationService } from '../email/notification.service';
-import { resolvePayoutDestination } from '../common/payout.util';
 import { ComplianceService } from '../compliance/compliance.service';
 import { PaymentsService } from '../payments/payments.service';
 import { WALLET_WITHDRAWAL_FEE_USD } from '../common/constants';
+import { SavedWithdrawalWalletService } from './saved-withdrawal-wallet.service';
 
 const PLAN_DAYS = 5;
 const DEPOSIT_MIN_FALLBACK_USDT = 10;
@@ -37,6 +37,7 @@ export class WalletService {
     private config: ConfigService,
     private notifications: NotificationService,
     private compliance: ComplianceService,
+    private savedWithdrawalWallets: SavedWithdrawalWalletService,
     @Inject(forwardRef(() => PaymentsService))
     private payments: PaymentsService,
   ) {}
@@ -324,6 +325,22 @@ export class WalletService {
       balance,
       description: note,
     };
+  }
+
+  /** Credits platform wallet for an admin referral settlement. */
+  async creditReferralSettlement(
+    userId: string,
+    amount: number,
+    settlementId: string,
+    description: string,
+  ) {
+    return this.creditBalance(
+      userId,
+      amount,
+      'REFERRAL_REWARD',
+      description,
+      settlementId,
+    );
   }
 
   private depositBelowMinMessage(network: string) {
@@ -790,8 +807,14 @@ export class WalletService {
     this.notifications.depositorPlanCompleted(userId, { amount });
   }
 
-  async withdraw(userId: string, amount: number, walletAddress?: string) {
+  async withdraw(userId: string, amount: number, savedWalletId: string) {
     await this.compliance.requireKycForPayout(userId);
+
+    if (!savedWalletId?.trim()) {
+      throw new BadRequestException(
+        'Select a saved withdrawal wallet or add one before withdrawing',
+      );
+    }
 
     const grossAmount = Math.round(amount * 100) / 100;
     const fee = WALLET_WITHDRAWAL_FEE_USD;
@@ -809,20 +832,21 @@ export class WalletService {
       throw new BadRequestException('Withdrawal amount is too small after fees');
     }
 
-    const wallet = await this.getOrCreateWallet(userId);
-    if (Number(wallet.availableBalance) < grossAmount) {
+    const savedWallet = await this.savedWithdrawalWallets.getForWithdraw(
+      userId,
+      savedWalletId.trim(),
+    );
+
+    const platformWallet = await this.getOrCreateWallet(userId);
+    if (Number(platformWallet.availableBalance) < grossAmount) {
       throw new BadRequestException('Insufficient available balance');
     }
 
-    const profile = await this.prisma.userProfile.findUnique({
-      where: { userId },
-    });
-    const { destination, method } = resolvePayoutDestination(
-      profile,
-      walletAddress,
-    );
+    const destination = savedWallet.address;
+    const method = 'TRC20' as const;
+    const walletLabel = savedWallet.label;
 
-    const newBalance = Number(wallet.availableBalance) - grossAmount;
+    const newBalance = Number(platformWallet.availableBalance) - grossAmount;
     const { weekNumber, year } = this.isoWeekYear(new Date());
 
     const payout = await this.prisma.$transaction(async (tx) => {
@@ -835,7 +859,7 @@ export class WalletService {
           userId,
           amount: -grossAmount,
           type: 'DEPOSITOR_WITHDRAW',
-          description: `Wallet withdrawal — $${grossAmount.toFixed(2)} USDT ($${fee.toFixed(2)} fee, $${netPayout.toFixed(2)} payout)`,
+          description: `Wallet withdrawal — $${grossAmount.toFixed(2)} USDT ($${fee.toFixed(2)} fee, $${netPayout.toFixed(2)} payout) → ${walletLabel}`,
           balanceAfter: newBalance,
         },
       });
@@ -852,7 +876,7 @@ export class WalletService {
           status: 'PENDING',
           walletAddress: destination,
           payoutMethod: method,
-          notes: `Platform wallet withdrawal — $${grossAmount.toFixed(2)} USDT gross, $${fee.toFixed(2)} fee, $${netPayout.toFixed(2)} USDT payout`,
+          notes: `Platform wallet withdrawal — $${grossAmount.toFixed(2)} USDT gross, $${fee.toFixed(2)} fee, $${netPayout.toFixed(2)} USDT payout → ${walletLabel} (${savedWallet.network})`,
         },
       });
     });

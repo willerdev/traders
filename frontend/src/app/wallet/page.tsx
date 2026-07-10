@@ -8,6 +8,7 @@ import { WalletBalanceCard } from "@/components/wallet/wallet-balance-card";
 import { WalletDepositModal } from "@/components/wallet/wallet-deposit-modal";
 import { WalletWithdrawModal } from "@/components/wallet/wallet-withdraw-modal";
 import { WalletWithdrawFeeNotice } from "@/components/wallet/wallet-withdraw-fee-notice";
+import { WalletSavedWithdrawalWallets } from "@/components/wallet/wallet-saved-withdrawal-wallets";
 import { formatCurrency } from "@/lib/utils";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { syncApiAuthToken, useAuthStore } from "@/stores/auth";
@@ -130,6 +131,17 @@ export default function WalletPage() {
 
       {summary && (
         <WalletWithdrawFeeNotice />
+      )}
+
+      {summary && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Withdrawal wallets</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <WalletSavedWithdrawalWallets />
+          </CardContent>
+        </Card>
       )}
 
       {summary && (

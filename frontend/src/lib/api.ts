@@ -1030,6 +1030,8 @@ export interface ReferralInfo {
   link: string;
   rewards: { kycRewardUsdt: number; paidRewardUsdt: number };
   totalEarnedUsdt: number;
+  pendingUsdt: number;
+  totalSettlements: number;
   totalReferred: number;
   referrals: Array<{
     displayName: string;
@@ -1038,6 +1040,8 @@ export interface ReferralInfo {
     subscribed: boolean;
     kycRewarded: boolean;
     paidRewarded: boolean;
+    kycSettled: boolean;
+    paidSettled: boolean;
   }>;
 }
 

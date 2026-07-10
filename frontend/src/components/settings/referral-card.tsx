@@ -47,7 +47,7 @@ export function ReferralCard() {
         </div>
         <CardDescription>
           {info
-            ? `Earn $${info.rewards.kycRewardUsdt} when a friend you invite completes KYC, and $${info.rewards.paidRewardUsdt} when they subscribe. Rewards go straight to your wallet.`
+            ? `Earn $${info.rewards.kycRewardUsdt} when a friend you invite completes KYC, and $${info.rewards.paidRewardUsdt} when they subscribe. Rewards are paid to your wallet after settlement.`
             : "Share your personal link and earn rewards when friends join."}
         </CardDescription>
       </CardHeader>
@@ -66,7 +66,7 @@ export function ReferralCard() {
               </Button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-center">
+            <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-3">
               <div className="rounded-lg border border-[var(--color-border)] p-3">
                 <p className="text-2xl font-bold text-white">{info.totalReferred}</p>
                 <p className="text-xs text-muted">Friends invited</p>
@@ -75,7 +75,13 @@ export function ReferralCard() {
                 <p className="text-2xl font-bold text-success">
                   ${info.totalEarnedUsdt.toFixed(2)}
                 </p>
-                <p className="text-xs text-muted">Earned so far</p>
+                <p className="text-xs text-muted">Paid to wallet</p>
+              </div>
+              <div className="rounded-lg border border-[var(--color-border)] p-3 col-span-2 sm:col-span-1">
+                <p className="text-2xl font-bold text-white">
+                  ${(info.pendingUsdt ?? 0).toFixed(2)}
+                </p>
+                <p className="text-xs text-muted">Pending payout</p>
               </div>
             </div>
 

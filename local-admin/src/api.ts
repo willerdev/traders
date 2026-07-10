@@ -500,6 +500,13 @@ export const api = {
       body: JSON.stringify(data),
     }),
   referrers: () => request<ReferrerRow[]>("/admin/referrals"),
+  referralSettlements: () =>
+    request<ReferralSettlementRow[]>("/admin/referrals/settlements"),
+  settleReferrer: (userId: string, note?: string) =>
+    request<ReferralSettleResult>(`/admin/referrals/${userId}/settle`, {
+      method: "POST",
+      body: JSON.stringify({ note: note || undefined }),
+    }),
 
   investorDepositorSettings: () =>
     request<InvestorDepositorSettings>(
@@ -1326,6 +1333,11 @@ export type ReferralSettings = {
   totalReferredUsers: number;
   totalRewardsPaidUsdt: number;
   totalRewardsCount: number;
+  totalSettledUsdt: number;
+  totalSettlements: number;
+  unpaidUsdt: number;
+  unpaidKyc: number;
+  unpaidPaid: number;
 };
 
 export type ReferrerRow = {
@@ -1337,12 +1349,48 @@ export type ReferrerRow = {
   kycCompleted: number;
   subscribed: number;
   totalEarnedUsdt: number;
+  totalSettledUsdt: number;
+  unpaidKyc: number;
+  unpaidPaid: number;
+  unpaidUsdt: number;
   referrals: Array<{
     displayName: string;
     joinedAt: string;
     kycCompleted: boolean;
     subscribed: boolean;
+    kycPendingPay: boolean;
+    paidPendingPay: boolean;
   }>;
+};
+
+export type ReferralSettlementRow = {
+  id: string;
+  userId: string;
+  displayName: string;
+  email: string | null;
+  referralCode: string | null;
+  amountUsdt: number;
+  kycCount: number;
+  paidCount: number;
+  kycRewardUsdt: number;
+  paidRewardUsdt: number;
+  note: string | null;
+  paidByAdminId: string;
+  paidByAdminName: string;
+  createdAt: string;
+};
+
+export type ReferralSettleResult = {
+  settlementId: string;
+  userId: string;
+  displayName: string;
+  amountUsdt: number;
+  kycCount: number;
+  paidCount: number;
+  kycRewardUsdt: number;
+  paidRewardUsdt: number;
+  balance: number;
+  createdAt: string;
 };
 
 export type DirectMessage = {

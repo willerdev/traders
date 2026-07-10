@@ -1,8 +1,15 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { NotificationService } from '../email/notification.service';
 import { PlatformNotificationsService } from '../platform-notifications/platform-notifications.service';
+import { WalletService } from '../wallet/wallet.service';
 
 const DEFAULT_KYC_REWARD = 0.5;
 const DEFAULT_PAID_REWARD = 1;
@@ -14,7 +21,9 @@ export class ReferralsService {
   constructor(
     private prisma: PrismaService,
     private email: EmailService,
+    private notifications: NotificationService,
     private platformNotifications: PlatformNotificationsService,
+    private walletService: WalletService,
   ) {}
 
   private async rewardAmounts() {
@@ -34,7 +43,6 @@ export class ReferralsService {
     });
     if (user?.referralCode) return user.referralCode;
 
-    // Retry on the (rare) unique-collision.
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const code = randomBytes(4).toString('hex').toUpperCase();
       try {
@@ -68,10 +76,10 @@ export class ReferralsService {
     this.logger.log(`User ${newUserId} referred by ${referrer.id} (${code})`);
   }
 
-  /** Called when a referred user's KYC is approved. Idempotent. */
+  /** Called when a referred user's KYC is approved. Idempotent. Accrues unpaid reward. */
   async rewardForKyc(referredUserId: string) {
     const { kycReward } = await this.rewardAmounts();
-    await this.creditReferrer(
+    await this.accrueReferrerReward(
       referredUserId,
       'referralKycRewardedAt',
       kycReward,
@@ -79,10 +87,10 @@ export class ReferralsService {
     );
   }
 
-  /** Called when a referred user pays registration/subscription. Idempotent. */
+  /** Called when a referred user pays registration/subscription. Idempotent. Accrues unpaid reward. */
   async rewardForPaidRegistration(referredUserId: string) {
     const { paidReward } = await this.rewardAmounts();
-    await this.creditReferrer(
+    await this.accrueReferrerReward(
       referredUserId,
       'referralPaidRewardedAt',
       paidReward,
@@ -90,7 +98,11 @@ export class ReferralsService {
     );
   }
 
-  private async creditReferrer(
+  /**
+   * Marks a milestone as earned (unpaid). Does not credit the wallet —
+   * admin settles unpaid progress into the platform wallet.
+   */
+  private async accrueReferrerReward(
     referredUserId: string,
     flagField: 'referralKycRewardedAt' | 'referralPaidRewardedAt',
     amount: number,
@@ -109,60 +121,58 @@ export class ReferralsService {
       },
     });
     if (!referred?.referredById) return;
-    if (referred[flagField]) return; // already rewarded
+    if (referred[flagField]) return;
 
     const referrerId = referred.referredById;
-    const account = await this.prisma.virtualAccount.findUnique({
-      where: { userId: referrerId },
+
+    await this.prisma.user.update({
+      where: { id: referredUserId },
+      data: { [flagField]: new Date() },
     });
-
-    const newBalance = account ? Number(account.balance) + amount : null;
-
-    await this.prisma.$transaction([
-      this.prisma.user.update({
-        where: { id: referredUserId },
-        data: { [flagField]: new Date() },
-      }),
-      ...(account
-        ? [
-            this.prisma.virtualAccount.update({
-              where: { userId: referrerId },
-              data: { balance: newBalance as number },
-            }),
-          ]
-        : []),
-      this.prisma.walletTransaction.create({
-        data: {
-          userId: referrerId,
-          amount,
-          type: 'REFERRAL_REWARD',
-          referenceId: referredUserId,
-          description: `$${amount} referral reward — ${referred.displayName} ${milestone}`,
-          balanceAfter: newBalance,
-        },
-      }),
-    ]);
 
     await this.platformNotifications
       .create({
         userId: referrerId,
         type: 'REFERRAL_REWARD',
-        title: `You earned $${amount} — referral milestone`,
-        body: `${referred.displayName} ${milestone}. $${amount} USDT was credited to your wallet.`,
+        title: `Referral milestone — $${amount} pending`,
+        body: `${referred.displayName} ${milestone}. $${amount} USDT will be paid to your wallet when the reward is settled.`,
         linkUrl: '/settings',
       })
       .catch(() => undefined);
 
     this.logger.log(
-      `Referral reward: $${amount} to ${referrerId} (${referred.displayName} ${milestone})`,
+      `Referral accrued: $${amount} pending for ${referrerId} (${referred.displayName} ${milestone})`,
     );
+  }
+
+  private unpaidFromInvitees(
+    invitees: Array<{
+      referralKycRewardedAt: Date | null;
+      referralPaidRewardedAt: Date | null;
+      referralKycSettledAt: Date | null;
+      referralPaidSettledAt: Date | null;
+    }>,
+    kycReward: number,
+    paidReward: number,
+  ) {
+    const unpaidKyc = invitees.filter(
+      (x) => x.referralKycRewardedAt && !x.referralKycSettledAt,
+    ).length;
+    const unpaidPaid = invitees.filter(
+      (x) => x.referralPaidRewardedAt && !x.referralPaidSettledAt,
+    ).length;
+    return {
+      unpaidKyc,
+      unpaidPaid,
+      unpaidUsdt: unpaidKyc * kycReward + unpaidPaid * paidReward,
+    };
   }
 
   async getMyReferralInfo(userId: string) {
     const code = await this.getOrCreateCode(userId);
     const { kycReward, paidReward } = await this.rewardAmounts();
 
-    const [referrals, earnings] = await Promise.all([
+    const [referrals, earnings, settlements] = await Promise.all([
       this.prisma.user.findMany({
         where: { referredById: userId },
         select: {
@@ -172,6 +182,8 @@ export class ReferralsService {
           registrationPaid: true,
           referralKycRewardedAt: true,
           referralPaidRewardedAt: true,
+          referralKycSettledAt: true,
+          referralPaidSettledAt: true,
           kyc: { select: { status: true } },
         },
         orderBy: { createdAt: 'desc' },
@@ -180,13 +192,22 @@ export class ReferralsService {
         where: { userId, type: 'REFERRAL_REWARD' },
         _sum: { amount: true },
       }),
+      this.prisma.referralSettlement.aggregate({
+        where: { userId },
+        _sum: { amountUsdt: true },
+        _count: true,
+      }),
     ]);
+
+    const unpaid = this.unpaidFromInvitees(referrals, kycReward, paidReward);
 
     return {
       code,
       link: `${this.email.frontendUrl}/register?ref=${code}`,
       rewards: { kycRewardUsdt: kycReward, paidRewardUsdt: paidReward },
       totalEarnedUsdt: Number(earnings._sum.amount ?? 0),
+      pendingUsdt: unpaid.unpaidUsdt,
+      totalSettlements: settlements._count,
       totalReferred: referrals.length,
       referrals: referrals.map((r) => ({
         displayName: r.displayName,
@@ -195,6 +216,8 @@ export class ReferralsService {
         subscribed: r.registrationPaid,
         kycRewarded: Boolean(r.referralKycRewardedAt),
         paidRewarded: Boolean(r.referralPaidRewardedAt),
+        kycSettled: Boolean(r.referralKycSettledAt),
+        paidSettled: Boolean(r.referralPaidSettledAt),
       })),
     };
   }
@@ -203,14 +226,46 @@ export class ReferralsService {
 
   async getAdminSettings() {
     const { kycReward, paidReward } = await this.rewardAmounts();
-    const [totalLinks, totalPaid] = await Promise.all([
-      this.prisma.user.count({ where: { referredById: { not: null } } }),
-      this.prisma.walletTransaction.aggregate({
-        where: { type: 'REFERRAL_REWARD' },
-        _sum: { amount: true },
-        _count: true,
-      }),
-    ]);
+    const [totalLinks, totalPaid, unpaidInvitees, settlements] =
+      await Promise.all([
+        this.prisma.user.count({ where: { referredById: { not: null } } }),
+        this.prisma.walletTransaction.aggregate({
+          where: { type: 'REFERRAL_REWARD' },
+          _sum: { amount: true },
+          _count: true,
+        }),
+        this.prisma.user.findMany({
+          where: {
+            referredById: { not: null },
+            OR: [
+              {
+                referralKycRewardedAt: { not: null },
+                referralKycSettledAt: null,
+              },
+              {
+                referralPaidRewardedAt: { not: null },
+                referralPaidSettledAt: null,
+              },
+            ],
+          },
+          select: {
+            referralKycRewardedAt: true,
+            referralPaidRewardedAt: true,
+            referralKycSettledAt: true,
+            referralPaidSettledAt: true,
+          },
+        }),
+        this.prisma.referralSettlement.aggregate({
+          _sum: { amountUsdt: true },
+          _count: true,
+        }),
+      ]);
+
+    const unpaid = this.unpaidFromInvitees(
+      unpaidInvitees,
+      kycReward,
+      paidReward,
+    );
 
     return {
       kycRewardUsdt: kycReward,
@@ -218,6 +273,11 @@ export class ReferralsService {
       totalReferredUsers: totalLinks,
       totalRewardsPaidUsdt: Number(totalPaid._sum.amount ?? 0),
       totalRewardsCount: totalPaid._count,
+      totalSettledUsdt: Number(settlements._sum.amountUsdt ?? 0),
+      totalSettlements: settlements._count,
+      unpaidUsdt: unpaid.unpaidUsdt,
+      unpaidKyc: unpaid.unpaidKyc,
+      unpaidPaid: unpaid.unpaidPaid,
     };
   }
 
@@ -253,7 +313,8 @@ export class ReferralsService {
     return this.getAdminSettings();
   }
 
-  async listReferrersForAdmin(limit = 50) {
+  async listReferrersForAdmin(limit = 100) {
+    const { kycReward, paidReward } = await this.rewardAmounts();
     const referrers = await this.prisma.user.findMany({
       where: { referrals: { some: {} } },
       select: {
@@ -263,11 +324,14 @@ export class ReferralsService {
         referralCode: true,
         referrals: {
           select: {
+            id: true,
             displayName: true,
             createdAt: true,
             registrationPaid: true,
             referralKycRewardedAt: true,
             referralPaidRewardedAt: true,
+            referralKycSettledAt: true,
+            referralPaidSettledAt: true,
             kyc: { select: { status: true } },
           },
           orderBy: { createdAt: 'desc' },
@@ -276,31 +340,248 @@ export class ReferralsService {
           where: { type: 'REFERRAL_REWARD' },
           select: { amount: true },
         },
+        referralSettlements: {
+          select: { amountUsdt: true },
+        },
       },
       take: limit,
     });
 
     return referrers
-      .map((r) => ({
-        userId: r.id,
-        displayName: r.displayName,
-        email: r.email,
-        referralCode: r.referralCode,
-        totalReferred: r.referrals.length,
-        kycCompleted: r.referrals.filter((x) => x.kyc?.status === 'APPROVED')
-          .length,
-        subscribed: r.referrals.filter((x) => x.registrationPaid).length,
-        totalEarnedUsdt: r.walletTransactions.reduce(
-          (sum, tx) => sum + Number(tx.amount),
-          0,
-        ),
-        referrals: r.referrals.map((x) => ({
-          displayName: x.displayName,
-          joinedAt: x.createdAt.toISOString(),
-          kycCompleted: x.kyc?.status === 'APPROVED',
-          subscribed: x.registrationPaid,
-        })),
-      }))
-      .sort((a, b) => b.totalReferred - a.totalReferred);
+      .map((r) => {
+        const unpaid = this.unpaidFromInvitees(
+          r.referrals,
+          kycReward,
+          paidReward,
+        );
+        return {
+          userId: r.id,
+          displayName: r.displayName,
+          email: r.email,
+          referralCode: r.referralCode,
+          totalReferred: r.referrals.length,
+          kycCompleted: r.referrals.filter((x) => x.kyc?.status === 'APPROVED')
+            .length,
+          subscribed: r.referrals.filter((x) => x.registrationPaid).length,
+          totalEarnedUsdt: r.walletTransactions.reduce(
+            (sum, tx) => sum + Number(tx.amount),
+            0,
+          ),
+          totalSettledUsdt: r.referralSettlements.reduce(
+            (sum, s) => sum + Number(s.amountUsdt),
+            0,
+          ),
+          unpaidKyc: unpaid.unpaidKyc,
+          unpaidPaid: unpaid.unpaidPaid,
+          unpaidUsdt: unpaid.unpaidUsdt,
+          referrals: r.referrals.map((x) => ({
+            displayName: x.displayName,
+            joinedAt: x.createdAt.toISOString(),
+            kycCompleted: x.kyc?.status === 'APPROVED',
+            subscribed: x.registrationPaid,
+            kycPendingPay: Boolean(
+              x.referralKycRewardedAt && !x.referralKycSettledAt,
+            ),
+            paidPendingPay: Boolean(
+              x.referralPaidRewardedAt && !x.referralPaidSettledAt,
+            ),
+          })),
+        };
+      })
+      .sort((a, b) => b.unpaidUsdt - a.unpaidUsdt || b.totalReferred - a.totalReferred);
+  }
+
+  async listSettlements(limit = 100) {
+    const rows = await this.prisma.referralSettlement.findMany({
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: { select: { displayName: true, email: true, referralCode: true } },
+      },
+    });
+
+    const adminIds = [...new Set(rows.map((r) => r.paidByAdminId))];
+    const admins = await this.prisma.user.findMany({
+      where: { id: { in: adminIds } },
+      select: { id: true, displayName: true, email: true },
+    });
+    const adminMap = new Map(admins.map((a) => [a.id, a]));
+
+    return rows.map((r) => {
+      const admin = adminMap.get(r.paidByAdminId);
+      return {
+        id: r.id,
+        userId: r.userId,
+        displayName: r.user.displayName,
+        email: r.user.email,
+        referralCode: r.user.referralCode,
+        amountUsdt: Number(r.amountUsdt),
+        kycCount: r.kycCount,
+        paidCount: r.paidCount,
+        kycRewardUsdt: Number(r.kycRewardUsdt),
+        paidRewardUsdt: Number(r.paidRewardUsdt),
+        note: r.note,
+        paidByAdminId: r.paidByAdminId,
+        paidByAdminName: admin?.displayName ?? admin?.email ?? r.paidByAdminId,
+        createdAt: r.createdAt.toISOString(),
+      };
+    });
+  }
+
+  /**
+   * Pays all currently unpaid referral milestones for a referrer into their
+   * platform wallet, then resets unpaid progress to zero. Invite relationships
+   * and lifetime history are kept — new milestones accrue again from zero.
+   */
+  async settleReferrer(
+    referrerId: string,
+    adminId: string,
+    note?: string,
+  ) {
+    const referrer = await this.prisma.user.findUnique({
+      where: { id: referrerId },
+      select: { id: true, displayName: true, email: true },
+    });
+    if (!referrer) throw new NotFoundException('Referrer not found');
+
+    const { kycReward, paidReward } = await this.rewardAmounts();
+
+    const unpaidInvitees = await this.prisma.user.findMany({
+      where: {
+        referredById: referrerId,
+        OR: [
+          {
+            referralKycRewardedAt: { not: null },
+            referralKycSettledAt: null,
+          },
+          {
+            referralPaidRewardedAt: { not: null },
+            referralPaidSettledAt: null,
+          },
+        ],
+      },
+      select: {
+        id: true,
+        referralKycRewardedAt: true,
+        referralPaidRewardedAt: true,
+        referralKycSettledAt: true,
+        referralPaidSettledAt: true,
+      },
+    });
+
+    const kycIds = unpaidInvitees
+      .filter((x) => x.referralKycRewardedAt && !x.referralKycSettledAt)
+      .map((x) => x.id);
+    const paidIds = unpaidInvitees
+      .filter((x) => x.referralPaidRewardedAt && !x.referralPaidSettledAt)
+      .map((x) => x.id);
+
+    const kycCount = kycIds.length;
+    const paidCount = paidIds.length;
+    const amount = kycCount * kycReward + paidCount * paidReward;
+
+    if (amount <= 0) {
+      throw new BadRequestException('No unpaid referral progress to settle');
+    }
+
+    const now = new Date();
+    const settlement = await this.prisma.referralSettlement.create({
+      data: {
+        userId: referrerId,
+        amountUsdt: amount,
+        kycCount,
+        paidCount,
+        kycRewardUsdt: kycReward,
+        paidRewardUsdt: paidReward,
+        note: note?.trim() || null,
+        paidByAdminId: adminId,
+      },
+    });
+
+    try {
+      if (kycIds.length > 0) {
+        await this.prisma.user.updateMany({
+          where: { id: { in: kycIds } },
+          data: { referralKycSettledAt: now },
+        });
+      }
+      if (paidIds.length > 0) {
+        await this.prisma.user.updateMany({
+          where: { id: { in: paidIds } },
+          data: { referralPaidSettledAt: now },
+        });
+      }
+
+      const description =
+        `Referral settlement — ${kycCount} KYC × $${kycReward} + ${paidCount} sub × $${paidReward}` +
+        (note?.trim() ? ` — ${note.trim()}` : '');
+
+      const { balance } = await this.walletService.creditReferralSettlement(
+        referrerId,
+        amount,
+        settlement.id,
+        description,
+      );
+
+      const walletTx = await this.prisma.walletTransaction.findFirst({
+        where: { userId: referrerId, referenceId: settlement.id, type: 'REFERRAL_REWARD' },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      await this.prisma.referralSettlement.update({
+        where: { id: settlement.id },
+        data: { walletTxId: walletTx?.id ?? null },
+      });
+
+      this.notifications.referralSettlementPaid(referrerId, {
+        amount,
+        balance,
+        kycCount,
+        paidCount,
+      });
+
+      await this.platformNotifications
+        .create({
+          userId: referrerId,
+          type: 'REFERRAL_REWARD',
+          title: `Referral payout — $${amount.toFixed(2)} USDT`,
+          body: `${kycCount} KYC and ${paidCount} subscription reward(s) were paid to your wallet.`,
+          linkUrl: '/wallet',
+        })
+        .catch(() => undefined);
+
+      this.logger.log(
+        `Referral settled: $${amount} to ${referrerId} by admin ${adminId} (${kycCount} KYC, ${paidCount} paid)`,
+      );
+
+      return {
+        settlementId: settlement.id,
+        userId: referrerId,
+        displayName: referrer.displayName,
+        amountUsdt: amount,
+        kycCount,
+        paidCount,
+        kycRewardUsdt: kycReward,
+        paidRewardUsdt: paidReward,
+        balance,
+        createdAt: settlement.createdAt.toISOString(),
+      };
+    } catch (err) {
+      // Roll back settlement markers if wallet credit failed.
+      await this.prisma.referralSettlement.delete({ where: { id: settlement.id } }).catch(() => undefined);
+      if (kycIds.length > 0) {
+        await this.prisma.user.updateMany({
+          where: { id: { in: kycIds }, referralKycSettledAt: now },
+          data: { referralKycSettledAt: null },
+        });
+      }
+      if (paidIds.length > 0) {
+        await this.prisma.user.updateMany({
+          where: { id: { in: paidIds }, referralPaidSettledAt: now },
+          data: { referralPaidSettledAt: null },
+        });
+      }
+      throw err;
+    }
   }
 }

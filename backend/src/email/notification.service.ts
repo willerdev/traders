@@ -1406,6 +1406,21 @@ export class NotificationService {
     );
   }
 
+  referralSettlementPaid(
+    userId: string,
+    data: {
+      amount: number;
+      balance: number;
+      kycCount: number;
+      paidCount: number;
+    },
+  ) {
+    this.dispatch(
+      this.sendReferralSettlementPaid(userId, data),
+      'Referral settlement paid',
+    );
+  }
+
   private async sendWalletAdminCredit(
     userId: string,
     data: { amount: number; balance: number },
@@ -1424,6 +1439,45 @@ export class NotificationService {
       subject: 'Your wallet has been credited',
       html,
       text: `$${data.amount.toFixed(2)} USDT credited. Balance: $${data.balance.toFixed(2)} USDT.`,
+    });
+  }
+
+  private async sendReferralSettlementPaid(
+    userId: string,
+    data: {
+      amount: number;
+      balance: number;
+      kycCount: number;
+      paidCount: number;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const parts: string[] = [];
+    if (data.kycCount > 0) {
+      parts.push(
+        `${data.kycCount} KYC reward${data.kycCount === 1 ? '' : 's'}`,
+      );
+    }
+    if (data.paidCount > 0) {
+      parts.push(
+        `${data.paidCount} subscription reward${data.paidCount === 1 ? '' : 's'}`,
+      );
+    }
+    const breakdown = parts.length > 0 ? parts.join(' and ') : 'referral rewards';
+    const html = this.email.layout(
+      'Referral reward paid',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your referral payout has been credited to your wallet.</p>
+      <p><strong>$${data.amount.toFixed(2)} USDT</strong> for ${this.escape(breakdown)}.</p>
+      <p>Available balance: <strong>$${data.balance.toFixed(2)} USDT</strong></p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Referral reward paid — $${data.amount.toFixed(2)} USDT`,
+      html,
+      text: `$${data.amount.toFixed(2)} USDT referral reward credited for ${breakdown}. Balance: $${data.balance.toFixed(2)} USDT.`,
     });
   }
 
