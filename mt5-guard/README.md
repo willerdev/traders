@@ -48,10 +48,25 @@ Provide to developers separately (never commit):
 
 ## Build
 
+**Android preview (APK, install directly — not Play Store):**
+
+```bash
+cd mt5-guard
+npm run build:android:preview
+# or: npx eas-cli build --platform android --profile preview
+```
+
+This uses the `preview` profile in `eas.json`: internal distribution + `buildType: apk`.
+
+**Production (Play Store / AAB):**
+
+```bash
+npm run build:android:production
+```
+
 ```bash
 npx expo prebuild
 eas build --platform ios
-eas build --platform android
 ```
 
 ## Reference (web repo)
