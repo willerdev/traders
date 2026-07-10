@@ -5,6 +5,8 @@ import { api } from "@/lib/api";
 import type {
   OpenSetupItem,
   UserMt5AccountSummary,
+  UserMt5AccountSource,
+  UserMt5InvestorSummary,
   UserMt5QuoteItem,
   UserMt5Trade,
 } from "@/lib/api";
@@ -39,8 +41,13 @@ import {
   MT5_SELL,
   Mt5DirectionTag,
   Mt5Pnl,
+  Mt5AccountModeBadge,
   fmtMt5Price,
 } from "@/components/mt5/mt5-ui";
+import {
+  mt5AccountModeDetail,
+  mt5AccountModeFromSource,
+} from "@/lib/mt5-account-mode";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 
@@ -50,6 +57,8 @@ type Props = {
   limitTrades: UserMt5Trade[];
   setups: OpenSetupItem[];
   account?: UserMt5AccountSummary;
+  accountSource?: UserMt5AccountSource;
+  investor?: UserMt5InvestorSummary;
   selectedSymbol: string;
   onSelectSymbol: (symbol: string) => void;
   onOpenSetup: (setup: SetupSummary) => void;
@@ -87,6 +96,8 @@ export function Mt5ChartTerminal({
   limitTrades,
   setups,
   account,
+  accountSource,
+  investor,
   selectedSymbol,
   onSelectSymbol,
   onOpenSetup,
@@ -582,6 +593,14 @@ export function Mt5ChartTerminal({
 
           {/* Account summary bar — MT5 terminal footer */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-2 text-[11px] text-[var(--mt5-muted)]">
+            <Mt5AccountModeBadge
+              mode={mt5AccountModeFromSource(accountSource, investor)}
+              detail={
+                mt5AccountModeDetail(accountSource) ??
+                (investor?.investmentDeposited ? "Investor" : null)
+              }
+              className="mr-1"
+            />
             <span>
               Balance:{" "}
               <strong className="text-[var(--mt5-text)]">

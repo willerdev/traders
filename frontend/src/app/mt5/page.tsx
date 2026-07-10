@@ -29,6 +29,7 @@ import {
   type SetupSummary,
 } from "@/components/dashboard/setup-detail-modal";
 import {
+  Mt5AccountModeBadge,
   Mt5AccountSummary,
   Mt5ActionStrip,
   Mt5DetailGrid,
@@ -55,6 +56,10 @@ import {
   type Mt5MobileTab,
 } from "@/components/mt5/mt5-mobile-bottom-nav";
 import { DEFAULT_CHART_SYMBOL } from "@/components/charts/chart-types";
+import {
+  mt5AccountModeDetail,
+  mt5AccountModeFromSource,
+} from "@/lib/mt5-account-mode";
 
 type Tab = "quotes" | "chart" | "trades" | "history" | "setups";
 type HistorySubTab = "positions" | "orders" | "deals";
@@ -181,6 +186,12 @@ export default function Mt5UserPage() {
   const account = data?.account;
   const accountSource = data?.accountSource;
   const investor = data?.investor;
+  const accountMode = mt5AccountModeFromSource(accountSource, investor);
+  const accountModeDetail =
+    mt5AccountModeDetail(accountSource) ??
+    (accountMode === "real" && investor?.investmentDeposited
+      ? "Investor"
+      : null);
   const limitCount = data?.stats.limitCount ?? 0;
   const runningCount = data?.stats.runningCount ?? runningTrades.length;
 
@@ -456,7 +467,13 @@ export default function Mt5UserPage() {
               </button>
             )}
             <div className="min-w-0">
-              <h1 className="text-base font-semibold">{headerTitle}</h1>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-base font-semibold">{headerTitle}</h1>
+                <Mt5AccountModeBadge
+                  mode={accountMode}
+                  detail={accountModeDetail}
+                />
+              </div>
               <p className="text-xs text-[var(--mt5-muted)]">
                 {tab === "quotes" ? "Your open setups · 1s" : "All symbols"}
                 {refreshing && (
@@ -519,8 +536,16 @@ export default function Mt5UserPage() {
 
         {!account && investor && investor.investmentDeposited > 0 && tab !== "quotes" && (
           <div className={tab === "trades" ? "md:hidden" : undefined}>
-            <Mt5SummaryBlock
-              rows={[
+            <div className="border-b border-[var(--mt5-divider)]">
+              <div className="flex items-center justify-between px-4 pt-3">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-[var(--mt5-muted)]">
+                  Account
+                </span>
+                <Mt5AccountModeBadge mode="real" detail="Investor" />
+              </div>
+              <Mt5SummaryBlock
+                className="border-b-0"
+                rows={[
                 {
                   label: "Investment",
                   value: formatCurrency(investor.investmentDeposited),
@@ -534,7 +559,8 @@ export default function Mt5UserPage() {
                     ]
                   : []),
               ]}
-            />
+              />
+            </div>
           </div>
         )}
 
@@ -636,6 +662,8 @@ export default function Mt5UserPage() {
             limitTrades={limitTrades}
             setups={setups}
             account={account}
+            accountSource={accountSource}
+            investor={investor}
             selectedSymbol={chartSymbol}
             onSelectSymbol={setSelectedChartSymbol}
             onOpenSetup={setSelectedSetup}

@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { formatCurrency, cn } from "@/lib/utils";
 import { RISK_PERCENT } from "@/lib/platform-rules";
+import { Mt5AccountModeBadge } from "@/components/mt5/mt5-ui";
 
 function fmtPnl(value: number, currency = "USD") {
   const prefix = value >= 0 ? "+" : "";
@@ -227,9 +228,12 @@ export default function Mt5CopyPage() {
         className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
       >
         <div>
-          <h1 className="text-2xl font-bold text-white">
-            {isCopyOwner ? "Your MT5 Copy Account" : "MT5 Copy Pool"}
-          </h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-bold text-white">
+              {isCopyOwner ? "Your MT5 Copy Account" : "MT5 Copy Pool"}
+            </h1>
+            <Mt5AccountModeBadge mode="real" detail="MT5 Copy" />
+          </div>
           <p className="mt-1 max-w-2xl text-sm text-gray-400">
             {isCopyOwner
               ? `Live copy account — balance, positions, and journal at ${data?.riskPercent ?? RISK_PERCENT}% risk per trade.`
@@ -262,7 +266,10 @@ export default function Mt5CopyPage() {
           <CardContent className="flex items-center gap-3 py-4">
             <Wallet className="h-8 w-8 text-primary" />
             <div>
-              <p className="text-xs text-gray-500">Balance</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-gray-500">Balance</p>
+                <Mt5AccountModeBadge mode="real" detail="MT5 Copy" className="scale-90" />
+              </div>
               <p className="text-lg font-semibold text-white">
                 {formatCurrency(balance)} {currency}
               </p>

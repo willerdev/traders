@@ -6,6 +6,12 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
+import {
+  mt5AccountModeDetail,
+  mt5AccountModeFromSource,
+  type Mt5AccountMode,
+} from "@/lib/mt5-account-mode";
+import type { UserMt5AccountSource, UserMt5InvestorSummary } from "@/lib/api";
 
 /* MT5 palette — blue wins/buy, red losses/sell in both themes */
 export const MT5_BUY = "#4a9eff";
@@ -83,11 +89,13 @@ export function Mt5SubTabs<T extends string>({
 
 export function Mt5SummaryBlock({
   rows,
+  className,
 }: {
   rows: { label: string; value: string; color?: string }[];
+  className?: string;
 }) {
   return (
-    <div className="space-y-1 border-b border-[var(--mt5-divider)] px-4 py-3">
+    <div className={cn("space-y-1 border-b border-[var(--mt5-divider)] px-4 py-3", className)}>
       {rows.map((row) => (
         <div key={row.label} className="flex items-baseline gap-1 text-sm">
           <span className="shrink-0 text-[var(--mt5-muted)]">{row.label}</span>
@@ -310,6 +318,35 @@ export function Mt5Empty({
   );
 }
 
+export function Mt5AccountModeBadge({
+  mode,
+  detail,
+  className,
+}: {
+  mode: Mt5AccountMode;
+  detail?: string | null;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        mode === "real"
+          ? "bg-emerald-500/15 text-emerald-400"
+          : "bg-amber-500/15 text-amber-300",
+        className,
+      )}
+    >
+      {mode === "real" ? "Real" : "Demo"}
+      {detail ? (
+        <span className="font-normal normal-case tracking-normal text-white/70">
+          · {detail}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 export function Mt5AccountSummary({
   account,
   investor,
@@ -323,15 +360,19 @@ export function Mt5AccountSummary({
     totalProfit: number;
     equity: number;
   };
-  investor?: {
-    investmentDeposited: number;
-    walletBalance: number;
-    mt5Balance?: number;
-    currency: string;
-  };
-  accountSource?: "virtual" | "copy_live" | "linked_live";
+  investor?: UserMt5InvestorSummary;
+  accountSource?: UserMt5AccountSource;
 }) {
-  const liveCopy = accountSource === "copy_live";
+  const mode = mt5AccountModeFromSource(accountSource, investor);
+  const detail =
+    mt5AccountModeDetail(accountSource) ??
+    (mode === "real" && investor?.investmentDeposited
+      ? "Investor"
+      : null);
+  const liveBroker =
+    accountSource === "copy_live" ||
+    accountSource === "linked_live" ||
+    accountSource === "investor_live";
   const rows = [
     ...(investor && investor.investmentDeposited > 0
       ? [
@@ -350,9 +391,9 @@ export function Mt5AccountSummary({
         ]
       : []),
     {
-      label: liveCopy ? "Live balance" : "Balance",
+      label: liveBroker ? "Live balance" : "Balance",
       value: fmtMt5Price(
-        liveCopy
+        liveBroker
           ? account.startingBalance
           : account.startingBalance + account.realizedProfit,
       ),
@@ -373,7 +414,17 @@ export function Mt5AccountSummary({
     },
   ];
 
-  return <Mt5SummaryBlock rows={rows} />;
+  return (
+    <div className="border-b border-[var(--mt5-divider)]">
+      <div className="flex items-center justify-between px-4 pt-3">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-[var(--mt5-muted)]">
+          Account
+        </span>
+        <Mt5AccountModeBadge mode={mode} detail={detail} />
+      </div>
+      <Mt5SummaryBlock rows={rows} className="border-b-0" />
+    </div>
+  );
 }
 
 export function Mt5FloatingHeader({

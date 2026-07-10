@@ -2136,7 +2136,7 @@ export interface UserMt5AccountSummary {
   equity: number;
 }
 
-export type UserMt5AccountSource = "virtual" | "copy_live" | "linked_live";
+export type UserMt5AccountSource = "virtual" | "copy_live" | "linked_live" | "investor_live";
 
 export interface UserMt5InvestorSummary {
   investmentDeposited: number;

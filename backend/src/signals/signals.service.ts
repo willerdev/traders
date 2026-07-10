@@ -5281,6 +5281,87 @@ export class SignalsService {
     return Number(pos.profit ?? 0);
   }
 
+  private async resolveMt5TerminalAccountLedger(
+    userId: string,
+    input: {
+      floatingProfit: number;
+      copyOwner: boolean;
+      syncActive: boolean;
+      metaApiAccountId: string | null;
+      investor: {
+        investmentDeposited: number;
+        mt5Balance?: number | null;
+        mt5Equity?: number | null;
+        currency: string;
+      } | null;
+    },
+  ): Promise<{
+    account: Awaited<ReturnType<SignalsService['buildMt5UserAccountSummary']>>;
+    accountSource: 'virtual' | 'copy_live' | 'linked_live' | 'investor_live';
+  }> {
+    const {
+      floatingProfit,
+      copyOwner,
+      syncActive,
+      metaApiAccountId,
+      investor,
+    } = input;
+
+    if (copyOwner) {
+      const copyAccountLedger =
+        await this.resolveCopyOwnerAccountSummary(floatingProfit);
+      if (copyAccountLedger) {
+        return { account: copyAccountLedger, accountSource: 'copy_live' };
+      }
+    }
+
+    if (syncActive && metaApiAccountId?.trim()) {
+      const terminal = await this.metaApi.getTerminalState(
+        metaApiAccountId.trim(),
+      );
+      if (terminal.information) {
+        return {
+          account: this.buildMt5LiveAccountSummary(
+            terminal.information,
+            floatingProfit,
+          ),
+          accountSource: 'linked_live',
+        };
+      }
+    }
+
+    if (investor && investor.investmentDeposited > 0) {
+      if (investor.mt5Balance != null) {
+        const balance = Number(investor.mt5Balance);
+        const equity =
+          investor.mt5Equity != null
+            ? Number(investor.mt5Equity)
+            : balance + floatingProfit;
+        return {
+          account: {
+            startingBalance: balance,
+            currency: investor.currency || 'USD',
+            realizedProfit: 0,
+            floatingProfit,
+            totalProfit: floatingProfit,
+            equity,
+          },
+          accountSource: 'investor_live',
+        };
+      }
+
+      return {
+        account: await this.buildMt5UserAccountSummary(userId, floatingProfit),
+        accountSource: 'investor_live',
+      };
+    }
+
+    return {
+      account: await this.buildMt5UserAccountSummary(userId, floatingProfit),
+      accountSource: 'virtual',
+    };
+  }
+
   /** User MT5 hub — their submitted setups on the platform MT5 account. */
   private async buildMt5UserAccountSummary(
     userId: string,
@@ -5621,18 +5702,20 @@ export class SignalsService {
 
     const investor = await this.investorService.getMt5InvestmentSummary(userId);
 
-    const copyAccountLedger = copyOwner
-      ? await this.resolveCopyOwnerAccountSummary(floatingProfit)
-      : null;
-    const accountLedger =
-      copyAccountLedger ??
-      (await this.buildMt5UserAccountSummary(userId, floatingProfit));
+    const { account: accountLedger, accountSource } =
+      await this.resolveMt5TerminalAccountLedger(userId, {
+        floatingProfit,
+        copyOwner,
+        syncActive,
+        metaApiAccountId: user.metaApiAccountId,
+        investor,
+      });
 
     return {
       configured: this.metaApi.isConfigured && Boolean(terminalAccountId),
       syncActive,
       copyOwner,
-      accountSource: copyAccountLedger ? 'copy_live' : 'virtual',
+      accountSource,
       message: terminalError,
       account: accountLedger,
       investor: investor ?? undefined,
@@ -5662,16 +5745,19 @@ export class SignalsService {
       await this.resolveUserMt5TerminalContext(userId);
 
     if (!this.metaApi.isConfigured || !terminalAccountId) {
-      const copyAccountLedger = copyOwner
-        ? await this.resolveCopyOwnerAccountSummary(0)
-        : null;
-      const accountLedger =
-        copyAccountLedger ??
-        (await this.buildMt5UserAccountSummary(userId, 0));
+      const investor = await this.investorService.getMt5InvestmentSummary(userId);
+      const { account: accountLedger, accountSource } =
+        await this.resolveMt5TerminalAccountLedger(userId, {
+          floatingProfit: 0,
+          copyOwner,
+          syncActive,
+          metaApiAccountId: user.metaApiAccountId,
+          investor,
+        });
       return {
         trades: [],
         account: accountLedger,
-        accountSource: copyAccountLedger ? 'copy_live' : 'virtual',
+        accountSource,
         stats: { runningCount: 0, floatingProfit: 0 },
         syncActive,
         refreshedAt: new Date().toISOString(),
@@ -5760,17 +5846,20 @@ export class SignalsService {
 
     const floatingProfit = trades.reduce((sum, t) => sum + (t.profit ?? 0), 0);
 
-    const copyAccountLedger = copyOwner
-      ? await this.resolveCopyOwnerAccountSummary(floatingProfit)
-      : null;
-    const accountLedger =
-      copyAccountLedger ??
-      (await this.buildMt5UserAccountSummary(userId, floatingProfit));
+    const investor = await this.investorService.getMt5InvestmentSummary(userId);
+    const { account: accountLedger, accountSource } =
+      await this.resolveMt5TerminalAccountLedger(userId, {
+        floatingProfit,
+        copyOwner,
+        syncActive,
+        metaApiAccountId: user.metaApiAccountId,
+        investor,
+      });
 
     return {
       trades,
       account: accountLedger,
-      accountSource: copyAccountLedger ? 'copy_live' : 'virtual',
+      accountSource,
       stats: {
         runningCount: trades.length,
         floatingProfit,
