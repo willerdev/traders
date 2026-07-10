@@ -47,7 +47,12 @@ const navItems = [
   { href: "/settings", label: "Settings", shortLabel: "Account", icon: Settings },
 ] as const;
 
-type NavItem = (typeof navItems)[number];
+type NavItem = {
+  href: string;
+  label: string;
+  shortLabel: string;
+  icon: (typeof navItems)[number]["icon"];
+};
 
 function resolveNavItems(
   role?: string | null,
@@ -59,7 +64,7 @@ function resolveNavItems(
       (item) => !("adminOnly" in item && item.adminOnly) || role === "ADMIN",
     )
     .map((item) =>
-      item.href === "/mt5" ? { ...item, href: mt5Href as "/mt5" | "/mt5/copy" } : item,
+      item.href === "/mt5" ? { ...item, href: mt5Href } : { ...item },
     );
 }
 

@@ -826,7 +826,7 @@ class ApiClient {
         method: "POST",
         body: JSON.stringify({ amount, riskPercent }),
       }),
-    withdraw: (amount: number, savedWalletId: string) =>
+    withdraw: (amount: number, walletAddress?: string) =>
       this.request<{
         status: string;
         payoutId: string;
@@ -836,7 +836,12 @@ class ApiClient {
         balance: number;
       }>("/wallet/withdraw", {
         method: "POST",
-        body: JSON.stringify({ amount, savedWalletId }),
+        body: JSON.stringify({
+          amount,
+          ...(walletAddress?.trim()
+            ? { walletAddress: walletAddress.trim() }
+            : {}),
+        }),
       }),
     withdrawalWallets: () =>
       this.request<SavedWithdrawalWallet[]>("/wallet/withdrawal-wallets"),

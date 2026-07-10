@@ -62,21 +62,26 @@ export function buildMetaApiTradeIdentifiers(input: {
   return { comment, clientId };
 }
 
-/** Copy-pool order identifiers — prefixed so they are distinct on the copy account. */
+/** Copy-pool order identifiers — 3-part clientId (CPY_symbol_signal) for MetaAPI. */
 export function buildCopyTradeIdentifiers(input: {
   sourceDisplayName: string;
   sourceUserId: string;
   signalId: string;
   symbol: string;
 }): { comment: string; clientId: string } {
-  const base = buildMetaApiTradeIdentifiers({
-    displayName: `C_${input.sourceDisplayName}`,
-    userId: input.sourceUserId,
-    signalId: input.signalId,
-    symbol: input.symbol,
-  });
-  const clientId = `CPY_${base.clientId}`.slice(0, METAAPI_COMMENT_CLIENTID_BUDGET);
-  const commentBudget = METAAPI_COMMENT_CLIENTID_BUDGET - clientId.length;
+  const symToken =
+    input.symbol
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toUpperCase()
+      .slice(0, 8) || 'X';
+  const sigToken =
+    input.signalId.replace(/[^a-zA-Z0-9]/g, '').slice(-8) || 'sig';
+  const clientId = `CPY_${symToken}_${sigToken}`.slice(
+    0,
+    METAAPI_COMMENT_CLIENTID_BUDGET,
+  );
+  const commentBudget =
+    METAAPI_COMMENT_CLIENTID_BUDGET - clientId.length;
   const comment = buildTradeOrderComment(
     `C_${input.sourceDisplayName}`,
     input.sourceUserId,
