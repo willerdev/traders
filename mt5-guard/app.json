@@ -35,8 +35,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "7abaa43d-15e7-4140-b996-f8453a8d8114"
+        "projectId": "46668ce4-2509-4a95-bb4e-c71a6cb5c25e"
       }
-    }
+    },
+    "owner": "willerbinance"
   }
 }
