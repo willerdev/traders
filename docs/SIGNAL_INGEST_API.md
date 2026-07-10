@@ -165,7 +165,8 @@ Create a new trading setup from your signal provider.
 
 1. An **OPEN** setup is stored (visible on the platform and via `GET /api/v1/feeds/setups`).
 2. The setup is attributed to the platform **API Signals** sender (configurable via env).
-3. If MetaAPI / Signal Hub is configured, limit execution is queued in the background (same as trader-submitted setups).
+3. The signal is mirrored to **MT5 Copy** (and active investor accounts when configured).
+4. When the copy order is placed on MetaAPI, email alerts are sent to the copy notify address, MT5 Copy owners, and any addresses in `EXTERNAL_SIGNAL_COPY_NOTIFY_EMAIL` (subject: `API → MT5 Copy: …`). Failed mirrors send a failure email too.
 
 ### Optional server env
 
@@ -174,6 +175,7 @@ Create a new trading setup from your signal provider.
 | `SETUP_FEED_API_KEY` | — | Required for auth |
 | `EXTERNAL_SIGNAL_SENDER_NAME` | `API Signals` | Display name on ingested setups |
 | `EXTERNAL_SIGNAL_USER_EMAIL` | `external-signals@traderrank.internal` | Internal owner account for API signals |
+| `EXTERNAL_SIGNAL_COPY_NOTIFY_EMAIL` | — | Extra comma-separated emails for MT5 Copy alerts on API signals |
 
 ---
 

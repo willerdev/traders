@@ -99,6 +99,108 @@ export class CopyTradingService {
     private notifications: NotificationService,
   ) {}
 
+  private parseNotifyEmails(...parts: (string | null | undefined)[]): string[] {
+    const emails = new Set<string>();
+    for (const part of parts) {
+      if (!part?.trim()) continue;
+      for (const token of part.split(/[,;\s]+/)) {
+        const normalized = token.trim().toLowerCase();
+        if (normalized.includes('@')) emails.add(normalized);
+      }
+    }
+    return [...emails];
+  }
+
+  private async resolveApiFeedCopyNotifyEmails(
+    fallbackEmail: string,
+  ): Promise<string[]> {
+    const owners = await this.prisma.user.findMany({
+      where: { adminCanManageCopy: true, email: { not: null } },
+      select: { email: true },
+    });
+    return this.parseNotifyEmails(
+      fallbackEmail,
+      process.env.EXTERNAL_SIGNAL_COPY_NOTIFY_EMAIL,
+      ...owners.map((row) => row.email),
+    );
+  }
+
+  private async loadSignalComment(signalDbId: string): Promise<string | null> {
+    const row = await this.prisma.signal.findUnique({
+      where: { id: signalDbId },
+      select: { description: true },
+    });
+    return row?.description?.trim() || null;
+  }
+
+  private async notifyApiFeedCopyPlaced(
+    notifyEmail: string,
+    input: CopyMirrorInput,
+    data: {
+      volume: number;
+      entryPrice: number;
+      stopLoss: number;
+      takeProfit: number;
+      riskPercent: number;
+      riskCapAmount: number;
+      estimatedLossAtSl: number;
+      currency: string;
+      orderType: string;
+      pairAdjustments: string[];
+    },
+  ) {
+    const recipients = await this.resolveApiFeedCopyNotifyEmails(notifyEmail);
+    if (recipients.length === 0) return;
+
+    const comment = await this.loadSignalComment(input.signalDbId);
+    for (const to of recipients) {
+      this.notifications.apiFeedCopyTradePlaced(to, {
+        signalId: input.signalPublicId,
+        symbol: input.symbol,
+        direction: input.direction,
+        volume: data.volume,
+        entryPrice: data.entryPrice,
+        stopLoss: data.stopLoss,
+        takeProfit: data.takeProfit,
+        riskPercent: data.riskPercent,
+        riskCapAmount: data.riskCapAmount,
+        estimatedLossAtSl: data.estimatedLossAtSl,
+        currency: data.currency,
+        orderType: data.orderType,
+        pending: input.pending,
+        comment,
+        pairAdjustments: data.pairAdjustments,
+      });
+    }
+  }
+
+  private async notifyApiFeedCopyFailed(
+    notifyEmail: string,
+    input: {
+      signalDbId: string;
+      signalPublicId: string;
+      symbol: string;
+      direction: TradeDirection;
+      reason: string;
+      riskPercent: number;
+    },
+  ) {
+    const recipients = await this.resolveApiFeedCopyNotifyEmails(notifyEmail);
+    if (recipients.length === 0) return;
+
+    const comment = await this.loadSignalComment(input.signalDbId);
+    for (const to of recipients) {
+      this.notifications.apiFeedCopyTradeFailed(to, {
+        signalId: input.signalPublicId,
+        symbol: input.symbol,
+        direction: input.direction,
+        reason: input.reason,
+        comment,
+        riskPercent: input.riskPercent,
+      });
+    }
+  }
+
   private async getCopyConfig() {
     const config = await this.prisma.platformConfig.findUnique({
       where: { id: 'default' },
@@ -609,6 +711,7 @@ export class CopyTradingService {
     notifyEmail: string;
     riskPercent: number;
     signalPublicId: string;
+    platformFeed?: boolean;
   }) {
     let journalId = input.existingJournalId;
     if (journalId) {
@@ -638,14 +741,25 @@ export class CopyTradingService {
       journalId = row.id;
     }
 
-    this.notifications.copyTradeBlocked(input.notifyEmail, {
-      signalId: input.signalPublicId,
-      sourceName: input.sourceDisplayName,
-      symbol: input.symbol,
-      direction: input.direction,
-      reason: input.reason,
-      riskPercent: input.riskPercent,
-    });
+    if (input.platformFeed) {
+      await this.notifyApiFeedCopyFailed(input.notifyEmail, {
+        signalDbId: input.signalDbId,
+        signalPublicId: input.signalPublicId,
+        symbol: input.symbol,
+        direction: input.direction,
+        reason: input.reason,
+        riskPercent: input.riskPercent,
+      });
+    } else {
+      this.notifications.copyTradeBlocked(input.notifyEmail, {
+        signalId: input.signalPublicId,
+        sourceName: input.sourceDisplayName,
+        symbol: input.symbol,
+        direction: input.direction,
+        reason: input.reason,
+        riskPercent: input.riskPercent,
+      });
+    }
 
     this.logger.warn(
       `Copy trade blocked for ${input.signalPublicId}: ${input.reason}`,
@@ -924,6 +1038,7 @@ export class CopyTradingService {
         notifyEmail,
         riskPercent,
         signalPublicId: input.signalPublicId,
+        platformFeed: input.platformFeed,
       });
       return;
     }
@@ -1051,7 +1166,20 @@ export class CopyTradingService {
         },
       });
 
-      if (copyEmailAlertsEnabled) {
+      if (input.platformFeed) {
+        await this.notifyApiFeedCopyPlaced(notifyEmail, input, {
+          volume: sizing.volume,
+          entryPrice: openPrice,
+          stopLoss: sl,
+          takeProfit: tp,
+          riskPercent,
+          riskCapAmount: sizing.riskCapAmount,
+          estimatedLossAtSl: sizing.estimatedLossAtSl,
+          currency: sizing.currency,
+          orderType,
+          pairAdjustments: sizing.pairAdjustments,
+        });
+      } else if (copyEmailAlertsEnabled) {
         this.notifications.copyTradePlaced(notifyEmail, {
           signalId: input.signalPublicId,
           sourceName: source.displayName,
@@ -1083,6 +1211,16 @@ export class CopyTradingService {
           notes: message.slice(0, 500),
         },
       });
+      if (input.platformFeed) {
+        await this.notifyApiFeedCopyFailed(notifyEmail, {
+          signalDbId: input.signalDbId,
+          signalPublicId: input.signalPublicId,
+          symbol: input.symbol,
+          direction: input.direction,
+          reason: message,
+          riskPercent,
+        });
+      }
       this.logger.warn(
         `Copy trade failed for ${input.signalPublicId}: ${message}`,
       );

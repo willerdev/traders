@@ -40,6 +40,14 @@ export class NotificationService {
     return this.sendLoginOtp(email, code);
   }
 
+  withdrawalWalletVerify(
+    email: string,
+    code: string,
+    wallet: { label: string; address: string; network: string },
+  ) {
+    return this.sendWithdrawalWalletVerify(email, code, wallet);
+  }
+
   /** Email every admin about a platform-level issue (broker limits, quotas). */
   async adminSystemAlert(subject: string, bodyLines: string[]) {
     const admins = await this.prisma.user.findMany({
@@ -85,6 +93,37 @@ export class NotificationService {
       subject: `${code} is your TraderRank Pro sign-in code`,
       html,
       text: `Your sign-in code is ${code}. It expires in 10 minutes.`,
+    });
+  }
+
+  private async sendWithdrawalWalletVerify(
+    email: string,
+    code: string,
+    wallet: { label: string; address: string; network: string },
+  ) {
+    const to = email.trim().toLowerCase();
+    const masked =
+      wallet.address.length > 12
+        ? `${wallet.address.slice(0, 6)}…${wallet.address.slice(-4)}`
+        : wallet.address;
+    const html = this.email.layout(
+      'Verify your withdrawal wallet',
+      `<p>You requested to save a withdrawal wallet on TraderRank Pro:</p>
+      <ul style="color:#cbd5e1;padding-left:1.2rem;">
+        <li><strong>Description:</strong> ${wallet.label}</li>
+        <li><strong>Network:</strong> ${wallet.network}</li>
+        <li><strong>Address:</strong> <code style="color:#e2e8f0;">${masked}</code></li>
+      </ul>
+      <p>Enter this code to confirm and save the wallet:</p>
+      <p style="font-size:32px;font-weight:700;letter-spacing:0.35em;color:#ffffff;margin:16px 0;">${code}</p>
+      <p style="color:#94a3b8;font-size:14px;">This code expires in 10 minutes. If you did not request this, secure your account and ignore this email.</p>`,
+    );
+
+    return this.email.send({
+      to,
+      subject: `${code} — verify your withdrawal wallet`,
+      html,
+      text: `Your withdrawal wallet verification code is ${code}. Wallet: ${wallet.label} (${wallet.network}) ${masked}. Expires in 10 minutes.`,
     });
   }
 
@@ -713,6 +752,51 @@ export class NotificationService {
     this.dispatch(this.sendCopyTakeProfitHit(toEmail, data), 'Copy TP hit');
   }
 
+  /** MT5 Copy trade placed from POST /feeds/signals (external API ingest). */
+  apiFeedCopyTradePlaced(
+    toEmail: string,
+    data: {
+      signalId: string;
+      symbol: string;
+      direction: string;
+      volume: number;
+      entryPrice: number;
+      stopLoss: number;
+      takeProfit: number;
+      riskPercent: number;
+      riskCapAmount: number;
+      estimatedLossAtSl: number;
+      currency: string;
+      orderType: string;
+      pending: boolean;
+      comment?: string | null;
+      pairAdjustments: string[];
+    },
+  ) {
+    this.dispatch(
+      this.sendApiFeedCopyTradePlaced(toEmail, data),
+      'API feed copy trade placed',
+    );
+  }
+
+  /** MT5 Copy could not mirror an external API signal. */
+  apiFeedCopyTradeFailed(
+    toEmail: string,
+    data: {
+      signalId: string;
+      symbol: string;
+      direction: string;
+      reason: string;
+      comment?: string | null;
+      riskPercent: number;
+    },
+  ) {
+    this.dispatch(
+      this.sendApiFeedCopyTradeFailed(toEmail, data),
+      'API feed copy trade failed',
+    );
+  }
+
   mt5LinkFailedAdmin(data: {
     userDisplayName: string;
     userEmail: string | null;
@@ -812,6 +896,105 @@ export class NotificationService {
       subject: `Copy trade blocked — ${data.symbol} (${data.reason.slice(0, 60)})`,
       html,
       text: `Copy trade blocked for ${data.signalId}: ${data.reason}`,
+    });
+  }
+
+  private async sendApiFeedCopyTradePlaced(
+    toEmail: string,
+    data: {
+      signalId: string;
+      symbol: string;
+      direction: string;
+      volume: number;
+      entryPrice: number;
+      stopLoss: number;
+      takeProfit: number;
+      riskPercent: number;
+      riskCapAmount: number;
+      estimatedLossAtSl: number;
+      currency: string;
+      orderType: string;
+      pending: boolean;
+      comment?: string | null;
+      pairAdjustments: string[];
+    },
+  ) {
+    const to = toEmail.trim().toLowerCase();
+    if (!to) return false;
+
+    const commentBlock = data.comment?.trim()
+      ? `<tr><td style="padding:6px 0;color:#94a3b8;">Signal comment</td><td style="padding:6px 0;"><strong>${this.escape(data.comment.trim())}</strong></td></tr>`
+      : '';
+    const adjustments = data.pairAdjustments
+      .map((line) => `<li>${this.escape(line)}</li>`)
+      .join('');
+    const statusLabel = data.pending ? 'Pending limit on MT5 Copy' : 'Live on MT5 Copy';
+
+    const html = this.email.layout(
+      'API signal → MT5 Copy trade',
+      `<p>An external API signal was mirrored to the <strong>MT5 Copy</strong> account.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">Setup ID</td><td style="padding:6px 0;"><strong>${this.escape(data.signalId)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Symbol</td><td style="padding:6px 0;"><strong>${this.escape(data.symbol)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Direction</td><td style="padding:6px 0;"><strong>${this.escape(data.direction)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Status</td><td style="padding:6px 0;"><strong>${statusLabel}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Order type</td><td style="padding:6px 0;"><strong>${this.escape(data.orderType)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Volume</td><td style="padding:6px 0;"><strong>${data.volume} lots</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Entry</td><td style="padding:6px 0;"><strong>${data.entryPrice}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Stop loss</td><td style="padding:6px 0;"><strong>${data.stopLoss}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Take profit</td><td style="padding:6px 0;"><strong>${data.takeProfit}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Risk cap</td><td style="padding:6px 0;"><strong>${data.riskPercent}% (${data.riskCapAmount.toFixed(2)} ${this.escape(data.currency)})</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Est. loss at SL</td><td style="padding:6px 0;"><strong>${data.estimatedLossAtSl.toFixed(2)} ${this.escape(data.currency)}</strong></td></tr>
+        ${commentBlock}
+      </table>
+      <p style="color:#94a3b8;font-size:14px;">Pair sizing notes:</p>
+      <ul style="color:#94a3b8;font-size:14px;padding-left:20px;">${adjustments}</ul>`,
+    );
+
+    return this.email.send({
+      to,
+      subject: `API → MT5 Copy: ${data.symbol} ${data.direction} (${data.volume} lots)`,
+      html,
+      text: `API signal mirrored to MT5 Copy: ${data.signalId}. ${data.symbol} ${data.direction} ${data.volume} lots @ ${data.entryPrice}, SL ${data.stopLoss}, TP ${data.takeProfit}. ${statusLabel}.`,
+    });
+  }
+
+  private async sendApiFeedCopyTradeFailed(
+    toEmail: string,
+    data: {
+      signalId: string;
+      symbol: string;
+      direction: string;
+      reason: string;
+      comment?: string | null;
+      riskPercent: number;
+    },
+  ) {
+    const to = toEmail.trim().toLowerCase();
+    if (!to) return false;
+
+    const commentBlock = data.comment?.trim()
+      ? `<tr><td style="padding:6px 0;color:#94a3b8;">Signal comment</td><td style="padding:6px 0;"><strong>${this.escape(data.comment.trim())}</strong></td></tr>`
+      : '';
+
+    const html = this.email.layout(
+      'API signal — MT5 Copy not placed',
+      `<p>An external API signal was received but <strong>could not</strong> be mirrored to MT5 Copy.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">Setup ID</td><td style="padding:6px 0;"><strong>${this.escape(data.signalId)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Symbol</td><td style="padding:6px 0;"><strong>${this.escape(data.symbol)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Direction</td><td style="padding:6px 0;"><strong>${this.escape(data.direction)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Max risk</td><td style="padding:6px 0;"><strong>${data.riskPercent}%</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Reason</td><td style="padding:6px 0;"><strong>${this.escape(data.reason)}</strong></td></tr>
+        ${commentBlock}
+      </table>`,
+    );
+
+    return this.email.send({
+      to,
+      subject: `API → MT5 Copy failed — ${data.symbol} (${data.reason.slice(0, 60)})`,
+      html,
+      text: `API signal ${data.signalId} not copied to MT5: ${data.reason}`,
     });
   }
 
