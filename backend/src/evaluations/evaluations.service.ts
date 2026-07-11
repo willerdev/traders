@@ -34,6 +34,7 @@ import { Mt5PoolService } from '../mt5-sync/mt5-pool.service';
 import { AuthService } from '../auth/auth.service';
 import { PaymentsService } from '../payments/payments.service';
 import { WalletService } from '../wallet/wallet.service';
+import { FlutterwavePaymentsService } from '../flutterwave/flutterwave-payments.service';
 
 @Injectable()
 export class EvaluationsService {
@@ -49,6 +50,8 @@ export class EvaluationsService {
     private paymentsService: PaymentsService,
     @Inject(forwardRef(() => WalletService))
     private walletService: WalletService,
+    @Inject(forwardRef(() => FlutterwavePaymentsService))
+    private flutterwavePayments: FlutterwavePaymentsService,
   ) {}
 
   listPlans() {
@@ -256,7 +259,10 @@ export class EvaluationsService {
       variant: string;
       planId: string;
       network: string;
-      source?: 'wallet' | 'crypto';
+      source?: 'wallet' | 'crypto' | 'momo';
+      momoPhone?: string;
+      momoNetwork?: string;
+      momoCountryCode?: string;
     },
   ) {
     const type = this.parseType(input.type);
@@ -299,6 +305,57 @@ export class EvaluationsService {
 
     if (input.source === 'wallet') {
       return this.payFromWallet(userId, type, variant, plan, tier, amount);
+    }
+
+    if (input.source === 'momo') {
+      if (!input.momoPhone?.trim() || !input.momoNetwork?.trim()) {
+        throw new BadRequestException(
+          'Mobile money phone number and network are required',
+        );
+      }
+
+      const enrollment = await this.prisma.evaluationEnrollment.create({
+        data: {
+          userId,
+          type,
+          variant,
+          planId: tier.id,
+          evaluationSize: tier.evaluationSize,
+          feeUsdt: amount,
+          status: EvaluationStatus.PENDING,
+          maxLossPercent: plan.rules.maxLossPercent,
+          dailyLossPercent: plan.rules.dailyLossPercent,
+          profitTargetPhase1: plan.rules.profitTargetPhase1,
+          profitTargetPhase2: plan.rules.profitTargetPhase2,
+          consistencyPercent: plan.rules.consistencyPercent,
+          profitSplitLabel: plan.rules.profitSplitLabel,
+        },
+      });
+
+      const momoPayment = await this.flutterwavePayments.initiatePayment({
+        userId,
+        purpose: 'evaluation_enrollment',
+        amountUsd: amount,
+        network: 'MOMO',
+        momo: {
+          phoneNumber: input.momoPhone,
+          network: input.momoNetwork,
+          countryCode: input.momoCountryCode,
+        },
+        gatewayMeta: { enrollmentId: enrollment.id },
+      });
+
+      await this.prisma.evaluationEnrollment.update({
+        where: { id: enrollment.id },
+        data: { paymentId: momoPayment.paymentId },
+      });
+
+      return {
+        ...momoPayment,
+        enrollmentId: enrollment.id,
+        planId: tier.id,
+        evaluationSize: tier.evaluationSize,
+      };
     }
 
     const enrollment = await this.prisma.evaluationEnrollment.create({

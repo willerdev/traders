@@ -55,6 +55,13 @@ export class PaymentsController {
       dto.network ?? 'TRC20',
       dto.promoCode,
       dto.source ?? 'crypto',
+      dto.source === 'momo'
+        ? {
+            phoneNumber: dto.momoPhone ?? '',
+            network: dto.momoNetwork ?? 'MTN',
+            countryCode: dto.momoCountryCode,
+          }
+        : undefined,
     );
   }
 

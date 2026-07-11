@@ -4,7 +4,13 @@ import { PayoutMethod } from '@prisma/client';
 const TRC20_REGEX = /^T[1-9A-HJ-NP-Za-km-z]{33}$/;
 const EVM_REGEX = /^0x[a-fA-F0-9]{40}$/;
 
-export const WITHDRAWAL_WALLET_NETWORKS = ['TRC20', 'ERC20', 'BEP20'] as const;
+export const WITHDRAWAL_WALLET_NETWORKS = [
+  'TRC20',
+  'ERC20',
+  'BEP20',
+  'MOMO_MTN',
+  'MOMO_AIRTEL',
+] as const;
 export type WithdrawalWalletNetwork = (typeof WITHDRAWAL_WALLET_NETWORKS)[number];
 
 export function isValidTrc20Address(address: string): boolean {
@@ -32,6 +38,14 @@ export function validateWithdrawalWalletAddress(
   if (normalizedNetwork === 'ERC20' || normalizedNetwork === 'BEP20') {
     if (!isValidEvmAddress(trimmed)) {
       throw new BadRequestException(`Enter a valid ${normalizedNetwork} wallet address (0x…)`);
+    }
+    return;
+  }
+
+  if (normalizedNetwork === 'MOMO_MTN' || normalizedNetwork === 'MOMO_AIRTEL') {
+    const digits = trimmed.replace(/\D/g, '');
+    if (digits.length < 8 || digits.length > 12) {
+      throw new BadRequestException('Enter a valid mobile money phone number (8–12 digits)');
     }
     return;
   }

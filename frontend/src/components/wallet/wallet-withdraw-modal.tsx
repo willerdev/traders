@@ -40,10 +40,9 @@ export function WalletWithdrawModal({
     setWalletsLoading(true);
     try {
       const items = await api.wallet.withdrawalWallets();
-      const trc20 = items.filter((w) => w.network === "TRC20");
-      setWallets(trc20);
+      setWallets(items);
       setSelectedWalletId((prev) =>
-        prev && trc20.some((w) => w.id === prev) ? prev : (trc20[0]?.id ?? ""),
+        prev && items.some((w) => w.id === prev) ? prev : (items[0]?.id ?? ""),
       );
     } catch {
       setWallets([]);
@@ -66,7 +65,7 @@ export function WalletWithdrawModal({
   async function submit() {
     setError("");
     if (!selectedWalletId) {
-      setError("Select a saved TRC20 wallet or add one first");
+      setError("Select a saved withdrawal destination or add one first");
       return;
     }
     setLoading(true);

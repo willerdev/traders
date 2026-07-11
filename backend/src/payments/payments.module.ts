@@ -13,6 +13,7 @@ import { Mt5SyncBillingModule } from '../mt5-sync/mt5-sync-billing.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { InvestorModule } from '../investor/investor.module';
 import { EvaluationsModule } from '../evaluations/evaluations.module';
+import { FlutterwaveModule } from '../flutterwave/flutterwave.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { EvaluationsModule } from '../evaluations/evaluations.module';
     forwardRef(() => WalletModule),
     forwardRef(() => InvestorModule),
     forwardRef(() => EvaluationsModule),
+    forwardRef(() => FlutterwaveModule),
   ],
   controllers: [PaymentsController],
   providers: [

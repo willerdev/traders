@@ -34,6 +34,8 @@ import { Mt5SyncBillingService } from '../mt5-sync/mt5-sync-billing.service';
 import { WalletService } from '../wallet/wallet.service';
 import { InvestorService } from '../investor/investor.service';
 import { EvaluationsService } from '../evaluations/evaluations.service';
+import { FlutterwavePaymentsService } from '../flutterwave/flutterwave-payments.service';
+import { FLW_GATEWAY } from '../flutterwave/flutterwave.constants';
 
 @Injectable()
 export class PaymentsService {
@@ -62,6 +64,8 @@ export class PaymentsService {
     private investorService: InvestorService,
     @Inject(forwardRef(() => EvaluationsService))
     private evaluationsService: EvaluationsService,
+    @Inject(forwardRef(() => FlutterwavePaymentsService))
+    private flutterwavePayments: FlutterwavePaymentsService,
   ) {}
 
   private ipnUrl() {
@@ -319,7 +323,8 @@ export class PaymentsService {
     userId: string,
     network: string,
     promoCode?: string,
-    source: 'wallet' | 'crypto' = 'crypto',
+    source: 'wallet' | 'crypto' | 'momo' = 'crypto',
+    momo?: { phoneNumber: string; network: string; countryCode?: string },
   ) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
@@ -361,6 +366,27 @@ export class PaymentsService {
           originalAmount: fee,
         }
       : undefined;
+
+    if (source === 'momo') {
+      if (!momo?.phoneNumber?.trim() || !momo.network?.trim()) {
+        throw new BadRequestException(
+          'Mobile money phone number and network are required',
+        );
+      }
+      return this.flutterwavePayments.initiatePayment({
+        userId,
+        purpose: 'registration',
+        amountUsd: amount,
+        network: 'MOMO',
+        momo: {
+          phoneNumber: momo.phoneNumber,
+          network: momo.network,
+          countryCode: momo.countryCode,
+        },
+        gatewayMeta: promoExtras,
+      });
+    }
+
     const promoMeta = promoExtras;
 
     if (!this.nowPayments.isConfigured) {
@@ -1370,6 +1396,23 @@ export class PaymentsService {
     return { confirmed: false };
   }
 
+  async confirmFlutterwavePayment(
+    paymentId: string,
+    gatewayPayload: object,
+    opts?: { gatewayId?: string },
+  ) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+    });
+    if (!payment || payment.status === 'CONFIRMED') {
+      return { alreadyConfirmed: true };
+    }
+
+    return this.confirmPayment(payment, gatewayPayload, opts?.gatewayId, {
+      source: 'ipn',
+    });
+  }
+
   private async confirmPayment(
     payment: { id: string; userId: string; status: string; purpose?: string },
     gatewayPayload: object,
@@ -1484,7 +1527,36 @@ export class PaymentsService {
     let payAddress: string | undefined;
 
     const gatewayId = payment.gatewayId;
+    const storedGateway = (payment.gatewayResponse as Record<string, unknown> | null)
+      ?.gateway;
+
     if (
+      storedGateway === FLW_GATEWAY &&
+      gatewayId &&
+      !gatewayId.startsWith('pending_')
+    ) {
+      try {
+        const synced = await this.flutterwavePayments.syncPaymentById(
+          paymentId,
+          userId,
+        );
+        payment = synced.payment;
+        const charge = (synced.payment.gatewayResponse as Record<string, unknown> | null)
+          ?.charge as Record<string, unknown> | undefined;
+        liveStatus = charge?.status as string | undefined;
+        if (synced.confirmed) {
+          return {
+            payment,
+            liveStatus: liveStatus ?? 'succeeded',
+            progress: 'complete',
+            confirmed: true,
+            gateway: FLW_GATEWAY,
+          };
+        }
+      } catch {
+        /* use stored payment */
+      }
+    } else if (
       gatewayId &&
       !gatewayId.startsWith('pending_') &&
       !gatewayId.startsWith('promo_') &&
@@ -1544,7 +1616,9 @@ export class PaymentsService {
 
   private mapPaymentProgress(status: string): string {
     const s = status.toLowerCase();
-    if (['finished', 'confirmed', 'sent'].includes(s)) return 'complete';
+    if (['finished', 'confirmed', 'sent', 'succeeded', 'successful', 'completed'].includes(s)) {
+      return 'complete';
+    }
     if (s === 'confirming') return 'confirming';
     if (s === 'partially_paid') return 'partial';
     if (s === 'failed') return 'failed';

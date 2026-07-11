@@ -5,12 +5,14 @@ import { SavedWithdrawalWalletService } from './saved-withdrawal-wallet.service'
 import { PaymentsModule } from '../payments/payments.module';
 import { EmailModule } from '../email/email.module';
 import { ComplianceModule } from '../compliance/compliance.module';
+import { FlutterwaveModule } from '../flutterwave/flutterwave.module';
 
 @Module({
   imports: [
     forwardRef(() => PaymentsModule),
     EmailModule,
     ComplianceModule,
+    forwardRef(() => FlutterwaveModule),
   ],
   controllers: [WalletController],
   providers: [WalletService, SavedWithdrawalWalletService],

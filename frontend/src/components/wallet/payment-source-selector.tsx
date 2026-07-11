@@ -1,9 +1,9 @@
 "use client";
 
 import { cn, formatCurrency } from "@/lib/utils";
-import { Wallet, ArrowDownToLine, RefreshCw } from "lucide-react";
+import { Wallet, ArrowDownToLine, RefreshCw, Smartphone } from "lucide-react";
 
-export type PaymentSource = "wallet" | "crypto";
+export type PaymentSource = "wallet" | "crypto" | "momo";
 
 export function PaymentSourceSelector({
   walletBalance,
@@ -14,6 +14,7 @@ export function PaymentSourceSelector({
   onSourceChange,
   onRefreshWallet,
   refreshingWallet = false,
+  momoEnabled = false,
   className,
 }: {
   walletBalance: number;
@@ -24,6 +25,7 @@ export function PaymentSourceSelector({
   onSourceChange: (source: PaymentSource) => void;
   onRefreshWallet?: () => void;
   refreshingWallet?: boolean;
+  momoEnabled?: boolean;
   className?: string;
 }) {
   const canPayFromWallet = walletBalance >= amountDue;
@@ -48,7 +50,7 @@ export function PaymentSourceSelector({
           </button>
         )}
       </div>
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className={cn("grid gap-2", momoEnabled ? "sm:grid-cols-3" : "sm:grid-cols-2")}>
         <button
           type="button"
           onClick={() => onSourceChange("wallet")}
@@ -92,6 +94,33 @@ export function PaymentSourceSelector({
           )}
         </button>
 
+        {momoEnabled && (
+          <button
+            type="button"
+            onClick={() => onSourceChange("momo")}
+            className={cn(
+              "rounded-xl border p-3 text-left transition-colors",
+              source === "momo"
+                ? "border-primary bg-primary/10"
+                : "border-[var(--color-border)] hover:border-primary/40",
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/20">
+                <Smartphone className="h-4 w-4 text-emerald-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  Mobile Money (MoMo)
+                </p>
+                <p className="text-xs text-muted">
+                  MTN / Airtel — approve on your phone
+                </p>
+              </div>
+            </div>
+          </button>
+        )}
+
         <button
           type="button"
           onClick={() => onSourceChange("crypto")}
@@ -119,8 +148,8 @@ export function PaymentSourceSelector({
       </div>
       <p className="text-[10px] leading-snug text-muted">
         External wallets (Trust, MetaMask, etc.) are not linked automatically.
-        Deposit USDT to your platform wallet first, or use Pay with crypto for
-        a one-time renewal address.
+        Deposit USDT to your platform wallet first, use MoMo for local currency,
+        or use Pay with crypto for a one-time renewal address.
       </p>
     </div>
   );

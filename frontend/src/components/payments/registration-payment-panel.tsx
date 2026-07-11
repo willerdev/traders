@@ -20,6 +20,10 @@ import {
   PaymentSourceSelector,
   type PaymentSource,
 } from "@/components/wallet/payment-source-selector";
+import {
+  MomoPaymentFields,
+  type FlutterwavePublicConfig,
+} from "@/components/payments/momo-payment-fields";
 
 const NETWORKS = [
   { id: "TRC20", label: "TRC20 (Tron)", hint: "Lowest fees" },
@@ -70,6 +74,10 @@ export function RegistrationPaymentPanel({
   const [pendingDeposits, setPendingDeposits] = useState(0);
   const [walletRefreshing, setWalletRefreshing] = useState(false);
   const [feeUsdt, setFeeUsdt] = useState(5);
+  const [flwConfig, setFlwConfig] = useState<FlutterwavePublicConfig | null>(null);
+  const [momoPhone, setMomoPhone] = useState("");
+  const [momoNetwork, setMomoNetwork] = useState("MTN");
+  const [momoInstruction, setMomoInstruction] = useState("");
 
   const amountDue = appliedPromo?.finalAmount ?? feeUsdt;
 
@@ -97,6 +105,10 @@ export function RegistrationPaymentPanel({
       if (r.registrationFeeUsdt) setFeeUsdt(r.registrationFeeUsdt);
     });
   }, [refreshWallet]);
+
+  useEffect(() => {
+    void api.flutterwave.config().then(setFlwConfig);
+  }, []);
 
   useEffect(() => {
     if (!paymentId) return;
@@ -202,6 +214,9 @@ export function RegistrationPaymentPanel({
         network,
         appliedPromo?.code,
         source,
+        source === "momo"
+          ? { phone: momoPhone, network: momoNetwork, countryCode: flwConfig?.countryCode }
+          : undefined,
       );
       if (result.success || result.message?.includes("waived")) {
         if (result.balanceAfter != null) {
@@ -216,6 +231,15 @@ export function RegistrationPaymentPanel({
       }
       if (source === "wallet") {
         throw new Error(result.message || "Wallet payment failed");
+      }
+      if (source === "momo") {
+        if (!result.paymentId) {
+          throw new Error(result.message || "Could not start MoMo payment");
+        }
+        setPaymentId(result.paymentId);
+        setMomoInstruction(result.instruction ?? "");
+        setProgress("waiting");
+        return;
       }
       if (!result.payAddress || !result.paymentId) {
         throw new Error(result.message || "Could not create payment");
@@ -273,6 +297,7 @@ export function RegistrationPaymentPanel({
             setPaymentId(null);
             setError("");
           }}
+          momoEnabled={Boolean(flwConfig?.enabled)}
         />
 
         <div className="space-y-1">
@@ -312,6 +337,15 @@ export function RegistrationPaymentPanel({
             </p>
           )}
         </div>
+        {source === "momo" && flwConfig?.enabled && (
+          <MomoPaymentFields
+            phone={momoPhone}
+            onPhoneChange={setMomoPhone}
+            network={momoNetwork}
+            onNetworkChange={setMomoNetwork}
+            config={flwConfig}
+          />
+        )}
         {source === "crypto" && (
           <div className="grid gap-2 sm:grid-cols-3">
             {NETWORKS.map((n) => (
@@ -349,6 +383,8 @@ export function RegistrationPaymentPanel({
             </>
           ) : source === "wallet" ? (
             `Pay ${formatCurrency(amountDue)} from wallet`
+          ) : source === "momo" ? (
+            "Send MoMo payment prompt"
           ) : (
             "Generate payment address"
           )}
@@ -392,6 +428,16 @@ export function RegistrationPaymentPanel({
           <span className="text-sm font-medium">
             Registration complete — your virtual account is active.
           </span>
+        </div>
+      ) : source === "momo" ? (
+        <div className="space-y-3 text-sm">
+          <p className="text-foreground">
+            {momoInstruction ||
+              "Check your phone for the Mobile Money prompt and enter your PIN to approve."}
+          </p>
+          <p className="text-xs text-muted">
+            We will activate your account automatically once Flutterwave confirms the payment.
+          </p>
         </div>
       ) : (
         <>

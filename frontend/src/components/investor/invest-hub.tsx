@@ -144,7 +144,8 @@ export function InvestHub() {
     setPayLoading(true);
     setError("");
     try {
-      const res = await api.investor.enrollCheckout(network, source);
+      const paySource = source === "wallet" ? "wallet" : "crypto";
+      const res = await api.investor.enrollCheckout(network, paySource);
       if (res.active || res.success) {
         await refresh();
         setCheckout(null);

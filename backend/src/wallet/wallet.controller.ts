@@ -63,8 +63,28 @@ export class WalletController {
   deposit(
     @Request() req: { user: { id: string } },
     @Body()
-    body: { network: string; amount: number; riskPercent?: number },
+    body: {
+      network: string;
+      amount: number;
+      riskPercent?: number;
+      method?: 'crypto' | 'momo';
+      momoPhone?: string;
+      momoNetwork?: string;
+      momoCountryCode?: string;
+    },
   ) {
+    if (body.method === 'momo') {
+      return this.wallet.createMomoDeposit(
+        req.user.id,
+        body.amount,
+        {
+          phoneNumber: body.momoPhone ?? '',
+          network: body.momoNetwork ?? 'MTN',
+          countryCode: body.momoCountryCode,
+        },
+        body.riskPercent,
+      );
+    }
     return this.wallet.createDeposit(
       req.user.id,
       body.network,

@@ -6,7 +6,17 @@ import { Input } from "@/components/ui/input";
 import { api, type SavedWithdrawalWallet, type WithdrawalWalletNetwork } from "@/lib/api";
 import { Loader2, Trash2, X } from "lucide-react";
 
-const NETWORKS: WithdrawalWalletNetwork[] = ["TRC20", "ERC20", "BEP20"];
+const NETWORKS: WithdrawalWalletNetwork[] = [
+  "TRC20",
+  "ERC20",
+  "BEP20",
+  "MOMO_MTN",
+  "MOMO_AIRTEL",
+];
+
+function isMomoNetwork(network: string) {
+  return network.startsWith("MOMO_");
+}
 
 function maskAddress(address: string) {
   if (address.length <= 12) return address;
@@ -130,21 +140,36 @@ export function WalletAddWithdrawalWalletModal({
                 >
                   {NETWORKS.map((n) => (
                     <option key={n} value={n}>
-                      {n}
+                      {n === "MOMO_MTN"
+                        ? "MTN MoMo"
+                        : n === "MOMO_AIRTEL"
+                          ? "Airtel Money"
+                          : n}
                     </option>
                   ))}
                 </select>
                 <p className="mt-1 text-xs text-gray-500">
-                  USDT withdrawals currently send on TRC20 only.
+                  {isMomoNetwork(network)
+                    ? "MoMo withdrawals send to your verified phone number via Flutterwave."
+                    : "USDT crypto withdrawals currently send on TRC20 only."}
                 </p>
               </div>
               <div>
-                <label className="mb-1 block text-xs text-gray-400">Wallet address</label>
+                <label className="mb-1 block text-xs text-gray-400">
+                  {isMomoNetwork(network) ? "Phone number" : "Wallet address"}
+                </label>
                 <Input
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
-                  placeholder={network === "TRC20" ? "T..." : "0x..."}
-                  className="font-mono text-sm"
+                  placeholder={
+                    isMomoNetwork(network)
+                      ? "7XXXXXXXX"
+                      : network === "TRC20"
+                        ? "T..."
+                        : "0x..."
+                  }
+                  inputMode={isMomoNetwork(network) ? "numeric" : "text"}
+                  className={isMomoNetwork(network) ? "text-sm" : "font-mono text-sm"}
                 />
               </div>
               {error && <p className="text-sm text-danger">{error}</p>}

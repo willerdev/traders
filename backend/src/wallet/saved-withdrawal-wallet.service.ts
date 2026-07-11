@@ -10,6 +10,7 @@ import {
   validateWithdrawalWalletAddress,
   WITHDRAWAL_WALLET_NETWORKS,
 } from '../common/payout.util';
+import { isMomoWithdrawalNetwork } from '../flutterwave/flutterwave.constants';
 import { randomInt } from 'crypto';
 import * as bcrypt from 'bcrypt';
 
@@ -216,9 +217,9 @@ export class SavedWithdrawalWalletService {
     if (!wallet) {
       throw new NotFoundException('Saved withdrawal wallet not found');
     }
-    if (wallet.network !== 'TRC20') {
+    if (wallet.network !== 'TRC20' && !isMomoWithdrawalNetwork(wallet.network)) {
       throw new BadRequestException(
-        'USDT wallet withdrawals currently support TRC20 saved wallets only',
+        'Withdrawals support TRC20 USDT or saved Mobile Money wallets',
       );
     }
     return wallet;

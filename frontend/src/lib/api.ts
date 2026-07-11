@@ -717,18 +717,23 @@ class ApiClient {
     createRegistration: (
       network: string,
       promoCode?: string,
-      source?: "wallet" | "crypto",
+      source?: "wallet" | "crypto" | "momo",
+      momo?: { phone: string; network: string; countryCode?: string },
     ) =>
       this.request<{
         paymentId?: string;
         amount?: number;
+        amountLocal?: number;
+        localCurrency?: string;
         currency?: string;
         network?: string;
         payAddress?: string;
         payAmount?: number;
         payCurrency?: string;
-        gatewayPaymentId?: number;
+        gatewayPaymentId?: number | string;
+        gatewayChargeId?: string;
         liveStatus?: string;
+        instruction?: string;
         invoiceUrl?: string;
         gateway?: string;
         success?: boolean;
@@ -740,7 +745,18 @@ class ApiClient {
         accessExpiresAt?: string;
       }>("/payments/registration", {
         method: "POST",
-        body: JSON.stringify({ network, promoCode, source }),
+        body: JSON.stringify({
+          network,
+          promoCode,
+          source,
+          ...(source === "momo" && momo
+            ? {
+                momoPhone: momo.phone,
+                momoNetwork: momo.network,
+                momoCountryCode: momo.countryCode,
+              }
+            : {}),
+        }),
       }),
     getStatus: (paymentId: string) =>
       this.request<{
@@ -830,6 +846,28 @@ class ApiClient {
       this.request<Mt5SyncStatus>("/payments/mt5-sync/status"),
   };
 
+  flutterwave = {
+    config: () =>
+      this.request<{
+        enabled: boolean;
+        currency: string;
+        countryCode: string;
+        usdRate: number;
+        minDepositUsd: number;
+        webhookUrl?: string;
+        networks: Array<{ id: string; label: string }>;
+      }>("/flutterwave/config"),
+    webhookInfo: () =>
+      this.request<{
+        webhookUrl?: string;
+        method: string;
+        signatureHeader: string;
+        signatureConfigured: boolean;
+        supportedEvents: string[];
+        dashboardHint: string;
+      }>("/flutterwave/webhook"),
+  };
+
   wallet = {
     summary: () => this.request<WalletSummary>("/wallet/summary"),
     transactions: (take = 50, skip = 0) =>
@@ -845,9 +883,13 @@ class ApiClient {
         `/wallet/deposit/preview?amount=${amount}&riskPercent=${riskPercent}`,
       ),
     deposit: (data: {
-      network: string;
+      network?: string;
       amount: number;
       riskPercent?: number;
+      method?: "crypto" | "momo";
+      momoPhone?: string;
+      momoNetwork?: string;
+      momoCountryCode?: string;
     }) =>
       this.request<WalletDepositCheckout>("/wallet/deposit", {
         method: "POST",
@@ -858,7 +900,7 @@ class ApiClient {
         method: "POST",
         body: JSON.stringify({ amount, riskPercent }),
       }),
-    withdraw: (amount: number, walletAddress?: string) =>
+    withdraw: (amount: number, savedWalletId?: string) =>
       this.request<{
         status: string;
         payoutId: string;
@@ -870,8 +912,8 @@ class ApiClient {
         method: "POST",
         body: JSON.stringify({
           amount,
-          ...(walletAddress?.trim()
-            ? { walletAddress: walletAddress.trim() }
+          ...(savedWalletId?.trim()
+            ? { savedWalletId: savedWalletId.trim() }
             : {}),
         }),
       }),
@@ -965,7 +1007,10 @@ class ApiClient {
       variant: string;
       planId: string;
       network: string;
-      source?: "wallet" | "crypto";
+      source?: "wallet" | "crypto" | "momo";
+      momoPhone?: string;
+      momoNetwork?: string;
+      momoCountryCode?: string;
     }) =>
       this.request<EvaluationCheckoutResult>("/evaluations/checkout", {
         method: "POST",
@@ -1341,7 +1386,12 @@ export interface WalletLedgerItem {
   createdAt: string;
 }
 
-export type WithdrawalWalletNetwork = "TRC20" | "ERC20" | "BEP20";
+export type WithdrawalWalletNetwork =
+  | "TRC20"
+  | "ERC20"
+  | "BEP20"
+  | "MOMO_MTN"
+  | "MOMO_AIRTEL";
 
 export interface SavedWithdrawalWallet {
   id: string;
@@ -1373,13 +1423,21 @@ export interface DepositorPlanPreview {
 export interface WalletDepositCheckout {
   paymentId: string;
   amount: number;
+  amountLocal?: number;
+  localCurrency?: string;
   currency: string;
   network: string;
   payAddress?: string;
   payAmount?: number;
   payCurrency?: string;
-  gatewayPaymentId?: number;
+  gatewayPaymentId?: number | string;
+  gatewayChargeId?: string;
   liveStatus?: string;
+  gateway?: string;
+  instruction?: string;
+  momoNetwork?: string;
+  momoPhone?: string;
+  redirectUrl?: string;
 }
 
 export interface DailyIncomeEntry {

@@ -23,6 +23,10 @@ import { ComplianceService } from '../compliance/compliance.service';
 import { PaymentsService } from '../payments/payments.service';
 import { WALLET_WITHDRAWAL_FEE_USD } from '../common/constants';
 import { SavedWithdrawalWalletService } from './saved-withdrawal-wallet.service';
+import {
+  isMomoWithdrawalNetwork,
+} from '../flutterwave/flutterwave.constants';
+import { FlutterwavePaymentsService } from '../flutterwave/flutterwave-payments.service';
 
 const PLAN_DAYS = 5;
 const DEPOSIT_MIN_FALLBACK_USDT = 10;
@@ -40,6 +44,8 @@ export class WalletService {
     private savedWithdrawalWallets: SavedWithdrawalWalletService,
     @Inject(forwardRef(() => PaymentsService))
     private payments: PaymentsService,
+    @Inject(forwardRef(() => FlutterwavePaymentsService))
+    private flutterwavePayments: FlutterwavePaymentsService,
   ) {}
 
   private ipnUrl() {
@@ -471,6 +477,41 @@ export class WalletService {
     }
   }
 
+  async createMomoDeposit(
+    userId: string,
+    amount: number,
+    momo: { phoneNumber: string; network: string; countryCode?: string },
+    riskPercent?: number,
+  ) {
+    const config = await this.getPlatformConfig();
+    const minDeposit = Number(config?.depositorMinDepositUsdt ?? 50);
+    const minFlw = this.flutterwavePayments.getPublicConfig().minDepositUsd;
+    const effectiveMin = Math.max(minDeposit, minFlw);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Deposit amount must be greater than zero');
+    }
+    if (amount < effectiveMin) {
+      throw new BadRequestException(`Minimum deposit is $${effectiveMin} USDT`);
+    }
+
+    const result = await this.flutterwavePayments.initiatePayment({
+      userId,
+      purpose: 'wallet_deposit',
+      amountUsd: amount,
+      network: 'MOMO',
+      momo,
+      gatewayMeta: riskPercent != null ? { riskPercent } : undefined,
+    });
+
+    this.notifications.walletDepositInitiated(userId, {
+      amount,
+      paymentId: result.paymentId,
+    });
+
+    return result;
+  }
+
   async confirmWalletDeposit(
     paymentId: string,
     gatewayPayload: object,
@@ -843,8 +884,9 @@ export class WalletService {
       throw new BadRequestException('Insufficient available balance');
     }
 
+    const isMomo = isMomoWithdrawalNetwork(savedWallet.network);
     const destination = savedWallet.address;
-    const method = 'TRC20' as const;
+    const method = isMomo ? ('MOBILE_MONEY' as const) : ('TRC20' as const);
     const walletLabel = savedWallet.label;
 
     const newBalance = Number(platformWallet.availableBalance) - grossAmount;
@@ -860,7 +902,9 @@ export class WalletService {
           userId,
           amount: -grossAmount,
           type: 'DEPOSITOR_WITHDRAW',
-          description: `Wallet withdrawal — $${grossAmount.toFixed(2)} USDT ($${fee.toFixed(2)} fee, $${netPayout.toFixed(2)} payout) → ${walletLabel}`,
+          description: isMomo
+            ? `MoMo withdrawal — $${grossAmount.toFixed(2)} USDT ($${fee.toFixed(2)} fee, $${netPayout.toFixed(2)} payout) → ${walletLabel}`
+            : `Wallet withdrawal — $${grossAmount.toFixed(2)} USDT ($${fee.toFixed(2)} fee, $${netPayout.toFixed(2)} payout) → ${walletLabel}`,
           balanceAfter: newBalance,
         },
       });
@@ -877,7 +921,9 @@ export class WalletService {
           status: 'PENDING',
           walletAddress: destination,
           payoutMethod: method,
-          notes: `Platform wallet withdrawal — $${grossAmount.toFixed(2)} USDT gross, $${fee.toFixed(2)} fee, $${netPayout.toFixed(2)} USDT payout → ${walletLabel} (${savedWallet.network})`,
+          notes: isMomo
+            ? `MoMo wallet withdrawal — $${grossAmount.toFixed(2)} USDT gross, $${fee.toFixed(2)} fee, $${netPayout.toFixed(2)} USDT payout → ${walletLabel} (${savedWallet.network})`
+            : `Platform wallet withdrawal — $${grossAmount.toFixed(2)} USDT gross, $${fee.toFixed(2)} fee, $${netPayout.toFixed(2)} USDT payout → ${walletLabel} (${savedWallet.network})`,
         },
       });
     });

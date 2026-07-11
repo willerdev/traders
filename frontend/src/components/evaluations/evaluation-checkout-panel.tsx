@@ -18,6 +18,10 @@ import {
   PaymentSourceSelector,
   type PaymentSource,
 } from "@/components/wallet/payment-source-selector";
+import {
+  MomoPaymentFields,
+  type FlutterwavePublicConfig,
+} from "@/components/payments/momo-payment-fields";
 
 const NETWORKS = [
   { id: "TRC20", label: "TRC20 (Tron)", hint: "Lowest fees" },
@@ -63,6 +67,14 @@ export function EvaluationCheckoutPanel({
   const [progress, setProgress] = useState<Progress>("waiting");
   const [copied, setCopied] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
+  const [flwConfig, setFlwConfig] = useState<FlutterwavePublicConfig | null>(null);
+  const [momoPhone, setMomoPhone] = useState("");
+  const [momoNetwork, setMomoNetwork] = useState("MTN");
+  const [momoInstruction, setMomoInstruction] = useState("");
+
+  useEffect(() => {
+    void api.flutterwave.config().then(setFlwConfig);
+  }, []);
 
   const refreshWallet = useCallback(async () => {
     if (!syncApiAuthToken()) return;
@@ -105,6 +117,13 @@ export function EvaluationCheckoutPanel({
         planId,
         network,
         source,
+        ...(source === "momo"
+          ? {
+              momoPhone,
+              momoNetwork,
+              momoCountryCode: flwConfig?.countryCode,
+            }
+          : {}),
       });
       if (result.success) {
         setProgress("complete");
@@ -113,8 +132,14 @@ export function EvaluationCheckoutPanel({
       }
       if (result.paymentId) {
         setPaymentId(result.paymentId);
-        setPayAddress(result.payAddress ?? "");
-        setPayAmount(result.payAmount ?? feeUsdt);
+        if (source === "momo") {
+          setMomoInstruction(
+            (result as { instruction?: string }).instruction ?? "",
+          );
+        } else {
+          setPayAddress(result.payAddress ?? "");
+          setPayAmount(result.payAmount ?? feeUsdt);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Checkout failed");
@@ -162,7 +187,17 @@ export function EvaluationCheckoutPanel({
                 onSourceChange={setSource}
                 walletBalance={walletBalance}
                 amountDue={feeUsdt}
+                momoEnabled={Boolean(flwConfig?.enabled)}
               />
+              {source === "momo" && flwConfig?.enabled ? (
+                <MomoPaymentFields
+                  phone={momoPhone}
+                  onPhoneChange={setMomoPhone}
+                  network={momoNetwork}
+                  onNetworkChange={setMomoNetwork}
+                  config={flwConfig}
+                />
+              ) : null}
               {source === "crypto" ? (
                 <div className="grid gap-2 sm:grid-cols-3">
                   {NETWORKS.map((item) => (
@@ -199,39 +234,48 @@ export function EvaluationCheckoutPanel({
             <div className="space-y-4">
               <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-center">
                 <p className="text-sm text-gray-400">{PROGRESS_LABEL[progress]}</p>
-                <p className="mt-2 text-2xl font-bold">
-                  {payAmount != null ? payAmount.toFixed(2) : feeUsdt.toFixed(2)} USDT
-                </p>
-                {payAddress ? (
+                {source === "momo" ? (
+                  <p className="mt-3 text-sm text-gray-300">
+                    {momoInstruction ||
+                      "Approve the Mobile Money prompt on your phone to complete enrollment."}
+                  </p>
+                ) : (
                   <>
-                    <div className="mx-auto mt-4 flex h-36 w-36 items-center justify-center rounded-xl bg-white">
-                      <QrCode className="h-16 w-16 text-slate-400" />
-                    </div>
-                    <p className="mt-3 break-all font-mono text-xs text-gray-300">
-                      {payAddress}
+                    <p className="mt-2 text-2xl font-bold">
+                      {payAmount != null ? payAmount.toFixed(2) : feeUsdt.toFixed(2)} USDT
                     </p>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="mt-2"
-                      onClick={async () => {
-                        await navigator.clipboard.writeText(payAddress);
-                        setCopied(true);
-                        setTimeout(() => setCopied(false), 2000);
-                      }}
-                    >
-                      {copied ? (
-                        <>
-                          <CheckCircle2 className="mr-1 h-4 w-4" /> Copied
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="mr-1 h-4 w-4" /> Copy address
-                        </>
-                      )}
-                    </Button>
+                    {payAddress ? (
+                      <>
+                        <div className="mx-auto mt-4 flex h-36 w-36 items-center justify-center rounded-xl bg-white">
+                          <QrCode className="h-16 w-16 text-slate-400" />
+                        </div>
+                        <p className="mt-3 break-all font-mono text-xs text-gray-300">
+                          {payAddress}
+                        </p>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="mt-2"
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(payAddress);
+                            setCopied(true);
+                            setTimeout(() => setCopied(false), 2000);
+                          }}
+                        >
+                          {copied ? (
+                            <>
+                              <CheckCircle2 className="mr-1 h-4 w-4" /> Copied
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="mr-1 h-4 w-4" /> Copy address
+                            </>
+                          )}
+                        </Button>
+                      </>
+                    ) : null}
                   </>
-                ) : null}
+                )}
               </div>
               <Button variant="secondary" className="w-full" onClick={() => void startCheckout()}>
                 <RefreshCw className="mr-2 h-4 w-4" />

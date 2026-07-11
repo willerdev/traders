@@ -18,6 +18,8 @@ import {
   maskDisplayNameForPublic,
 } from '../common/demo-user.util';
 import { WalletService } from '../wallet/wallet.service';
+import { FlutterwavePaymentsService } from '../flutterwave/flutterwave-payments.service';
+import { momoNetworkFromSavedWallet } from '../flutterwave/flutterwave.constants';
 
 @Injectable()
 export class PayoutService {
@@ -31,6 +33,7 @@ export class PayoutService {
     private notifications: NotificationService,
     private profitShare: ProfitShareService,
     private walletService: WalletService,
+    private flutterwavePayments: FlutterwavePaymentsService,
   ) {}
 
   private ipnUrl() {
@@ -451,6 +454,60 @@ export class PayoutService {
     const isMobileMoney = payout.payoutMethod === 'MOBILE_MONEY';
 
     if (isMobileMoney) {
+      if (this.flutterwavePayments.getPublicConfig().enabled) {
+        const user = await this.prisma.user.findUnique({
+          where: { id: payout.userId },
+          select: { displayName: true },
+        });
+        const phone = destination.replace(/\D/g, "").slice(-12);
+        const networkMatch = payout.notes?.match(/\(MOMO_[A-Z]+\)/)?.[0];
+        const momoNetwork = networkMatch
+          ? momoNetworkFromSavedWallet(networkMatch.replace(/[()]/g, ""))
+          : "MTN";
+
+        try {
+          const sent = await this.flutterwavePayments.sendMomoPayout({
+            payoutId: payout.id,
+            amountUsd: amount,
+            network: momoNetwork,
+            phoneNumber: phone,
+            recipientName: user?.displayName?.trim() || 'Trader',
+          });
+
+          const updated = await this.prisma.payout.update({
+            where: { id: payout.id },
+            data: {
+              gatewayPayoutId: sent.transferId,
+              status: 'APPROVED',
+              notes: `${payout.notes ?? ''} — Flutterwave transfer ${sent.transferId} (admin ${adminId})`.trim(),
+            },
+          });
+
+          this.notifications.payoutApproved(payout.userId, {
+            amount,
+            walletAddress: destination,
+            weekNumber: payout.weekNumber,
+            year: payout.year,
+          });
+
+          return {
+            payout: updated,
+            verificationRequired: false,
+            creditedToWallet: false,
+            gatewayPayoutId: sent.transferId,
+            message:
+              'MoMo payout queued on Flutterwave. Funds will arrive after the customer approves on their phone if required.',
+          };
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : 'Flutterwave MoMo payout failed';
+          this.logger.error(`Flutterwave payout failed for ${payout.id}: ${message}`);
+          throw new BadRequestException(
+            `Could not queue MoMo payout on Flutterwave: ${message}`,
+          );
+        }
+      }
+
       const updated = await this.prisma.payout.update({
         where: { id: payout.id },
         data: {

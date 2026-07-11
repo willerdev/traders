@@ -279,8 +279,20 @@ export class CreatePaymentDto {
   promoCode?: string;
 
   @IsOptional()
-  @IsIn(['wallet', 'crypto'])
-  source?: 'wallet' | 'crypto';
+  @IsIn(['wallet', 'crypto', 'momo'])
+  source?: 'wallet' | 'crypto' | 'momo';
+
+  @IsOptional()
+  @IsString()
+  momoPhone?: string;
+
+  @IsOptional()
+  @IsString()
+  momoNetwork?: string;
+
+  @IsOptional()
+  @IsString()
+  momoCountryCode?: string;
 }
 
 export class CreateSetupPlanPaymentDto {

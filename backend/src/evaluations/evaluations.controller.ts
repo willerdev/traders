@@ -56,7 +56,10 @@ export class EvaluationsController {
       variant: string;
       planId: string;
       network: string;
-      source?: 'wallet' | 'crypto';
+      source?: 'wallet' | 'crypto' | 'momo';
+      momoPhone?: string;
+      momoNetwork?: string;
+      momoCountryCode?: string;
     },
   ) {
     return this.evaluations.createCheckout(req.user.id, body);

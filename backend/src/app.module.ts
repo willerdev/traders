@@ -29,6 +29,7 @@ import { PresenceModule } from './presence/presence.module';
 import { WalletModule } from './wallet/wallet.module';
 import { InvestorModule } from './investor/investor.module';
 import { EvaluationsModule } from './evaluations/evaluations.module';
+import { FlutterwaveModule } from './flutterwave/flutterwave.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { EvaluationsModule } from './evaluations/evaluations.module';
     WalletModule,
     InvestorModule,
     EvaluationsModule,
+    FlutterwaveModule,
   ],
 })
 export class AppModule {}

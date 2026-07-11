@@ -21,7 +21,7 @@ services:
       - key: PUBLIC_APP_URL
         value: https://thetradeguard.com
       - key: API_PUBLIC_URL
-        value: https://traders-c53s.onrender.com
+        value: https://thetradeguard.com
         sync: false
       # NOWPayments keys must be on this backend service (traders-api), not the frontend web service.
       - key: NOWPAYMENTS_API_KEY
@@ -34,6 +34,24 @@ services:
         sync: false
       - key: NOWPAYMENTS_PAYOUT_PASSWORD
         sync: false
+      - key: FLW_CLIENT_ID
+        sync: false
+      - key: FLW_CLIENT_SECRET
+        sync: false
+      - key: FLW_ENCRYPTION_KEY
+        sync: false
+      - key: FLW_WEBHOOK_SECRET
+        sync: false
+      - key: FLW_API_URL
+        value: https://f4bexperience.flutterwave.com
+      - key: FLW_ENV
+        value: live
+      - key: FLW_MOMO_CURRENCY
+        value: UGX
+      - key: FLW_MOMO_COUNTRY_CODE
+        value: "256"
+      - key: FLW_USD_TO_LOCAL_RATE
+        value: "3800"
       - key: OPENAI_API_KEY
         sync: false
       - key: DEEPSEEK_API_KEY
