@@ -312,6 +312,21 @@ export class SignalsController {
     return this.signalsService.claimSetup(req.user.id, signalId, dto);
   }
 
+  @Get('mt5/quotes/batch')
+  @UseGuards(JwtAuthGuard)
+  getUserMt5BatchQuotes(
+    @Request() req: { user: { id: string } },
+    @Query('symbols') symbols: string,
+  ) {
+    const list = symbols
+      ? symbols
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    return this.signalsService.getUserMt5BatchQuotes(req.user.id, list);
+  }
+
   @Get('mt5/quotes')
   @UseGuards(JwtAuthGuard)
   getUserMt5Quotes(@Request() req: { user: { id: string } }) {
@@ -342,21 +357,6 @@ export class SignalsController {
       timeframe,
       Number.isFinite(parsedLimit) ? parsedLimit : undefined,
     );
-  }
-
-  @Get('mt5/quotes/batch')
-  @UseGuards(JwtAuthGuard)
-  getUserMt5BatchQuotes(
-    @Request() req: { user: { id: string } },
-    @Query('symbols') symbols: string,
-  ) {
-    const list = symbols
-      ? symbols
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
-    return this.signalsService.getUserMt5BatchQuotes(req.user.id, list);
   }
 
   @Get('mt5/running')
