@@ -22,8 +22,8 @@ import {
 } from "@/components/wallet/payment-source-selector";
 import {
   MomoPaymentFields,
-  type FlutterwavePublicConfig,
 } from "@/components/payments/momo-payment-fields";
+import { useFlutterwaveConfig } from "@/hooks/use-flutterwave-config";
 
 const NETWORKS = [
   { id: "TRC20", label: "TRC20 (Tron)", hint: "Lowest fees" },
@@ -74,7 +74,7 @@ export function RegistrationPaymentPanel({
   const [pendingDeposits, setPendingDeposits] = useState(0);
   const [walletRefreshing, setWalletRefreshing] = useState(false);
   const [feeUsdt, setFeeUsdt] = useState(5);
-  const [flwConfig, setFlwConfig] = useState<FlutterwavePublicConfig | null>(null);
+  const { config: flwConfig, momoEnabled } = useFlutterwaveConfig();
   const [momoPhone, setMomoPhone] = useState("");
   const [momoNetwork, setMomoNetwork] = useState("MTN");
   const [momoInstruction, setMomoInstruction] = useState("");
@@ -105,10 +105,6 @@ export function RegistrationPaymentPanel({
       if (r.registrationFeeUsdt) setFeeUsdt(r.registrationFeeUsdt);
     });
   }, [refreshWallet]);
-
-  useEffect(() => {
-    void api.flutterwave.config().then(setFlwConfig);
-  }, []);
 
   useEffect(() => {
     if (!paymentId) return;
@@ -297,7 +293,7 @@ export function RegistrationPaymentPanel({
             setPaymentId(null);
             setError("");
           }}
-          momoEnabled={Boolean(flwConfig?.enabled)}
+          momoEnabled={momoEnabled}
         />
 
         <div className="space-y-1">
@@ -337,7 +333,7 @@ export function RegistrationPaymentPanel({
             </p>
           )}
         </div>
-        {source === "momo" && flwConfig?.enabled && (
+        {source === "momo" && momoEnabled && flwConfig && (
           <MomoPaymentFields
             phone={momoPhone}
             onPhoneChange={setMomoPhone}

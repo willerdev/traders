@@ -47,6 +47,7 @@ export class EvaluationsService {
     private metaApi: MetaApiService,
     private mt5Pool: Mt5PoolService,
     private authService: AuthService,
+    @Inject(forwardRef(() => PaymentsService))
     private paymentsService: PaymentsService,
     @Inject(forwardRef(() => WalletService))
     private walletService: WalletService,

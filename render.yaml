@@ -113,3 +113,11 @@ services:
         value: https://traders-c53s.onrender.com
       - key: NEXT_PUBLIC_API_URL
         value: https://traders-c53s.onrender.com/api/v1
+      - key: NEXT_PUBLIC_MOMO_ENABLED
+        value: "true"
+      - key: NEXT_PUBLIC_MOMO_CURRENCY
+        value: UGX
+      - key: NEXT_PUBLIC_MOMO_COUNTRY_CODE
+        value: "256"
+      - key: NEXT_PUBLIC_MOMO_USD_RATE
+        value: "3800"

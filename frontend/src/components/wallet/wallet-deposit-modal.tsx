@@ -15,10 +15,10 @@ import {
   X,
 } from "lucide-react";
 import {
-  formatLocalAmount,
   MomoPaymentFields,
-  type FlutterwavePublicConfig,
+  formatLocalAmount,
 } from "@/components/payments/momo-payment-fields";
+import { useFlutterwaveConfig } from "@/hooks/use-flutterwave-config";
 
 const NETWORKS = [
   { id: "TRC20", label: "TRC20", hint: "Lowest fees" },
@@ -65,7 +65,7 @@ export function WalletDepositModal({
   const [copied, setCopied] = useState(false);
   const [depositMin, setDepositMin] = useState(10);
   const [depositMethod, setDepositMethod] = useState<DepositMethod>("crypto");
-  const [flwConfig, setFlwConfig] = useState<FlutterwavePublicConfig | null>(null);
+  const { config: flwConfig, momoEnabled } = useFlutterwaveConfig();
   const [momoPhone, setMomoPhone] = useState("");
   const [momoNetwork, setMomoNetwork] = useState("MTN");
   const [momoInstruction, setMomoInstruction] = useState("");
@@ -100,17 +100,6 @@ export function WalletDepositModal({
   }, [open, reset]);
 
   useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    void api.flutterwave.config().then((cfg) => {
-      if (!cancelled) setFlwConfig(cfg);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
-
-  useEffect(() => {
     if (!open || depositMethod !== "crypto") return;
     let cancelled = false;
     void api.wallet.depositMinimum(network).then((m) => {
@@ -127,7 +116,7 @@ export function WalletDepositModal({
   }, [open, network, depositMethod]);
 
   useEffect(() => {
-    if (!open || depositMethod !== "momo" || !flwConfig?.enabled) return;
+    if (!open || depositMethod !== "momo" || !momoEnabled || !flwConfig) return;
     setDepositMin(Math.max(flwConfig.minDepositUsd, minPlanDeposit > 0 ? 0 : 0, flwConfig.minDepositUsd));
   }, [open, depositMethod, flwConfig, minPlanDeposit]);
 
@@ -295,7 +284,7 @@ export function WalletDepositModal({
         <div className="space-y-4 p-5">
           {step === "amount" && (
             <>
-              {flwConfig?.enabled && (
+              {momoEnabled && flwConfig && (
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
@@ -337,13 +326,13 @@ export function WalletDepositModal({
                   onChange={(e) => setAmount(e.target.value)}
                   className="text-lg font-semibold"
                 />
-                {depositMethod === "momo" && flwConfig?.enabled && (
+                {depositMethod === "momo" && momoEnabled && flwConfig && (
                   <p className="mt-1 text-xs text-emerald-400/90">
                     ≈ {formatLocalAmount(Number(amount) || 0, flwConfig.usdRate, flwConfig.currency)} charged on your phone
                   </p>
                 )}
               </div>
-              {depositMethod === "momo" && flwConfig?.enabled && (
+              {depositMethod === "momo" && momoEnabled && flwConfig && (
                 <MomoPaymentFields
                   phone={momoPhone}
                   onPhoneChange={setMomoPhone}
@@ -499,7 +488,7 @@ export function WalletDepositModal({
                         </p>
                         <p className="mt-3 text-xs text-muted">
                           {formatCurrency(Number(amount))} USDT
-                          {flwConfig?.enabled &&
+                          {momoEnabled && flwConfig &&
                             ` (≈ ${formatLocalAmount(Number(amount), flwConfig.usdRate, flwConfig.currency)})`}
                         </p>
                         <p className="text-xs text-muted">

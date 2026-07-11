@@ -7,12 +7,14 @@ import { AuthModule } from '../auth/auth.module';
 import { Mt5SyncModule } from '../mt5-sync/mt5-sync.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { FlutterwaveModule } from '../flutterwave/flutterwave.module';
+import { MetaApiModule } from '../metaapi/metaapi.module';
 
 @Module({
   imports: [
     forwardRef(() => PaymentsModule),
     AuthModule,
     Mt5SyncModule,
+    MetaApiModule,
     forwardRef(() => WalletModule),
     forwardRef(() => FlutterwaveModule),
   ],
