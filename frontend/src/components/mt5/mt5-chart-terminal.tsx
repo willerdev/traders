@@ -45,6 +45,8 @@ import {
 } from "@/components/mt5/mt5-ui";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
+import { prefetchChartBarCache } from "@/lib/chart-bar-cache";
+import { loadChartData } from "@/components/charts/chart-data.service";
 import { Mt5PlaceOrderModal } from "@/components/mt5/mt5-place-order-modal";
 
 type Props = {
@@ -162,31 +164,44 @@ export function Mt5ChartTerminal({
 
   useEffect(() => {
     let cancelled = false;
+    const symbols = [...new Set([selectedSymbol, ...watchlist])].filter(Boolean);
+    if (symbols.length === 0) return;
 
     async function poll() {
       try {
-        const q = await api.signals.mt5Quote(selectedSymbol);
+        const res = await api.signals.mt5BatchQuotes(symbols);
         if (cancelled) return;
-        setFetchedQuotes((prev) => ({
-          ...prev,
-          [selectedSymbol]: {
-            bid: q.bid,
-            ask: q.ask,
-            mid: q.mid,
-          },
-        }));
+        setFetchedQuotes((prev) => {
+          const next = { ...prev };
+          for (const item of res.items) {
+            if (item.mid == null) continue;
+            next[item.symbol] = {
+              bid: item.bid ?? undefined,
+              ask: item.ask ?? undefined,
+              mid: item.mid,
+            };
+          }
+          return next;
+        });
       } catch {
-        /* chart sync continues when quote unavailable */
+        /* keep last quotes */
       }
     }
 
     void poll();
-    const id = window.setInterval(poll, 1000);
+    const id = window.setInterval(poll, 2000);
     return () => {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [selectedSymbol]);
+  }, [selectedSymbol, watchlist]);
+
+  useEffect(() => {
+    const others = watchlist.filter((sym) => sym !== selectedSymbol);
+    for (const sym of others) {
+      prefetchChartBarCache(sym, timeframe, () => loadChartData(sym, timeframe));
+    }
+  }, [watchlist, selectedSymbol, timeframe]);
 
   const openOrders = useMemo((): OrderRow[] => {
     const rows: OrderRow[] = [];

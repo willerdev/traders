@@ -5218,6 +5218,29 @@ export class SignalsService {
     return map;
   }
 
+  private shouldFilterTradesByUserComment(input: {
+    syncActive: boolean;
+    terminalAccountId?: string | null;
+    platformAccountId?: string | null;
+    evaluationAccountId?: string | null;
+  }): boolean {
+    if (input.syncActive || input.evaluationAccountId?.trim()) return false;
+    if (
+      this.usesDedicatedMt5Terminal({
+        syncActive: input.syncActive,
+        evaluationAccountId: input.evaluationAccountId,
+        terminalAccountId: input.terminalAccountId,
+        platformAccountId: input.platformAccountId,
+      })
+    ) {
+      return false;
+    }
+    const terminal = input.terminalAccountId?.trim();
+    const platform = input.platformAccountId?.trim();
+    if (!terminal || !platform) return false;
+    return terminal === platform;
+  }
+
   private usesDedicatedMt5Terminal(input: {
     syncActive: boolean;
     evaluationAccountId?: string | null;
@@ -5334,39 +5357,36 @@ export class SignalsService {
       user.adminCanManageCopy && user.role !== UserRole.ADMIN;
 
     const evaluationCtx = await this.resolveEvaluationTradingAccount(userId);
-    if (evaluationCtx && !evaluationCtx.breached) {
-      return {
-        user,
-        syncActive: false,
-        platformAccountId,
-        terminalAccountId: evaluationCtx.accountId,
-        copyOwner,
-        evaluationEnrollmentId: evaluationCtx.enrollment?.id ?? null,
-        evaluationAccountId: evaluationCtx.accountId,
-      };
-    }
-
-    const terminalAccountId =
-      syncActive && user.metaApiAccountId?.trim()
-        ? user.metaApiAccountId.trim()
-        : user.metaApiAccountId?.trim() || platformAccountId;
 
     const poolDedicated =
       Boolean(user.metaApiAccountId?.trim()) &&
       Boolean(platformAccountId) &&
-      user.metaApiAccountId!.trim() !== platformAccountId &&
+      user.metaApiAccountId!.trim() !== platformAccountId! &&
       !syncActive;
+
+    const evaluationAccountId =
+      evaluationCtx?.accountId ??
+      (poolDedicated ? user.metaApiAccountId!.trim() : null);
+
+    let terminalAccountId: string | null = null;
+    if (evaluationAccountId) {
+      terminalAccountId = evaluationAccountId;
+    } else if (syncActive && user.metaApiAccountId?.trim()) {
+      terminalAccountId = user.metaApiAccountId.trim();
+    } else {
+      terminalAccountId =
+        user.metaApiAccountId?.trim() || platformAccountId || null;
+    }
 
     return {
       user,
-      syncActive,
+      syncActive: evaluationAccountId ? false : syncActive,
       platformAccountId,
       terminalAccountId,
       copyOwner,
       evaluationEnrollmentId: evaluationCtx?.enrollment?.id ?? null,
-      evaluationAccountId:
-        evaluationCtx?.accountId ??
-        (poolDedicated ? user.metaApiAccountId!.trim() : null),
+      evaluationAccountId,
+      evaluationBreached: evaluationCtx?.breached ?? false,
     };
   }
 
@@ -5748,13 +5768,13 @@ export class SignalsService {
           ? await this.loadMt5SyncPositionMap(userId)
           : new Map<string, string>();
 
-        const useDedicatedAccount = this.usesDedicatedMt5Terminal({
+        const useFullAccount = !this.shouldFilterTradesByUserComment({
           syncActive,
           evaluationAccountId,
           terminalAccountId,
           platformAccountId,
         });
-        const [pendingOrders, openPositions] = useDedicatedAccount
+        const [pendingOrders, openPositions] = useFullAccount
           ? await Promise.all([
               this.metaApi.getOrders(account),
               this.metaApi.getPositions(account),
@@ -5853,7 +5873,7 @@ export class SignalsService {
               ? Boolean(linked.trade.tp1BreakevenAt)
               : undefined,
             canPartialClose: pos.volume > 0,
-            executionLabel: useDedicatedAccount
+            executionLabel: useFullAccount
               ? syncActive
                 ? 'Running on your linked MT5'
                 : 'Running on your evaluation MT5'
@@ -5971,13 +5991,13 @@ export class SignalsService {
       : new Map<string, string>();
 
     const account = await this.metaApi.getAccount(terminalAccountId);
-    const useDedicatedAccount = this.usesDedicatedMt5Terminal({
+    const useFullAccount = !this.shouldFilterTradesByUserComment({
       syncActive,
       evaluationAccountId,
       terminalAccountId,
       platformAccountId,
     });
-    const positions = useDedicatedAccount
+    const positions = useFullAccount
       ? await this.metaApi.getPositions(account)
       : await this.metaApi.findUserOpenPositions(
           account,
@@ -6013,7 +6033,7 @@ export class SignalsService {
         currentPrice: pos.currentPrice,
         profit: pnl,
         positionId: pos.id,
-        canClose: useDedicatedAccount || Boolean(linked),
+        canClose: useFullAccount || Boolean(linked),
         canSetBreakeven: linked?.trade
           ? Boolean(
               linked.trade.activatedAt &&
@@ -6026,7 +6046,7 @@ export class SignalsService {
           : false,
         canPartialClose: pos.volume > 0 && Boolean(linked),
         canAdjustStops: true,
-        executionLabel: useDedicatedAccount
+        executionLabel: useFullAccount
           ? syncActive
             ? 'Running on your linked MT5'
             : 'Running on your evaluation MT5'
@@ -6060,6 +6080,61 @@ export class SignalsService {
       syncActive,
       refreshedAt: new Date().toISOString(),
     };
+  }
+
+  /** Batch live quotes for chart watchlist symbols (cached server-side). */
+  async getUserMt5BatchQuotes(userId: string, symbols: string[]) {
+    await this.compliance.requireEvaluationTradingAccess(userId);
+
+    const unique = [
+      ...new Set(
+        symbols
+          .map((s) => normalizeChartSymbol(s?.trim() || ''))
+          .filter(Boolean),
+      ),
+    ].slice(0, 32);
+
+    if (unique.length === 0) {
+      return { items: [], refreshedAt: new Date().toISOString() };
+    }
+
+    let account;
+    try {
+      account = await this.resolveMt5MarketDataAccount(userId);
+    } catch {
+      return { items: [], refreshedAt: new Date().toISOString() };
+    }
+
+    const items = await Promise.all(
+      unique.map(async (symbol) => {
+        try {
+          const price = await this.metaApi.getSymbolPrice(account, symbol);
+          const bid = price.bid;
+          const ask = price.ask;
+          return {
+            symbol,
+            resolvedSymbol: price.symbol,
+            bid,
+            ask,
+            mid: (bid + ask) / 2,
+            spread: ask - bid,
+            time: price.time,
+          };
+        } catch {
+          return {
+            symbol,
+            resolvedSymbol: symbol,
+            bid: null,
+            ask: null,
+            mid: null,
+            spread: null,
+            time: null,
+          };
+        }
+      }),
+    );
+
+    return { items, refreshedAt: new Date().toISOString() };
   }
 
   private computeMt5ChartDefaultStops(

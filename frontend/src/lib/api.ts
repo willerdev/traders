@@ -335,6 +335,14 @@ class ApiClient {
     mt5Terminal: () => this.request<UserMt5Terminal>("/signals/mt5/terminal"),
     mt5Quotes: () =>
       this.request<UserMt5QuotesResult>("/signals/mt5/quotes"),
+    mt5BatchQuotes: (symbols: string[]) => {
+      const q = new URLSearchParams({
+        symbols: symbols.join(","),
+      });
+      return this.request<UserMt5BatchQuotesResult>(
+        `/signals/mt5/quotes/batch?${q}`,
+      );
+    },
     mt5Quote: (symbol: string) => {
       const q = new URLSearchParams({ symbol });
       return this.request<UserMt5QuoteResult>(`/signals/mt5/quote?${q}`);
@@ -2150,6 +2158,21 @@ export interface UserMt5QuoteResult {
   mid: number;
   spread: number;
   time: string;
+  refreshedAt: string;
+}
+
+export interface UserMt5BatchQuoteItem {
+  symbol: string;
+  resolvedSymbol: string;
+  bid: number | null;
+  ask: number | null;
+  mid: number | null;
+  spread: number | null;
+  time: string | null;
+}
+
+export interface UserMt5BatchQuotesResult {
+  items: UserMt5BatchQuoteItem[];
   refreshedAt: string;
 }
 

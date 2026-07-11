@@ -1,6 +1,7 @@
 import type { ChartTimeframe, OHLCBar } from "@/components/charts/chart-types";
 import { MAX_HISTORICAL_BARS } from "@/components/charts/chart-types";
 import { roundPriceForSymbol, defaultMidForSymbol } from "@/components/charts/chart-price-format";
+import { writeChartBarCache } from "@/lib/chart-bar-cache";
 import { api } from "@/lib/api";
 
 export { defaultMidForSymbol };
@@ -233,6 +234,7 @@ export async function loadChartData(
       25_000,
     );
     if (res.bars.length > 0) {
+      writeChartBarCache(symbol, timeframe, res.bars, "metaapi");
       return { bars: res.bars, source: "metaapi" };
     }
   } catch (err) {
@@ -242,8 +244,10 @@ export async function loadChartData(
       resolveSeedPrice(symbol, seedPrice) ??
       resolveSeedPrice(symbol, await loadLiveQuoteMid(symbol)) ??
       defaultMidForSymbol(symbol);
+    const bars = buildQuoteSeededBars(symbol, timeframe, seed);
+    writeChartBarCache(symbol, timeframe, bars, "quote-fallback");
     return {
-      bars: buildQuoteSeededBars(symbol, timeframe, seed),
+      bars,
       source: "quote-fallback",
       error: message,
     };
@@ -253,8 +257,10 @@ export async function loadChartData(
     resolveSeedPrice(symbol, seedPrice) ??
     resolveSeedPrice(symbol, await loadLiveQuoteMid(symbol)) ??
     defaultMidForSymbol(symbol);
+  const fallbackBars = buildQuoteSeededBars(symbol, timeframe, seed);
+  writeChartBarCache(symbol, timeframe, fallbackBars, "quote-fallback");
   return {
-    bars: buildQuoteSeededBars(symbol, timeframe, seed),
+    bars: fallbackBars,
     source: "quote-fallback",
     error: "MetaAPI returned no candles for this symbol",
   };

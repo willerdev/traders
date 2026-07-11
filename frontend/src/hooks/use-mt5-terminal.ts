@@ -90,23 +90,33 @@ export function useMt5Terminal(
   const loadRunning = useCallback(async () => {
     try {
       const res = await api.signals.mt5Running();
-      setRunningTrades(res.trades);
+      setRunningTrades((prev) =>
+        res.trades.length > 0 ? res.trades : prev,
+      );
       setData((prev) => {
         if (!prev) return prev;
+        const mergedRunning =
+          res.trades.length > 0
+            ? res.trades
+            : prev.trades.filter((t) => t.kind === "running");
         const next = {
           ...prev,
+          trades: [
+            ...prev.trades.filter((t) => t.kind !== "running"),
+            ...mergedRunning,
+          ],
           account: res.account ?? prev.account,
           stats: {
             ...prev.stats,
-            runningCount: res.stats.runningCount,
+            runningCount: Math.max(res.stats.runningCount, mergedRunning.length),
             floatingProfit: res.stats.floatingProfit,
           },
         };
         if (userId) {
           patchMt5RunningCache(
             userId,
-            res.trades,
-            res.stats,
+            mergedRunning,
+            next.stats,
             res.account,
           );
         }

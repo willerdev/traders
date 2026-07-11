@@ -199,6 +199,10 @@ export class MetaApiService {
     string,
     { symbols: string[]; expiresAt: number }
   >();
+  private readonly symbolPriceCache = new Map<
+    string,
+    { price: MetaApiSymbolPrice; expiresAt: number }
+  >();
   private readonly accountReadyCache = new Map<
     string,
     { account: MetaApiAccount; expiresAt: number }
@@ -658,12 +662,23 @@ export class MetaApiService {
     account: MetaApiAccount,
     symbol: string,
   ): Promise<MetaApiSymbolPrice> {
+    const cacheKey = `${account.id}:${symbol.trim().toUpperCase()}`;
+    const cached = this.symbolPriceCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.price;
+    }
+
     const variants = getSymbolLookupVariants(symbol);
     let lastError: BadRequestException | null = null;
 
     for (const brokerSymbol of variants) {
       try {
-        return await this.fetchSymbolPrice(account, brokerSymbol);
+        const price = await this.fetchSymbolPrice(account, brokerSymbol);
+        this.symbolPriceCache.set(cacheKey, {
+          price,
+          expiresAt: Date.now() + 3_000,
+        });
+        return price;
       } catch (err) {
         if (err instanceof BadRequestException) {
           lastError = err;
@@ -676,7 +691,12 @@ export class MetaApiService {
     const resolved = await this.resolveBrokerSymbol(account, symbol);
     if (resolved && !variants.includes(resolved)) {
       try {
-        return await this.fetchSymbolPrice(account, resolved);
+        const price = await this.fetchSymbolPrice(account, resolved);
+        this.symbolPriceCache.set(cacheKey, {
+          price,
+          expiresAt: Date.now() + 3_000,
+        });
+        return price;
       } catch (err) {
         if (err instanceof BadRequestException) {
           lastError = err;

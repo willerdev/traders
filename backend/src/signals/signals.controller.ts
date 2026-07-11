@@ -344,6 +344,21 @@ export class SignalsController {
     );
   }
 
+  @Get('mt5/quotes/batch')
+  @UseGuards(JwtAuthGuard)
+  getUserMt5BatchQuotes(
+    @Request() req: { user: { id: string } },
+    @Query('symbols') symbols: string,
+  ) {
+    const list = symbols
+      ? symbols
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    return this.signalsService.getUserMt5BatchQuotes(req.user.id, list);
+  }
+
   @Get('mt5/running')
   @UseGuards(JwtAuthGuard)
   getUserMt5Running(@Request() req: { user: { id: string } }) {

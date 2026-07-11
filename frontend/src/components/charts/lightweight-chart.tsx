@@ -16,6 +16,7 @@ import {
   subscribeRealtimeUpdates,
   type RealtimeQuote,
 } from "@/components/charts/chart-data.service";
+import { readChartBarCache } from "@/lib/chart-bar-cache";
 import type {
   ChartMarker,
   ChartPriceLine,
@@ -227,6 +228,20 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
           if (reason === "symbol" || reason === "initial") {
             applySymbolFormatRef.current(sym);
           }
+
+          const cached = readChartBarCache(sym, tf);
+          if (cached && cached.bars.length > 0) {
+            setDataRef.current(cached.bars, dataOptionsForLoad(reason));
+            historyReadyRef.current = true;
+            onChartStatusChangeRef.current?.({
+              source: cached.source,
+              error: null,
+            });
+            if (reason !== "timeframe") {
+              onLoadingChangeRef.current?.(false, reason);
+            }
+          }
+
           const result = await loadChartData(sym, tf, seed);
           if (gen !== loadGenRef.current) return;
 
