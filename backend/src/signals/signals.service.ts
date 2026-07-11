@@ -5036,12 +5036,34 @@ export class SignalsService {
     return report;
   }
 
+  /** MetaAPI account for chart quotes and OHLC (evaluation, linked sync, or platform). */
+  private async resolveMt5MarketDataAccount(userId: string) {
+    const { terminalAccountId, copyOwner } =
+      await this.resolveUserMt5TerminalContext(userId);
+
+    if (copyOwner) {
+      throw new BadRequestException(
+        'Chart market data is not available on the MT5 Copy account',
+      );
+    }
+
+    if (!this.metaApi.isConfigured || !terminalAccountId) {
+      throw new ServiceUnavailableException(
+        'MetaAPI is not configured or no trading account is linked',
+      );
+    }
+
+    return this.metaApi.getAccount(terminalAccountId);
+  }
+
   /** Live quotes for symbols with open submitted setups (platform MT5). */
   async getUserMt5Quotes(userId: string) {
     await this.compliance.requireEvaluationTradingAccess(userId);
 
-    const platformAccountId = this.metaApi.getConfiguredDefaultAccountId();
-    if (!this.metaApi.isConfigured || !platformAccountId) {
+    let account;
+    try {
+      account = await this.resolveMt5MarketDataAccount(userId);
+    } catch {
       return { items: [], refreshedAt: new Date().toISOString() };
     }
 
@@ -5063,7 +5085,6 @@ export class SignalsService {
       if (!bySymbol.has(row.symbol)) bySymbol.set(row.symbol, row);
     }
 
-    const account = await this.metaApi.getAccount(platformAccountId);
     const items = await Promise.all(
       [...bySymbol.values()].map(async (row) => {
         const entryMin = Number(row.entryMin);
@@ -5122,21 +5143,16 @@ export class SignalsService {
     };
   }
 
-  /** Live MetaAPI quote for any chart symbol on the platform MT5 account. */
+  /** Live MetaAPI quote for any chart symbol on the user's MT5 account. */
   async getUserMt5Quote(userId: string, symbol: string) {
     await this.compliance.requireEvaluationTradingAccess(userId);
 
-    const canonical = symbol?.trim();
+    const canonical = normalizeChartSymbol(symbol?.trim() || '');
     if (!canonical) {
       throw new BadRequestException('symbol is required');
     }
 
-    const platformAccountId = this.metaApi.getConfiguredDefaultAccountId();
-    if (!this.metaApi.isConfigured || !platformAccountId) {
-      throw new ServiceUnavailableException('MetaAPI is not configured');
-    }
-
-    const account = await this.metaApi.getAccount(platformAccountId);
+    const account = await this.resolveMt5MarketDataAccount(userId);
     const price = await this.metaApi.getSymbolPrice(account, canonical);
     const bid = price.bid;
     const ask = price.ask;
@@ -5154,7 +5170,7 @@ export class SignalsService {
     };
   }
 
-  /** Live OHLC candles from MetaAPI for the platform MT5 account. */
+  /** Live OHLC candles from MetaAPI for the user's MT5 account. */
   async getUserMt5Ohlc(
     userId: string,
     symbol: string,
@@ -5163,7 +5179,7 @@ export class SignalsService {
   ) {
     await this.compliance.requireEvaluationTradingAccess(userId);
 
-    const canonical = symbol?.trim();
+    const canonical = normalizeChartSymbol(symbol?.trim() || '');
     if (!canonical) {
       throw new BadRequestException('symbol is required');
     }
@@ -5171,12 +5187,7 @@ export class SignalsService {
       throw new BadRequestException('timeframe is required');
     }
 
-    const platformAccountId = this.metaApi.getConfiguredDefaultAccountId();
-    if (!this.metaApi.isConfigured || !platformAccountId) {
-      throw new ServiceUnavailableException('MetaAPI is not configured');
-    }
-
-    const account = await this.metaApi.getAccount(platformAccountId);
+    const account = await this.resolveMt5MarketDataAccount(userId);
     const requestedLimit = Math.min(limit ?? 400, 500);
     const bars = await this.metaApi.getHistoricalCandles(
       account,

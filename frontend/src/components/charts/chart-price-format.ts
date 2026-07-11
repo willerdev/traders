@@ -14,13 +14,33 @@ function seedFromSymbol(symbol: string): number {
 /** Default mid price when no live quote exists yet. */
 export function defaultMidForSymbol(symbol: string): number {
   const s = symbol.toUpperCase();
+  const volLevel = s.match(/(?:1HZ|HZ|R_)(\d+)/);
+  if (volLevel) {
+    const level = Number(volLevel[1]);
+    const volMids: Record<number, number> = {
+      10: 5500,
+      15: 4800,
+      25: 3200,
+      30: 3800,
+      50: 4100,
+      75: 13000,
+      90: 9500,
+      100: 800,
+      150: 1200,
+      200: 900,
+      250: 700,
+      300: 600,
+    };
+    if (volMids[level] != null) return volMids[level];
+    return 6500;
+  }
   if (s.includes("XAU") || s.includes("GOLD")) return 2650;
   if (s.includes("BTC")) return 68000;
   if (s.includes("ETH")) return 3400;
   if (s.includes("NAS") || s.includes("US100")) return 18500;
   if (s.includes("US30")) return 39500;
   if (s.includes("JPY")) return 155;
-  if (s.includes("HZ") || s.startsWith("R_") || s.startsWith("V")) return 6500;
+  if (s.startsWith("R_") || s.startsWith("V")) return 6500;
   return 1.08 + (seedFromSymbol(symbol) % 1000) / 10000;
 }
 

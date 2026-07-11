@@ -43,14 +43,30 @@ function seededUnit(seed: number): number {
 }
 
 /** Reject quote seeds from a previously selected symbol (e.g. EURUSD mid on BTC). */
+function isSyntheticSymbol(symbol: string): boolean {
+  const s = symbol.toUpperCase();
+  return (
+    /^1HZ\d+V$/.test(s) ||
+    /^R_\d+$/.test(s) ||
+    /^(BOOM|CRASH)\d+N?$/.test(s) ||
+    /^JD\d+$/.test(s) ||
+    s.includes("HZ") ||
+    s.startsWith("STPRNG") ||
+    s.startsWith("RDBEAR") ||
+    s.startsWith("RDBULL")
+  );
+}
+
 export function resolveSeedPrice(
   symbol: string,
   seed?: number | null,
 ): number | undefined {
   if (seed == null || !Number.isFinite(seed) || seed <= 0) return undefined;
+  if (isSyntheticSymbol(symbol)) return seed;
+
   const ref = defaultMidForSymbol(symbol);
   const ratio = seed / ref;
-  if (ratio >= 0.5 && ratio <= 2) return seed;
+  if (ratio >= 0.25 && ratio <= 4) return seed;
   return undefined;
 }
 
@@ -224,32 +240,23 @@ export async function loadChartData(
       err instanceof Error ? err.message : "Could not load MetaAPI candles";
     const seed =
       resolveSeedPrice(symbol, seedPrice) ??
-      resolveSeedPrice(symbol, await loadLiveQuoteMid(symbol));
-    if (seed != null) {
-      return {
-        bars: buildQuoteSeededBars(symbol, timeframe, seed),
-        source: "quote-fallback",
-        error: message,
-      };
-    }
-    return { bars: [], source: "quote-fallback", error: message };
+      resolveSeedPrice(symbol, await loadLiveQuoteMid(symbol)) ??
+      defaultMidForSymbol(symbol);
+    return {
+      bars: buildQuoteSeededBars(symbol, timeframe, seed),
+      source: "quote-fallback",
+      error: message,
+    };
   }
 
   const seed =
     resolveSeedPrice(symbol, seedPrice) ??
-    resolveSeedPrice(symbol, await loadLiveQuoteMid(symbol));
-  if (seed != null) {
-    return {
-      bars: buildQuoteSeededBars(symbol, timeframe, seed),
-      source: "quote-fallback",
-      error: "MetaAPI returned no candles for this symbol",
-    };
-  }
-
+    resolveSeedPrice(symbol, await loadLiveQuoteMid(symbol)) ??
+    defaultMidForSymbol(symbol);
   return {
-    bars: [],
+    bars: buildQuoteSeededBars(symbol, timeframe, seed),
     source: "quote-fallback",
-    error: "No live price available for this symbol",
+    error: "MetaAPI returned no candles for this symbol",
   };
 }
 
