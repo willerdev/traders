@@ -5218,34 +5218,98 @@ export class SignalsService {
     return map;
   }
 
-  private async resolveEvaluationTradingAccount(userId: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { selectedEvaluationEnrollmentId: true },
-    });
-    if (!user) return null;
+  private usesDedicatedMt5Terminal(input: {
+    syncActive: boolean;
+    evaluationAccountId?: string | null;
+    terminalAccountId?: string | null;
+    platformAccountId?: string | null;
+  }): boolean {
+    if (input.syncActive || input.evaluationAccountId?.trim()) return true;
+    const terminal = input.terminalAccountId?.trim();
+    const platform = input.platformAccountId?.trim();
+    if (!terminal) return false;
+    if (!platform) return true;
+    return terminal !== platform;
+  }
 
-    let enrollmentId = user.selectedEvaluationEnrollmentId;
-    if (!enrollmentId) {
-      const fallback = await this.prisma.evaluationEnrollment.findFirst({
-        where: { userId, status: EvaluationStatus.ACTIVE },
-        orderBy: { createdAt: 'desc' },
-        select: { id: true },
-      });
-      enrollmentId = fallback?.id ?? null;
+  private resolveLiveMt5AccountId(input: {
+    syncActive: boolean;
+    metaApiAccountId?: string | null;
+    evaluationAccountId?: string | null;
+    terminalAccountId?: string | null;
+    platformAccountId?: string | null;
+  }): string | null {
+    if (input.evaluationAccountId?.trim()) {
+      return input.evaluationAccountId.trim();
     }
-    if (!enrollmentId) return null;
+    if (input.syncActive && input.metaApiAccountId?.trim()) {
+      return input.metaApiAccountId.trim();
+    }
+    if (
+      this.usesDedicatedMt5Terminal({
+        syncActive: input.syncActive,
+        evaluationAccountId: input.evaluationAccountId,
+        terminalAccountId: input.terminalAccountId,
+        platformAccountId: input.platformAccountId,
+      })
+    ) {
+      return input.terminalAccountId?.trim() || null;
+    }
+    return null;
+  }
 
-    const enrollment = await this.prisma.evaluationEnrollment.findFirst({
-      where: { id: enrollmentId, userId },
+  private async resolveEvaluationTradingAccount(userId: string) {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { selectedEvaluationEnrollmentId: true, metaApiAccountId: true },
+      });
+      if (!user) return null;
+
+      let enrollmentId = user.selectedEvaluationEnrollmentId;
+      if (!enrollmentId) {
+        const fallback = await this.prisma.evaluationEnrollment.findFirst({
+          where: { userId, status: EvaluationStatus.ACTIVE },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true },
+        });
+        enrollmentId = fallback?.id ?? null;
+      }
+      if (enrollmentId) {
+        const enrollment = await this.prisma.evaluationEnrollment.findFirst({
+          where: { id: enrollmentId, userId },
+        });
+        if (enrollment?.metaApiAccountId?.trim()) {
+          return {
+            enrollment,
+            accountId: enrollment.metaApiAccountId.trim(),
+            breached: enrollment.status === EvaluationStatus.BREACHED,
+          };
+        }
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Evaluation enrollment lookup skipped: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    }
+
+    const poolUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { metaApiAccountId: true },
     });
-    if (!enrollment?.metaApiAccountId?.trim()) return null;
+    const poolAccountId = poolUser?.metaApiAccountId?.trim();
+    const platformId = this.metaApi.getConfiguredDefaultAccountId()?.trim();
+    if (poolAccountId && platformId && poolAccountId !== platformId) {
+      return {
+        enrollment: null,
+        accountId: poolAccountId,
+        breached: false,
+      };
+    }
 
-    return {
-      enrollment,
-      accountId: enrollment.metaApiAccountId.trim(),
-      breached: enrollment.status === EvaluationStatus.BREACHED,
-    };
+    return null;
   }
 
   private async resolveUserMt5TerminalContext(userId: string) {
@@ -5277,7 +5341,7 @@ export class SignalsService {
         platformAccountId,
         terminalAccountId: evaluationCtx.accountId,
         copyOwner,
-        evaluationEnrollmentId: evaluationCtx.enrollment.id,
+        evaluationEnrollmentId: evaluationCtx.enrollment?.id ?? null,
         evaluationAccountId: evaluationCtx.accountId,
       };
     }
@@ -5287,14 +5351,22 @@ export class SignalsService {
         ? user.metaApiAccountId.trim()
         : user.metaApiAccountId?.trim() || platformAccountId;
 
+    const poolDedicated =
+      Boolean(user.metaApiAccountId?.trim()) &&
+      Boolean(platformAccountId) &&
+      user.metaApiAccountId!.trim() !== platformAccountId &&
+      !syncActive;
+
     return {
       user,
       syncActive,
       platformAccountId,
       terminalAccountId,
       copyOwner,
-      evaluationEnrollmentId: evaluationCtx?.enrollment.id ?? null,
-      evaluationAccountId: evaluationCtx?.accountId ?? null,
+      evaluationEnrollmentId: evaluationCtx?.enrollment?.id ?? null,
+      evaluationAccountId:
+        evaluationCtx?.accountId ??
+        (poolDedicated ? user.metaApiAccountId!.trim() : null),
     };
   }
 
@@ -5304,12 +5376,15 @@ export class SignalsService {
   ) {
     const balance = Number(information.balance);
     const equity = Number(information.equity);
+    const impliedFloating = equity - balance;
+    const floating =
+      floatingProfit !== 0 ? floatingProfit : impliedFloating;
     return {
       startingBalance: balance,
       currency: information.currency || 'USD',
       realizedProfit: 0,
-      floatingProfit,
-      totalProfit: floatingProfit,
+      floatingProfit: floating,
+      totalProfit: floating,
       equity,
     };
   }
@@ -5349,6 +5424,8 @@ export class SignalsService {
       syncActive: boolean;
       metaApiAccountId: string | null;
       evaluationAccountId?: string | null;
+      terminalAccountId?: string | null;
+      platformAccountId?: string | null;
       investor: {
         investmentDeposited: number;
         mt5Balance?: number | null;
@@ -5366,6 +5443,8 @@ export class SignalsService {
       syncActive,
       metaApiAccountId,
       evaluationAccountId,
+      terminalAccountId,
+      platformAccountId,
       investor,
     } = input;
 
@@ -5377,19 +5456,28 @@ export class SignalsService {
       }
     }
 
-    const liveAccountId =
-      evaluationAccountId?.trim() ||
-      (syncActive ? metaApiAccountId?.trim() : null) ||
-      null;
+    const liveAccountId = this.resolveLiveMt5AccountId({
+      syncActive,
+      metaApiAccountId,
+      evaluationAccountId,
+      terminalAccountId,
+      platformAccountId,
+    });
 
     if (liveAccountId && this.metaApi.isConfigured) {
       try {
         const terminal = await this.metaApi.getTerminalState(liveAccountId);
         if (terminal.information) {
+          const positionsFloating = (terminal.positions ?? []).reduce(
+            (sum, p) => sum + this.metaPositionDisplayProfit(p),
+            0,
+          );
+          const effectiveFloating =
+            floatingProfit !== 0 ? floatingProfit : positionsFloating;
           return {
             account: this.buildMt5LiveAccountSummary(
               terminal.information,
-              floatingProfit,
+              effectiveFloating,
             ),
             accountSource: evaluationAccountId?.trim()
               ? 'evaluation_live'
@@ -5660,7 +5748,12 @@ export class SignalsService {
           ? await this.loadMt5SyncPositionMap(userId)
           : new Map<string, string>();
 
-        const useDedicatedAccount = Boolean(evaluationAccountId) || syncActive;
+        const useDedicatedAccount = this.usesDedicatedMt5Terminal({
+          syncActive,
+          evaluationAccountId,
+          terminalAccountId,
+          platformAccountId,
+        });
         const [pendingOrders, openPositions] = useDedicatedAccount
           ? await Promise.all([
               this.metaApi.getOrders(account),
@@ -5760,8 +5853,10 @@ export class SignalsService {
               ? Boolean(linked.trade.tp1BreakevenAt)
               : undefined,
             canPartialClose: pos.volume > 0,
-            executionLabel: syncActive
-              ? 'Running on your linked MT5'
+            executionLabel: useDedicatedAccount
+              ? syncActive
+                ? 'Running on your linked MT5'
+                : 'Running on your evaluation MT5'
               : 'Running on platform MT5',
           });
         }
@@ -5788,6 +5883,8 @@ export class SignalsService {
         syncActive,
         metaApiAccountId: user.metaApiAccountId,
         evaluationAccountId,
+        terminalAccountId,
+        platformAccountId,
         investor,
       });
 
@@ -5823,7 +5920,7 @@ export class SignalsService {
   async getUserMt5RunningTrades(userId: string) {
     await this.compliance.requireEvaluationTradingAccess(userId);
 
-    const { user, syncActive, terminalAccountId, copyOwner, evaluationAccountId } =
+    const { user, syncActive, terminalAccountId, copyOwner, evaluationAccountId, platformAccountId } =
       await this.resolveUserMt5TerminalContext(userId);
 
     if (!this.metaApi.isConfigured || !terminalAccountId) {
@@ -5835,6 +5932,8 @@ export class SignalsService {
           syncActive,
           metaApiAccountId: user.metaApiAccountId,
           evaluationAccountId,
+          terminalAccountId,
+          platformAccountId,
           investor,
         });
       return {
@@ -5872,7 +5971,12 @@ export class SignalsService {
       : new Map<string, string>();
 
     const account = await this.metaApi.getAccount(terminalAccountId);
-    const useDedicatedAccount = Boolean(evaluationAccountId) || syncActive;
+    const useDedicatedAccount = this.usesDedicatedMt5Terminal({
+      syncActive,
+      evaluationAccountId,
+      terminalAccountId,
+      platformAccountId,
+    });
     const positions = useDedicatedAccount
       ? await this.metaApi.getPositions(account)
       : await this.metaApi.findUserOpenPositions(
@@ -5909,7 +6013,7 @@ export class SignalsService {
         currentPrice: pos.currentPrice,
         profit: pnl,
         positionId: pos.id,
-        canClose: Boolean(linked) || Boolean(evaluationAccountId),
+        canClose: useDedicatedAccount || Boolean(linked),
         canSetBreakeven: linked?.trade
           ? Boolean(
               linked.trade.activatedAt &&
@@ -5922,8 +6026,10 @@ export class SignalsService {
           : false,
         canPartialClose: pos.volume > 0 && Boolean(linked),
         canAdjustStops: true,
-        executionLabel: syncActive
-          ? 'Running on your linked MT5'
+        executionLabel: useDedicatedAccount
+          ? syncActive
+            ? 'Running on your linked MT5'
+            : 'Running on your evaluation MT5'
           : 'Running on platform MT5',
       };
     });
@@ -5938,6 +6044,8 @@ export class SignalsService {
         syncActive,
         metaApiAccountId: user.metaApiAccountId,
         evaluationAccountId,
+        terminalAccountId,
+        platformAccountId,
         investor,
       });
 

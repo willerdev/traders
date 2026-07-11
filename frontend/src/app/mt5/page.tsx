@@ -191,6 +191,20 @@ export default function Mt5UserPage() {
     () => (data?.trades ?? []).filter((t) => t.kind === "limit"),
     [data?.trades],
   );
+  const displayRunningTrades = useMemo(() => {
+    const merged = new Map<string, UserMt5Trade>();
+    const keyFor = (t: UserMt5Trade) =>
+      t.positionId ?? t.orderId ?? `${t.symbol}-${t.openPrice ?? ""}`;
+
+    for (const trade of data?.trades ?? []) {
+      if (trade.kind !== "running") continue;
+      merged.set(keyFor(trade), trade);
+    }
+    for (const trade of runningTrades) {
+      merged.set(keyFor(trade), trade);
+    }
+    return [...merged.values()];
+  }, [data?.trades, runningTrades]);
   const floating = data?.stats.floatingProfit ?? 0;
   const account = data?.account;
   const accountSource = data?.accountSource;
@@ -202,11 +216,11 @@ export default function Mt5UserPage() {
       ? "Investor"
       : null);
   const limitCount = data?.stats.limitCount ?? 0;
-  const runningCount = data?.stats.runningCount ?? runningTrades.length;
+  const runningCount = data?.stats.runningCount ?? displayRunningTrades.length;
 
   const chartSymbol =
     selectedChartSymbol ??
-    runningTrades[0]?.symbol ??
+    displayRunningTrades[0]?.symbol ??
     quotes[0]?.symbol ??
     DEFAULT_CHART_SYMBOL;
 
@@ -662,7 +676,7 @@ export default function Mt5UserPage() {
           />
           <Mt5ChartTerminal
             quotes={quotes}
-            runningTrades={runningTrades}
+            runningTrades={displayRunningTrades}
             limitTrades={limitTrades}
             setups={setups}
             account={account}
@@ -722,7 +736,7 @@ export default function Mt5UserPage() {
           />
         ) : tab === "trades" ? (
           <PositionsPanel
-            trades={runningTrades}
+            trades={displayRunningTrades}
             actionKey={actionKey}
             onClose={handleCloseTrade}
             onViewChart={(trade) => {
