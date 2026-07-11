@@ -47,5 +47,7 @@ export type ChartPriceLine = {
 
 export const MAX_HISTORICAL_BARS = 500;
 
-/** Default symbol when no setup / watchlist selection exists. */
-export const DEFAULT_CHART_SYMBOL = "XAUUSD";
+import { DEFAULT_ALWAYS_OPEN_SYMBOL } from "@/lib/chart-market-status";
+
+/** Default symbol when no setup / watchlist selection exists (always-open synth). */
+export const DEFAULT_CHART_SYMBOL = DEFAULT_ALWAYS_OPEN_SYMBOL;

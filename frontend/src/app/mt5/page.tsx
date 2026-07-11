@@ -56,7 +56,7 @@ import {
   Mt5MobileBottomNav,
   type Mt5MobileTab,
 } from "@/components/mt5/mt5-mobile-bottom-nav";
-import { DEFAULT_CHART_SYMBOL } from "@/components/charts/chart-types";
+import { pickDefaultChartSymbol } from "@/lib/chart-market-status";
 import {
   mt5AccountModeDetail,
   mt5AccountModeFromSource,
@@ -213,11 +213,15 @@ export default function Mt5UserPage() {
   const limitCount = data?.stats.limitCount ?? 0;
   const runningCount = data?.stats.runningCount ?? displayRunningTrades.length;
 
-  const chartSymbol =
-    selectedChartSymbol ??
-    displayRunningTrades[0]?.symbol ??
-    quotes[0]?.symbol ??
-    DEFAULT_CHART_SYMBOL;
+  const chartSymbol = useMemo(
+    () =>
+      selectedChartSymbol ??
+      pickDefaultChartSymbol([
+        displayRunningTrades[0]?.symbol,
+        quotes[0]?.symbol,
+      ]),
+    [selectedChartSymbol, displayRunningTrades, quotes],
+  );
 
   const historyPositions = useMemo(
     () => history.filter((h) => h.status === "WON" || h.status === "LOST"),

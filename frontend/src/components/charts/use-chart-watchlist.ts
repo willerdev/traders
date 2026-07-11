@@ -2,16 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DEFAULT_CHART_SYMBOL_PRIORITY } from "@/lib/chart-market-status";
+
 const STORAGE_KEY = "trp-chart-watchlist";
 
-const DEFAULT_WATCHLIST = [
-  "XAUUSD",
-  "EURUSD",
-  "GBPUSD",
-  "USDJPY",
-  "1HZ75V",
-  "BTCUSD",
-];
+const DEFAULT_WATCHLIST = [...DEFAULT_CHART_SYMBOL_PRIORITY];
 
 function readWatchlist(): string[] {
   if (typeof window === "undefined") return DEFAULT_WATCHLIST;

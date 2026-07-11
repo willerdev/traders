@@ -8,7 +8,7 @@ type Mt5SymbolContextValue = {
 const Mt5SymbolContext = createContext<Mt5SymbolContextValue | null>(null);
 
 export function Mt5SymbolProvider({ children }: { children: React.ReactNode }) {
-  const [symbol, setSymbol] = useState("XAUUSD");
+  const [symbol, setSymbol] = useState("1HZ75V");
   const value = useMemo(() => ({ symbol, setSymbol }), [symbol]);
   return <Mt5SymbolContext.Provider value={value}>{children}</Mt5SymbolContext.Provider>;
 }
