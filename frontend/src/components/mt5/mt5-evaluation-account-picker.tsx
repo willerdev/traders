@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { api, type EvaluationEnrollment } from "@/lib/api";
 import { formatEvaluationSize } from "@/lib/evaluation-plans";
@@ -98,6 +98,11 @@ export function Mt5EvaluationAccountPicker({
   const [activeId, setActiveId] = useState<string | null>(selectedId ?? null);
   const [loading, setLoading] = useState(true);
   const [selectingId, setSelectingId] = useState<string | null>(null);
+  const onSelectedRef = useRef(onSelected);
+
+  useEffect(() => {
+    onSelectedRef.current = onSelected;
+  }, [onSelected]);
 
   const load = useCallback(async () => {
     try {
@@ -119,7 +124,7 @@ export function Mt5EvaluationAccountPicker({
       ) {
         try {
           await api.evaluations.select(preferred);
-          onSelected?.(preferred);
+          onSelectedRef.current?.(preferred);
         } catch {
           /* backend fallback still resolves first active account */
         }
@@ -129,7 +134,7 @@ export function Mt5EvaluationAccountPicker({
     } finally {
       setLoading(false);
     }
-  }, [onSelected]);
+  }, []);
 
   useEffect(() => {
     void load();

@@ -176,10 +176,14 @@ export default function Mt5UserPage() {
     }
   }, [data?.selectedEvaluationEnrollmentId]);
 
-  const handleEvaluationSelected = useCallback(() => {
-    void load({ background: false });
-    void loadRunning();
-  }, [load, loadRunning]);
+  const handleEvaluationSelected = useCallback(
+    (enrollmentId: string) => {
+      setSelectedEvaluationId(enrollmentId);
+      void load({ background: false });
+      void loadRunning();
+    },
+    [load, loadRunning],
+  );
 
   const setups = data?.setups.items ?? [];
   const history = data?.history.items ?? [];
@@ -654,10 +658,7 @@ export default function Mt5UserPage() {
         >
           <Mt5EvaluationAccountPicker
             selectedId={selectedEvaluationId}
-            onSelected={(id) => {
-              setSelectedEvaluationId(id);
-              handleEvaluationSelected();
-            }}
+            onSelected={handleEvaluationSelected}
           />
           <Mt5ChartTerminal
             quotes={quotes}

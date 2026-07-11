@@ -937,8 +937,16 @@ class ApiClient {
       this.request<EvaluationEnrollment | null>("/evaluations/active"),
     getHistory: () =>
       this.request<EvaluationEnrollment[]>("/evaluations/history"),
-    listMine: () =>
-      this.request<EvaluationMineResponse>("/evaluations/mine"),
+    listMine: async () => {
+      try {
+        return await this.request<EvaluationMineResponse>("/evaluations/mine");
+      } catch {
+        const history =
+          await this.request<EvaluationEnrollment[]>("/evaluations/history");
+        const items = history.filter((row) => row.status !== "PENDING");
+        return { selectedEnrollmentId: null, items };
+      }
+    },
     select: (enrollmentId: string) =>
       this.request<EvaluationSelectResult>(
         `/evaluations/${encodeURIComponent(enrollmentId)}/select`,
