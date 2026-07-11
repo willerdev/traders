@@ -32,6 +32,7 @@ import { useDraggableOrderLines } from "@/components/charts/use-draggable-order-
 import { validateStopDrag } from "@/components/charts/validate-stop-levels";
 import {
   ChartDrawingOverlay,
+  findDrawingEraseTarget,
   resolveChartPointFromClient,
   type ChartCoordinateApi,
 } from "@/components/charts/chart-drawing-overlay";
@@ -67,9 +68,10 @@ type Props = {
   onChartPointClick?: (point: ChartDrawingPoint) => void;
   drawings?: ChartDrawing[];
   pendingTrend?: ChartDrawingPoint | null;
-  alertPrices?: number[];
   showDrawings?: boolean;
   onEraseDrawing?: (id: string) => void;
+  onEraseAlert?: (id: string) => void;
+  eraseTargets?: { id: string; price: number }[];
   onLoadingChange?: (loading: boolean, reason?: ChartLoadReason) => void;
   onChartStatusChange?: (status: {
     source?: "metaapi" | "quote-fallback";
@@ -105,9 +107,10 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
       onChartPointClick,
       drawings = [],
       pendingTrend = null,
-      alertPrices = [],
       showDrawings = true,
       onEraseDrawing,
+      onEraseAlert,
+      eraseTargets = [],
       onLoadingChange,
       onChartStatusChange,
     },
@@ -121,6 +124,17 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
       null,
     );
     const [layoutTick, setLayoutTick] = useState(0);
+    const [chartSize, setChartSize] = useState({ width: 0, height: 0 });
+    const coordsRef = useRef<ChartCoordinateApi>({
+      priceToCoordinate: () => null,
+      timeToCoordinate: () => null,
+      coordinateToPrice: () => null,
+      coordinateToTime: () => null,
+    });
+    const onEraseDrawingRef = useRef(onEraseDrawing);
+    const onEraseAlertRef = useRef(onEraseAlert);
+    const eraseTargetsRef = useRef(eraseTargets);
+    const drawingsRef = useRef(drawings);
     const onPriceLineDragEndRef = useRef(onPriceLineDragEnd);
     const onChartTapRef = useRef(onChartTap);
     const onChartPointClickRef = useRef(onChartPointClick);
@@ -159,6 +173,17 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
     onChartTapRef.current = onChartTap;
     onChartPointClickRef.current = onChartPointClick;
     chartToolRef.current = chartTool;
+    onEraseDrawingRef.current = onEraseDrawing;
+    onEraseAlertRef.current = onEraseAlert;
+    eraseTargetsRef.current = eraseTargets;
+    drawingsRef.current = drawings;
+
+    coordsRef.current = {
+      priceToCoordinate: chart.priceToCoordinate,
+      timeToCoordinate: chart.timeToCoordinate,
+      coordinateToPrice: chart.coordinateToPrice,
+      coordinateToTime: chart.coordinateToTime,
+    };
 
     const mergedPriceLines = useMemo(() => {
       return priceLines.map((line) => {
@@ -414,29 +439,38 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
       if (!chart.ready) return;
       return chart.subscribeChartLayout(() => {
         setLayoutTick((n) => n + 1);
+        const el = chart.containerRef.current;
+        if (el) {
+          setChartSize({ width: el.clientWidth, height: el.clientHeight });
+        }
       });
-    }, [chart.ready, chart.subscribeChartLayout]);
+    }, [chart.ready, chart.subscribeChartLayout, chart.containerRef]);
 
-    const coordinateApi = useMemo(
-      (): ChartCoordinateApi => ({
-        priceToCoordinate: chart.priceToCoordinate,
-        timeToCoordinate: chart.timeToCoordinate,
-        coordinateToPrice: chart.coordinateToPrice,
-        coordinateToTime: chart.coordinateToTime,
-      }),
-      [
-        chart.priceToCoordinate,
-        chart.timeToCoordinate,
-        chart.coordinateToPrice,
-        chart.coordinateToTime,
-        layoutTick,
-      ],
+    useEffect(() => {
+      if (!chart.ready || !chart.containerRef.current) return;
+      const el = chart.containerRef.current;
+      const ro = new ResizeObserver(() => {
+        setChartSize({ width: el.clientWidth, height: el.clientHeight });
+      });
+      ro.observe(el);
+      setChartSize({ width: el.clientWidth, height: el.clientHeight });
+      return () => ro.disconnect();
+    }, [chart.ready, chart.containerRef]);
+
+    const trendlines = useMemo(
+      () =>
+        drawings.filter(
+          (d): d is Extract<ChartDrawing, { type: "trendline" }> =>
+            d.type === "trendline",
+        ),
+      [drawings],
     );
 
     useEffect(() => {
       if (!chart.ready || !chart.containerRef.current) return;
       const target = chart.containerRef.current;
       let start: { x: number; y: number; t: number } | null = null;
+      let previewRaf = 0;
 
       function onPointerDown(e: PointerEvent) {
         start = { x: e.clientX, y: e.clientY, t: Date.now() };
@@ -447,16 +481,33 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
         const dx = e.clientX - start.x;
         const dy = e.clientY - start.y;
         const dt = Date.now() - start.t;
-        if (Math.hypot(dx, dy) < 12 && dt < 400) {
+        const isTap = Math.hypot(dx, dy) < 12 && dt < 400;
+        if (isTap) {
           const tool = chartToolRef.current;
           if (tool === "select") {
             onChartTapRef.current?.({ clientX: e.clientX, clientY: e.clientY });
-          } else if (tool !== "erase" && onChartPointClickRef.current) {
+          } else if (tool === "erase") {
             const point = resolveChartPointFromClient(
               e.clientX,
               e.clientY,
               target,
-              coordinateApi,
+              coordsRef.current,
+            );
+            if (point) {
+              const hit = findDrawingEraseTarget(
+                point,
+                drawingsRef.current,
+                eraseTargetsRef.current,
+              );
+              if (hit?.type === "drawing") onEraseDrawingRef.current?.(hit.id);
+              if (hit?.type === "alert") onEraseAlertRef.current?.(hit.id);
+            }
+          } else if (onChartPointClickRef.current) {
+            const point = resolveChartPointFromClient(
+              e.clientX,
+              e.clientY,
+              target,
+              coordsRef.current,
             );
             if (point) onChartPointClickRef.current(point);
           }
@@ -469,13 +520,16 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
           setPreviewPoint(null);
           return;
         }
-        const point = resolveChartPointFromClient(
-          e.clientX,
-          e.clientY,
-          target,
-          coordinateApi,
-        );
-        setPreviewPoint(point);
+        cancelAnimationFrame(previewRaf);
+        previewRaf = requestAnimationFrame(() => {
+          const point = resolveChartPointFromClient(
+            e.clientX,
+            e.clientY,
+            target,
+            coordsRef.current,
+          );
+          setPreviewPoint(point);
+        });
       }
 
       target.addEventListener("pointerdown", onPointerDown);
@@ -485,8 +539,9 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
         target.removeEventListener("pointerdown", onPointerDown);
         target.removeEventListener("pointerup", onPointerUp);
         target.removeEventListener("pointermove", onPointerMove);
+        cancelAnimationFrame(previewRaf);
       };
-    }, [chart.ready, chart.containerRef, coordinateApi, pendingTrend]);
+    }, [chart.ready, chart.containerRef, pendingTrend]);
 
     return (
       <div className="relative h-full w-full">
@@ -513,15 +568,16 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
         />
         <ChartDrawingOverlay
           ready={chart.ready}
-          coords={coordinateApi}
-          drawings={drawings}
+          layoutVersion={layoutTick}
+          coords={coordsRef.current}
+          trendlines={trendlines}
           pendingTrend={pendingTrend}
           previewPoint={previewPoint}
-          alertPrices={alertPrices}
           showDrawings={showDrawings}
           eraseMode={chartTool === "erase"}
           onEraseDrawing={onEraseDrawing}
-          containerRef={chart.containerRef}
+          width={chartSize.width}
+          height={chartSize.height}
         />
         {drag.dragLabel && (
           <div

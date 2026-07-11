@@ -154,6 +154,7 @@ export function Mt5ChartTerminal({
     handleChartPoint,
     drawings,
     removeDrawing,
+    cancelTool,
   } = chartTools;
   const userDisplayName = useAuthStore((s) => s.user?.displayName ?? "");
   const { liveQuote, getActiveQuote, watchlistQuotes } = useChartLiveQuotes(
@@ -250,6 +251,58 @@ export function Mt5ChartTerminal({
       chartSettings.showLimits,
       chartSettings.showSlTp,
     ],
+  );
+
+  const chartPriceLines = useMemo(() => {
+    const extra: typeof priceLines = [];
+    if (chartSettings.showDrawings) {
+      for (const d of drawings) {
+        if (d.type === "hline") {
+          extra.push({
+            id: d.id,
+            price: d.price,
+            color: "#a78bfa",
+            title: fmtMt5Price(d.price),
+            lineStyle: 1,
+          });
+        }
+      }
+      for (const a of alerts.filter((item) => !item.triggered)) {
+        extra.push({
+          id: a.id,
+          price: a.price,
+          color: "#fbbf24",
+          title: `Alert ${fmtMt5Price(a.price)}`,
+          lineStyle: 0,
+        });
+      }
+    }
+    const mid = liveQuote?.mid ?? getActiveQuote()?.mid;
+    if (mid != null && Number.isFinite(mid)) {
+      extra.push({
+        id: "__live_mid__",
+        price: mid,
+        color: MT5_BUY,
+        title: `Live ${fmtMt5Price(mid)}`,
+        lineStyle: 2,
+      });
+    }
+    return [...priceLines, ...extra];
+  }, [
+    priceLines,
+    drawings,
+    alerts,
+    chartSettings.showDrawings,
+    liveQuote?.mid,
+    getActiveQuote,
+  ]);
+
+  const eraseTargets = useMemo(
+    () =>
+      alerts
+        .filter((a) => !a.triggered)
+        .map((a) => ({ id: a.id, price: a.price })),
+    [alerts],
   );
 
   function handleTimeframeChange(tf: ChartTimeframe) {
@@ -414,6 +467,7 @@ export function Mt5ChartTerminal({
         <ChartToolsToolbar
           activeTool={activeTool}
           onToolChange={setActiveTool}
+          onDone={cancelTool}
           alerts={alerts}
           pendingTrend={pendingTrend != null}
           onRemoveAlert={removeAlert}
@@ -501,6 +555,7 @@ export function Mt5ChartTerminal({
           <ChartToolsToolbar
             activeTool={activeTool}
             onToolChange={setActiveTool}
+            onDone={cancelTool}
             alerts={alerts}
             pendingTrend={pendingTrend != null}
             onRemoveAlert={removeAlert}
@@ -532,17 +587,18 @@ export function Mt5ChartTerminal({
             seedPrice={liveQuote?.mid ?? liveQuote?.bid}
             getQuote={getActiveQuote}
             markers={markers}
-            priceLines={priceLines}
-            draggableLines={chartSettings.showSlTp}
+            priceLines={chartPriceLines}
+            draggableLines={chartSettings.showSlTp && activeTool === "select"}
             onPriceLineDragEnd={handlePriceLineDragEnd}
             onChartTap={handleChartTap}
             chartTool={activeTool}
             onChartPointClick={handleChartPoint}
             drawings={drawings}
             pendingTrend={pendingTrend}
-            alertPrices={alerts.filter((a) => !a.triggered).map((a) => a.price)}
             showDrawings={chartSettings.showDrawings}
             onEraseDrawing={removeDrawing}
+            onEraseAlert={removeAlert}
+            eraseTargets={eraseTargets}
             className="h-full w-full"
             onLoadingChange={handleChartLoadingChange}
             onChartStatusChange={setChartStatus}

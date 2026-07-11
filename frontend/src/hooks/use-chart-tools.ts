@@ -140,6 +140,7 @@ export function useChartTools(symbol: string) {
       switch (activeTool) {
         case "hline":
           addHLine(point.price);
+          setActiveTool("select");
           break;
         case "trendline":
           if (!pendingTrend) {
@@ -147,10 +148,12 @@ export function useChartTools(symbol: string) {
           } else {
             addTrendline(pendingTrend, point);
             setPendingTrend(null);
+            setActiveTool("select");
           }
           break;
         case "alert":
           addAlert(point.price, "cross");
+          setActiveTool("select");
           break;
         default:
           break;
@@ -158,6 +161,20 @@ export function useChartTools(symbol: string) {
     },
     [activeTool, addAlert, addHLine, addTrendline, pendingTrend],
   );
+
+  const cancelTool = useCallback(() => {
+    setPendingTrend(null);
+    setActiveTool("select");
+  }, []);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      cancelTool();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [cancelTool]);
 
   const dismissToast = useCallback((id: string) => {
     setAlertToasts((prev) => prev.filter((t) => t.id !== id));
@@ -213,5 +230,6 @@ export function useChartTools(symbol: string) {
     alertToasts,
     dismissToast,
     checkPriceAlerts,
+    cancelTool,
   };
 }

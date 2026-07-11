@@ -35,6 +35,7 @@ const TOOLS: {
 type Props = {
   activeTool: ChartToolMode;
   onToolChange: (tool: ChartToolMode) => void;
+  onDone?: () => void;
   alerts: ChartPriceAlert[];
   pendingTrend: boolean;
   onRemoveAlert: (id: string) => void;
@@ -45,6 +46,7 @@ type Props = {
 export function ChartToolsToolbar({
   activeTool,
   onToolChange,
+  onDone,
   alerts,
   pendingTrend,
   onRemoveAlert,
@@ -80,7 +82,23 @@ export function ChartToolsToolbar({
 
       {pendingTrend && (
         <span className="hidden text-[10px] text-[var(--mt5-muted)] sm:inline">
-          2nd point…
+          2nd point… · Esc to cancel
+        </span>
+      )}
+
+      {activeTool !== "select" && !pendingTrend && (
+        <button
+          type="button"
+          onClick={() => onDone?.()}
+          className="rounded-md border border-[var(--mt5-divider)] px-2 py-1 text-[10px] font-semibold text-[var(--mt5-text)] hover:bg-[var(--mt5-row-hover)]"
+        >
+          Done
+        </button>
+      )}
+
+      {activeTool === "select" && (
+        <span className="hidden text-[10px] text-[var(--mt5-muted)] lg:inline">
+          Pan & zoom
         </span>
       )}
 
