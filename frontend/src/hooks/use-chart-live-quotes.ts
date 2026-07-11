@@ -7,17 +7,31 @@ import type { RealtimeQuote } from "@/components/charts/chart-data.service";
 const ACTIVE_SYMBOL_MS = 400;
 const WATCHLIST_MS = 2000;
 
-function toQuote(item: {
-  bid?: number | null;
-  ask?: number | null;
-  mid?: number | null;
-}): RealtimeQuote | null {
+function normalizeSymbol(symbol: string): string {
+  return symbol.trim().toUpperCase();
+}
+
+function toQuote(
+  symbol: string,
+  item: {
+    symbol?: string;
+    bid?: number | null;
+    ask?: number | null;
+    mid?: number | null;
+  },
+): RealtimeQuote | null {
   if (item.mid == null || !Number.isFinite(item.mid)) return null;
   return {
+    symbol: normalizeSymbol(item.symbol ?? symbol),
     bid: item.bid ?? undefined,
     ask: item.ask ?? undefined,
     mid: item.mid,
   };
+}
+
+function quoteMatchesSymbol(quote: RealtimeQuote | null, symbol: string): boolean {
+  if (!quote?.symbol) return true;
+  return quote.symbol === normalizeSymbol(symbol);
 }
 
 /**
@@ -31,24 +45,33 @@ export function useChartLiveQuotes(selectedSymbol: string, watchlist: string[]) 
   >({});
   const activeQuoteRef = useRef<RealtimeQuote | null>(null);
   const [activeQuote, setActiveQuote] = useState<RealtimeQuote | null>(null);
+  const selectedSymbolRef = useRef(selectedSymbol);
 
-  const getActiveQuote = useCallback(
-    () => activeQuoteRef.current ?? activeQuote,
-    [activeQuote],
-  );
+  const getActiveQuote = useCallback((expectedSymbol?: string) => {
+    const q = activeQuoteRef.current ?? activeQuote;
+    if (!q) return null;
+    const sym = expectedSymbol ?? selectedSymbolRef.current;
+    if (!quoteMatchesSymbol(q, sym)) return null;
+    return q;
+  }, [activeQuote]);
 
   useEffect(() => {
+    selectedSymbolRef.current = selectedSymbol;
+    activeQuoteRef.current = null;
+    setActiveQuote(null);
+
     let cancelled = false;
 
     async function pollActive() {
       try {
         const res = await api.signals.mt5Quote(selectedSymbol);
-        const quote = toQuote(res);
+        const quote = toQuote(selectedSymbol, res);
         if (cancelled || !quote) return;
+        if (!quoteMatchesSymbol(quote, selectedSymbol)) return;
         activeQuoteRef.current = quote;
         setActiveQuote(quote);
       } catch {
-        /* keep last tick */
+        /* keep last tick only if still same symbol */
       }
     }
 
@@ -75,7 +98,7 @@ export function useChartLiveQuotes(selectedSymbol: string, watchlist: string[]) 
         symbols.map(async (symbol) => {
           try {
             const res = await api.signals.mt5Quote(symbol);
-            return { symbol, quote: toQuote(res) };
+            return { symbol, quote: toQuote(symbol, res) };
           } catch {
             return { symbol, quote: null };
           }
@@ -102,7 +125,7 @@ export function useChartLiveQuotes(selectedSymbol: string, watchlist: string[]) 
         setWatchlistQuotes((prev) => {
           const next = { ...prev };
           for (const item of res.items) {
-            const quote = toQuote(item);
+            const quote = toQuote(item.symbol, item);
             if (quote) next[item.symbol] = quote;
           }
           return next;
@@ -123,7 +146,9 @@ export function useChartLiveQuotes(selectedSymbol: string, watchlist: string[]) 
     };
   }, [watchlist, selectedSymbol]);
 
-  const liveQuote = activeQuote;
+  const liveQuote = quoteMatchesSymbol(activeQuote, selectedSymbol)
+    ? activeQuote
+    : null;
 
   return {
     liveQuote,

@@ -63,12 +63,8 @@ export function resolveSeedPrice(
   seed?: number | null,
 ): number | undefined {
   if (seed == null || !Number.isFinite(seed) || seed <= 0) return undefined;
-  if (isSyntheticSymbol(symbol)) return seed;
-
-  const ref = defaultMidForSymbol(symbol);
-  const ratio = seed / ref;
-  if (ratio >= 0.25 && ratio <= 4) return seed;
-  return undefined;
+  if (!isPlausibleQuotePrice(symbol, seed)) return undefined;
+  return seed;
 }
 
 function volatilityForSymbol(
@@ -167,6 +163,10 @@ function mergeLiveTick(
   barTime: number,
   mid: number,
 ): OHLCBar {
+  if (lastBar && !isPlausibleQuotePrice(symbol, mid, lastBar.close)) {
+    return lastBar;
+  }
+
   const px = roundPriceForSymbol(mid, symbol);
   if (!lastBar || lastBar.time < barTime) {
     return {
@@ -277,10 +277,26 @@ export async function loadHistoricalOHLC(
 }
 
 export type RealtimeQuote = {
+  symbol?: string;
   bid?: number | null;
   ask?: number | null;
   mid?: number | null;
 };
+
+/** Reject prices far from a symbol's typical range (stale cross-symbol quotes). */
+export function isPlausibleQuotePrice(
+  symbol: string,
+  price: number,
+  anchor?: number | null,
+): boolean {
+  if (!Number.isFinite(price) || price <= 0) return false;
+  const ref =
+    anchor != null && Number.isFinite(anchor) && anchor > 0
+      ? anchor
+      : defaultMidForSymbol(symbol);
+  const ratio = price / ref;
+  return ratio >= 0.25 && ratio <= 4;
+}
 
 /** Live candle updates — tick from MetaAPI quote + periodic last-bar sync. */
 export function subscribeRealtimeUpdates(
@@ -348,8 +364,11 @@ export function subscribeRealtimeUpdates(
 
   const tick = () => {
     if (!canRun() || tabHidden || resyncing) return;
-    const mid = quoteMid(getQuote());
+    const quote = getQuote();
+    if (quote?.symbol && quote.symbol.toUpperCase() !== symbol.toUpperCase()) return;
+    const mid = quoteMid(quote);
     if (mid == null || !Number.isFinite(mid)) return;
+    if (!isPlausibleQuotePrice(symbol, mid, lastBar?.close)) return;
 
     const now = Math.floor(Date.now() / 1000);
     const barTime = alignedBarTime(now, interval);

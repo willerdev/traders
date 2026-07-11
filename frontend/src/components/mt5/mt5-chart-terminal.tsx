@@ -45,7 +45,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import { prefetchChartBarCache } from "@/lib/chart-bar-cache";
-import { loadChartData } from "@/components/charts/chart-data.service";
+import { loadChartData, isPlausibleQuotePrice } from "@/components/charts/chart-data.service";
 import { Mt5PlaceOrderModal } from "@/components/mt5/mt5-place-order-modal";
 import {
   ChartAlertToastStack,
@@ -255,9 +255,11 @@ export function Mt5ChartTerminal({
 
   const chartPriceLines = useMemo(() => {
     const extra: typeof priceLines = [];
+    const quoteMid = getActiveQuote(selectedSymbol)?.mid ?? liveQuote?.mid ?? null;
+
     if (chartSettings.showDrawings) {
       for (const d of drawings) {
-        if (d.type === "hline") {
+        if (d.type === "hline" && isPlausibleQuotePrice(selectedSymbol, d.price, quoteMid)) {
           extra.push({
             id: d.id,
             price: d.price,
@@ -268,6 +270,7 @@ export function Mt5ChartTerminal({
         }
       }
       for (const a of alerts.filter((item) => !item.triggered)) {
+        if (!isPlausibleQuotePrice(selectedSymbol, a.price, quoteMid)) continue;
         extra.push({
           id: a.id,
           price: a.price,
@@ -277,13 +280,12 @@ export function Mt5ChartTerminal({
         });
       }
     }
-    const mid = liveQuote?.mid ?? getActiveQuote()?.mid;
-    if (mid != null && Number.isFinite(mid)) {
+    if (quoteMid != null && Number.isFinite(quoteMid)) {
       extra.push({
         id: "__live_mid__",
-        price: mid,
+        price: quoteMid,
         color: MT5_BUY,
-        title: `Live ${fmtMt5Price(mid)}`,
+        title: `Live ${fmtMt5Price(quoteMid)}`,
         lineStyle: 2,
       });
     }
@@ -295,6 +297,7 @@ export function Mt5ChartTerminal({
     chartSettings.showDrawings,
     liveQuote?.mid,
     getActiveQuote,
+    selectedSymbol,
   ]);
 
   const eraseTargets = useMemo(
@@ -584,8 +587,8 @@ export function Mt5ChartTerminal({
             ref={chartRef}
             symbol={selectedSymbol}
             timeframe={timeframe}
-            seedPrice={liveQuote?.mid ?? liveQuote?.bid}
-            getQuote={getActiveQuote}
+            seedPrice={getActiveQuote(selectedSymbol)?.mid ?? liveQuote?.mid ?? liveQuote?.bid}
+            getQuote={() => getActiveQuote(selectedSymbol)}
             markers={markers}
             priceLines={chartPriceLines}
             draggableLines={chartSettings.showSlTp && activeTool === "select"}
