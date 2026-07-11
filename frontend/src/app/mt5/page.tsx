@@ -208,13 +208,8 @@ export default function Mt5UserPage() {
   const floating = data?.stats.floatingProfit ?? 0;
   const account = data?.account;
   const accountSource = data?.accountSource;
-  const investor = data?.investor;
-  const accountMode = mt5AccountModeFromSource(accountSource, investor);
-  const accountModeDetail =
-    mt5AccountModeDetail(accountSource) ??
-    (accountMode === "real" && investor?.investmentDeposited
-      ? "Investor"
-      : null);
+  const accountMode = mt5AccountModeFromSource(accountSource);
+  const accountModeDetail = mt5AccountModeDetail(accountSource);
   const limitCount = data?.stats.limitCount ?? 0;
   const runningCount = data?.stats.runningCount ?? displayRunningTrades.length;
 
@@ -551,29 +546,7 @@ export default function Mt5UserPage() {
           <div className={tab === "trades" ? "md:hidden" : undefined}>
             <Mt5AccountSummary
               account={account}
-              investor={investor}
               accountSource={accountSource}
-            />
-          </div>
-        )}
-
-        {!account && investor && investor.investmentDeposited > 0 && tab !== "quotes" && (
-          <div className={tab === "trades" ? "md:hidden" : undefined}>
-            <Mt5SummaryBlock
-              rows={[
-                {
-                  label: "Investment",
-                  value: formatCurrency(investor.investmentDeposited),
-                },
-                ...(investor.mt5Balance != null
-                  ? [
-                      {
-                        label: "MT5 balance",
-                        value: `${fmtMt5Price(investor.mt5Balance)} ${investor.currency}`,
-                      },
-                    ]
-                  : []),
-              ]}
             />
           </div>
         )}
@@ -681,7 +654,6 @@ export default function Mt5UserPage() {
             setups={setups}
             account={account}
             accountSource={accountSource}
-            investor={investor}
             selectedSymbol={chartSymbol}
             onSelectSymbol={setSelectedChartSymbol}
             onOpenSetup={setSelectedSetup}

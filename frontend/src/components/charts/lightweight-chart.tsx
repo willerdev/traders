@@ -30,6 +30,12 @@ import {
 } from "@/components/charts/use-lightweight-chart";
 import { useDraggableOrderLines } from "@/components/charts/use-draggable-order-lines";
 import { validateStopDrag } from "@/components/charts/validate-stop-levels";
+import {
+  ChartDrawingOverlay,
+  resolveChartPointFromClient,
+  type ChartCoordinateApi,
+} from "@/components/charts/chart-drawing-overlay";
+import type { ChartDrawing, ChartDrawingPoint, ChartToolMode } from "@/lib/chart-tools";
 import { fmtMt5Price } from "@/components/mt5/mt5-ui";
 import { cn } from "@/lib/utils";
 
@@ -57,6 +63,13 @@ type Props = {
   draggableLines?: boolean;
   onPriceLineDragEnd?: (line: ChartPriceLine, newPrice: number) => Promise<void>;
   onChartTap?: (point: { clientX: number; clientY: number }) => void;
+  chartTool?: ChartToolMode;
+  onChartPointClick?: (point: ChartDrawingPoint) => void;
+  drawings?: ChartDrawing[];
+  pendingTrend?: ChartDrawingPoint | null;
+  alertPrices?: number[];
+  showDrawings?: boolean;
+  onEraseDrawing?: (id: string) => void;
   onLoadingChange?: (loading: boolean, reason?: ChartLoadReason) => void;
   onChartStatusChange?: (status: {
     source?: "metaapi" | "quote-fallback";
@@ -88,6 +101,13 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
       draggableLines = false,
       onPriceLineDragEnd,
       onChartTap,
+      chartTool = "select",
+      onChartPointClick,
+      drawings = [],
+      pendingTrend = null,
+      alertPrices = [],
+      showDrawings = true,
+      onEraseDrawing,
       onLoadingChange,
       onChartStatusChange,
     },
@@ -97,8 +117,14 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
     const chart = useLightweightChart(theme, symbol);
     const [dragPrices, setDragPrices] = useState<Record<string, number>>({});
     const [dragError, setDragError] = useState<string | null>(null);
+    const [previewPoint, setPreviewPoint] = useState<ChartDrawingPoint | null>(
+      null,
+    );
+    const [layoutTick, setLayoutTick] = useState(0);
     const onPriceLineDragEndRef = useRef(onPriceLineDragEnd);
     const onChartTapRef = useRef(onChartTap);
+    const onChartPointClickRef = useRef(onChartPointClick);
+    const chartToolRef = useRef(chartTool);
     const markersExtraRef = useRef<ChartMarker[]>([]);
     const symbolRef = useRef(symbol);
     const timeframeRef = useRef(timeframe);
@@ -131,6 +157,8 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
     setPriceLinesRef.current = chart.setPriceLines;
     onPriceLineDragEndRef.current = onPriceLineDragEnd;
     onChartTapRef.current = onChartTap;
+    onChartPointClickRef.current = onChartPointClick;
+    chartToolRef.current = chartTool;
 
     const mergedPriceLines = useMemo(() => {
       return priceLines.map((line) => {
@@ -383,7 +411,30 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
     }, [mergedPriceLines, chart.ready]);
 
     useEffect(() => {
-      if (!chart.containerRef.current || !chart.ready) return;
+      if (!chart.ready) return;
+      return chart.subscribeChartLayout(() => {
+        setLayoutTick((n) => n + 1);
+      });
+    }, [chart.ready, chart.subscribeChartLayout]);
+
+    const coordinateApi = useMemo(
+      (): ChartCoordinateApi => ({
+        priceToCoordinate: chart.priceToCoordinate,
+        timeToCoordinate: chart.timeToCoordinate,
+        coordinateToPrice: chart.coordinateToPrice,
+        coordinateToTime: chart.coordinateToTime,
+      }),
+      [
+        chart.priceToCoordinate,
+        chart.timeToCoordinate,
+        chart.coordinateToPrice,
+        chart.coordinateToTime,
+        layoutTick,
+      ],
+    );
+
+    useEffect(() => {
+      if (!chart.ready || !chart.containerRef.current) return;
       const target = chart.containerRef.current;
       let start: { x: number; y: number; t: number } | null = null;
 
@@ -397,27 +448,80 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
         const dy = e.clientY - start.y;
         const dt = Date.now() - start.t;
         if (Math.hypot(dx, dy) < 12 && dt < 400) {
-          onChartTapRef.current?.({ clientX: e.clientX, clientY: e.clientY });
+          const tool = chartToolRef.current;
+          if (tool === "select") {
+            onChartTapRef.current?.({ clientX: e.clientX, clientY: e.clientY });
+          } else if (tool !== "erase" && onChartPointClickRef.current) {
+            const point = resolveChartPointFromClient(
+              e.clientX,
+              e.clientY,
+              target,
+              coordinateApi,
+            );
+            if (point) onChartPointClickRef.current(point);
+          }
         }
         start = null;
       }
 
+      function onPointerMove(e: PointerEvent) {
+        if (!pendingTrend || chartToolRef.current !== "trendline") {
+          setPreviewPoint(null);
+          return;
+        }
+        const point = resolveChartPointFromClient(
+          e.clientX,
+          e.clientY,
+          target,
+          coordinateApi,
+        );
+        setPreviewPoint(point);
+      }
+
       target.addEventListener("pointerdown", onPointerDown);
       target.addEventListener("pointerup", onPointerUp);
+      target.addEventListener("pointermove", onPointerMove);
       return () => {
         target.removeEventListener("pointerdown", onPointerDown);
         target.removeEventListener("pointerup", onPointerUp);
+        target.removeEventListener("pointermove", onPointerMove);
       };
-    }, [chart.ready, chart.containerRef]);
+    }, [chart.ready, chart.containerRef, coordinateApi, pendingTrend]);
 
     return (
       <div className="relative h-full w-full">
         <div
           ref={chart.containerRef}
-          className={cn(className, drag.cursor && "touch-none")}
-          style={{ minHeight: 180, cursor: drag.cursor }}
+          className={cn(
+            className,
+            drag.cursor && "touch-none",
+            chartTool !== "select" && chartTool !== "erase" && "cursor-crosshair",
+            chartTool === "erase" && "cursor-cell",
+          )}
+          style={{
+            minHeight: 180,
+            cursor:
+              drag.cursor ??
+              (chartTool !== "select" && chartTool !== "erase"
+                ? "crosshair"
+                : chartTool === "erase"
+                  ? "cell"
+                  : undefined),
+          }}
           role="img"
           aria-label={`${symbol} candlestick chart`}
+        />
+        <ChartDrawingOverlay
+          ready={chart.ready}
+          coords={coordinateApi}
+          drawings={drawings}
+          pendingTrend={pendingTrend}
+          previewPoint={previewPoint}
+          alertPrices={alertPrices}
+          showDrawings={showDrawings}
+          eraseMode={chartTool === "erase"}
+          onEraseDrawing={onEraseDrawing}
+          containerRef={chart.containerRef}
         />
         {drag.dragLabel && (
           <div

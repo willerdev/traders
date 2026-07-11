@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Mt5AccountMode } from "@/lib/mt5-account-mode";
-import type { UserMt5AccountSource, UserMt5InvestorSummary } from "@/lib/api";
+import type { UserMt5AccountSource } from "@/lib/api";
 
 /* MT5 palette — blue wins/buy, red losses/sell in both themes */
 export const MT5_BUY = "#4a9eff";
@@ -343,9 +343,37 @@ export function Mt5AccountModeBadge({
   );
 }
 
+export function mt5BalanceLabel(accountSource?: UserMt5AccountSource): string {
+  switch (accountSource) {
+    case "evaluation_live":
+      return "Evaluation balance";
+    case "virtual":
+      return "Wallet balance";
+    case "copy_live":
+      return "Copy balance";
+    case "linked_live":
+      return "Linked balance";
+    default:
+      return "Balance";
+  }
+}
+
+export function mt5DisplayBalance(
+  account: { startingBalance: number; realizedProfit: number },
+  accountSource?: UserMt5AccountSource,
+): number {
+  if (
+    accountSource &&
+    accountSource !== "virtual" &&
+    accountSource !== "investor_live"
+  ) {
+    return account.startingBalance;
+  }
+  return account.startingBalance + account.realizedProfit;
+}
+
 export function Mt5AccountSummary({
   account,
-  investor,
   accountSource,
 }: {
   account: {
@@ -356,37 +384,14 @@ export function Mt5AccountSummary({
     totalProfit: number;
     equity: number;
   };
-  investor?: UserMt5InvestorSummary;
   accountSource?: UserMt5AccountSource;
 }) {
-  const liveBroker =
-    accountSource === "copy_live" ||
-    accountSource === "linked_live" ||
-    accountSource === "investor_live";
+  const balanceLabel = mt5BalanceLabel(accountSource);
+  const balance = mt5DisplayBalance(account, accountSource);
   const rows = [
-    ...(investor && investor.investmentDeposited > 0
-      ? [
-          {
-            label: "Investment",
-            value: formatCurrency(investor.investmentDeposited),
-          },
-        ]
-      : []),
-    ...(investor?.mt5Balance != null
-      ? [
-          {
-            label: "MT5 balance",
-            value: `${fmtMt5Price(investor.mt5Balance)} ${investor.currency}`,
-          },
-        ]
-      : []),
     {
-      label: liveBroker ? "Live balance" : "Balance",
-      value: fmtMt5Price(
-        liveBroker
-          ? account.startingBalance
-          : account.startingBalance + account.realizedProfit,
-      ),
+      label: balanceLabel,
+      value: fmtMt5Price(balance),
     },
     {
       label: "Profit",

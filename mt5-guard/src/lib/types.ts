@@ -2,7 +2,8 @@ export type UserMt5AccountSource =
   | "virtual"
   | "copy_live"
   | "linked_live"
-  | "investor_live";
+  | "investor_live"
+  | "evaluation_live";
 
 export interface LoginStartResponse {
   requiresOtp: true;

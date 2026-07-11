@@ -24,6 +24,11 @@ const TOGGLES: { key: ToggleKey; label: string; hint: string }[] = [
     hint: "SL/TP lines (drag to adjust when shown)",
   },
   {
+    key: "showDrawings",
+    label: "Drawings & alerts",
+    hint: "Trendlines, horizontal lines, and alert levels",
+  },
+  {
     key: "showWatermark",
     label: "Name on chart",
     hint: "Your display name in the background",

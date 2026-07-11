@@ -4,6 +4,7 @@ export type Mt5ChartDisplaySettings = {
   showSlTp: boolean;
   showAssistant: boolean;
   showWatermark: boolean;
+  showDrawings: boolean;
 };
 
 export const MT5_CHART_DISPLAY_SETTINGS_KEY = "mt5-chart-display-settings";
@@ -14,6 +15,7 @@ export const DEFAULT_MT5_CHART_DISPLAY_SETTINGS: Mt5ChartDisplaySettings = {
   showSlTp: true,
   showAssistant: true,
   showWatermark: true,
+  showDrawings: true,
 };
 
 export const MT5_CHART_SETTINGS_EVENT = "mt5-chart-settings-change";

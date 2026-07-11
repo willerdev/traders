@@ -9,7 +9,8 @@ export function mt5AccountModeFromSource(
   if (
     accountSource === "copy_live" ||
     accountSource === "linked_live" ||
-    accountSource === "investor_live"
+    accountSource === "investor_live" ||
+    accountSource === "evaluation_live"
   ) {
     return "real";
   }
@@ -27,6 +28,8 @@ export function mt5AccountModeDetail(
       return "Linked MT5";
     case "investor_live":
       return "Investor";
+    case "evaluation_live":
+      return "Evaluation";
     default:
       return null;
   }

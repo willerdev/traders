@@ -11,15 +11,21 @@ type Props = {
 
 export function Mt5AccountSummary({ account, accountSource }: Props) {
   const { theme } = useTheme();
+  const balanceLabel =
+    accountSource === "evaluation_live"
+      ? "Evaluation balance"
+      : accountSource === "virtual"
+        ? "Wallet balance"
+        : "Balance";
   const balance =
-    accountSource && accountSource !== "virtual"
+    accountSource && accountSource !== "virtual" && accountSource !== "investor_live"
       ? account.startingBalance
       : account.startingBalance + account.realizedProfit;
 
   return (
     <Card>
       <View style={styles.row}>
-        <Text style={[styles.label, { color: theme.muted }]}>Balance</Text>
+        <Text style={[styles.label, { color: theme.muted }]}>{balanceLabel}</Text>
         <Text style={[styles.value, { color: theme.text }]}>{fmtPrice(balance)}</Text>
       </View>
       <View style={styles.row}>

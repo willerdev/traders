@@ -5292,7 +5292,11 @@ export class SignalsService {
       let enrollmentId = user.selectedEvaluationEnrollmentId;
       if (!enrollmentId) {
         const fallback = await this.prisma.evaluationEnrollment.findFirst({
-          where: { userId, status: EvaluationStatus.ACTIVE },
+          where: {
+            userId,
+            status: { notIn: [EvaluationStatus.PENDING] },
+            metaApiAccountId: { not: null },
+          },
           orderBy: { createdAt: 'desc' },
           select: { id: true },
         });
@@ -5446,12 +5450,6 @@ export class SignalsService {
       evaluationAccountId?: string | null;
       terminalAccountId?: string | null;
       platformAccountId?: string | null;
-      investor: {
-        investmentDeposited: number;
-        mt5Balance?: number | null;
-        mt5Equity?: number | null;
-        currency: string;
-      } | null;
     },
   ): Promise<{
     account: Awaited<ReturnType<SignalsService['buildMt5UserAccountSummary']>>;
@@ -5465,7 +5463,6 @@ export class SignalsService {
       evaluationAccountId,
       terminalAccountId,
       platformAccountId,
-      investor,
     } = input;
 
     if (copyOwner) {
@@ -5507,32 +5504,6 @@ export class SignalsService {
       } catch {
         /* fall through to virtual ledger */
       }
-    }
-
-    if (investor && investor.investmentDeposited > 0) {
-      if (investor.mt5Balance != null) {
-        const balance = Number(investor.mt5Balance);
-        const equity =
-          investor.mt5Equity != null
-            ? Number(investor.mt5Equity)
-            : balance + floatingProfit;
-        return {
-          account: {
-            startingBalance: balance,
-            currency: investor.currency || 'USD',
-            realizedProfit: 0,
-            floatingProfit,
-            totalProfit: floatingProfit,
-            equity,
-          },
-          accountSource: 'investor_live',
-        };
-      }
-
-      return {
-        account: await this.buildMt5UserAccountSummary(userId, floatingProfit),
-        accountSource: 'investor_live',
-      };
     }
 
     return {
@@ -5905,7 +5876,6 @@ export class SignalsService {
         evaluationAccountId,
         terminalAccountId,
         platformAccountId,
-        investor,
       });
 
     return {
@@ -5944,7 +5914,6 @@ export class SignalsService {
       await this.resolveUserMt5TerminalContext(userId);
 
     if (!this.metaApi.isConfigured || !terminalAccountId) {
-      const investor = await this.investorService.getMt5InvestmentSummary(userId);
       const { account: accountLedger, accountSource } =
         await this.resolveMt5TerminalAccountLedger(userId, {
           floatingProfit: 0,
@@ -5954,7 +5923,6 @@ export class SignalsService {
           evaluationAccountId,
           terminalAccountId,
           platformAccountId,
-          investor,
         });
       return {
         trades: [],
@@ -6056,7 +6024,6 @@ export class SignalsService {
 
     const floatingProfit = trades.reduce((sum, t) => sum + (t.profit ?? 0), 0);
 
-    const investor = await this.investorService.getMt5InvestmentSummary(userId);
     const { account: accountLedger, accountSource } =
       await this.resolveMt5TerminalAccountLedger(userId, {
         floatingProfit,
@@ -6066,7 +6033,6 @@ export class SignalsService {
         evaluationAccountId,
         terminalAccountId,
         platformAccountId,
-        investor,
       });
 
     return {

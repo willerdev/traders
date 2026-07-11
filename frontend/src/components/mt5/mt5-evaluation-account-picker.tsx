@@ -109,11 +109,7 @@ export function Mt5EvaluationAccountPicker({
       const res = await api.evaluations.listMine();
       setItems(res.items);
 
-      const preferred =
-        res.selectedEnrollmentId ??
-        res.items.find((item) => item.status === "ACTIVE")?.id ??
-        res.items[0]?.id ??
-        null;
+      const preferred = res.selectedEnrollmentId ?? res.items[0]?.id ?? null;
 
       setActiveId(preferred);
 

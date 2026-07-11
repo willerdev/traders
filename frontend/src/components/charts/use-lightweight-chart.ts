@@ -35,7 +35,10 @@ export type UseLightweightChartResult = {
   fitContent: () => void;
   priceToCoordinate: (price: number) => number | null;
   coordinateToPrice: (y: number) => number | null;
+  timeToCoordinate: (time: number) => number | null;
+  coordinateToTime: (x: number) => number | null;
   setScrollEnabled: (enabled: boolean) => void;
+  subscribeChartLayout: (listener: () => void) => () => void;
 };
 
 export function useLightweightChart(
@@ -55,7 +58,12 @@ export function useLightweightChart(
   const pendingBarsRef = useRef<OHLCBar[] | null>(null);
   const pendingMarkersRef = useRef<ChartMarker[] | null>(null);
   const pendingPriceLinesRef = useRef<ChartPriceLine[] | null>(null);
+  const layoutListenersRef = useRef<Set<() => void>>(new Set());
   const [ready, setReady] = useState(false);
+
+  const notifyLayout = useCallback(() => {
+    layoutListenersRef.current.forEach((fn) => fn());
+  }, []);
 
   const applyData = useCallback((bars: OHLCBar[], options?: SetChartDataOptions) => {
     const chart = chartRef.current;
@@ -161,8 +169,13 @@ export function useLightweightChart(
             chartRef.current.applyOptions({ width, height });
           }
         }
+        notifyLayout();
       });
       ro.observe(el);
+
+      chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+        notifyLayout();
+      });
 
       if (!disposed) setReady(true);
     })();
@@ -371,6 +384,26 @@ export function useLightweightChart(
     return price ?? null;
   }, []);
 
+  const timeToCoordinate = useCallback((time: number) => {
+    const x = chartRef.current
+      ?.timeScale()
+      .timeToCoordinate(time as import("lightweight-charts").UTCTimestamp);
+    return x ?? null;
+  }, []);
+
+  const coordinateToTime = useCallback((x: number) => {
+    const time = chartRef.current?.timeScale().coordinateToTime(x);
+    if (time == null) return null;
+    return typeof time === "number" ? time : Number(time);
+  }, []);
+
+  const subscribeChartLayout = useCallback((listener: () => void) => {
+    layoutListenersRef.current.add(listener);
+    return () => {
+      layoutListenersRef.current.delete(listener);
+    };
+  }, []);
+
   const setScrollEnabled = useCallback((enabled: boolean) => {
     chartRef.current?.applyOptions({
       handleScroll: enabled,
@@ -392,6 +425,9 @@ export function useLightweightChart(
     fitContent,
     priceToCoordinate,
     coordinateToPrice,
+    timeToCoordinate,
+    coordinateToTime,
     setScrollEnabled,
+    subscribeChartLayout,
   };
 }

@@ -116,14 +116,14 @@ export function Mt5ChartRadialMenu({
         role="dialog"
         aria-label="Chart quick menu"
       >
-        <div
-          className="flex cursor-grab items-center justify-between gap-2 border-b border-[var(--mt5-divider)] px-3 py-2 active:cursor-grabbing"
-          onPointerDown={onDragStart}
-          onPointerMove={onDragMove}
-          onPointerUp={onDragEnd}
-          onPointerCancel={onDragEnd}
-        >
-          <div className="flex min-w-0 items-center gap-1.5 text-[var(--mt5-muted)]">
+        <div className="flex items-center justify-between gap-2 border-b border-[var(--mt5-divider)] px-3 py-2">
+          <div
+            className="flex min-w-0 flex-1 cursor-grab items-center gap-1.5 text-[var(--mt5-muted)] active:cursor-grabbing"
+            onPointerDown={onDragStart}
+            onPointerMove={onDragMove}
+            onPointerUp={onDragEnd}
+            onPointerCancel={onDragEnd}
+          >
             <GripHorizontal className="h-4 w-4 shrink-0" />
             <p className="truncate text-[11px] font-semibold uppercase tracking-wide">
               Chart menu
@@ -131,7 +131,10 @@ export function Mt5ChartRadialMenu({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
             className="rounded p-1 text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)] hover:text-[var(--mt5-text)]"
             aria-label="Close menu"
           >

@@ -6,7 +6,6 @@ import type {
   OpenSetupItem,
   UserMt5AccountSummary,
   UserMt5AccountSource,
-  UserMt5InvestorSummary,
   UserMt5QuoteItem,
   UserMt5Trade,
 } from "@/lib/api";
@@ -37,6 +36,8 @@ import {
 import { useMt5ChartDisplaySettings } from "@/hooks/use-mt5-chart-display-settings";
 import { useAuthStore } from "@/stores/auth";
 import {
+  mt5BalanceLabel,
+  mt5DisplayBalance,
   MT5_BUY,
   MT5_SELL,
   Mt5DirectionTag,
@@ -48,6 +49,11 @@ import { Loader2 } from "lucide-react";
 import { prefetchChartBarCache } from "@/lib/chart-bar-cache";
 import { loadChartData } from "@/components/charts/chart-data.service";
 import { Mt5PlaceOrderModal } from "@/components/mt5/mt5-place-order-modal";
+import {
+  ChartAlertToastStack,
+  ChartToolsToolbar,
+} from "@/components/charts/chart-tools-toolbar";
+import { useChartTools } from "@/hooks/use-chart-tools";
 
 type Props = {
   quotes: UserMt5QuoteItem[];
@@ -56,7 +62,6 @@ type Props = {
   setups: OpenSetupItem[];
   account?: UserMt5AccountSummary;
   accountSource?: UserMt5AccountSource;
-  investor?: UserMt5InvestorSummary;
   selectedSymbol: string;
   onSelectSymbol: (symbol: string) => void;
   onOpenSetup: (setup: SetupSummary) => void;
@@ -96,7 +101,6 @@ export function Mt5ChartTerminal({
   setups,
   account,
   accountSource,
-  investor,
   selectedSymbol,
   onSelectSymbol,
   onOpenSetup,
@@ -137,6 +141,21 @@ export function Mt5ChartTerminal({
   const { watchlist, addSymbol, removeSymbol } = useChartWatchlist();
   const { settings: chartSettings, setSetting: setChartSetting } =
     useMt5ChartDisplaySettings();
+  const chartTools = useChartTools(selectedSymbol);
+  const {
+    checkPriceAlerts,
+    alertToasts,
+    dismissToast,
+    activeTool,
+    setActiveTool,
+    alerts,
+    pendingTrend,
+    removeAlert,
+    clearTriggeredAlerts,
+    handleChartPoint,
+    drawings,
+    removeDrawing,
+  } = chartTools;
   const userDisplayName = useAuthStore((s) => s.user?.displayName ?? "");
   const [fetchedQuotes, setFetchedQuotes] = useState<
     Record<string, RealtimeQuote>
@@ -161,6 +180,15 @@ export function Mt5ChartTerminal({
     }
     return fetchedQuotes[selectedSymbol] ?? null;
   }, [selectedQuote, fetchedQuotes, selectedSymbol]);
+
+  useEffect(() => {
+    if (liveQuote?.mid != null) {
+      checkPriceAlerts(selectedSymbol, liveQuote.mid);
+    }
+    for (const [sym, quote] of Object.entries(fetchedQuotes)) {
+      if (quote.mid != null) checkPriceAlerts(sym, quote.mid);
+    }
+  }, [liveQuote?.mid, fetchedQuotes, selectedSymbol, checkPriceAlerts]);
 
   useEffect(() => {
     let cancelled = false;
@@ -437,6 +465,16 @@ export function Mt5ChartTerminal({
           </div>
         )}
 
+        <ChartToolsToolbar
+          activeTool={activeTool}
+          onToolChange={setActiveTool}
+          alerts={alerts}
+          pendingTrend={pendingTrend != null}
+          onRemoveAlert={removeAlert}
+          onClearTriggered={clearTriggeredAlerts}
+          className="hidden shrink-0 md:flex"
+        />
+
         <Mt5ChartSettingsButton
           placement="toolbar"
           settings={chartSettings}
@@ -509,6 +547,20 @@ export function Mt5ChartTerminal({
           chartError={chartStatus.error}
           onSymbolClick={focusSymbolSearch}
         />
+        <ChartAlertToastStack
+          toasts={alertToasts}
+          onDismiss={dismissToast}
+        />
+        <div className="absolute left-2 right-2 top-10 z-[12] flex md:hidden">
+          <ChartToolsToolbar
+            activeTool={activeTool}
+            onToolChange={setActiveTool}
+            alerts={alerts}
+            pendingTrend={pendingTrend != null}
+            onRemoveAlert={removeAlert}
+            onClearTriggered={clearTriggeredAlerts}
+          />
+        </div>
         <Mt5ChartRadialMenu
           open={radialOpen}
           anchor={radialAnchor}
@@ -538,6 +590,13 @@ export function Mt5ChartTerminal({
             draggableLines={chartSettings.showSlTp}
             onPriceLineDragEnd={handlePriceLineDragEnd}
             onChartTap={handleChartTap}
+            chartTool={activeTool}
+            onChartPointClick={handleChartPoint}
+            drawings={drawings}
+            pendingTrend={pendingTrend}
+            alertPrices={alerts.filter((a) => !a.triggered).map((a) => a.price)}
+            showDrawings={chartSettings.showDrawings}
+            onEraseDrawing={removeDrawing}
             className="h-full w-full"
             onLoadingChange={handleChartLoadingChange}
             onChartStatusChange={setChartStatus}
@@ -678,9 +737,13 @@ export function Mt5ChartTerminal({
           {/* Account summary bar — MT5 terminal footer */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-2 text-[11px] text-[var(--mt5-muted)]">
             <span>
-              Balance:{" "}
+              {mt5BalanceLabel(accountSource)}:{" "}
               <strong className="text-[var(--mt5-text)]">
-                {fmtMt5Price(account?.startingBalance ?? 0)}
+                {fmtMt5Price(
+                  account
+                    ? mt5DisplayBalance(account, accountSource)
+                    : 0,
+                )}
               </strong>
             </span>
             <span>
