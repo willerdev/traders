@@ -183,6 +183,15 @@ export class CopyTradingService {
       direction: TradeDirection;
       reason: string;
       riskPercent: number;
+      entryMin?: number;
+      entryMax?: number;
+      entryPrice?: number;
+      stopLoss?: number;
+      takeProfit?: number;
+      tp1Price?: number;
+      volume?: number | null;
+      orderType?: string;
+      pending?: boolean;
     },
   ) {
     const recipients = await this.resolveApiFeedCopyNotifyEmails(notifyEmail);
@@ -197,6 +206,15 @@ export class CopyTradingService {
         reason: input.reason,
         comment,
         riskPercent: input.riskPercent,
+        entryMin: input.entryMin,
+        entryMax: input.entryMax,
+        entryPrice: input.entryPrice,
+        stopLoss: input.stopLoss,
+        takeProfit: input.takeProfit,
+        tp1Price: input.tp1Price,
+        volume: input.volume,
+        orderType: input.orderType,
+        pending: input.pending,
       });
     }
   }
@@ -573,14 +591,14 @@ export class CopyTradingService {
     });
 
     if (previous.copyHealthReady && !health.ready && !health.paused) {
-      this.notifications.copyTradeBlocked(previous.notifyEmail, {
-        signalId: 'health-check',
-        sourceName: 'Copy pool',
-        symbol: '—',
-        direction: '—',
-        reason: `Copy pool is NOT ready to receive trades: ${health.message}`,
-        riskPercent: previous.riskPercent,
-      });
+      if (previous.copyEmailAlertsEnabled) {
+        this.notifications.copyPoolHealthDegraded(previous.notifyEmail, {
+          message: health.message,
+          copyAccountId: health.copyAccountId,
+          leaderCount: health.leaderCount,
+          riskPercent: previous.riskPercent,
+        });
+      }
       this.logger.warn(`Copy pool health degraded: ${health.message}`);
     } else if (!previous.copyHealthReady && health.ready) {
       this.logger.log(`Copy pool health restored: ${health.message}`);
@@ -695,6 +713,59 @@ export class CopyTradingService {
     return { checked: openRows.length, applied };
   }
 
+  private resolveMirrorLevels(
+    input: CopyMirrorInput,
+    copyUseTwoToOneRr: boolean,
+  ) {
+    const sl = input.stopLoss;
+    const tp1 = computeOneToOnePrice(
+      input.direction,
+      input.entryMin,
+      input.entryMax,
+      sl,
+    );
+    const tp = copyUseTwoToOneRr
+      ? computeTwoToOnePrice(
+          input.direction,
+          input.entryMin,
+          input.entryMax,
+          sl,
+        )
+      : input.takeProfit;
+    const openPrice = input.openPrice;
+    const orderType = input.pending
+      ? (input.orderKind ??
+        resolvePendingOrderType(input.direction, openPrice, openPrice))
+      : 'market';
+    return { sl, tp, tp1, openPrice, orderType };
+  }
+
+  private async tryEstimateCopyVolume(input: {
+    copyAccountId: string;
+    symbol: string;
+    direction: TradeDirection;
+    stopLoss: number;
+    takeProfit: number;
+    entryPrice: number;
+    riskPercent: number;
+  }): Promise<number | null> {
+    try {
+      const account = await this.metaApi.getAccount(input.copyAccountId);
+      const sizing = await this.copyTradeRisk.calculateCopyPositionSize({
+        account,
+        symbol: input.symbol,
+        direction: input.direction,
+        stopLoss: input.stopLoss,
+        takeProfit: input.takeProfit,
+        entryPrice: input.entryPrice,
+        riskPercent: input.riskPercent,
+      });
+      return sizing.volume;
+    } catch {
+      return null;
+    }
+  }
+
   private async failCopyMirror(input: {
     existingJournalId?: string;
     signalDbId: string;
@@ -706,22 +777,35 @@ export class CopyTradingService {
     stopLoss: number;
     takeProfit: number;
     entryPrice: number;
+    entryMin?: number;
+    entryMax?: number;
+    tp1Price?: number;
+    volume?: number | null;
+    orderType?: string;
+    pending?: boolean;
     sourceDisplayName: string;
     reason: string;
     notifyEmail: string;
     riskPercent: number;
     signalPublicId: string;
     platformFeed?: boolean;
+    copyEmailAlertsEnabled?: boolean;
   }) {
     let journalId = input.existingJournalId;
     if (journalId) {
-      await this.prisma.copyTrade.update({
+      const row = await this.prisma.copyTrade.findUnique({
         where: { id: journalId },
-        data: {
-          status: CopyTradeStatus.SKIPPED,
-          notes: input.reason.slice(0, 500),
-        },
+        select: { status: true },
       });
+      if (row && row.status !== CopyTradeStatus.FAILED) {
+        await this.prisma.copyTrade.update({
+          where: { id: journalId },
+          data: {
+            status: CopyTradeStatus.SKIPPED,
+            notes: input.reason.slice(0, 500),
+          },
+        });
+      }
     } else {
       const row = await this.prisma.copyTrade.create({
         data: {
@@ -749,15 +833,34 @@ export class CopyTradingService {
         direction: input.direction,
         reason: input.reason,
         riskPercent: input.riskPercent,
+        entryMin: input.entryMin,
+        entryMax: input.entryMax,
+        entryPrice: input.entryPrice,
+        stopLoss: input.stopLoss,
+        takeProfit: input.takeProfit,
+        tp1Price: input.tp1Price,
+        volume: input.volume,
+        orderType: input.orderType,
+        pending: input.pending,
       });
-    } else {
+    } else if (input.copyEmailAlertsEnabled !== false) {
       this.notifications.copyTradeBlocked(input.notifyEmail, {
         signalId: input.signalPublicId,
         sourceName: input.sourceDisplayName,
+        sourceRank: input.sourceRank,
         symbol: input.symbol,
         direction: input.direction,
         reason: input.reason,
         riskPercent: input.riskPercent,
+        entryMin: input.entryMin,
+        entryMax: input.entryMax,
+        entryPrice: input.entryPrice,
+        stopLoss: input.stopLoss,
+        takeProfit: input.takeProfit,
+        tp1Price: input.tp1Price,
+        volume: input.volume,
+        orderType: input.orderType,
+        pending: input.pending,
       });
     }
 
@@ -955,19 +1058,6 @@ export class CopyTradingService {
       return;
     }
 
-    const health = input.platformFeed
-      ? await this.evaluateCopyAccountHealth()
-      : await this.evaluateCopyPoolHealth();
-    if (!health.ready) {
-      this.logger.debug(
-        `Copy skip ${input.signalPublicId}: pool not ready — ${health.message}`,
-      );
-      return;
-    }
-
-    const { riskPercent, notifyEmail, copyUseTwoToOneRr, copyEmailAlertsEnabled } =
-      cfg;
-
     const existing = await this.prisma.copyTrade.findUnique({
       where: { signalId: input.signalDbId },
     });
@@ -988,22 +1078,54 @@ export class CopyTradingService {
       return;
     }
 
-    const sl = input.stopLoss;
-    const tp1 = computeOneToOnePrice(
-      input.direction,
-      input.entryMin,
-      input.entryMax,
-      sl,
+    const { riskPercent, notifyEmail, copyUseTwoToOneRr, copyEmailAlertsEnabled } =
+      cfg;
+
+    const { sl, tp, tp1, openPrice, orderType } = this.resolveMirrorLevels(
+      input,
+      copyUseTwoToOneRr,
     );
-    const tp = copyUseTwoToOneRr
-      ? computeTwoToOnePrice(
-          input.direction,
-          input.entryMin,
-          input.entryMax,
-          sl,
-        )
-      : input.takeProfit;
-    const openPrice = input.openPrice;
+
+    const health = input.platformFeed
+      ? await this.evaluateCopyAccountHealth()
+      : await this.evaluateCopyPoolHealth();
+    if (!health.ready) {
+      const volume = await this.tryEstimateCopyVolume({
+        copyAccountId,
+        symbol: input.symbol,
+        direction: input.direction,
+        stopLoss: sl,
+        takeProfit: tp,
+        entryPrice: openPrice,
+        riskPercent,
+      });
+      await this.failCopyMirror({
+        existingJournalId: existing?.id,
+        signalDbId: input.signalDbId,
+        sourceUserId: input.sourceUserId,
+        sourceRank: source.rank,
+        copyAccountId,
+        symbol: input.symbol,
+        direction: input.direction,
+        stopLoss: sl,
+        takeProfit: tp,
+        entryPrice: openPrice,
+        entryMin: input.entryMin,
+        entryMax: input.entryMax,
+        tp1Price: tp1,
+        volume,
+        orderType,
+        pending: input.pending,
+        sourceDisplayName: source.displayName,
+        reason: `Copy pool not ready: ${health.message}`,
+        notifyEmail,
+        riskPercent,
+        signalPublicId: input.signalPublicId,
+        platformFeed: input.platformFeed,
+        copyEmailAlertsEnabled,
+      });
+      return;
+    }
 
     let journal = existing;
     let account;
@@ -1033,12 +1155,18 @@ export class CopyTradingService {
         stopLoss: sl,
         takeProfit: tp,
         entryPrice: openPrice,
+        entryMin: input.entryMin,
+        entryMax: input.entryMax,
+        tp1Price: tp1,
+        orderType,
+        pending: input.pending,
         sourceDisplayName: source.displayName,
         reason: message,
         notifyEmail,
         riskPercent,
         signalPublicId: input.signalPublicId,
         platformFeed: input.platformFeed,
+        copyEmailAlertsEnabled,
       });
       return;
     }
@@ -1211,16 +1339,31 @@ export class CopyTradingService {
           notes: message.slice(0, 500),
         },
       });
-      if (input.platformFeed) {
-        await this.notifyApiFeedCopyFailed(notifyEmail, {
-          signalDbId: input.signalDbId,
-          signalPublicId: input.signalPublicId,
-          symbol: input.symbol,
-          direction: input.direction,
-          reason: message,
-          riskPercent,
-        });
-      }
+      await this.failCopyMirror({
+        existingJournalId: journal.id,
+        signalDbId: input.signalDbId,
+        sourceUserId: input.sourceUserId,
+        sourceRank: source.rank,
+        copyAccountId,
+        symbol: input.symbol,
+        direction: input.direction,
+        stopLoss: sl,
+        takeProfit: tp,
+        entryPrice: openPrice,
+        entryMin: input.entryMin,
+        entryMax: input.entryMax,
+        tp1Price: tp1,
+        volume: sizing?.volume ?? null,
+        orderType,
+        pending: input.pending,
+        sourceDisplayName: source.displayName,
+        reason: message,
+        notifyEmail,
+        riskPercent,
+        signalPublicId: input.signalPublicId,
+        platformFeed: input.platformFeed,
+        copyEmailAlertsEnabled,
+      });
       this.logger.warn(
         `Copy trade failed for ${input.signalPublicId}: ${message}`,
       );

@@ -713,13 +713,38 @@ export class NotificationService {
     data: {
       signalId: string;
       sourceName: string;
+      sourceRank?: number;
       symbol: string;
       direction: string;
       reason: string;
       riskPercent: number;
+      entryMin?: number;
+      entryMax?: number;
+      entryPrice?: number;
+      stopLoss?: number;
+      takeProfit?: number;
+      tp1Price?: number;
+      volume?: number | null;
+      orderType?: string;
+      pending?: boolean;
     },
   ) {
     this.dispatch(this.sendCopyTradeBlocked(toEmail, data), 'Copy trade blocked');
+  }
+
+  copyPoolHealthDegraded(
+    toEmail: string,
+    data: {
+      message: string;
+      copyAccountId: string | null;
+      leaderCount: number;
+      riskPercent: number;
+    },
+  ) {
+    this.dispatch(
+      this.sendCopyPoolHealthDegraded(toEmail, data),
+      'Copy pool health degraded',
+    );
   }
 
   copyBreakevenHit(
@@ -789,6 +814,15 @@ export class NotificationService {
       reason: string;
       comment?: string | null;
       riskPercent: number;
+      entryMin?: number;
+      entryMax?: number;
+      entryPrice?: number;
+      stopLoss?: number;
+      takeProfit?: number;
+      tp1Price?: number;
+      volume?: number | null;
+      orderType?: string;
+      pending?: boolean;
     },
   ) {
     this.dispatch(
@@ -864,23 +898,128 @@ export class NotificationService {
     });
   }
 
-  private async sendCopyTradeBlocked(
+  private formatManualTradeRows(data: {
+    symbol: string;
+    direction: string;
+    entryMin?: number;
+    entryMax?: number;
+    entryPrice?: number;
+    stopLoss?: number;
+    takeProfit?: number;
+    tp1Price?: number;
+    volume?: number | null;
+    orderType?: string;
+    pending?: boolean;
+  }): string {
+    const rows: Array<[string, string]> = [];
+    if (data.orderType) {
+      rows.push(['Order type', data.pending ? data.orderType : 'market']);
+    }
+    if (data.volume != null && Number.isFinite(data.volume)) {
+      rows.push(['Suggested volume', `${data.volume} lots`]);
+    }
+    if (
+      data.entryMin != null &&
+      data.entryMax != null &&
+      Number.isFinite(data.entryMin) &&
+      Number.isFinite(data.entryMax)
+    ) {
+      rows.push(['Entry zone', `${data.entryMin} – ${data.entryMax}`]);
+    }
+    if (data.entryPrice != null && Number.isFinite(data.entryPrice)) {
+      rows.push(['Entry / open', String(data.entryPrice)]);
+    }
+    if (data.stopLoss != null && Number.isFinite(data.stopLoss)) {
+      rows.push(['Stop loss', String(data.stopLoss)]);
+    }
+    if (data.takeProfit != null && Number.isFinite(data.takeProfit)) {
+      rows.push(['Take profit', String(data.takeProfit)]);
+    }
+    if (data.tp1Price != null && Number.isFinite(data.tp1Price)) {
+      rows.push(['TP1 (1:1)', String(data.tp1Price)]);
+    }
+    if (rows.length === 0) return '';
+    const tableRows = rows
+      .map(
+        ([label, value]) =>
+          `<tr><td style="padding:6px 0;color:#94a3b8;">${this.escape(label)}</td><td style="padding:6px 0;"><strong>${this.escape(value)}</strong></td></tr>`,
+      )
+      .join('');
+    return `<p style="margin:16px 0 8px;color:#e2e8f0;font-weight:600;">Execute manually in MT5</p>
+      <table style="width:100%;border-collapse:collapse;margin:0 0 16px;">${tableRows}</table>
+      <p style="color:#94a3b8;font-size:14px;">Place this trade on your copy MT5 account with the levels above if you want to mirror the setup while auto-copy is blocked.</p>`;
+  }
+
+  private async sendCopyPoolHealthDegraded(
     toEmail: string,
     data: {
-      signalId: string;
-      sourceName: string;
-      symbol: string;
-      direction: string;
-      reason: string;
+      message: string;
+      copyAccountId: string | null;
+      leaderCount: number;
       riskPercent: number;
     },
   ) {
     const to = toEmail.trim().toLowerCase();
     if (!to) return false;
 
+    const accountLabel = data.copyAccountId
+      ? `${data.copyAccountId.slice(0, 8)}…`
+      : 'Not configured';
+
     const html = this.email.layout(
-      'Copy trade blocked by risk guard',
-      `<p>A setup from <strong>${this.escape(data.sourceName)}</strong> was <strong>not</strong> copied to the MT5 pool.</p>
+      'Copy pool offline — auto-mirror paused',
+      `<p>The MT5 copy pool is <strong>not ready</strong> to receive trades. This is an infrastructure alert — not a missed setup.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">Status</td><td style="padding:6px 0;"><strong>${this.escape(data.message)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Copy account</td><td style="padding:6px 0;"><strong>${this.escape(accountLabel)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Pool traders</td><td style="padding:6px 0;"><strong>${data.leaderCount}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Risk cap</td><td style="padding:6px 0;"><strong>${data.riskPercent}%</strong></td></tr>
+      </table>
+      <p style="color:#94a3b8;font-size:14px;">While the pool is offline, new setups from copy-pool traders are <strong>not</strong> sent to MT5. Each blocked setup triggers a separate email with full symbol, direction, entry, SL, and TP so you can place it manually if you choose.</p>
+      <p style="color:#94a3b8;font-size:14px;">Common fixes: enable Algo Trading in MT5, confirm the copy account is not read-only, and verify the broker allows trading on that login.</p>`,
+    );
+
+    return this.email.send({
+      to,
+      subject: `Copy pool offline — ${data.message.slice(0, 72)}`,
+      html,
+      text: `Copy pool offline: ${data.message}. Account ${accountLabel}, ${data.leaderCount} trader(s) in pool.`,
+    });
+  }
+
+  private async sendCopyTradeBlocked(
+    toEmail: string,
+    data: {
+      signalId: string;
+      sourceName: string;
+      sourceRank?: number;
+      symbol: string;
+      direction: string;
+      reason: string;
+      riskPercent: number;
+      entryMin?: number;
+      entryMax?: number;
+      entryPrice?: number;
+      stopLoss?: number;
+      takeProfit?: number;
+      tp1Price?: number;
+      volume?: number | null;
+      orderType?: string;
+      pending?: boolean;
+    },
+  ) {
+    const to = toEmail.trim().toLowerCase();
+    if (!to) return false;
+
+    const sourceLabel =
+      data.sourceRank != null && data.sourceRank > 0
+        ? `#${data.sourceRank} ${data.sourceName}`
+        : data.sourceName;
+    const manualBlock = this.formatManualTradeRows(data);
+
+    const html = this.email.layout(
+      'Copy trade blocked — place manually if needed',
+      `<p>A setup from <strong>${this.escape(sourceLabel)}</strong> was <strong>not</strong> copied to the MT5 pool.</p>
       <table style="width:100%;border-collapse:collapse;margin:16px 0;">
         <tr><td style="padding:6px 0;color:#94a3b8;">Setup</td><td style="padding:6px 0;"><strong>${this.escape(data.signalId)}</strong></td></tr>
         <tr><td style="padding:6px 0;color:#94a3b8;">Symbol</td><td style="padding:6px 0;"><strong>${this.escape(data.symbol)}</strong></td></tr>
@@ -888,14 +1027,24 @@ export class NotificationService {
         <tr><td style="padding:6px 0;color:#94a3b8;">Max risk</td><td style="padding:6px 0;"><strong>${data.riskPercent}%</strong></td></tr>
         <tr><td style="padding:6px 0;color:#94a3b8;">Reason</td><td style="padding:6px 0;"><strong>${this.escape(data.reason)}</strong></td></tr>
       </table>
-      <p style="color:#94a3b8;font-size:14px;">One trade per setup is enforced — no order was sent.</p>`,
+      ${manualBlock}
+      <p style="color:#94a3b8;font-size:14px;">One trade per setup is enforced — no order was sent automatically.</p>`,
     );
+
+    const manualText = [
+      data.volume != null ? `${data.volume} lots` : null,
+      data.entryPrice != null ? `entry ${data.entryPrice}` : null,
+      data.stopLoss != null ? `SL ${data.stopLoss}` : null,
+      data.takeProfit != null ? `TP ${data.takeProfit}` : null,
+    ]
+      .filter(Boolean)
+      .join(', ');
 
     return this.email.send({
       to,
-      subject: `Copy trade blocked — ${data.symbol} (${data.reason.slice(0, 60)})`,
+      subject: `Copy blocked — ${data.symbol} ${data.direction}${manualText ? ` (${manualText})` : ''}`,
       html,
-      text: `Copy trade blocked for ${data.signalId}: ${data.reason}`,
+      text: `Copy trade blocked for ${data.signalId}: ${data.reason}. Manual: ${data.symbol} ${data.direction}${manualText ? ` — ${manualText}` : ''}.`,
     });
   }
 
@@ -968,6 +1117,15 @@ export class NotificationService {
       reason: string;
       comment?: string | null;
       riskPercent: number;
+      entryMin?: number;
+      entryMax?: number;
+      entryPrice?: number;
+      stopLoss?: number;
+      takeProfit?: number;
+      tp1Price?: number;
+      volume?: number | null;
+      orderType?: string;
+      pending?: boolean;
     },
   ) {
     const to = toEmail.trim().toLowerCase();
@@ -976,6 +1134,7 @@ export class NotificationService {
     const commentBlock = data.comment?.trim()
       ? `<tr><td style="padding:6px 0;color:#94a3b8;">Signal comment</td><td style="padding:6px 0;"><strong>${this.escape(data.comment.trim())}</strong></td></tr>`
       : '';
+    const manualBlock = this.formatManualTradeRows(data);
 
     const html = this.email.layout(
       'API signal — MT5 Copy not placed',
@@ -987,12 +1146,13 @@ export class NotificationService {
         <tr><td style="padding:6px 0;color:#94a3b8;">Max risk</td><td style="padding:6px 0;"><strong>${data.riskPercent}%</strong></td></tr>
         <tr><td style="padding:6px 0;color:#94a3b8;">Reason</td><td style="padding:6px 0;"><strong>${this.escape(data.reason)}</strong></td></tr>
         ${commentBlock}
-      </table>`,
+      </table>
+      ${manualBlock}`,
     );
 
     return this.email.send({
       to,
-      subject: `API → MT5 Copy failed — ${data.symbol} (${data.reason.slice(0, 60)})`,
+      subject: `API → MT5 Copy failed — ${data.symbol} ${data.direction}`,
       html,
       text: `API signal ${data.signalId} not copied to MT5: ${data.reason}`,
     });
