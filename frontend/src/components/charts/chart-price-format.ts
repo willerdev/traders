@@ -23,7 +23,7 @@ export function defaultMidForSymbol(symbol: string): number {
       25: 3200,
       30: 3800,
       50: 4100,
-      75: 13000,
+      75: 6750,
       90: 9500,
       100: 800,
       150: 1200,

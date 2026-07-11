@@ -12,7 +12,7 @@ function fallbackConfig(): FlutterwavePublicConfig {
     currency: process.env.NEXT_PUBLIC_MOMO_CURRENCY ?? "UGX",
     countryCode: process.env.NEXT_PUBLIC_MOMO_COUNTRY_CODE ?? "256",
     usdRate: Number(process.env.NEXT_PUBLIC_MOMO_USD_RATE ?? "3800") || 3800,
-    minDepositUsd: 5,
+    minDepositUsd: 3,
     networks: [
       { id: "MTN", label: "MTN MoMo" },
       { id: "AIRTEL", label: "Airtel Money" },

@@ -13,6 +13,7 @@ import { useThemeStore } from "@/stores/theme";
 import {
   loadChartData,
   resolveSeedPrice,
+  sanitizeOhlcBars,
   subscribeRealtimeUpdates,
   type RealtimeQuote,
 } from "@/components/charts/chart-data.service";
@@ -284,7 +285,8 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
 
           const cached = readChartBarCache(sym, tf);
           if (cached && cached.bars.length > 0) {
-            setDataRef.current(cached.bars, dataOptionsForLoad(reason));
+            const safeBars = sanitizeOhlcBars(sym, cached.bars);
+            setDataRef.current(safeBars, dataOptionsForLoad(reason));
             historyReadyRef.current = true;
             onChartStatusChangeRef.current?.({
               source: cached.source,

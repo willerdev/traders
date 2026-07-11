@@ -14,6 +14,7 @@ import {
   isPlatformLimitError,
 } from '../common/broker-error.util';
 import { normalizeChartSymbol } from '../ai/chart-setup.util';
+import { sanitizeOhlcBars } from '../common/chart-ohlc.util';
 import {
   getDerivDisplayName,
   getSymbolLookupVariants,
@@ -903,7 +904,7 @@ export class MetaApiService {
       );
     }
 
-    return deduped;
+    return sanitizeOhlcBars(normalizeChartSymbol(brokerSymbol), deduped);
   }
 
   async getAccountInformation(

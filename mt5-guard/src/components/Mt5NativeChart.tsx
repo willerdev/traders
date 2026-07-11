@@ -12,6 +12,7 @@ import { useAuth } from "../stores/auth";
 import { useTheme } from "../stores/theme";
 import type { UserMt5OhlcBar } from "../lib/types";
 import { fmtPrice } from "../lib/format";
+import { isPlausibleQuotePrice, sanitizeOhlcBar, sanitizeOhlcBars } from "../lib/chart-ohlc";
 
 const TIMEFRAMES = ["M1", "M5", "M15", "H1", "H4", "D1"] as const;
 export type Mt5ChartTimeframe = (typeof TIMEFRAMES)[number];
@@ -36,7 +37,7 @@ export function Mt5NativeChart({ symbol, flex, active = true }: Props) {
   const loadOhlc = useCallback(async () => {
     try {
       const res = await api.signals.mt5Ohlc(symbol, timeframe, 120);
-      setBars(res.bars ?? []);
+      setBars(sanitizeOhlcBars(symbol, res.bars ?? []));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Chart load failed");
@@ -65,14 +66,17 @@ export function Mt5NativeChart({ symbol, flex, active = true }: Props) {
         setLastMid(q.mid);
         setBars((prev) => {
           if (prev.length === 0) return prev;
-          const next = [...prev];
-          const last = { ...next[next.length - 1] };
+          const anchor = prev[prev.length - 1].close;
+          const last = { ...prev[prev.length - 1] };
           const price = q.mid ?? q.ask ?? q.bid;
-          if (price == null) return prev;
+          if (price == null || !isPlausibleQuotePrice(symbol, price, anchor)) {
+            return prev;
+          }
           last.close = price;
           last.high = Math.max(last.high, price);
           last.low = Math.min(last.low, price);
-          next[next.length - 1] = last;
+          const next = [...prev];
+          next[next.length - 1] = sanitizeOhlcBar(symbol, last, anchor);
           return next;
         });
       } catch {

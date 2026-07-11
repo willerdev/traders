@@ -169,24 +169,32 @@ function mergeLiveTick(
 
   const px = roundPriceForSymbol(mid, symbol);
   if (!lastBar || lastBar.time < barTime) {
-    return {
-      time: barTime,
-      open: px,
-      high: px,
-      low: px,
-      close: px,
-    };
+    return sanitizeOhlcBar(
+      symbol,
+      {
+        time: barTime,
+        open: px,
+        high: px,
+        low: px,
+        close: px,
+      },
+      lastBar?.close ?? px,
+    );
   }
   if (lastBar.time > barTime) {
     return lastBar;
   }
-  return {
-    time: barTime,
-    open: lastBar.open,
-    high: roundPriceForSymbol(Math.max(lastBar.high, px), symbol),
-    low: roundPriceForSymbol(Math.min(lastBar.low, px), symbol),
-    close: px,
-  };
+  return sanitizeOhlcBar(
+    symbol,
+    {
+      time: barTime,
+      open: lastBar.open,
+      high: roundPriceForSymbol(Math.max(lastBar.high, px), symbol),
+      low: roundPriceForSymbol(Math.min(lastBar.low, px), symbol),
+      close: px,
+    },
+    lastBar.close,
+  );
 }
 
 export type ChartDataLoadResult = {
@@ -234,8 +242,9 @@ export async function loadChartData(
       25_000,
     );
     if (res.bars.length > 0) {
-      writeChartBarCache(symbol, timeframe, res.bars, "metaapi");
-      return { bars: res.bars, source: "metaapi" };
+      const bars = sanitizeOhlcBars(symbol, res.bars);
+      writeChartBarCache(symbol, timeframe, bars, "metaapi");
+      return { bars, source: "metaapi" };
     }
   } catch (err) {
     const message =
@@ -283,6 +292,13 @@ export type RealtimeQuote = {
   mid?: number | null;
 };
 
+function maxPriceJumpRatio(symbol: string, anchored: boolean): number {
+  if (anchored) {
+    return isSyntheticSymbol(symbol) ? 0.08 : 0.04;
+  }
+  return isSyntheticSymbol(symbol) ? 0.45 : 0.35;
+}
+
 /** Reject prices far from a symbol's typical range (stale cross-symbol quotes). */
 export function isPlausibleQuotePrice(
   symbol: string,
@@ -290,12 +306,63 @@ export function isPlausibleQuotePrice(
   anchor?: number | null,
 ): boolean {
   if (!Number.isFinite(price) || price <= 0) return false;
+  const anchored =
+    anchor != null && Number.isFinite(anchor) && anchor > 0;
+  const ref = anchored ? anchor : defaultMidForSymbol(symbol);
+  const ratio = price / ref;
+  const jump = maxPriceJumpRatio(symbol, anchored);
+  const minRatio = anchored ? 1 - jump : 0.25;
+  const maxRatio = anchored ? 1 + jump : 4;
+  return ratio >= minRatio && ratio <= maxRatio;
+}
+
+/** Clamp corrupt OHLC extremes so one bad tick/bar cannot blow out the chart scale. */
+export function sanitizeOhlcBar(
+  symbol: string,
+  bar: OHLCBar,
+  anchor?: number | null,
+): OHLCBar {
   const ref =
     anchor != null && Number.isFinite(anchor) && anchor > 0
       ? anchor
-      : defaultMidForSymbol(symbol);
-  const ratio = price / ref;
-  return ratio >= 0.25 && ratio <= 4;
+      : bar.close;
+  const jump = maxPriceJumpRatio(symbol, true);
+
+  const clampField = (value: number, fallback: number): number => {
+    if (!Number.isFinite(value) || value <= 0) {
+      return roundPriceForSymbol(fallback, symbol);
+    }
+    if (isPlausibleQuotePrice(symbol, value, ref)) {
+      return roundPriceForSymbol(value, symbol);
+    }
+    const bounded = Math.min(
+      Math.max(value, ref * (1 - jump)),
+      ref * (1 + jump),
+    );
+    return roundPriceForSymbol(bounded, symbol);
+  };
+
+  const open = clampField(bar.open, ref);
+  const close = clampField(bar.close, ref);
+  const bodyTop = Math.max(open, close);
+  const bodyBot = Math.min(open, close);
+
+  let high = clampField(bar.high, bodyTop);
+  let low = clampField(bar.low, bodyBot);
+  high = roundPriceForSymbol(Math.max(high, bodyTop), symbol);
+  low = roundPriceForSymbol(Math.min(low, bodyBot), symbol);
+
+  return { time: bar.time, open, high, low, close };
+}
+
+export function sanitizeOhlcBars(symbol: string, bars: OHLCBar[]): OHLCBar[] {
+  if (bars.length === 0) return bars;
+  const out: OHLCBar[] = [];
+  for (const bar of bars) {
+    const anchor = out.length > 0 ? out[out.length - 1].close : null;
+    out.push(sanitizeOhlcBar(symbol, bar, anchor));
+  }
+  return out;
 }
 
 /** Live candle updates — tick from MetaAPI quote + periodic last-bar sync. */
@@ -333,7 +400,7 @@ export function subscribeRealtimeUpdates(
     resyncing = true;
     try {
       const res = await api.signals.mt5Ohlc(symbol, timeframe, VISIBILITY_RESYNC_LIMIT);
-      const bars = res.bars;
+      const bars = sanitizeOhlcBars(symbol, res.bars);
       if (bars.length === 0) return;
 
       lastBar = bars[bars.length - 1];
@@ -351,7 +418,7 @@ export function subscribeRealtimeUpdates(
     if (!canRun() || tabHidden) return;
     try {
       const res = await api.signals.mt5Ohlc(symbol, timeframe, 2);
-      const bars = res.bars;
+      const bars = sanitizeOhlcBars(symbol, res.bars);
       if (bars.length === 0) return;
       for (const bar of bars) {
         const isNew = bar.time > lastBarTime;

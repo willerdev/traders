@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { createHmac, randomUUID } from 'crypto';
 import {
   FLW_DEFAULT_API_URL,
+  FLW_DEFAULT_MIN_DEPOSIT_USD,
   FLW_SANDBOX_API_URL,
   FLW_TOKEN_URL,
 } from './flutterwave.constants';
@@ -94,8 +95,11 @@ export class FlutterwaveService {
   }
 
   minDepositUsd(): number {
-    const raw = Number(this.config.get<string>('FLW_MIN_DEPOSIT_USD') || '5');
-    return Number.isFinite(raw) && raw > 0 ? raw : 5;
+    const raw = Number(
+      this.config.get<string>('FLW_MIN_DEPOSIT_USD') ||
+        String(FLW_DEFAULT_MIN_DEPOSIT_USD),
+    );
+    return Number.isFinite(raw) && raw > 0 ? raw : FLW_DEFAULT_MIN_DEPOSIT_USD;
   }
 
   usdToLocalAmount(usd: number): number {

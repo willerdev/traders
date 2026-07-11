@@ -52,6 +52,8 @@ services:
         value: "256"
       - key: FLW_USD_TO_LOCAL_RATE
         value: "3800"
+      - key: FLW_MIN_DEPOSIT_USD
+        value: "3"
       - key: OPENAI_API_KEY
         sync: false
       - key: DEEPSEEK_API_KEY

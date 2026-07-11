@@ -117,8 +117,13 @@ export function WalletDepositModal({
 
   useEffect(() => {
     if (!open || depositMethod !== "momo" || !momoEnabled || !flwConfig) return;
-    setDepositMin(Math.max(flwConfig.minDepositUsd, minPlanDeposit > 0 ? 0 : 0, flwConfig.minDepositUsd));
-  }, [open, depositMethod, flwConfig, minPlanDeposit]);
+    const min = flwConfig.minDepositUsd;
+    setDepositMin(min);
+    setAmount((prev) => {
+      const n = Number(prev);
+      return !Number.isFinite(n) || n < min ? String(min) : prev;
+    });
+  }, [open, depositMethod, flwConfig, momoEnabled]);
 
   const pollStatus = useCallback(async () => {
     if (!paymentId) return;

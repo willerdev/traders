@@ -483,16 +483,13 @@ export class WalletService {
     momo: { phoneNumber: string; network: string; countryCode?: string },
     riskPercent?: number,
   ) {
-    const config = await this.getPlatformConfig();
-    const minDeposit = Number(config?.depositorMinDepositUsdt ?? 50);
     const minFlw = this.flutterwavePayments.getPublicConfig().minDepositUsd;
-    const effectiveMin = Math.max(minDeposit, minFlw);
 
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new BadRequestException('Deposit amount must be greater than zero');
     }
-    if (amount < effectiveMin) {
-      throw new BadRequestException(`Minimum deposit is $${effectiveMin} USDT`);
+    if (amount < minFlw) {
+      throw new BadRequestException(`Minimum MoMo deposit is $${minFlw} USDT`);
     }
 
     const result = await this.flutterwavePayments.initiatePayment({

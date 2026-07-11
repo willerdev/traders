@@ -1,5 +1,8 @@
 export const FLW_GATEWAY = 'Flutterwave';
 
+/** Minimum MoMo charge amount in USD (wallet credited in USDT). */
+export const FLW_DEFAULT_MIN_DEPOSIT_USD = 3;
+
 export const FLW_TOKEN_URL =
   'https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token';
 
