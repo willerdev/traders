@@ -2,10 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye } from "lucide-react";
+import Link from "next/link";
+import { BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EvaluationTypeToggle } from "@/components/evaluations/evaluation-type-toggle";
 import { EvaluationVariantToggle } from "@/components/evaluations/evaluation-variant-toggle";
+import { EvaluationTierSelector } from "@/components/evaluations/evaluation-tier-selector";
+import { EvaluationPlanDetail } from "@/components/evaluations/evaluation-plan-detail";
 import { EvaluationPlanCard } from "@/components/evaluations/evaluation-plan-card";
 import { EvaluationPhasesDialog } from "@/components/evaluations/evaluation-phases-dialog";
 import { EvaluationCheckoutPanel } from "@/components/evaluations/evaluation-checkout-panel";
@@ -17,20 +20,31 @@ import {
   type EvaluationVariantId,
 } from "@/lib/evaluation-plans";
 import { useAuthStore } from "@/stores/auth";
-import Link from "next/link";
 
 type CheckoutSelection = {
   planId: string;
   tier: EvaluationPlanTier;
 };
 
+function programLabel(type: EvaluationTypeId, variant: EvaluationVariantId) {
+  if (type === "ZERO") return "Zero program";
+  if (type === "ONE_STEP") return "1 Step program";
+  return `2 Step · ${variant.charAt(0) + variant.slice(1).toLowerCase()}`;
+}
+
 export default function EvaluationsPage() {
   const router = useRouter();
   const token = useAuthStore((s) => s.token);
   const [type, setType] = useState<EvaluationTypeId>("ONE_STEP");
   const [variant, setVariant] = useState<EvaluationVariantId>("FLEX");
+  const [selectedTierId, setSelectedTierId] = useState<string>("");
   const [phasesOpen, setPhasesOpen] = useState(false);
   const [checkout, setCheckout] = useState<CheckoutSelection | null>(null);
+
+  const plan = useMemo(
+    () => getPlansForSelection(type, variant) ?? EVALUATION_PLANS[1],
+    [type, variant],
+  );
 
   useEffect(() => {
     if (type !== "TWO_STEP") {
@@ -38,10 +52,17 @@ export default function EvaluationsPage() {
     }
   }, [type]);
 
-  const plan = useMemo(
-    () => getPlansForSelection(type, variant) ?? EVALUATION_PLANS[1],
-    [type, variant],
-  );
+  useEffect(() => {
+    const popular = plan.tiers.find((t) => t.mostPopular);
+    const fallback = plan.tiers[0];
+    const keepCurrent = plan.tiers.some((t) => t.id === selectedTierId);
+    if (!keepCurrent) {
+      setSelectedTierId((popular ?? fallback)?.id ?? "");
+    }
+  }, [plan, selectedTierId]);
+
+  const selectedTier =
+    plan.tiers.find((t) => t.id === selectedTierId) ?? plan.tiers[0];
 
   const handleStart = (tier: EvaluationPlanTier) => {
     if (!token) {
@@ -52,66 +73,90 @@ export default function EvaluationsPage() {
   };
 
   return (
-    <div className="min-h-screen pb-20">
-      <section className="border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-10">
-        <div className="mx-auto max-w-6xl text-center">
-          <p className="text-sm font-medium uppercase tracking-wider text-primary">
+    <div className="min-h-screen pb-24 md:pb-12">
+      <section className="relative overflow-hidden border-b border-[var(--color-border)] px-4 py-8 md:py-12">
+        <div className="gradient-orb -left-20 top-0 h-48 w-48 bg-primary/15" />
+        <div className="relative mx-auto max-w-6xl text-center md:text-left">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
             Get Funded
           </p>
-          <h1 className="mt-2 text-3xl font-bold md:text-4xl">Evaluation Programs</h1>
-          <p className="mx-auto mt-3 max-w-2xl text-muted">
-            Choose your program size and trade on MT5 within professional risk
-            rules. Pass evaluation phases to unlock profit splits.
+          <h1 className="mt-2 text-2xl font-bold sm:text-3xl md:text-4xl">
+            Evaluation Programs
+          </h1>
+          <p className="mx-auto mt-2 max-w-xl text-sm text-muted md:mx-0 md:text-base">
+            Pick a program type and size, then trade on MT5 within clear risk
+            limits. Pass phases to unlock profit splits.
           </p>
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-4 py-10">
-        <div className="rounded-3xl bg-slate-50 px-4 py-8 shadow-inner md:px-8">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700">
-              <span>🇺🇸</span>
-              <span>$ USD</span>
-            </div>
+      <section className="mx-auto max-w-6xl space-y-5 px-4 py-6 md:py-10">
+        <div className="space-y-4">
+          <EvaluationTypeToggle value={type} onChange={setType} />
 
-            <EvaluationTypeToggle value={type} onChange={setType} />
+          {type === "TWO_STEP" ? (
+            <EvaluationVariantToggle value={variant} onChange={setVariant} />
+          ) : null}
 
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-muted">{plan.description}</p>
             <Button
-              variant="secondary"
-              className="border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+              variant="ghost"
+              size="sm"
+              className="shrink-0 text-muted"
               onClick={() => setPhasesOpen(true)}
             >
-              <Eye className="mr-2 h-4 w-4" />
+              <BookOpen className="mr-1.5 h-4 w-4" />
               Phases
             </Button>
           </div>
+        </div>
 
-          {type === "TWO_STEP" ? (
-            <div className="mt-4 flex justify-center">
-              <EvaluationVariantToggle value={variant} onChange={setVariant} />
-            </div>
-          ) : null}
-
-          <p className="mt-4 text-center text-sm text-slate-500">{plan.description}</p>
-
-          <div className="mt-8 flex gap-4 overflow-x-auto pb-4 pt-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {plan.tiers.map((tier) => (
-              <EvaluationPlanCard
-                key={tier.id}
-                tier={tier}
-                rules={plan.rules}
-                type={plan.type}
-                highlighted={tier.mostPopular}
-                onStart={() => handleStart(tier)}
-              />
-            ))}
+        {/* Mobile + tablet: tier pills + single detail card */}
+        <div className="space-y-4 lg:hidden">
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
+              Select size
+            </p>
+            <EvaluationTierSelector
+              tiers={plan.tiers}
+              value={selectedTier?.id ?? ""}
+              onChange={setSelectedTierId}
+            />
           </div>
+
+          {selectedTier ? (
+            <EvaluationPlanDetail
+              tier={selectedTier}
+              rules={plan.rules}
+              type={plan.type}
+              programLabel={programLabel(type, variant)}
+              onStart={() => handleStart(selectedTier)}
+            />
+          ) : null}
+        </div>
+
+        {/* Desktop: comparison grid */}
+        <div className="hidden gap-4 lg:grid lg:grid-cols-3 xl:grid-cols-3">
+          {plan.tiers.map((tier) => (
+            <EvaluationPlanCard
+              key={tier.id}
+              tier={tier}
+              rules={plan.rules}
+              type={plan.type}
+              highlighted={tier.mostPopular}
+              onStart={() => handleStart(tier)}
+            />
+          ))}
         </div>
 
         {!token ? (
-          <p className="mt-6 text-center text-sm text-muted">
+          <p className="text-center text-sm text-muted lg:text-left">
             Already have an account?{" "}
-            <Link href="/login?redirect=/evaluations" className="text-primary hover:underline">
+            <Link
+              href="/login?redirect=/evaluations"
+              className="text-primary hover:underline"
+            >
               Sign in
             </Link>{" "}
             to start an evaluation.

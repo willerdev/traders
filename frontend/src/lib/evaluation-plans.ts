@@ -132,6 +132,15 @@ export function formatEvaluationSize(size: number): string {
   return `$${size}`;
 }
 
+/** Short label for tier selector pills (e.g. 5K, 500). */
+export function formatTierPill(size: number): string {
+  if (size >= 1000) {
+    const k = size / 1000;
+    return Number.isInteger(k) ? `${k}K` : `${k}K`;
+  }
+  return String(size);
+}
+
 export function getPlansForSelection(
   type: EvaluationTypeId,
   variant: EvaluationVariantId,
