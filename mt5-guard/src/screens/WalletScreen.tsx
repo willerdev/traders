@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Modal,
   Pressable,
@@ -9,14 +9,29 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useIsFocused } from "@react-navigation/native";
 import { useAuth } from "../stores/auth";
+import { useTheme } from "../stores/theme";
+import { useAppActive } from "../hooks/use-app-active-polling";
 import { formatCurrency, fmtDate } from "../lib/format";
-import { colors } from "../theme/colors";
 import type { SavedWithdrawalWallet, WalletLedgerItem, WalletSummary, WithdrawalWalletNetwork } from "../lib/types";
-import { Card, EmptyState, FieldLabel, PrimaryButton, Screen, SecondaryButton } from "../components/ui";
+import { PageHeader } from "../components/PageHeader";
+import {
+  Card,
+  EmptyState,
+  FieldLabel,
+  PrimaryButton,
+  Screen,
+  SecondaryButton,
+  StatCell,
+  StatGrid,
+} from "../components/ui";
 
 export function WalletScreen() {
   const { api } = useAuth();
+  const { theme } = useTheme();
+  const styles = useStyles();
+  const focused = useIsFocused();
   const [summary, setSummary] = useState<WalletSummary | null>(null);
   const [txs, setTxs] = useState<WalletLedgerItem[]>([]);
   const [wallets, setWallets] = useState<SavedWithdrawalWallet[]>([]);
@@ -25,14 +40,14 @@ export function WalletScreen() {
   const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (background = false) => {
+    if (!background) setLoading(true);
     setError(null);
     try {
       const [s, t, w] = await Promise.all([
         api.wallet.summary(),
         api.wallet.transactions(50, 0),
-        api.wallet.withdrawalWallets(),
+        api.wallet.withdrawalWallets().catch(() => ({ items: [] as SavedWithdrawalWallet[] })),
       ]);
       setSummary(s);
       setTxs(t.items ?? []);
@@ -48,72 +63,69 @@ export function WalletScreen() {
     void load();
   }, [load]);
 
+  useAppActive(() => void load(true), focused, 4000);
+
   return (
     <Screen>
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} tintColor={colors.primary} />}
+        refreshControl={
+          <RefreshControl refreshing={loading} onRefresh={() => void load()} tintColor={theme.primary} />
+        }
       >
-        <Text style={styles.title}>Wallet</Text>
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        <PageHeader title="Wallet" subtitle="Deposits, withdrawals & history" />
+
+        {error ? (
+          <View style={[styles.errorBox, { backgroundColor: theme.surfaceAlt, borderColor: theme.error }]}>
+            <Text style={[styles.errorText, { color: theme.error }]}>{error}</Text>
+          </View>
+        ) : null}
 
         <Card>
-          <Text style={styles.label}>Available</Text>
-          <Text style={styles.balance}>
-            {summary ? formatCurrency(summary.availableBalance) : "—"}
+          <Text style={[styles.balanceLabel, { color: theme.muted }]}>Available balance</Text>
+          <Text style={[styles.balance, { color: theme.text }]}>
+            {summary ? formatCurrency(summary.availableBalance) : loading ? "…" : "—"}
           </Text>
           {summary?.activePlan ? (
-            <Text style={styles.plan}>
-              Depositor plan · {summary.activePlan.riskPercent}% ·{" "}
-              {summary.activePlan.dailyYieldPercent}% daily
-            </Text>
+            <View style={[styles.planPill, { backgroundColor: theme.chipActiveBg, borderColor: theme.emerald }]}>
+              <Text style={[styles.planText, { color: theme.emerald }]}>
+                Depositor · {summary.activePlan.riskPercent}% risk · {summary.activePlan.dailyYieldPercent}% daily
+              </Text>
+            </View>
           ) : null}
-          <View style={styles.row}>
-            <View style={styles.stat}>
-              <Text style={styles.statLabel}>Locked</Text>
-              <Text style={styles.statValue}>
-                {summary ? formatCurrency(summary.lockedBalance) : "—"}
-              </Text>
-            </View>
-            <View style={styles.stat}>
-              <Text style={styles.statLabel}>Withdrawn</Text>
-              <Text style={styles.statValue}>
-                {summary ? formatCurrency(summary.totalWithdrawn) : "—"}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.row}>
-            <View style={styles.stat}>
-              <Text style={styles.statLabel}>Deposited</Text>
-              <Text style={styles.statValue}>
-                {summary ? formatCurrency(summary.totalDeposited) : "—"}
-              </Text>
-            </View>
-            <View style={styles.stat}>
-              <Text style={styles.statLabel}>Earned</Text>
-              <Text style={styles.statValue}>
-                {summary ? formatCurrency(summary.totalEarned) : "—"}
-              </Text>
-            </View>
-          </View>
+          <StatGrid>
+            <StatCell label="Locked" value={summary ? formatCurrency(summary.lockedBalance) : "—"} />
+            <StatCell label="Withdrawn" value={summary ? formatCurrency(summary.totalWithdrawn) : "—"} />
+            <StatCell label="Deposited" value={summary ? formatCurrency(summary.totalDeposited) : "—"} />
+            <StatCell
+              label="Earned"
+              value={summary ? formatCurrency(summary.totalEarned) : "—"}
+              accent={theme.emerald}
+            />
+          </StatGrid>
         </Card>
 
         <View style={styles.actions}>
-          <PrimaryButton label="Deposit" onPress={() => setDepositOpen(true)} color={colors.buy} />
-          <SecondaryButton label="Withdraw" onPress={() => setWithdrawOpen(true)} />
+          <PrimaryButton label="Deposit" onPress={() => setDepositOpen(true)} color={theme.buy} stretch />
+          <SecondaryButton label="Withdraw" onPress={() => setWithdrawOpen(true)} stretch />
         </View>
 
-        <Text style={styles.section}>Transactions</Text>
+        <Text style={[styles.section, { color: theme.muted }]}>Transactions</Text>
         {txs.length === 0 && !loading ? (
-          <EmptyState title="No transactions yet" />
+          <EmptyState title="No transactions yet" hint="Deposits and withdrawals will appear here" />
         ) : (
           txs.map((tx) => (
-            <View key={tx.id} style={styles.txRow}>
+            <View key={tx.id} style={[styles.txRow, { borderBottomColor: theme.divider }]}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.txDesc}>{tx.description}</Text>
-                <Text style={styles.txDate}>{fmtDate(tx.createdAt)}</Text>
+                <Text style={[styles.txDesc, { color: theme.text }]}>{tx.description}</Text>
+                <Text style={[styles.txDate, { color: theme.muted }]}>{fmtDate(tx.createdAt)}</Text>
               </View>
-              <Text style={[styles.txAmt, tx.amount >= 0 ? styles.pos : styles.neg]}>
+              <Text
+                style={[
+                  styles.txAmt,
+                  { color: tx.amount >= 0 ? theme.buy : theme.sell },
+                ]}
+              >
                 {tx.amount >= 0 ? "+" : ""}
                 {formatCurrency(tx.amount)}
               </Text>
@@ -133,6 +145,60 @@ export function WalletScreen() {
   );
 }
 
+function useStyles() {
+  const { theme } = useTheme();
+  return useMemo(
+    () =>
+      StyleSheet.create({
+        content: { paddingHorizontal: 20, paddingBottom: 32 },
+        errorBox: { borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 12 },
+        errorText: { fontSize: 13 },
+        balanceLabel: { fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 },
+        balance: { fontSize: 36, fontWeight: "800", marginTop: 6, letterSpacing: -1 },
+        planPill: { marginTop: 12, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, alignSelf: "flex-start" },
+        planText: { fontSize: 12, fontWeight: "600" },
+        actions: { flexDirection: "row", gap: 10, marginVertical: 8 },
+        section: { fontSize: 12, textTransform: "uppercase", letterSpacing: 0.6, fontWeight: "700", marginBottom: 10, marginTop: 8 },
+        txRow: { flexDirection: "row", paddingVertical: 14, borderBottomWidth: 1 },
+        txDesc: { fontSize: 14, fontWeight: "500" },
+        txDate: { fontSize: 11, marginTop: 3 },
+        txAmt: { fontWeight: "700", fontSize: 14 },
+        modalOverlay: { flex: 1, backgroundColor: theme.overlay, justifyContent: "flex-end" },
+        modalSheet: {
+          backgroundColor: theme.surface,
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
+          padding: 24,
+          gap: 10,
+          borderTopWidth: 1,
+          borderColor: theme.divider,
+        },
+        modalTitle: { color: theme.text, fontSize: 20, fontWeight: "800", marginBottom: 4 },
+        input: {
+          backgroundColor: theme.inputBg,
+          borderWidth: 1,
+          borderColor: theme.divider,
+          borderRadius: 12,
+          padding: 14,
+          color: theme.text,
+          fontSize: 16,
+        },
+        networkRow: { flexDirection: "row", gap: 8, marginBottom: 4 },
+        chip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: theme.divider },
+        chipActive: { borderColor: theme.buy, backgroundColor: theme.chipActiveBg },
+        chipText: { color: theme.text, fontSize: 13, fontWeight: "600" },
+        result: { color: theme.emerald, fontSize: 13 },
+        muted: { color: theme.muted, fontSize: 13 },
+        walletRow: { padding: 14, borderRadius: 12, borderWidth: 1, borderColor: theme.divider, marginBottom: 8 },
+        walletActive: { borderColor: theme.buy, backgroundColor: theme.chipActiveBg },
+        walletLabel: { color: theme.text, fontWeight: "600" },
+        walletAddr: { color: theme.muted, fontSize: 11, marginTop: 2 },
+        error: { color: theme.error, marginBottom: 4, fontSize: 13 },
+      }),
+    [theme],
+  );
+}
+
 function DepositModal({
   visible,
   onClose,
@@ -143,6 +209,8 @@ function DepositModal({
   onDone: () => void;
 }) {
   const { api } = useAuth();
+  const { theme } = useTheme();
+  const styles = useStyles();
   const [network, setNetwork] = useState<WithdrawalWalletNetwork>("TRC20");
   const [amount, setAmount] = useState("");
   const [risk, setRisk] = useState("5");
@@ -192,12 +260,24 @@ function DepositModal({
             ))}
           </View>
           <FieldLabel>Amount (USDT)</FieldLabel>
-          <TextInput style={styles.input} value={amount} onChangeText={setAmount} keyboardType="decimal-pad" />
+          <TextInput
+            style={styles.input}
+            value={amount}
+            onChangeText={setAmount}
+            keyboardType="decimal-pad"
+            placeholderTextColor={theme.muted}
+          />
           <FieldLabel>Risk % (depositor plan)</FieldLabel>
-          <TextInput style={styles.input} value={risk} onChangeText={setRisk} keyboardType="decimal-pad" />
+          <TextInput
+            style={styles.input}
+            value={risk}
+            onChangeText={setRisk}
+            keyboardType="decimal-pad"
+            placeholderTextColor={theme.muted}
+          />
           {error ? <Text style={styles.error}>{error}</Text> : null}
           {result ? <Text style={styles.result}>{result}</Text> : null}
-          <PrimaryButton label={busy ? "…" : "Continue"} onPress={() => void submit()} disabled={busy} />
+          <PrimaryButton label={busy ? "…" : "Continue"} onPress={() => void submit()} disabled={busy} color={theme.buy} />
           <SecondaryButton label="Close" onPress={onClose} />
         </View>
       </View>
@@ -217,10 +297,12 @@ function WithdrawModal({
   onDone: () => void;
 }) {
   const { api } = useAuth();
+  const styles = useStyles();
   const [amount, setAmount] = useState("");
   const [walletId, setWalletId] = useState<string | null>(wallets[0]?.id ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { theme } = useTheme();
 
   useEffect(() => {
     if (wallets[0]) setWalletId(wallets[0].id);
@@ -229,7 +311,7 @@ function WithdrawModal({
   async function submit() {
     const amt = Number(amount);
     if (!walletId) {
-      setError("Add a verified withdrawal wallet on web first");
+      setError("Add a verified withdrawal wallet in Settings first");
       return;
     }
     if (!Number.isFinite(amt) || amt <= 0) {
@@ -255,7 +337,7 @@ function WithdrawModal({
         <View style={styles.modalSheet}>
           <Text style={styles.modalTitle}>Withdraw</Text>
           {wallets.length === 0 ? (
-            <Text style={styles.muted}>No verified wallets — add one in Settings or on web.</Text>
+            <Text style={styles.muted}>No verified wallets — add one in Settings.</Text>
           ) : (
             <>
               <FieldLabel>Saved wallet</FieldLabel>
@@ -272,7 +354,13 @@ function WithdrawModal({
             </>
           )}
           <FieldLabel>Amount</FieldLabel>
-          <TextInput style={styles.input} value={amount} onChangeText={setAmount} keyboardType="decimal-pad" />
+          <TextInput
+            style={styles.input}
+            value={amount}
+            onChangeText={setAmount}
+            keyboardType="decimal-pad"
+            placeholderTextColor={theme.muted}
+          />
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <PrimaryButton label={busy ? "…" : "Withdraw"} onPress={() => void submit()} disabled={busy} />
           <SecondaryButton label="Close" onPress={onClose} />
@@ -281,50 +369,3 @@ function WithdrawModal({
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  content: { padding: 16, paddingBottom: 32 },
-  title: { color: colors.text, fontSize: 22, fontWeight: "700", marginBottom: 16 },
-  label: { color: colors.muted, fontSize: 12, textTransform: "uppercase" },
-  balance: { color: colors.text, fontSize: 32, fontWeight: "800", marginTop: 4 },
-  plan: { color: colors.emerald, fontSize: 12, marginTop: 8 },
-  row: { flexDirection: "row", gap: 16, marginTop: 16 },
-  stat: { flex: 1 },
-  statLabel: { color: colors.muted, fontSize: 11 },
-  statValue: { color: colors.text, fontWeight: "600", marginTop: 2 },
-  actions: { flexDirection: "row", gap: 10, marginVertical: 16 },
-  section: { color: colors.muted, fontSize: 12, textTransform: "uppercase", marginBottom: 8 },
-  txRow: {
-    flexDirection: "row",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.divider,
-  },
-  txDesc: { color: colors.text, fontSize: 14 },
-  txDate: { color: colors.muted, fontSize: 11, marginTop: 2 },
-  txAmt: { fontWeight: "700", fontSize: 14 },
-  pos: { color: colors.buy },
-  neg: { color: colors.sell },
-  error: { color: colors.error, marginBottom: 8 },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
-  modalSheet: { backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, gap: 8 },
-  modalTitle: { color: colors.text, fontSize: 18, fontWeight: "700", marginBottom: 8 },
-  input: {
-    backgroundColor: colors.bg,
-    borderWidth: 1,
-    borderColor: colors.divider,
-    borderRadius: 8,
-    padding: 12,
-    color: colors.text,
-  },
-  networkRow: { flexDirection: "row", gap: 8, marginBottom: 8 },
-  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.divider },
-  chipActive: { borderColor: colors.buy, backgroundColor: "rgba(74,158,255,0.1)" },
-  chipText: { color: colors.text, fontSize: 12, fontWeight: "600" },
-  result: { color: colors.emerald, fontSize: 12 },
-  muted: { color: colors.muted, fontSize: 13 },
-  walletRow: { padding: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.divider, marginBottom: 6 },
-  walletActive: { borderColor: colors.buy },
-  walletLabel: { color: colors.text, fontWeight: "600" },
-  walletAddr: { color: colors.muted, fontSize: 11, marginTop: 2 },
-});

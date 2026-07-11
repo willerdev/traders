@@ -33,6 +33,7 @@ import { ReferralsService } from '../referrals/referrals.service';
 import { Mt5SyncBillingService } from '../mt5-sync/mt5-sync-billing.service';
 import { WalletService } from '../wallet/wallet.service';
 import { InvestorService } from '../investor/investor.service';
+import { EvaluationsService } from '../evaluations/evaluations.service';
 
 @Injectable()
 export class PaymentsService {
@@ -59,6 +60,8 @@ export class PaymentsService {
     private walletService: WalletService,
     @Inject(forwardRef(() => InvestorService))
     private investorService: InvestorService,
+    @Inject(forwardRef(() => EvaluationsService))
+    private evaluationsService: EvaluationsService,
   ) {}
 
   private ipnUrl() {
@@ -553,6 +556,10 @@ export class PaymentsService {
 
   private isInvestorEnrollmentPurpose(purpose: string | null | undefined) {
     return purpose === 'investor_enrollment';
+  }
+
+  private isEvaluationEnrollmentPurpose(purpose: string | null | undefined) {
+    return purpose === 'evaluation_enrollment';
   }
 
   private notifySubscriptionPayment(
@@ -1208,6 +1215,7 @@ export class PaymentsService {
     'profit_share',
     'mt5_sync',
     'investor_enrollment',
+    'evaluation_enrollment',
   ] as const;
 
   async syncAllPendingRegistrationPayments() {
@@ -1403,6 +1411,14 @@ export class PaymentsService {
 
     if (this.isInvestorEnrollmentPurpose(payment.purpose)) {
       return this.investorService.confirmEnrollment(
+        payment.id,
+        gatewayPayload,
+        { gatewayId, txHash: opts?.txHash },
+      );
+    }
+
+    if (this.isEvaluationEnrollmentPurpose(payment.purpose)) {
+      return this.evaluationsService.confirmEnrollment(
         payment.id,
         gatewayPayload,
         { gatewayId, txHash: opts?.txHash },

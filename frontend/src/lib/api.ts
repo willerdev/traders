@@ -922,6 +922,26 @@ class ApiClient {
       }),
   };
 
+  evaluations = {
+    listPlans: () =>
+      this.request<EvaluationPlanCatalog[]>("/evaluations/plans"),
+    getActive: () =>
+      this.request<EvaluationEnrollment | null>("/evaluations/active"),
+    getHistory: () =>
+      this.request<EvaluationEnrollment[]>("/evaluations/history"),
+    checkout: (input: {
+      type: string;
+      variant: string;
+      planId: string;
+      network: string;
+      source?: "wallet" | "crypto";
+    }) =>
+      this.request<EvaluationCheckoutResult>("/evaluations/checkout", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+  };
+
   mt5Sync = {
     setEnabled: (enabled: boolean) =>
       this.request<Mt5SyncStatus>("/mt5-sync/enabled", {
@@ -2365,6 +2385,80 @@ export interface TpClaimRecord {
     signalStatus: string;
   };
   canResubmit?: boolean;
+}
+
+export interface EvaluationPlanRules {
+  profitTargetPhase1: number | null;
+  profitTargetPhase2: number | null;
+  profitTargetMaster: number | null;
+  consistencyPercent: number | null;
+  maxLossPercent: number;
+  dailyLossPercent: number;
+  minTradingDays: number | null;
+  minProfitableDays: number | null;
+  profitSplitLabel: string;
+}
+
+export interface EvaluationPlanTier {
+  id: string;
+  evaluationSize: number;
+  feeUsdt: number;
+  avgFirstReward: number;
+  mostPopular?: boolean;
+}
+
+export interface EvaluationPlanCatalog {
+  type: string;
+  variant: string;
+  label: string;
+  description: string;
+  rules: EvaluationPlanRules;
+  tiers: EvaluationPlanTier[];
+}
+
+export interface EvaluationEnrollment {
+  id: string;
+  type: string;
+  variant: string;
+  planId: string;
+  evaluationSize: number;
+  feeUsdt: number;
+  status: string;
+  phase: string;
+  rules: {
+    maxLossPercent: number;
+    dailyLossPercent: number;
+    profitTargetPhase1: number | null;
+    profitTargetPhase2: number | null;
+    consistencyPercent: number | null;
+    profitSplitLabel: string;
+  };
+  startEquity: number | null;
+  currentEquity: number | null;
+  dayStartEquity: number | null;
+  maxLossFloor: number | null;
+  dailyLossFloor: number | null;
+  breachedAt: string | null;
+  breachReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EvaluationCheckoutResult {
+  enrollmentId?: string;
+  paymentId?: string;
+  amount?: number;
+  currency?: string;
+  network?: string;
+  payAddress?: string;
+  payAmount?: number;
+  payCurrency?: string;
+  purpose?: string;
+  success?: boolean;
+  message?: string;
+  planId?: string;
+  evaluationSize?: number;
+  source?: string;
 }
 
 export const api = new ApiClient();

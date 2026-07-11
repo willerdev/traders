@@ -1,0 +1,15 @@
+---
+description: NestJS backend conventions
+globs: backend/**/*
+alwaysApply: false
+---
+
+# Backend
+
+- DTOs: `backend/src/common/dto/` · Guards: `backend/src/auth/guards/`
+- `ComplianceService`: ACTIVE status for features; KYC gate for payouts only
+- Signal Hub proxy + webhooks under `backend/src/signals/`
+- AI: `backend/src/ai/` (vision, validation, support agent)
+- MetaAPI broker layer: map synthetic symbols (e.g. VIX75 → 1HZ75V) before MT5 send
+- Signal validation: reject structural issues (SL/TP side, entry zone) — not unfamiliar symbols
+- Env secrets in `backend/.env` — never commit

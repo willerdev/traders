@@ -7,9 +7,9 @@ import type {
   UserMt5Terminal,
 } from "../lib/types";
 
-export type Mt5SubTab = "quotes" | "chart" | "trades" | "history";
+export type Mt5ScreenMode = "chart" | "trades" | "history";
 
-export function useMt5Terminal(subTab: Mt5SubTab, enabled: boolean) {
+export function useMt5Terminal(mode: Mt5ScreenMode, enabled: boolean, focused: boolean) {
   const { api } = useAuth();
   const [terminal, setTerminal] = useState<UserMt5Terminal | null>(null);
   const [running, setRunning] = useState<UserMt5RunningResult | null>(null);
@@ -17,6 +17,8 @@ export function useMt5Terminal(subTab: Mt5SubTab, enabled: boolean) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const active = enabled && focused;
 
   const loadTerminal = useCallback(
     async (background = false) => {
@@ -74,25 +76,25 @@ export function useMt5Terminal(subTab: Mt5SubTab, enabled: boolean) {
   }, [api, enabled]);
 
   useEffect(() => {
-    if (enabled) void loadTerminal();
-  }, [enabled, loadTerminal]);
+    if (enabled && focused) void loadTerminal();
+  }, [enabled, focused, loadTerminal]);
 
   useAppActive(
     () => void loadRunning(),
-    enabled && (subTab === "trades" || subTab === "chart"),
-    1000,
+    active && (mode === "trades" || mode === "chart"),
+    800,
   );
 
   useAppActive(
     () => void loadQuotes(),
-    enabled && (subTab === "quotes" || subTab === "chart"),
-    1000,
+    active && mode === "chart",
+    800,
   );
 
   useAppActive(
     () => void loadTerminal(true),
-    enabled && subTab === "chart",
-    5000,
+    active && (mode === "chart" || mode === "trades"),
+    4000,
   );
 
   return {

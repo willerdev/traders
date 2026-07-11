@@ -164,6 +164,31 @@ enum Mt5LinkRequestStatus {
   LINKED
 }
 
+enum EvaluationType {
+  ZERO
+  ONE_STEP
+  TWO_STEP
+}
+
+enum EvaluationVariant {
+  STANDARD
+  FLEX
+  PRO
+}
+
+enum EvaluationPhase {
+  EVALUATION
+  MASTER
+}
+
+enum EvaluationStatus {
+  PENDING
+  ACTIVE
+  PASSED
+  BREACHED
+  EXPIRED
+}
+
 model User {
   id                String     @id @default(cuid())
   email             String?    @unique
@@ -240,6 +265,7 @@ model User {
   marketingEmails    MarketingEmail[]
   mt5SyncLinks       Mt5SyncLink[]
   mt5LinkRequests    Mt5LinkRequest[]
+  evaluationEnrollments EvaluationEnrollment[]
   referredBy         User?   @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
   referrals          User[]  @relation("UserReferrals")
   referralSettlements ReferralSettlement[]
@@ -713,6 +739,41 @@ model Payment {
   @@index([status])
   @@index([status, payAddress])
   @@map("payments")
+}
+
+model EvaluationEnrollment {
+  id                   String            @id @default(cuid())
+  userId               String
+  type                 EvaluationType
+  variant              EvaluationVariant @default(FLEX)
+  planId               String
+  evaluationSize       Decimal           @db.Decimal(18, 2)
+  feeUsdt              Decimal           @db.Decimal(18, 8)
+  status               EvaluationStatus  @default(PENDING)
+  phase                EvaluationPhase   @default(EVALUATION)
+  maxLossPercent       Decimal           @db.Decimal(8, 4)
+  dailyLossPercent     Decimal           @db.Decimal(8, 4)
+  profitTargetPhase1   Decimal?          @db.Decimal(8, 4)
+  profitTargetPhase2   Decimal?          @db.Decimal(8, 4)
+  consistencyPercent   Decimal?          @db.Decimal(8, 4)
+  profitSplitLabel     String
+  metaApiAccountId     String?
+  startEquity          Decimal?          @db.Decimal(18, 8)
+  highWaterMark        Decimal?          @db.Decimal(18, 8)
+  dayStartEquity       Decimal?          @db.Decimal(18, 8)
+  dayStartedAt         DateTime?
+  currentEquity        Decimal?          @db.Decimal(18, 8)
+  breachedAt           DateTime?
+  breachReason         String?
+  paymentId            String?           @unique
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([status])
+  @@map("evaluation_enrollments")
 }
 
 model Violation {

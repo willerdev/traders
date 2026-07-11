@@ -14,6 +14,7 @@ import {
   LineChart,
   ScrollText,
   TrendingUp,
+  Target,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore, useDashboardStore } from "@/stores/auth";
@@ -30,6 +31,7 @@ import {
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", shortLabel: "Home", icon: LayoutDashboard },
+  { href: "/evaluations", label: "Evaluations", shortLabel: "Evals", icon: Target },
   { href: "/invest", label: "Invest", shortLabel: "Invest", icon: TrendingUp },
   { href: "/wallet", label: "Wallet", shortLabel: "Wallet", icon: Wallet },
   { href: "/journal", label: "Journal", shortLabel: "Journal", icon: ScrollText },
@@ -83,6 +85,11 @@ function PublicHeader() {
           <Logo className="text-lg" />
         </Link>
         <div className="flex gap-2">
+          <Link href="/evaluations">
+            <Button variant="ghost" size="sm">
+              Evaluations
+            </Button>
+          </Link>
           <Link href="/login">
             <Button variant="ghost" size="sm">
               Login

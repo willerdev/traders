@@ -1,36 +1,36 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { WebView } from "react-native-webview";
 import { useAuth } from "../stores/auth";
+import { useTheme } from "../stores/theme";
 import type { UserMt5OhlcBar } from "../lib/types";
-import { colors } from "../theme/colors";
 
 const TIMEFRAMES = ["M1", "M5", "M15", "H1", "H4", "D1"] as const;
 export type Mt5ChartTimeframe = (typeof TIMEFRAMES)[number];
 
-function chartHtml(): string {
+function chartHtml(bg: string, grid: string, text: string, buy: string, sell: string): string {
   return `<!DOCTYPE html>
 <html><head>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  html, body, #chart { width:100%; height:100%; background:#1a1d24; }
+  html, body, #chart { width:100%; height:100%; background:${bg}; }
 </style>
 </head><body>
 <div id="chart"></div>
 <script>
   var chart = LightweightCharts.createChart(document.getElementById('chart'), {
-    layout: { background: { color: '#1a1d24' }, textColor: '#9aa4b2' },
-    grid: { vertLines: { color: '#2a2f3a' }, horzLines: { color: '#2a2f3a' } },
+    layout: { background: { color: '${bg}' }, textColor: '${text}' },
+    grid: { vertLines: { color: '${grid}' }, horzLines: { color: '${grid}' } },
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-    rightPriceScale: { borderColor: '#2a2f3a' },
-    timeScale: { borderColor: '#2a2f3a', timeVisible: true, secondsVisible: false },
+    rightPriceScale: { borderColor: '${grid}' },
+    timeScale: { borderColor: '${grid}', timeVisible: true, secondsVisible: false },
   });
   var series = chart.addCandlestickSeries({
-    upColor: '#4a9eff', downColor: '#ff5252',
-    borderUpColor: '#4a9eff', borderDownColor: '#ff5252',
-    wickUpColor: '#4a9eff', wickDownColor: '#ff5252',
+    upColor: '${buy}', downColor: '${sell}',
+    borderUpColor: '${buy}', borderDownColor: '${sell}',
+    wickUpColor: '${buy}', wickDownColor: '${sell}',
   });
   function resize() {
     var el = document.getElementById('chart');
@@ -49,8 +49,6 @@ function chartHtml(): string {
     } catch (err) {}
   }
   window.setChartBars = function(raw) { handleData(raw); };
-  document.addEventListener('message', function(e) { handleData(e.data); });
-  window.addEventListener('message', function(e) { handleData(e.data); });
 </script>
 </body></html>`;
 }
@@ -58,14 +56,22 @@ function chartHtml(): string {
 type Props = {
   symbol: string;
   height?: number;
+  flex?: boolean;
 };
 
-export function Mt5ChartWebView({ symbol, height = 240 }: Props) {
+export function Mt5ChartWebView({ symbol, height = 280, flex }: Props) {
   const { api } = useAuth();
+  const { theme } = useTheme();
+  const styles = useStyles();
   const webRef = useRef<WebView>(null);
   const [timeframe, setTimeframe] = useState<Mt5ChartTimeframe>("M5");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const html = useMemo(
+    () => chartHtml(theme.chartBg, theme.chartGrid, theme.chartText, theme.buy, theme.sell),
+    [theme],
+  );
 
   const pushBars = useCallback((bars: UserMt5OhlcBar[]) => {
     const json = JSON.stringify({ bars });
@@ -96,7 +102,7 @@ export function Mt5ChartWebView({ symbol, height = 240 }: Props) {
   }, [api, symbol, timeframe, pushBars]);
 
   return (
-    <View style={[styles.wrap, { height }]}>
+    <View style={[styles.wrap, flex ? styles.wrapFlex : { height }]}>
       <View style={styles.tfRow}>
         {TIMEFRAMES.map((tf) => (
           <Pressable
@@ -104,19 +110,18 @@ export function Mt5ChartWebView({ symbol, height = 240 }: Props) {
             onPress={() => setTimeframe(tf)}
             style={[styles.chip, timeframe === tf && styles.chipActive]}
           >
-            <Text style={styles.chipText}>{tf}</Text>
+            <Text style={[styles.chipText, timeframe === tf && styles.chipTextActive]}>{tf}</Text>
           </Pressable>
         ))}
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <View style={styles.chartBox}>
-        {loading ? (
-          <ActivityIndicator color={colors.primary} style={styles.loader} />
-        ) : null}
+        {loading ? <ActivityIndicator color={theme.primary} style={styles.loader} /> : null}
         <WebView
+          key={theme.mode}
           ref={webRef}
           originWhitelist={["*"]}
-          source={{ html: chartHtml() }}
+          source={{ html }}
           style={styles.web}
           scrollEnabled={false}
           onLoadEnd={() => {
@@ -130,20 +135,35 @@ export function Mt5ChartWebView({ symbol, height = 240 }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: { marginBottom: 8 },
-  tfRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 },
-  chip: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: colors.divider,
-  },
-  chipActive: { borderColor: colors.buy, backgroundColor: "rgba(74,158,255,0.12)" },
-  chipText: { color: colors.text, fontSize: 11, fontWeight: "600" },
-  chartBox: { flex: 1, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: colors.divider },
-  web: { flex: 1, backgroundColor: colors.bg },
-  loader: { position: "absolute", alignSelf: "center", top: "40%", zIndex: 2 },
-  error: { color: colors.error, fontSize: 12, marginBottom: 6 },
-});
+function useStyles() {
+  const { theme } = useTheme();
+  return useMemo(
+    () =>
+      StyleSheet.create({
+        wrap: { marginBottom: 8 },
+        wrapFlex: { flex: 1, marginBottom: 0 },
+        tfRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 10 },
+        chip: {
+          paddingHorizontal: 10,
+          paddingVertical: 6,
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: theme.divider,
+        },
+        chipActive: { borderColor: theme.buy, backgroundColor: theme.chipActiveBg },
+        chipText: { color: theme.muted, fontSize: 11, fontWeight: "700" },
+        chipTextActive: { color: theme.text },
+        chartBox: {
+          flex: 1,
+          borderRadius: 14,
+          overflow: "hidden",
+          borderWidth: 1,
+          borderColor: theme.divider,
+        },
+        web: { flex: 1, backgroundColor: theme.chartBg },
+        loader: { position: "absolute", alignSelf: "center", top: "40%", zIndex: 2 },
+        error: { color: theme.error, fontSize: 12, marginBottom: 6 },
+      }),
+    [theme],
+  );
+}

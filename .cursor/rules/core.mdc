@@ -1,0 +1,34 @@
+---
+description: TraderRank Pro monorepo essentials
+alwaysApply: true
+---
+
+# TraderRank Pro
+
+Monorepo: `frontend/` (Next.js 15), `backend/` (NestJS + Prisma), `mt5-guard/` (Expo), `local-admin/`.
+
+## Stack
+
+Next.js 15 · NestJS · PostgreSQL (Neon) · JWT/OAuth/wallet auth · NOWPayments USDT · Render deploy
+
+## Key paths
+
+| Area | Path |
+|------|------|
+| API modules | `backend/src/<feature>/` |
+| Pages | `frontend/src/app/` |
+| Schema | `backend/prisma/schema.prisma` |
+| Support KB | `backend/src/ai/knowledge/platform-knowledge.md` |
+| Webhooks | `docs/TRADE_WEBHOOK.md`, `docs/SIGNAL_INGEST_API.md` |
+
+## Non-obvious business rules
+
+- KYC required for **payouts only** — not registration or signal submit
+- Payout split: **40% trader / 60% platform**
+- Virtual account: $1K start, 5% risk per trade, Bronze → Elite tiers
+- Prisma uses **`db push`** — no migration files
+- Registration payment (or promo) required for **ACTIVE** status
+
+## Details on demand
+
+Full API table and setup: `README.md`. MT5 Guard spec: `mt5-guard/THIRD_PARTY_PROMPTS.md`.

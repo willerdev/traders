@@ -1,0 +1,12 @@
+---
+description: Next.js frontend conventions
+globs: frontend/**/*
+alwaysApply: false
+---
+
+# Frontend
+
+- App Router: `frontend/src/app/` · Zustand: `frontend/src/stores/`
+- API proxy routes: `frontend/src/app/api/` → backend `/api/v1`
+- Submit page: review-before-submit flow + draft resume
+- Read `node_modules/next/dist/docs/` for this Next.js version — APIs may differ from training data

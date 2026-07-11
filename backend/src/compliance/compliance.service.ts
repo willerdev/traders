@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EvaluationStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { hasActiveTradingAccess } from '../common/weekly-access.util';
 
@@ -28,6 +29,26 @@ export class ComplianceService {
     }
 
     return user;
+  }
+
+  /** Block MT5 when the trader's latest evaluation was breached. */
+  async requireEvaluationTradingAccess(userId: string) {
+    await this.requireActiveTrader(userId);
+
+    const active = await this.prisma.evaluationEnrollment.findFirst({
+      where: { userId, status: EvaluationStatus.ACTIVE },
+    });
+    if (active) return;
+
+    const latest = await this.prisma.evaluationEnrollment.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (latest?.status === EvaluationStatus.BREACHED) {
+      throw new ForbiddenException(
+        `Evaluation ended — ${latest.breachReason ?? 'risk limit reached'}. Start a new program to trade again.`,
+      );
+    }
   }
 
   async requireKycForPayout(userId: string) {

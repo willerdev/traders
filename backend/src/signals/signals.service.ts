@@ -2304,7 +2304,7 @@ export class SignalsService {
     signalId: string,
     volume: number,
   ) {
-    await this.compliance.requireActiveTrader(userId);
+    await this.compliance.requireEvaluationTradingAccess(userId);
 
     if (!this.metaApi.isConfigured) {
       throw new ServiceUnavailableException('Live trading is not configured');
@@ -5037,7 +5037,7 @@ export class SignalsService {
 
   /** Live quotes for symbols with open submitted setups (platform MT5). */
   async getUserMt5Quotes(userId: string) {
-    await this.compliance.requireActiveTrader(userId);
+    await this.compliance.requireEvaluationTradingAccess(userId);
 
     const platformAccountId = this.metaApi.getConfiguredDefaultAccountId();
     if (!this.metaApi.isConfigured || !platformAccountId) {
@@ -5123,7 +5123,7 @@ export class SignalsService {
 
   /** Live MetaAPI quote for any chart symbol on the platform MT5 account. */
   async getUserMt5Quote(userId: string, symbol: string) {
-    await this.compliance.requireActiveTrader(userId);
+    await this.compliance.requireEvaluationTradingAccess(userId);
 
     const canonical = symbol?.trim();
     if (!canonical) {
@@ -5160,7 +5160,7 @@ export class SignalsService {
     timeframe: string,
     limit?: number,
   ) {
-    await this.compliance.requireActiveTrader(userId);
+    await this.compliance.requireEvaluationTradingAccess(userId);
 
     const canonical = symbol?.trim();
     if (!canonical) {
@@ -5395,7 +5395,7 @@ export class SignalsService {
   }
 
   async getUserMt5Terminal(userId: string) {
-    await this.compliance.requireActiveTrader(userId);
+    await this.compliance.requireEvaluationTradingAccess(userId);
 
     const { user, syncActive, platformAccountId, terminalAccountId, copyOwner } =
       await this.resolveUserMt5TerminalContext(userId);
@@ -5740,7 +5740,7 @@ export class SignalsService {
 
   /** Lightweight poll for running trades only (MT5 Trades tab). */
   async getUserMt5RunningTrades(userId: string) {
-    await this.compliance.requireActiveTrader(userId);
+    await this.compliance.requireEvaluationTradingAccess(userId);
 
     const { user, syncActive, terminalAccountId, copyOwner } =
       await this.resolveUserMt5TerminalContext(userId);
@@ -5949,7 +5949,7 @@ export class SignalsService {
     symbolRaw: string,
     directionRaw: string,
   ) {
-    await this.compliance.requireActiveTrader(userId);
+    await this.compliance.requireEvaluationTradingAccess(userId);
 
     if (!this.metaApi.isConfigured) {
       throw new ServiceUnavailableException(
@@ -6026,7 +6026,7 @@ export class SignalsService {
   }
 
   async placeMt5MarketOrder(userId: string, dto: PlaceMt5MarketOrderDto) {
-    await this.compliance.requireActiveTrader(userId);
+    await this.compliance.requireEvaluationTradingAccess(userId);
 
     if (!this.metaApi.isConfigured) {
       throw new ServiceUnavailableException(
@@ -6255,7 +6255,7 @@ export class SignalsService {
     positionId: string,
     dto: ModifyMt5PositionStopsDto,
   ) {
-    await this.compliance.requireActiveTrader(userId);
+    await this.compliance.requireEvaluationTradingAccess(userId);
 
     if (dto.stopLoss === undefined && dto.takeProfit === undefined) {
       throw new BadRequestException('Provide stopLoss and/or takeProfit to update');
@@ -6391,7 +6391,7 @@ export class SignalsService {
   }
 
   async closeUserMetaApiPosition(userId: string, positionId: string) {
-    await this.compliance.requireActiveTrader(userId);
+    await this.compliance.requireEvaluationTradingAccess(userId);
 
     if (!this.metaApi.isConfigured) {
       throw new ServiceUnavailableException('Live trading is not configured');
@@ -6445,7 +6445,7 @@ export class SignalsService {
 
   /** Close every running MT5 position owned by the user on platform account. */
   async closeAllUserMt5Positions(userId: string) {
-    await this.compliance.requireActiveTrader(userId);
+    await this.compliance.requireEvaluationTradingAccess(userId);
 
     const running = await this.getUserMt5RunningTrades(userId);
     const results: {

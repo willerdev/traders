@@ -157,6 +157,7 @@ export class WalletService {
           'profit_share',
           'mt5_sync',
           'investor_enrollment',
+          'evaluation_enrollment',
         ].includes(p.purpose),
       )
       .reduce((s, p) => s + Number(p.amount), 0);

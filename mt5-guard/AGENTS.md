@@ -1,3 +1,4 @@
-# Expo HAS CHANGED
+# MT5 Guard
 
-Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before writing any code.
+Expo v57 — https://docs.expo.dev/versions/v57.0.0/
+Project rules: `../.cursor/rules/mt5-guard.mdc`

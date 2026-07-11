@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Modal,
   Pressable,
@@ -10,7 +10,7 @@ import {
 import { useAuth } from "../stores/auth";
 import { computeOneToOneTakeProfit } from "../lib/mt5-order-stops";
 import { fmtPrice } from "../lib/format";
-import { colors } from "../theme/colors";
+import { useTheme } from "../stores/theme";
 import type { Mt5MarketOrderPreview } from "../lib/types";
 import { PrimaryButton, SecondaryButton } from "./ui";
 
@@ -30,6 +30,8 @@ export function PlaceOrderModal({
   onPlaced,
 }: Props) {
   const { api } = useAuth();
+  const { theme } = useTheme();
+  const styles = useModalStyles();
   const [preview, setPreview] = useState<Mt5MarketOrderPreview | null>(null);
   const [stopLoss, setStopLoss] = useState("");
   const [takeProfit, setTakeProfit] = useState("");
@@ -90,7 +92,7 @@ export function PlaceOrderModal({
     }
   }
 
-  const accent = direction === "BUY" ? colors.buy : colors.sell;
+  const accent = direction === "BUY" ? theme.buy : theme.sell;
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
@@ -158,33 +160,43 @@ export function PlaceOrderModal({
   );
 }
 
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    justifyContent: "flex-end",
-  },
-  sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    gap: 10,
-  },
-  title: { color: colors.text, fontSize: 18, fontWeight: "700" },
-  sub: { color: colors.muted, fontSize: 12, marginBottom: 8 },
-  row: { flexDirection: "row", justifyContent: "space-between" },
-  muted: { color: colors.muted, fontSize: 13 },
-  value: { color: colors.text, fontWeight: "600" },
-  label: { color: colors.muted, fontSize: 12, marginTop: 4 },
-  input: {
-    backgroundColor: colors.bg,
-    borderWidth: 1,
-    borderColor: colors.divider,
-    borderRadius: 8,
-    padding: 12,
-    color: colors.text,
-  },
-  error: { color: colors.error, fontSize: 12 },
-  actions: { flexDirection: "row", gap: 10, marginTop: 8, alignItems: "stretch" },
-});
+function useModalStyles() {
+  const { theme } = useTheme();
+  return useMemo(
+    () =>
+      StyleSheet.create({
+        overlay: {
+          flex: 1,
+          backgroundColor: theme.overlay,
+          justifyContent: "flex-end",
+        },
+        sheet: {
+          backgroundColor: theme.surface,
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
+          padding: 24,
+          gap: 10,
+          borderTopWidth: 1,
+          borderColor: theme.divider,
+        },
+        title: { color: theme.text, fontSize: 20, fontWeight: "800" },
+        sub: { color: theme.muted, fontSize: 12, marginBottom: 8 },
+        row: { flexDirection: "row", justifyContent: "space-between" },
+        muted: { color: theme.muted, fontSize: 13 },
+        value: { color: theme.text, fontWeight: "700" },
+        label: { color: theme.muted, fontSize: 12, marginTop: 4 },
+        input: {
+          backgroundColor: theme.inputBg,
+          borderWidth: 1,
+          borderColor: theme.divider,
+          borderRadius: 12,
+          padding: 14,
+          color: theme.text,
+          fontSize: 16,
+        },
+        error: { color: theme.error, fontSize: 12 },
+        actions: { flexDirection: "row", gap: 10, marginTop: 8, alignItems: "stretch" },
+      }),
+    [theme],
+  );
+}

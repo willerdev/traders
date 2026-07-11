@@ -371,6 +371,29 @@ export class Mt5PoolService {
     return this.linkUserAccount(userId, input);
   }
 
+  async assignFirstAvailableAccount(userId: string) {
+    const pool = await this.listLinkableAccounts(userId);
+    const candidate = pool.items.find(
+      (row) => row.available && !row.assignedToYou,
+    );
+    if (!candidate) {
+      this.logger.warn(`No pool MT5 account available for user ${userId}`);
+      return null;
+    }
+
+    await this.assertAccountLinkable(userId, candidate.id);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { metaApiAccountId: candidate.id },
+    });
+
+    this.logger.log(
+      `Assigned pool MetaAPI account ${candidate.id} to user ${userId}`,
+    );
+
+    return { accountId: candidate.id, account: candidate };
+  }
+
   async assertAccountLinkable(userId: string, accountId: string) {
     const reserved = this.reservedAccountIds();
     if (reserved.has(accountId)) {

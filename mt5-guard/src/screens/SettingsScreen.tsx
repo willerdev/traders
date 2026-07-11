@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -13,7 +13,9 @@ import {
 import * as Linking from "expo-linking";
 import { useAuth } from "../stores/auth";
 import { WEB_APP_URL } from "../config/env";
-import { colors } from "../theme/colors";
+import { useTheme } from "../stores/theme";
+import { PageHeader } from "../components/PageHeader";
+import { ThemeSelector } from "../components/ThemeSelector";
 import type { MetaApiAccountRow, Mt5SyncStatus, SavedWithdrawalWallet, UserSettings } from "../lib/types";
 import { Card, FieldLabel, PrimaryButton, Screen, SecondaryButton } from "../components/ui";
 import { canAccessMt5Copy } from "../lib/copy-access";
@@ -21,6 +23,8 @@ import { WithdrawalWalletsSection } from "../components/WithdrawalWalletsSection
 
 export function SettingsScreen() {
   const { api, user, dashboard, logout } = useAuth();
+  const { theme } = useTheme();
+  const styles = useSettingsStyles();
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [sync, setSync] = useState<Mt5SyncStatus | null>(null);
   const [accounts, setAccounts] = useState<MetaApiAccountRow[]>([]);
@@ -185,10 +189,16 @@ export function SettingsScreen() {
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={() => void load()} tintColor={colors.primary} />
+          <RefreshControl refreshing={loading} onRefresh={() => void load()} tintColor={theme.primary} />
         }
       >
-        <Text style={styles.title}>Settings</Text>
+        <PageHeader title="Settings" subtitle="Profile, accounts & preferences" />
+
+        <Card>
+          <Text style={[styles.section, { color: theme.text }]}>Appearance</Text>
+          <Text style={[styles.muted, { color: theme.muted }]}>Black, white, or blue (web style)</Text>
+          <ThemeSelector />
+        </Card>
 
         <Card>
           <Text style={styles.section}>Profile</Text>
@@ -197,7 +207,7 @@ export function SettingsScreen() {
           <FieldLabel>Phone</FieldLabel>
           <TextInput style={styles.input} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
           <FieldLabel>Date of birth</FieldLabel>
-          <TextInput style={styles.input} value={dob} onChangeText={setDob} placeholder="YYYY-MM-DD" placeholderTextColor={colors.muted} />
+          <TextInput style={styles.input} value={dob} onChangeText={setDob} placeholder="YYYY-MM-DD" placeholderTextColor={theme.muted} />
           <PrimaryButton label="Save profile" onPress={() => void saveProfile()} />
         </Card>
 
@@ -307,38 +317,45 @@ export function SettingsScreen() {
         <PrimaryButton
           label="Log out"
           onPress={() => void logout()}
-          color={colors.sell}
+          color={theme.sell}
         />
       </ScrollView>
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  content: { padding: 16, gap: 12, paddingBottom: 40 },
-  title: { color: colors.text, fontSize: 22, fontWeight: "700", marginBottom: 4 },
-  section: { color: colors.text, fontWeight: "700", marginBottom: 8 },
-  muted: { color: colors.muted, fontSize: 12, marginBottom: 8 },
-  input: {
-    backgroundColor: colors.bg,
-    borderWidth: 1,
-    borderColor: colors.divider,
-    borderRadius: 8,
-    padding: 12,
-    color: colors.text,
-    marginBottom: 10,
-  },
-  methodRow: { flexDirection: "row", gap: 8, marginBottom: 8 },
-  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.divider },
-  chipActive: { borderColor: colors.buy, backgroundColor: "rgba(74,158,255,0.1)" },
-  chipText: { color: colors.text, fontSize: 12, fontWeight: "600" },
-  accountRow: {
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: colors.divider,
-  },
-  accountName: { color: colors.text, fontWeight: "600" },
-  syncRow: { flexDirection: "row", alignItems: "center" },
-  linkRow: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.divider },
-  link: { color: colors.buy, fontWeight: "600" },
-});
+function useSettingsStyles() {
+  const { theme } = useTheme();
+  return useMemo(
+    () =>
+      StyleSheet.create({
+        content: { paddingHorizontal: 20, gap: 12, paddingBottom: 40 },
+        section: { fontWeight: "800", marginBottom: 8, fontSize: 15 },
+        muted: { fontSize: 12, marginBottom: 12 },
+        input: {
+          backgroundColor: theme.inputBg,
+          borderWidth: 1,
+          borderColor: theme.divider,
+          borderRadius: 12,
+          padding: 14,
+          color: theme.text,
+          marginBottom: 10,
+          fontSize: 15,
+        },
+        methodRow: { flexDirection: "row", gap: 8, marginBottom: 8 },
+        chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: theme.divider },
+        chipActive: { borderColor: theme.buy, backgroundColor: theme.chipActiveBg },
+        chipText: { color: theme.text, fontSize: 12, fontWeight: "700" },
+        accountRow: {
+          paddingVertical: 12,
+          borderTopWidth: 1,
+          borderTopColor: theme.divider,
+        },
+        accountName: { color: theme.text, fontWeight: "700" },
+        syncRow: { flexDirection: "row", alignItems: "center" },
+        linkRow: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: theme.divider },
+        link: { color: theme.buy, fontWeight: "700", fontSize: 15 },
+      }),
+    [theme],
+  );
+}

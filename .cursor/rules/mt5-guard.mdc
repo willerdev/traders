@@ -1,0 +1,12 @@
+---
+description: MT5 Guard Expo mobile app
+globs: mt5-guard/**/*
+alwaysApply: false
+---
+
+# MT5 Guard
+
+- Expo v57 — read https://docs.expo.dev/versions/v57.0.0/ before writing code
+- API base: `https://traders-c53s.onrender.com/api/v1` · Web: `https://thetradeguard.com`
+- Never embed JWT_SECRET, METAAPI_TOKEN, or DB URLs in the app
+- Full build spec: `mt5-guard/THIRD_PARTY_PROMPTS.md` (reference when needed)

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -7,9 +7,10 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useAuth } from "../stores/auth";
-import { colors } from "../theme/colors";
+import { useTheme } from "../stores/theme";
 import type { AuthStackParamList } from "../navigation/types";
 import { PrimaryButton } from "../components/ui";
 
@@ -17,6 +18,8 @@ type Props = NativeStackScreenProps<AuthStackParamList, "Otp">;
 
 export function OtpScreen({ route }: Props) {
   const { verifyOtp, resendOtp } = useAuth();
+  const { theme } = useTheme();
+  const styles = useStyles();
   const { loginSessionId, email } = route.params;
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -56,50 +59,52 @@ export function OtpScreen({ route }: Props) {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Verify login</Text>
-      <Text style={styles.sub}>Code sent to {email}</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="000000"
-        placeholderTextColor={colors.muted}
-        keyboardType="number-pad"
-        maxLength={6}
-        value={code}
-        onChangeText={setCode}
-      />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <PrimaryButton
-        label={busy ? "Verifying…" : "Verify"}
-        onPress={() => void submit()}
-        disabled={busy}
-      />
-      <Pressable onPress={() => void resend()} disabled={cooldown > 0}>
-        <Text style={styles.resend}>
-          {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
-        </Text>
-      </Pressable>
-      {busy ? <ActivityIndicator color={colors.primary} style={{ marginTop: 16 }} /> : null}
-    </View>
+    <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]}>
+      <View style={styles.container}>
+        <Text style={[styles.title, { color: theme.text }]}>Verify login</Text>
+        <Text style={[styles.sub, { color: theme.muted }]}>Code sent to {email}</Text>
+        <TextInput
+          style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.divider, color: theme.text }]}
+          placeholder="000000"
+          placeholderTextColor={theme.muted}
+          keyboardType="number-pad"
+          maxLength={6}
+          value={code}
+          onChangeText={setCode}
+        />
+        {error ? <Text style={[styles.error, { color: theme.error }]}>{error}</Text> : null}
+        <PrimaryButton label={busy ? "Verifying…" : "Verify"} onPress={() => void submit()} disabled={busy} />
+        <Pressable onPress={() => void resend()} disabled={cooldown > 0}>
+          <Text style={[styles.resend, { color: theme.buy }]}>
+            {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
+          </Text>
+        </Pressable>
+        {busy ? <ActivityIndicator color={theme.primary} style={{ marginTop: 16 }} /> : null}
+      </View>
+    </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 24, justifyContent: "center" },
-  title: { color: colors.text, fontSize: 22, fontWeight: "700" },
-  sub: { color: colors.muted, marginBottom: 24, marginTop: 8 },
-  input: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.divider,
-    borderRadius: 10,
-    padding: 14,
-    color: colors.text,
-    fontSize: 24,
-    letterSpacing: 8,
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  error: { color: colors.error, marginBottom: 12 },
-  resend: { color: colors.buy, textAlign: "center", marginTop: 20 },
-});
+function useStyles() {
+  return useMemo(
+    () =>
+      StyleSheet.create({
+        safe: { flex: 1 },
+        container: { flex: 1, padding: 28, justifyContent: "center" },
+        title: { fontSize: 26, fontWeight: "800" },
+        sub: { marginBottom: 28, marginTop: 8, fontSize: 14 },
+        input: {
+          borderWidth: 1,
+          borderRadius: 12,
+          padding: 16,
+          fontSize: 28,
+          letterSpacing: 10,
+          textAlign: "center",
+          marginBottom: 16,
+        },
+        error: { marginBottom: 12, fontSize: 13 },
+        resend: { textAlign: "center", marginTop: 24, fontWeight: "600" },
+      }),
+    [],
+  );
+}

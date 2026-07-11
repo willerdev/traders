@@ -1,0 +1,20 @@
+# Dependencies & build output
+node_modules/
+dist/
+.next/
+.turbo/
+coverage/
+backend/uploads/
+
+# Large reference docs (use @-mention when needed)
+mt5-guard/THIRD_PARTY_PROMPTS.md
+docs/
+
+# Logs & env
+*.log
+.env
+.env.local
+backend/eng.traineddata
+
+# OS
+.DS_Store

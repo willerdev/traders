@@ -21,6 +21,7 @@ import { useUrlTab } from "@/hooks/use-url-tab";
 import { hasTradingAccess } from "@/lib/trading-access";
 import { cn, formatCurrency } from "@/lib/utils";
 import { WeeklyAccessGate } from "@/components/payments/weekly-access-gate";
+import { EvaluationStatusCard } from "@/components/evaluations/evaluation-status-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -115,6 +116,7 @@ export default function Mt5UserPage() {
   const [historyLoadingId, setHistoryLoadingId] = useState<string | null>(null);
   const [closingAll, setClosingAll] = useState(false);
   const [tradingAccess, setTradingAccess] = useState<boolean | null>(null);
+  const [evaluationBreached, setEvaluationBreached] = useState(false);
   const [hadPaidBefore, setHadPaidBefore] = useState(false);
   const [selectedChartSymbol, setSelectedChartSymbol] = useState<string | null>(
     null,
@@ -123,9 +125,13 @@ export default function Mt5UserPage() {
 
   const refreshTradingAccess = useCallback(async () => {
     try {
-      const dash = await api.users.dashboard();
+      const [dash, evaluation] = await Promise.all([
+        api.users.dashboard(),
+        api.evaluations.getActive().catch(() => null),
+      ]);
       setTradingAccess(dash?.user ? hasTradingAccess(dash.user) : false);
       setHadPaidBefore(Boolean(dash?.user?.registrationPaid));
+      setEvaluationBreached(evaluation?.status === "BREACHED");
     } catch {
       setTradingAccess(false);
     }
@@ -373,6 +379,14 @@ export default function Mt5UserPage() {
           title={hadPaidBefore ? "Renew to use MT5" : "Pay to unlock MT5"}
           description="MT5 quotes, setups, and live trading require an active weekly pass (7 days per payment)."
         />
+      </div>
+    );
+  }
+
+  if (evaluationBreached) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-6">
+        <EvaluationStatusCard />
       </div>
     );
   }

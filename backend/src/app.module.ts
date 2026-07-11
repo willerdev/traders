@@ -28,6 +28,7 @@ import { PublicModule } from './public/public.module';
 import { PresenceModule } from './presence/presence.module';
 import { WalletModule } from './wallet/wallet.module';
 import { InvestorModule } from './investor/investor.module';
+import { EvaluationsModule } from './evaluations/evaluations.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { InvestorModule } from './investor/investor.module';
     PresenceModule,
     WalletModule,
     InvestorModule,
+    EvaluationsModule,
   ],
 })
 export class AppModule {}

@@ -5,7 +5,9 @@ export type AuthStackParamList = {
 
 export type MainTabParamList = {
   Wallet: undefined;
-  MT5: undefined;
+  Charts: undefined;
+  Trade: undefined;
+  History: undefined;
   Settings: undefined;
 };
 

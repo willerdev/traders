@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View, type ViewStyle } from "react-native";
-import { colors } from "../theme/colors";
+import { useTheme } from "../stores/theme";
 import type { Mt5AccountMode } from "../lib/mt5-account-mode";
 
 export function Mt5AccountModeBadge({
@@ -11,16 +11,21 @@ export function Mt5AccountModeBadge({
   detail?: string | null;
   style?: ViewStyle;
 }) {
+  const { theme } = useTheme();
+  const isReal = mode === "real";
   return (
     <View
       style={[
         styles.badge,
-        mode === "real" ? styles.real : styles.demo,
+        {
+          backgroundColor: isReal ? `${theme.emerald}22` : `${theme.amber}22`,
+          borderColor: isReal ? theme.emerald : theme.amber,
+        },
         style,
       ]}
     >
-      <Text style={[styles.text, mode === "real" ? styles.realText : styles.demoText]}>
-        {mode === "real" ? "Real" : "Demo"}
+      <Text style={[styles.text, { color: isReal ? theme.emerald : theme.amber }]}>
+        {isReal ? "Real" : "Demo"}
         {detail ? ` · ${detail}` : ""}
       </Text>
     </View>
@@ -30,12 +35,9 @@ export function Mt5AccountModeBadge({
 const styles = StyleSheet.create({
   badge: {
     borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
   },
-  real: { backgroundColor: "rgba(52,211,153,0.15)" },
-  demo: { backgroundColor: "rgba(251,191,36,0.15)" },
-  text: { fontSize: 10, fontWeight: "700", textTransform: "uppercase" },
-  realText: { color: colors.emerald },
-  demoText: { color: colors.amber },
+  text: { fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.4 },
 });

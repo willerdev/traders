@@ -15,6 +15,7 @@ import {
   Wallet,
   LineChart,
   PiggyBank,
+  Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +57,15 @@ const paths = [
     href: "/register?intent=trader",
     cta: "Compete & Get Funded",
     accent: "border-rank-gold/30 bg-rank-gold/5",
+  },
+  {
+    icon: Target,
+    title: "Evaluations",
+    description:
+      "Professional evaluation programs with MT5 trading. Clear risk rules and profit splits when you pass.",
+    href: "/evaluations",
+    cta: "View Programs",
+    accent: "border-blue-500/30 bg-blue-500/5",
   },
 ];
 
@@ -117,6 +127,9 @@ export default function HomePage() {
     }
     if (path.title === "Depositor" && isLoggedIn) {
       return { ...path, href: "/dashboard?tab=depositor", cta: "Open Depositor" };
+    }
+    if (path.title === "Evaluations" && isLoggedIn) {
+      return { ...path, href: "/evaluations", cta: "Open Programs" };
     }
     return path;
   });
@@ -181,7 +194,7 @@ export default function HomePage() {
             One account can use all three.
           </p>
 
-          <div className="mx-auto mt-12 grid max-w-5xl gap-4 sm:grid-cols-3">
+          <div className="mx-auto mt-12 grid max-w-6xl gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {pathLinks.map((path, i) => {
               const Icon = path.icon;
               return (

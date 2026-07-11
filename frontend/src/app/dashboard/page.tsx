@@ -26,6 +26,7 @@ import {
   useDashboardTab,
 } from "@/components/dashboard/dashboard-hub-tabs";
 import { DepositorPanel } from "@/components/depositor/depositor-panel";
+import { EvaluationStatusCard } from "@/components/evaluations/evaluation-status-card";
 
 function DashboardBody() {
   const tab = useDashboardTab();
@@ -118,6 +119,8 @@ function DashboardBody() {
               onComplete={handleRegistrationComplete}
             />
           )}
+
+          <EvaluationStatusCard />
 
           {account && tradingActive && (
             <DashboardStats

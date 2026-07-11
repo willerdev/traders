@@ -12,6 +12,7 @@ import { ProfitShareModule } from '../profit-share/profit-share.module';
 import { Mt5SyncBillingModule } from '../mt5-sync/mt5-sync-billing.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { InvestorModule } from '../investor/investor.module';
+import { EvaluationsModule } from '../evaluations/evaluations.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { InvestorModule } from '../investor/investor.module';
     Mt5SyncBillingModule,
     forwardRef(() => WalletModule),
     forwardRef(() => InvestorModule),
+    forwardRef(() => EvaluationsModule),
   ],
   controllers: [PaymentsController],
   providers: [
