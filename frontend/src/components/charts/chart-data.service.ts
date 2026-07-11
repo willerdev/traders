@@ -291,6 +291,8 @@ export function subscribeRealtimeUpdates(
   options?: {
     isActive?: () => boolean;
     onResync?: (bars: OHLCBar[]) => void;
+    /** Candle tick interval ms — default 400 for sub-second chart updates. */
+    tickMs?: number;
   },
 ): () => void {
   const interval = TIMEFRAME_SECONDS[timeframe];
@@ -364,7 +366,7 @@ export function subscribeRealtimeUpdates(
     }
   };
 
-  const tickId = window.setInterval(tick, 1000);
+  const tickId = window.setInterval(tick, options?.tickMs ?? 400);
   const syncId = window.setInterval(() => void syncLastBarsFromApi(), 15_000);
   document.addEventListener("visibilitychange", onVisibilityChange);
 

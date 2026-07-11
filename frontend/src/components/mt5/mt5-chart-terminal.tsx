@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api } from "@/lib/api";
 import type {
   OpenSetupItem,
   UserMt5AccountSummary,
@@ -20,7 +19,6 @@ import {
   CHART_TIMEFRAMES,
   type ChartTimeframe,
 } from "@/components/charts/chart-types";
-import type { RealtimeQuote } from "@/components/charts/chart-data.service";
 import { useChartWatchlist } from "@/components/charts/use-chart-watchlist";
 import { buildMt5ChartOverlays } from "@/components/mt5/build-mt5-chart-overlays";
 import { persistStopChange } from "@/components/charts/persist-stop-change";
@@ -54,6 +52,7 @@ import {
   ChartToolsToolbar,
 } from "@/components/charts/chart-tools-toolbar";
 import { useChartTools } from "@/hooks/use-chart-tools";
+import { useChartLiveQuotes } from "@/hooks/use-chart-live-quotes";
 
 type Props = {
   quotes: UserMt5QuoteItem[];
@@ -157,72 +156,19 @@ export function Mt5ChartTerminal({
     removeDrawing,
   } = chartTools;
   const userDisplayName = useAuthStore((s) => s.user?.displayName ?? "");
-  const [fetchedQuotes, setFetchedQuotes] = useState<
-    Record<string, RealtimeQuote>
-  >({});
-
-  const selectedQuote = useMemo(
-    () => quotes.find((q) => q.symbol === selectedSymbol) ?? null,
-    [quotes, selectedSymbol],
+  const { liveQuote, getActiveQuote, watchlistQuotes } = useChartLiveQuotes(
+    selectedSymbol,
+    watchlist,
   );
-
-  const liveQuote = useMemo((): RealtimeQuote | null => {
-    if (
-      selectedQuote?.bid != null &&
-      selectedQuote?.ask != null &&
-      selectedQuote?.mid != null
-    ) {
-      return {
-        bid: selectedQuote.bid,
-        ask: selectedQuote.ask,
-        mid: selectedQuote.mid,
-      };
-    }
-    return fetchedQuotes[selectedSymbol] ?? null;
-  }, [selectedQuote, fetchedQuotes, selectedSymbol]);
 
   useEffect(() => {
     if (liveQuote?.mid != null) {
       checkPriceAlerts(selectedSymbol, liveQuote.mid);
     }
-    for (const [sym, quote] of Object.entries(fetchedQuotes)) {
+    for (const [sym, quote] of Object.entries(watchlistQuotes)) {
       if (quote.mid != null) checkPriceAlerts(sym, quote.mid);
     }
-  }, [liveQuote?.mid, fetchedQuotes, selectedSymbol, checkPriceAlerts]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const symbols = [...new Set([selectedSymbol, ...watchlist])].filter(Boolean);
-    if (symbols.length === 0) return;
-
-    async function poll() {
-      try {
-        const res = await api.signals.mt5BatchQuotes(symbols);
-        if (cancelled) return;
-        setFetchedQuotes((prev) => {
-          const next = { ...prev };
-          for (const item of res.items) {
-            if (item.mid == null) continue;
-            next[item.symbol] = {
-              bid: item.bid ?? undefined,
-              ask: item.ask ?? undefined,
-              mid: item.mid,
-            };
-          }
-          return next;
-        });
-      } catch {
-        /* keep last quotes */
-      }
-    }
-
-    void poll();
-    const id = window.setInterval(poll, 2000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [selectedSymbol, watchlist]);
+  }, [liveQuote?.mid, watchlistQuotes, selectedSymbol, checkPriceAlerts]);
 
   useEffect(() => {
     const others = watchlist.filter((sym) => sym !== selectedSymbol);
@@ -584,7 +530,7 @@ export function Mt5ChartTerminal({
             symbol={selectedSymbol}
             timeframe={timeframe}
             seedPrice={liveQuote?.mid ?? liveQuote?.bid}
-            getQuote={() => liveQuote}
+            getQuote={getActiveQuote}
             markers={markers}
             priceLines={priceLines}
             draggableLines={chartSettings.showSlTp}
