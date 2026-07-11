@@ -38,6 +38,7 @@ import {
   TradeDirection,
   User,
   UserRole,
+  EvaluationStatus,
 } from '@prisma/client';
 import { MetaApiService } from '../metaapi/metaapi.service';
 import {
@@ -5206,6 +5207,36 @@ export class SignalsService {
     return map;
   }
 
+  private async resolveEvaluationTradingAccount(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { selectedEvaluationEnrollmentId: true },
+    });
+    if (!user) return null;
+
+    let enrollmentId = user.selectedEvaluationEnrollmentId;
+    if (!enrollmentId) {
+      const fallback = await this.prisma.evaluationEnrollment.findFirst({
+        where: { userId, status: EvaluationStatus.ACTIVE },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      });
+      enrollmentId = fallback?.id ?? null;
+    }
+    if (!enrollmentId) return null;
+
+    const enrollment = await this.prisma.evaluationEnrollment.findFirst({
+      where: { id: enrollmentId, userId },
+    });
+    if (!enrollment?.metaApiAccountId?.trim()) return null;
+
+    return {
+      enrollment,
+      accountId: enrollment.metaApiAccountId.trim(),
+      breached: enrollment.status === EvaluationStatus.BREACHED,
+    };
+  }
+
   private async resolveUserMt5TerminalContext(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -5214,6 +5245,7 @@ export class SignalsService {
         adminCanManageCopy: true,
         displayName: true,
         metaApiAccountId: true,
+        selectedEvaluationEnrollmentId: true,
         mt5SyncActive: true,
         mt5SyncExpiresAt: true,
         mt5SyncEnabled: true,
@@ -5223,12 +5255,26 @@ export class SignalsService {
 
     const syncActive = hasActiveMt5Sync(user);
     const platformAccountId = this.metaApi.getConfiguredDefaultAccountId();
+    const copyOwner =
+      user.adminCanManageCopy && user.role !== UserRole.ADMIN;
+
+    const evaluationCtx = await this.resolveEvaluationTradingAccount(userId);
+    if (evaluationCtx && !evaluationCtx.breached) {
+      return {
+        user,
+        syncActive: false,
+        platformAccountId,
+        terminalAccountId: evaluationCtx.accountId,
+        copyOwner,
+        evaluationEnrollmentId: evaluationCtx.enrollment.id,
+        evaluationAccountId: evaluationCtx.accountId,
+      };
+    }
+
     const terminalAccountId =
       syncActive && user.metaApiAccountId?.trim()
         ? user.metaApiAccountId.trim()
-        : platformAccountId;
-    const copyOwner =
-      user.adminCanManageCopy && user.role !== UserRole.ADMIN;
+        : user.metaApiAccountId?.trim() || platformAccountId;
 
     return {
       user,
@@ -5236,6 +5282,8 @@ export class SignalsService {
       platformAccountId,
       terminalAccountId,
       copyOwner,
+      evaluationEnrollmentId: evaluationCtx?.enrollment.id ?? null,
+      evaluationAccountId: evaluationCtx?.accountId ?? null,
     };
   }
 
@@ -5289,6 +5337,7 @@ export class SignalsService {
       copyOwner: boolean;
       syncActive: boolean;
       metaApiAccountId: string | null;
+      evaluationAccountId?: string | null;
       investor: {
         investmentDeposited: number;
         mt5Balance?: number | null;
@@ -5298,13 +5347,14 @@ export class SignalsService {
     },
   ): Promise<{
     account: Awaited<ReturnType<SignalsService['buildMt5UserAccountSummary']>>;
-    accountSource: 'virtual' | 'copy_live' | 'linked_live' | 'investor_live';
+    accountSource: 'virtual' | 'copy_live' | 'linked_live' | 'investor_live' | 'evaluation_live';
   }> {
     const {
       floatingProfit,
       copyOwner,
       syncActive,
       metaApiAccountId,
+      evaluationAccountId,
       investor,
     } = input;
 
@@ -5316,18 +5366,27 @@ export class SignalsService {
       }
     }
 
-    if (syncActive && metaApiAccountId?.trim()) {
-      const terminal = await this.metaApi.getTerminalState(
-        metaApiAccountId.trim(),
-      );
-      if (terminal.information) {
-        return {
-          account: this.buildMt5LiveAccountSummary(
-            terminal.information,
-            floatingProfit,
-          ),
-          accountSource: 'linked_live',
-        };
+    const liveAccountId =
+      evaluationAccountId?.trim() ||
+      (syncActive ? metaApiAccountId?.trim() : null) ||
+      null;
+
+    if (liveAccountId && this.metaApi.isConfigured) {
+      try {
+        const terminal = await this.metaApi.getTerminalState(liveAccountId);
+        if (terminal.information) {
+          return {
+            account: this.buildMt5LiveAccountSummary(
+              terminal.information,
+              floatingProfit,
+            ),
+            accountSource: evaluationAccountId?.trim()
+              ? 'evaluation_live'
+              : 'linked_live',
+          };
+        }
+      } catch {
+        /* fall through to virtual ledger */
       }
     }
 
@@ -5397,12 +5456,19 @@ export class SignalsService {
   async getUserMt5Terminal(userId: string) {
     await this.compliance.requireEvaluationTradingAccess(userId);
 
-    const { user, syncActive, platformAccountId, terminalAccountId, copyOwner } =
-      await this.resolveUserMt5TerminalContext(userId);
+    const {
+      user,
+      syncActive,
+      platformAccountId,
+      terminalAccountId,
+      copyOwner,
+      evaluationEnrollmentId,
+      evaluationAccountId,
+    } = await this.resolveUserMt5TerminalContext(userId);
 
     const platformTrader = {
       displayName: user.displayName,
-      metaApiAccountId: syncActive ? user.metaApiAccountId : null,
+      metaApiAccountId: terminalAccountId,
     };
 
     const [openSetups, history] = await Promise.all([
@@ -5583,7 +5649,8 @@ export class SignalsService {
           ? await this.loadMt5SyncPositionMap(userId)
           : new Map<string, string>();
 
-        const [pendingOrders, openPositions] = syncActive
+        const useDedicatedAccount = Boolean(evaluationAccountId) || syncActive;
+        const [pendingOrders, openPositions] = useDedicatedAccount
           ? await Promise.all([
               this.metaApi.getOrders(account),
               this.metaApi.getPositions(account),
@@ -5709,6 +5776,7 @@ export class SignalsService {
         copyOwner,
         syncActive,
         metaApiAccountId: user.metaApiAccountId,
+        evaluationAccountId,
         investor,
       });
 
@@ -5717,6 +5785,8 @@ export class SignalsService {
       syncActive,
       copyOwner,
       accountSource,
+      selectedEvaluationEnrollmentId:
+        evaluationEnrollmentId ?? user.selectedEvaluationEnrollmentId ?? null,
       message: terminalError,
       account: accountLedger,
       investor: investor ?? undefined,
@@ -5742,7 +5812,7 @@ export class SignalsService {
   async getUserMt5RunningTrades(userId: string) {
     await this.compliance.requireEvaluationTradingAccess(userId);
 
-    const { user, syncActive, terminalAccountId, copyOwner } =
+    const { user, syncActive, terminalAccountId, copyOwner, evaluationAccountId } =
       await this.resolveUserMt5TerminalContext(userId);
 
     if (!this.metaApi.isConfigured || !terminalAccountId) {
@@ -5753,6 +5823,7 @@ export class SignalsService {
           copyOwner,
           syncActive,
           metaApiAccountId: user.metaApiAccountId,
+          evaluationAccountId,
           investor,
         });
       return {
@@ -5790,7 +5861,8 @@ export class SignalsService {
       : new Map<string, string>();
 
     const account = await this.metaApi.getAccount(terminalAccountId);
-    const positions = syncActive
+    const useDedicatedAccount = Boolean(evaluationAccountId) || syncActive;
+    const positions = useDedicatedAccount
       ? await this.metaApi.getPositions(account)
       : await this.metaApi.findUserOpenPositions(
           account,
@@ -5826,7 +5898,7 @@ export class SignalsService {
         currentPrice: pos.currentPrice,
         profit: pnl,
         positionId: pos.id,
-        canClose: Boolean(linked),
+        canClose: Boolean(linked) || Boolean(evaluationAccountId),
         canSetBreakeven: linked?.trade
           ? Boolean(
               linked.trade.activatedAt &&
@@ -5854,6 +5926,7 @@ export class SignalsService {
         copyOwner,
         syncActive,
         metaApiAccountId: user.metaApiAccountId,
+        evaluationAccountId,
         investor,
       });
 
@@ -5921,7 +5994,8 @@ export class SignalsService {
   }
 
   private async resolveMt5ChartTradingAccount(userId: string) {
-    const { user, copyOwner } = await this.resolveUserMt5TerminalContext(userId);
+    const { user, copyOwner, terminalAccountId } =
+      await this.resolveUserMt5TerminalContext(userId);
     if (copyOwner) {
       throw new BadRequestException(
         'Quick chart orders are not available on the MT5 Copy account',
@@ -5934,10 +6008,11 @@ export class SignalsService {
     });
     if (!dbUser) throw new NotFoundException('User not found');
 
-    const accountId = this.metaApi.resolveAccountId(dbUser.metaApiAccountId);
+    const accountId =
+      terminalAccountId || this.metaApi.resolveAccountId(dbUser.metaApiAccountId);
     if (!accountId) {
       throw new BadRequestException(
-        'No trading account linked — choose one in Settings → Live trading account',
+        'No trading account linked — select an evaluation account or link one in Settings',
       );
     }
 
@@ -5948,6 +6023,7 @@ export class SignalsService {
     userId: string,
     symbolRaw: string,
     directionRaw: string,
+    volumeRaw?: number,
   ) {
     await this.compliance.requireEvaluationTradingAccess(userId);
 
@@ -6001,6 +6077,10 @@ export class SignalsService {
       takeProfit: defaults.takeProfit,
       riskPercent: Math.max(riskPercent, RISK_PERCENT),
       maxRiskAmount,
+      fixedVolume:
+        volumeRaw != null && Number.isFinite(volumeRaw) && volumeRaw > 0
+          ? volumeRaw
+          : undefined,
       skipAiReview: true,
     });
 
@@ -6105,6 +6185,10 @@ export class SignalsService {
     const sizing = await this.tradeRisk.calculatePositionSize({
       ...riskInput,
       entryPrice: entry,
+      fixedVolume:
+        dto.volume != null && Number.isFinite(dto.volume) && dto.volume > 0
+          ? dto.volume
+          : undefined,
     });
 
     let placed;

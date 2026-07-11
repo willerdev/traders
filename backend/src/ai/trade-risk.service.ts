@@ -22,6 +22,8 @@ export type TradeRiskInput = {
   takeProfit: number;
   riskPercent?: number;
   maxRiskAmount?: number;
+  /** Use this lot size instead of risk-based sizing. */
+  fixedVolume?: number;
   /** Skip DeepSeek volume review for faster order placement on submit. */
   skipAiReview?: boolean;
 };
@@ -250,6 +252,35 @@ Rules:
     const slDistance = Math.abs(input.entryPrice - input.stopLoss);
     if (slDistance <= 0) {
       throw new BadRequestException('Stop loss must differ from entry price');
+    }
+
+    if (input.fixedVolume != null && input.fixedVolume > 0) {
+      const volume = this.roundVolume(
+        input.fixedVolume,
+        spec.volumeStep,
+        spec.minVolume,
+        spec.maxVolume,
+      );
+      const perLot = this.riskPerLot(slDistance, spec, price);
+      const estimatedLossAtSl = volume * perLot;
+      const effectiveRiskPercent =
+        equity > 0
+          ? Number(((estimatedLossAtSl / equity) * 100).toFixed(2))
+          : riskPercent;
+
+      return {
+        volume,
+        riskPercent: effectiveRiskPercent,
+        riskAmount: estimatedLossAtSl,
+        estimatedLossAtSl,
+        accountEquity: equity,
+        accountBalance: accountInfo.balance,
+        currency: accountInfo.currency,
+        aiManaged: false,
+        aiNotes: [`Manual lot size ${volume}`],
+        stopLoss: input.stopLoss,
+        takeProfit: input.takeProfit,
+      };
     }
 
     const base = this.baseVolume({

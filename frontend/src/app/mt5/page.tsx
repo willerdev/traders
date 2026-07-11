@@ -50,6 +50,7 @@ import { Mt5Assistant } from "@/components/mt5/mt5-assistant";
 import { useMt5ChartDisplaySettings } from "@/hooks/use-mt5-chart-display-settings";
 import { Mt5LiveSyncCard } from "@/components/mt5/mt5-live-sync-card";
 import { Mt5ChartTerminal } from "@/components/mt5/mt5-chart-terminal";
+import { Mt5EvaluationAccountPicker } from "@/components/mt5/mt5-evaluation-account-picker";
 import { Mt5SwipeableRow } from "@/components/mt5/mt5-swipeable-row";
 import {
   Mt5MobileBottomNav,
@@ -121,6 +122,9 @@ export default function Mt5UserPage() {
   const [selectedChartSymbol, setSelectedChartSymbol] = useState<string | null>(
     null,
   );
+  const [selectedEvaluationId, setSelectedEvaluationId] = useState<
+    string | null
+  >(null);
   const { settings: chartDisplaySettings } = useMt5ChartDisplaySettings();
 
   const refreshTradingAccess = useCallback(async () => {
@@ -165,6 +169,17 @@ export default function Mt5UserPage() {
     if (!ready) return;
     void refreshTradingAccess();
   }, [ready, refreshTradingAccess]);
+
+  useEffect(() => {
+    if (data?.selectedEvaluationEnrollmentId) {
+      setSelectedEvaluationId(data.selectedEvaluationEnrollmentId);
+    }
+  }, [data?.selectedEvaluationEnrollmentId]);
+
+  const handleEvaluationSelected = useCallback(() => {
+    void load({ background: false });
+    void loadRunning();
+  }, [load, loadRunning]);
 
   const setups = data?.setups.items ?? [];
   const history = data?.history.items ?? [];
@@ -637,6 +652,13 @@ export default function Mt5UserPage() {
             tab === "chart" && "md:flex md:min-h-0 md:flex-1",
           )}
         >
+          <Mt5EvaluationAccountPicker
+            selectedId={selectedEvaluationId}
+            onSelected={(id) => {
+              setSelectedEvaluationId(id);
+              handleEvaluationSelected();
+            }}
+          />
           <Mt5ChartTerminal
             quotes={quotes}
             runningTrades={runningTrades}

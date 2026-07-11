@@ -114,6 +114,65 @@ export class EvaluationsService {
     return rows.map((row) => this.serializeEnrollment(row));
   }
 
+  async listMine(userId: string) {
+    const [rows, user] = await Promise.all([
+      this.prisma.evaluationEnrollment.findMany({
+        where: {
+          userId,
+          status: {
+            notIn: [EvaluationStatus.PENDING],
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { selectedEvaluationEnrollmentId: true },
+      }),
+    ]);
+
+    const selectedId = user?.selectedEvaluationEnrollmentId ?? null;
+
+    return {
+      selectedEnrollmentId: selectedId,
+      items: rows.map((row) => ({
+        ...this.serializeEnrollment(row),
+        selected: row.id === selectedId,
+      })),
+    };
+  }
+
+  async selectEnrollment(userId: string, enrollmentId: string) {
+    const enrollment = await this.prisma.evaluationEnrollment.findFirst({
+      where: { id: enrollmentId, userId },
+    });
+    if (!enrollment) throw new NotFoundException('Evaluation not found');
+
+    if (enrollment.status === EvaluationStatus.PENDING) {
+      throw new BadRequestException('This evaluation is not active yet');
+    }
+
+    const metaApiAccountId = enrollment.metaApiAccountId?.trim() || null;
+    if (!metaApiAccountId) {
+      throw new BadRequestException(
+        'This evaluation does not have a trading account assigned yet',
+      );
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        selectedEvaluationEnrollmentId: enrollmentId,
+        metaApiAccountId,
+      },
+    });
+
+    return {
+      selectedEnrollmentId: enrollmentId,
+      enrollment: this.serializeEnrollment(enrollment),
+    };
+  }
+
   private serializeEnrollment(row: {
     id: string;
     type: EvaluationType;
@@ -501,7 +560,10 @@ export class EvaluationsService {
     if (metaApiAccountId) {
       await this.prisma.user.update({
         where: { id: userId },
-        data: { metaApiAccountId },
+        data: {
+          metaApiAccountId,
+          selectedEvaluationEnrollmentId: enrollmentId,
+        },
       });
     }
 

@@ -363,8 +363,15 @@ class ApiClient {
       this.request<CloseAllMt5Result>("/signals/mt5/positions/close-all", {
         method: "POST",
       }),
-    mt5OrderPreview: (symbol: string, direction: "BUY" | "SELL") => {
+    mt5OrderPreview: (
+      symbol: string,
+      direction: "BUY" | "SELL",
+      volume?: number,
+    ) => {
       const q = new URLSearchParams({ symbol, direction });
+      if (volume != null && Number.isFinite(volume) && volume > 0) {
+        q.set("volume", String(volume));
+      }
       return this.request<Mt5MarketOrderPreview>(
         `/signals/mt5/order-preview?${q}`,
       );
@@ -374,6 +381,7 @@ class ApiClient {
       direction: "BUY" | "SELL";
       stopLoss: number;
       takeProfit: number;
+      volume?: number;
     }) =>
       this.request<PlaceTradeResult>("/signals/mt5/orders", {
         method: "POST",
@@ -929,6 +937,13 @@ class ApiClient {
       this.request<EvaluationEnrollment | null>("/evaluations/active"),
     getHistory: () =>
       this.request<EvaluationEnrollment[]>("/evaluations/history"),
+    listMine: () =>
+      this.request<EvaluationMineResponse>("/evaluations/mine"),
+    select: (enrollmentId: string) =>
+      this.request<EvaluationSelectResult>(
+        `/evaluations/${encodeURIComponent(enrollmentId)}/select`,
+        { method: "POST" },
+      ),
     checkout: (input: {
       type: string;
       variant: string;
@@ -2176,7 +2191,12 @@ export interface UserMt5AccountSummary {
   equity: number;
 }
 
-export type UserMt5AccountSource = "virtual" | "copy_live" | "linked_live" | "investor_live";
+export type UserMt5AccountSource =
+  | "virtual"
+  | "copy_live"
+  | "linked_live"
+  | "investor_live"
+  | "evaluation_live";
 
 export interface UserMt5InvestorSummary {
   investmentDeposited: number;
@@ -2192,6 +2212,7 @@ export interface UserMt5Terminal {
   configured: boolean;
   copyOwner?: boolean;
   accountSource?: UserMt5AccountSource;
+  selectedEvaluationEnrollmentId?: string | null;
   message?: string;
   account?: UserMt5AccountSummary;
   investor?: UserMt5InvestorSummary;
@@ -2442,6 +2463,17 @@ export interface EvaluationEnrollment {
   breachReason: string | null;
   createdAt: string;
   updatedAt: string;
+  selected?: boolean;
+}
+
+export interface EvaluationMineResponse {
+  selectedEnrollmentId: string | null;
+  items: EvaluationEnrollment[];
+}
+
+export interface EvaluationSelectResult {
+  selectedEnrollmentId: string;
+  enrollment: EvaluationEnrollment;
 }
 
 export interface EvaluationCheckoutResult {

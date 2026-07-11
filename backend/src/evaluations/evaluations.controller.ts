@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Post,
   Request,
   UseGuards,
@@ -28,6 +29,21 @@ export class EvaluationsController {
   @UseGuards(JwtAuthGuard)
   getHistory(@Request() req: { user: { id: string } }) {
     return this.evaluations.getHistory(req.user.id);
+  }
+
+  @Get('mine')
+  @UseGuards(JwtAuthGuard)
+  listMine(@Request() req: { user: { id: string } }) {
+    return this.evaluations.listMine(req.user.id);
+  }
+
+  @Post(':id/select')
+  @UseGuards(JwtAuthGuard)
+  selectEnrollment(
+    @Request() req: { user: { id: string } },
+    @Param('id') id: string,
+  ) {
+    return this.evaluations.selectEnrollment(req.user.id, id);
   }
 
   @Post('checkout')

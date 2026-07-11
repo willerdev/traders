@@ -13,6 +13,7 @@ type Direction = "BUY" | "SELL";
 type Props = {
   symbol: string;
   direction: Direction;
+  volume?: number;
   open: boolean;
   onClose: () => void;
   onPlaced?: () => void;
@@ -21,6 +22,7 @@ type Props = {
 export function Mt5PlaceOrderModal({
   symbol,
   direction,
+  volume,
   open,
   onClose,
   onPlaced,
@@ -32,28 +34,48 @@ export function Mt5PlaceOrderModal({
   const [stopLoss, setStopLoss] = useState("");
   const [takeProfit, setTakeProfit] = useState("");
   const [tpManual, setTpManual] = useState(false);
+  const [orderVolume, setOrderVolume] = useState(
+    volume != null ? String(volume) : "0.01",
+  );
 
-  const loadPreview = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const next = await api.signals.mt5OrderPreview(symbol, direction);
-      setPreview(next);
-      setStopLoss(String(next.stopLoss));
-      setTakeProfit(String(next.takeProfit));
-      setTpManual(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load order preview");
-      setPreview(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [symbol, direction]);
+  useEffect(() => {
+    if (volume != null) setOrderVolume(String(volume));
+  }, [volume, open]);
+
+  const loadPreview = useCallback(
+    async (volumeOverride?: number) => {
+      setLoading(true);
+      setError(null);
+      const vol =
+        volumeOverride ??
+        (Number.isFinite(Number(orderVolume)) && Number(orderVolume) >= 0.01
+          ? Number(orderVolume)
+          : undefined);
+      try {
+        const next = await api.signals.mt5OrderPreview(symbol, direction, vol);
+        setPreview(next);
+        setStopLoss(String(next.stopLoss));
+        setTakeProfit(String(next.takeProfit));
+        setTpManual(false);
+        if (vol == null) {
+          setOrderVolume(String(next.risk.volume));
+        }
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Could not load order preview",
+        );
+        setPreview(null);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [symbol, direction, orderVolume],
+  );
 
   useEffect(() => {
     if (!open) return;
-    void loadPreview();
-  }, [open, loadPreview]);
+    void loadPreview(volume);
+  }, [open, symbol, direction, volume, loadPreview]);
 
   function handleStopLossChange(value: string) {
     setStopLoss(value);
@@ -68,8 +90,15 @@ export function Mt5PlaceOrderModal({
   async function handleSubmit() {
     const sl = Number(stopLoss);
     const tp = Number(takeProfit);
+    const vol = Number(orderVolume);
+    const effectiveVolume =
+      Number.isFinite(vol) && vol >= 0.01 ? vol : undefined;
     if (!Number.isFinite(sl) || !Number.isFinite(tp)) {
       setError("Enter valid stop loss and take profit levels");
+      return;
+    }
+    if (effectiveVolume == null) {
+      setError("Enter a valid lot size (minimum 0.01)");
       return;
     }
 
@@ -81,6 +110,7 @@ export function Mt5PlaceOrderModal({
         direction,
         stopLoss: sl,
         takeProfit: tp,
+        volume: effectiveVolume,
       });
       onPlaced?.();
       onClose();
@@ -151,9 +181,15 @@ export function Mt5PlaceOrderModal({
                 <p className="text-[10px] uppercase tracking-wide text-gray-500">
                   Volume
                 </p>
-                <p className="mt-0.5 font-semibold tabular-nums text-white">
-                  {preview?.risk.volume ?? "—"} lot
-                </p>
+                <Input
+                  type="number"
+                  min={0.01}
+                  step={0.01}
+                  value={orderVolume}
+                  onChange={(e) => setOrderVolume(e.target.value)}
+                  onBlur={() => void loadPreview()}
+                  className="mt-0.5 border-white/10 bg-black/30 px-0 text-sm font-semibold tabular-nums text-white shadow-none focus-visible:ring-0"
+                />
               </div>
             </div>
 

@@ -106,6 +106,7 @@ export function Mt5ChartTerminal({
 }: Props) {
   const chartRef = useRef<LightweightChartHandle>(null);
   const [orderModal, setOrderModal] = useState<"BUY" | "SELL" | null>(null);
+  const [lotSize, setLotSize] = useState("0.01");
   const chartAreaRef = useRef<HTMLDivElement>(null);
   const symbolSearchRef = useRef<HTMLInputElement>(null);
   const [timeframe, setTimeframe] = useState<ChartTimeframe>("M5");
@@ -309,20 +310,66 @@ export function Mt5ChartTerminal({
 
   const desktopTerminal = showOrdersPanel && !chartOnly;
 
+  function adjustLotSize(delta: number) {
+    setLotSize((prev) => {
+      const next = Math.max(0.01, Number(prev) + delta);
+      if (!Number.isFinite(next)) return "0.01";
+      return next.toFixed(2);
+    });
+  }
+
+  const parsedLotSize = Number(lotSize);
+  const orderVolume =
+    Number.isFinite(parsedLotSize) && parsedLotSize >= 0.01
+      ? parsedLotSize
+      : undefined;
+
   const orderActionBar = (
-    <div className="flex shrink-0 gap-2 border-t border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-2">
+    <div className="flex shrink-0 items-center justify-center gap-2 border-t border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-2">
       <button
         type="button"
         onClick={() => setOrderModal("BUY")}
-        className="flex-1 rounded-md py-2.5 text-sm font-bold uppercase tracking-wide text-white shadow-sm transition-opacity hover:opacity-90"
+        className="min-w-[4.75rem] rounded-md px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-white shadow-sm transition-opacity hover:opacity-90"
         style={{ backgroundColor: MT5_BUY }}
       >
         Buy
       </button>
+
+      <div className="flex items-center gap-1 rounded-md border border-[var(--mt5-divider)] bg-[var(--mt5-bg)] px-1.5 py-1">
+        <button
+          type="button"
+          onClick={() => adjustLotSize(-0.01)}
+          className="flex h-6 w-6 items-center justify-center rounded text-sm font-semibold text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)] hover:text-white"
+          aria-label="Decrease lot size"
+        >
+          −
+        </button>
+        <input
+          type="number"
+          min={0.01}
+          step={0.01}
+          value={lotSize}
+          onChange={(e) => setLotSize(e.target.value)}
+          className="w-14 bg-transparent text-center text-xs font-semibold tabular-nums text-white outline-none"
+          aria-label="Lot size"
+        />
+        <button
+          type="button"
+          onClick={() => adjustLotSize(0.01)}
+          className="flex h-6 w-6 items-center justify-center rounded text-sm font-semibold text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)] hover:text-white"
+          aria-label="Increase lot size"
+        >
+          +
+        </button>
+        <span className="pl-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--mt5-muted)]">
+          lot
+        </span>
+      </div>
+
       <button
         type="button"
         onClick={() => setOrderModal("SELL")}
-        className="flex-1 rounded-md py-2.5 text-sm font-bold uppercase tracking-wide text-white shadow-sm transition-opacity hover:opacity-90"
+        className="min-w-[4.75rem] rounded-md px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-white shadow-sm transition-opacity hover:opacity-90"
         style={{ backgroundColor: MT5_SELL }}
       >
         Sell
@@ -650,6 +697,7 @@ export function Mt5ChartTerminal({
         <Mt5PlaceOrderModal
           symbol={selectedSymbol}
           direction={orderModal}
+          volume={orderVolume}
           open
           onClose={() => setOrderModal(null)}
           onPlaced={() => {

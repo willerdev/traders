@@ -774,6 +774,11 @@ export class PlaceMt5MarketOrderDto {
 
   @IsNumber()
   takeProfit: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+  volume?: number;
 }
 
 export class PartialCloseSetupDto {

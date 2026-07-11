@@ -362,11 +362,15 @@ export class SignalsController {
     @Request() req: { user: { id: string } },
     @Query('symbol') symbol: string,
     @Query('direction') direction: string,
+    @Query('volume') volume?: string,
   ) {
+    const parsedVolume =
+      volume != null && volume.trim() !== '' ? Number(volume) : undefined;
     return this.signalsService.previewMt5MarketOrder(
       req.user.id,
       symbol,
       direction,
+      parsedVolume,
     );
   }
 
