@@ -109,8 +109,8 @@ export function pickDefaultChartSymbol(
   const prefs = (
     Array.isArray(preferred) ? preferred : preferred ? [preferred] : []
   )
-    .map((s) => s.trim().toUpperCase())
-    .filter(Boolean);
+    .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+    .map((s) => s.trim().toUpperCase());
 
   const pool = [
     ...new Set([...prefs, ...DEFAULT_CHART_SYMBOL_PRIORITY]),
