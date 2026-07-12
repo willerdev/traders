@@ -36,6 +36,7 @@ import { AdminImage } from "./AdminImage";
 import { Sidebar, type Tab, isAdminTab, tabsForPermissions, resolveTabForPermissions, staffRoleSummary, type AdminPermissions } from "./Sidebar";
 import { UserDetailModal } from "./UserDetailModal";
 import { InvestorDepositorPlatform } from "./InvestorDepositorPlatform";
+import { TransactionsPanel } from "./TransactionsPanel";
 
 function badgeClass(status: string) {
   return `badge ${status.toLowerCase()}`;
@@ -648,6 +649,8 @@ export default function App() {
         setLivePresence(await api.livePresence());
       } else if (active === "users") {
         await loadUsersPage(userPage, userSearch);
+      } else if (active === "transactions") {
+        /* TransactionsPanel loads its own data */
       } else if (active === "messages") {
         const res = await api.messageThreads();
         setMessageThreads(res.items);
@@ -2123,6 +2126,10 @@ export default function App() {
               </p>
             )}
           </>
+        )}
+
+        {tab === "transactions" && (
+          <TransactionsPanel onOpenUser={(id) => setUserDetailId(id)} />
         )}
 
         {tab === "messages" && (

@@ -5,6 +5,7 @@ export type Tab =
   | "paymentForecast"
   | "live"
   | "users"
+  | "transactions"
   | "messages"
   | "signals"
   | "kyc"
@@ -25,6 +26,7 @@ export const ADMIN_TABS: Tab[] = [
   "paymentForecast",
   "live",
   "users",
+  "transactions",
   "messages",
   "signals",
   "kyc",
@@ -94,6 +96,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "paymentForecast", label: "Payment forecast", icon: "forecast" },
   { id: "live", label: "Live activity", icon: "live" },
   { id: "users", label: "Users", icon: "users" },
+  { id: "transactions", label: "Transactions", icon: "transactions" },
   { id: "messages", label: "Messages", icon: "messages" },
   { id: "signals", label: "Setups", icon: "setups" },
   { id: "kyc", label: "KYC", icon: "kyc" },
@@ -135,6 +138,14 @@ const icons = {
       <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" strokeLinecap="round" />
       <path d="M16 7.5a3 3 0 1 1 0 6" strokeLinecap="round" />
       <path d="M21 20c0-2.5-1.8-4.6-4.2-5.2" strokeLinecap="round" />
+    </svg>
+  ),
+  transactions: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M4 7h12" strokeLinecap="round" />
+      <path d="M14 4l3 3-3 3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M20 17H8" strokeLinecap="round" />
+      <path d="M10 14l-3 3 3 3" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
   messages: (

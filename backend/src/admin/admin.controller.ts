@@ -110,6 +110,22 @@ export class AdminController {
     return this.adminService.getUserDetail(userId);
   }
 
+  @Get('payments')
+  listPayments(
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('status') status?: string,
+    @Query('purpose') purpose?: string,
+    @Query('method') method?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.adminService.listPayments(
+      limit ? Number(limit) : 50,
+      offset ? Number(offset) : 0,
+      { status, purpose, method, search },
+    );
+  }
+
   @Patch('users/:userId/staff-permissions')
   updateStaffPermissions(
     @Param('userId') userId: string,

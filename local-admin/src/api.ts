@@ -168,6 +168,23 @@ export const api = {
 
   getUser: (userId: string) =>
     request<AdminUserDetail>(`/admin/users/${userId}`),
+  payments: (opts?: {
+    limit?: number;
+    offset?: number;
+    status?: string;
+    purpose?: string;
+    method?: string;
+    search?: string;
+  }) => {
+    const q = new URLSearchParams();
+    q.set("limit", String(opts?.limit ?? 50));
+    q.set("offset", String(opts?.offset ?? 0));
+    if (opts?.status) q.set("status", opts.status);
+    if (opts?.purpose) q.set("purpose", opts.purpose);
+    if (opts?.method) q.set("method", opts.method);
+    if (opts?.search) q.set("search", opts.search);
+    return request<PlatformPaymentsResult>(`/admin/payments?${q.toString()}`);
+  },
   updateStaffPermissions: (
     userId: string,
     body: {
@@ -724,6 +741,50 @@ export type UserRow = {
   walletBalance?: number;
   walletLocked?: number;
   _count: { signals: number; payouts: number };
+};
+
+export type PlatformPaymentRow = {
+  id: string;
+  amount: number;
+  currency: string;
+  network: string;
+  method: "momo" | "crypto" | "wallet" | string;
+  status: string;
+  purpose: string;
+  gateway: string;
+  gatewayId: string | null;
+  txHash: string | null;
+  payAddress: string | null;
+  payAmount: number | null;
+  momoNetwork: string | null;
+  momoPhone: string | null;
+  amountLocal: number | null;
+  localCurrency: string | null;
+  createdAt: string;
+  confirmedAt: string | null;
+  user: { id: string; displayName: string; email: string | null };
+};
+
+export type PlatformPaymentsResult = {
+  items: PlatformPaymentRow[];
+  count: number;
+  limit: number;
+  offset: number;
+  filters: {
+    status: string | null;
+    purpose: string | null;
+    method: string | null;
+    search: string | null;
+  };
+  summary: {
+    filteredConfirmedCount: number;
+    filteredConfirmedUsdt: number;
+    filteredPendingCount: number;
+    momoConfirmedCount: number;
+    momoConfirmedUsdt: number;
+    cryptoConfirmedCount: number;
+    cryptoConfirmedUsdt: number;
+  };
 };
 
 export type AdminUserDetail = {

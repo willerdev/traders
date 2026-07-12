@@ -938,6 +938,171 @@ export class AdminService {
     };
   }
 
+  async listPayments(
+    limit = 50,
+    offset = 0,
+    filters?: {
+      status?: string;
+      purpose?: string;
+      method?: string;
+      search?: string;
+    },
+  ) {
+    const take = Math.min(Math.max(limit, 1), 100);
+    const skip = Math.max(offset, 0);
+    const status = filters?.status?.trim().toUpperCase();
+    const purpose = filters?.purpose?.trim().toLowerCase();
+    const method = filters?.method?.trim().toLowerCase();
+    const search = filters?.search?.trim() ?? '';
+
+    const where: Record<string, unknown> = {};
+    if (
+      status &&
+      ['PENDING', 'CONFIRMED', 'FAILED', 'EXPIRED'].includes(status)
+    ) {
+      where.status = status;
+    }
+    if (purpose) {
+      where.purpose = { equals: purpose, mode: 'insensitive' };
+    }
+    if (method === 'momo') {
+      where.network = { equals: 'MOMO', mode: 'insensitive' };
+    } else if (method === 'crypto') {
+      where.NOT = {
+        OR: [
+          { network: { equals: 'MOMO', mode: 'insensitive' } },
+          { network: { equals: 'WALLET', mode: 'insensitive' } },
+        ],
+      };
+    } else if (method === 'wallet') {
+      where.network = { equals: 'WALLET', mode: 'insensitive' };
+    }
+    if (search) {
+      where.OR = [
+        { user: { email: { contains: search, mode: 'insensitive' } } },
+        { user: { displayName: { contains: search, mode: 'insensitive' } } },
+        { txHash: { contains: search, mode: 'insensitive' } },
+        { payAddress: { contains: search, mode: 'insensitive' } },
+        { gatewayId: { contains: search, mode: 'insensitive' } },
+        { id: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [rows, count, confirmedAgg, pendingCount, momoConfirmed, cryptoConfirmed] =
+      await Promise.all([
+        this.prisma.payment.findMany({
+          where,
+          take,
+          skip,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            user: {
+              select: { id: true, displayName: true, email: true },
+            },
+          },
+        }),
+        this.prisma.payment.count({ where }),
+        this.prisma.payment.aggregate({
+          where: { ...where, status: 'CONFIRMED' },
+          _sum: { amount: true },
+          _count: true,
+        }),
+        this.prisma.payment.count({
+          where: { ...where, status: 'PENDING' },
+        }),
+        this.prisma.payment.aggregate({
+          where: {
+            status: 'CONFIRMED',
+            network: { equals: 'MOMO', mode: 'insensitive' },
+          },
+          _sum: { amount: true },
+          _count: true,
+        }),
+        this.prisma.payment.aggregate({
+          where: {
+            status: 'CONFIRMED',
+            NOT: {
+              OR: [
+                { network: { equals: 'MOMO', mode: 'insensitive' } },
+                { network: { equals: 'WALLET', mode: 'insensitive' } },
+              ],
+            },
+          },
+          _sum: { amount: true },
+          _count: true,
+        }),
+      ]);
+
+    const items = rows.map((p) => {
+      const stored = (p.gatewayResponse ?? {}) as Record<string, unknown>;
+      const gateway =
+        typeof stored.gateway === 'string'
+          ? stored.gateway
+          : p.network.toUpperCase() === 'MOMO'
+            ? 'Flutterwave'
+            : p.network.toUpperCase() === 'WALLET'
+              ? 'Wallet'
+              : 'NOWPayments';
+      const networkUpper = p.network.toUpperCase();
+      const methodLabel =
+        networkUpper === 'MOMO'
+          ? 'momo'
+          : networkUpper === 'WALLET'
+            ? 'wallet'
+            : 'crypto';
+
+      return {
+        id: p.id,
+        amount: Number(p.amount),
+        currency: p.currency,
+        network: p.network,
+        method: methodLabel,
+        status: p.status,
+        purpose: p.purpose,
+        gateway,
+        gatewayId: p.gatewayId,
+        txHash: p.txHash,
+        payAddress: p.payAddress,
+        payAmount: p.payAmount != null ? Number(p.payAmount) : null,
+        momoNetwork:
+          typeof stored.momoNetwork === 'string' ? stored.momoNetwork : null,
+        momoPhone:
+          typeof stored.momoPhone === 'string' ? stored.momoPhone : null,
+        amountLocal:
+          typeof stored.amountLocal === 'number' ? stored.amountLocal : null,
+        localCurrency:
+          typeof stored.localCurrency === 'string'
+            ? stored.localCurrency
+            : null,
+        createdAt: p.createdAt.toISOString(),
+        confirmedAt: p.confirmedAt?.toISOString() ?? null,
+        user: p.user,
+      };
+    });
+
+    return {
+      items,
+      count,
+      limit: take,
+      offset: skip,
+      filters: {
+        status: status || null,
+        purpose: purpose || null,
+        method: method || null,
+        search: search || null,
+      },
+      summary: {
+        filteredConfirmedCount: confirmedAgg._count,
+        filteredConfirmedUsdt: Number(confirmedAgg._sum?.amount ?? 0),
+        filteredPendingCount: pendingCount,
+        momoConfirmedCount: momoConfirmed._count,
+        momoConfirmedUsdt: Number(momoConfirmed._sum?.amount ?? 0),
+        cryptoConfirmedCount: cryptoConfirmed._count,
+        cryptoConfirmedUsdt: Number(cryptoConfirmed._sum?.amount ?? 0),
+      },
+    };
+  }
+
   async listSignals(limit = 50, offset = 0, status?: string) {
     const take = Math.min(Math.max(limit, 1), 100);
     const skip = Math.max(offset, 0);
