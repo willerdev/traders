@@ -438,7 +438,7 @@ export function UserDetailModal({
             </section>
 
             <section className="user-detail-section">
-              <h4>Registration payments</h4>
+              <h4>Payments</h4>
               {detail.payments.length === 0 ? (
                 <p className="muted">No payments on record.</p>
               ) : (
@@ -446,6 +446,7 @@ export function UserDetailModal({
                   <thead>
                     <tr>
                       <th>Amount</th>
+                      <th>Purpose</th>
                       <th>Network</th>
                       <th>Status</th>
                       <th>Tx</th>
@@ -456,6 +457,7 @@ export function UserDetailModal({
                     {detail.payments.map((p) => (
                       <tr key={p.id}>
                         <td>{fmtMoney(p.amount)}</td>
+                        <td className="muted">{p.purpose}</td>
                         <td>{p.network}</td>
                         <td>{p.status}</td>
                         <td className="mono muted">{p.txHash ? `${p.txHash.slice(0, 10)}…` : "—"}</td>
