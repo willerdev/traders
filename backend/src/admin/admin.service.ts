@@ -694,6 +694,9 @@ export class AdminService {
           createdAt: true,
           kyc: { select: { status: true } },
           virtualAccount: { select: { tier: true, score: true, totalProfit: true } },
+          platformWallet: {
+            select: { availableBalance: true, lockedBalance: true },
+          },
           _count: { select: { signals: true, payouts: true } },
         },
       });
@@ -706,11 +709,16 @@ export class AdminService {
         .filter((user) => user.emailAssessment.suspicious)
         .filter(matchesSearch);
 
-      const items = flagged.slice(skip, skip + take).map((user) => ({
-        ...user,
-        accessExpiresAt: user.accessExpiresAt?.toISOString() ?? null,
-        createdAt: user.createdAt.toISOString(),
-      }));
+      const items = flagged.slice(skip, skip + take).map((user) => {
+        const { platformWallet, ...rest } = user;
+        return {
+          ...rest,
+          walletBalance: Number(platformWallet?.availableBalance ?? 0),
+          walletLocked: Number(platformWallet?.lockedBalance ?? 0),
+          accessExpiresAt: user.accessExpiresAt?.toISOString() ?? null,
+          createdAt: user.createdAt.toISOString(),
+        };
+      });
 
       return {
         items,
@@ -752,18 +760,26 @@ export class AdminService {
           createdAt: true,
           kyc: { select: { status: true } },
           virtualAccount: { select: { tier: true, score: true, totalProfit: true } },
+          platformWallet: {
+            select: { availableBalance: true, lockedBalance: true },
+          },
           _count: { select: { signals: true, payouts: true } },
         },
       }),
       this.prisma.user.count({ where }),
     ]);
 
-    const items = rows.map((user) => ({
-      ...user,
-      accessExpiresAt: user.accessExpiresAt?.toISOString() ?? null,
-      createdAt: user.createdAt.toISOString(),
-      emailAssessment: assessEmail(user.email),
-    }));
+    const items = rows.map((user) => {
+      const { platformWallet, ...rest } = user;
+      return {
+        ...rest,
+        walletBalance: Number(platformWallet?.availableBalance ?? 0),
+        walletLocked: Number(platformWallet?.lockedBalance ?? 0),
+        accessExpiresAt: user.accessExpiresAt?.toISOString() ?? null,
+        createdAt: user.createdAt.toISOString(),
+        emailAssessment: assessEmail(user.email),
+      };
+    });
 
     return {
       items,
@@ -782,6 +798,7 @@ export class AdminService {
         profile: true,
         kyc: true,
         virtualAccount: true,
+        platformWallet: true,
         payments: {
           orderBy: { createdAt: 'desc' },
           take: 10,
@@ -822,6 +839,7 @@ export class AdminService {
     if (!user) throw new NotFoundException('User not found');
 
     const va = user.virtualAccount;
+    const pw = user.platformWallet;
 
     return {
       id: user.id,
@@ -860,6 +878,11 @@ export class AdminService {
             updatedAt: user.kyc.updatedAt.toISOString(),
           }
         : null,
+      platformWallet: {
+        availableBalance: Number(pw?.availableBalance ?? 0),
+        lockedBalance: Number(pw?.lockedBalance ?? 0),
+        updatedAt: pw?.updatedAt?.toISOString() ?? null,
+      },
       virtualAccount: va
         ? {
             tier: va.tier,

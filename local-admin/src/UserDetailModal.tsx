@@ -297,6 +297,24 @@ export function UserDetailModal({
               </section>
             )}
 
+            <section className="user-detail-section">
+              <h4>Platform wallet</h4>
+              <dl className="user-detail-grid">
+                <Field
+                  label="Available balance"
+                  value={fmtMoney(detail.platformWallet?.availableBalance ?? 0)}
+                />
+                <Field
+                  label="Locked balance"
+                  value={fmtMoney(detail.platformWallet?.lockedBalance ?? 0)}
+                />
+                <Field
+                  label="Updated"
+                  value={fmtDate(detail.platformWallet?.updatedAt)}
+                />
+              </dl>
+            </section>
+
             {detail.virtualAccount && (
               <section className="user-detail-section">
                 <h4>Virtual account</h4>
@@ -505,7 +523,7 @@ export function UserDetailModal({
               </section>
             )}
 
-            {detail.walletTransactions.length > 0 && (
+            {detail.walletTransactions.length > 0 ? (
               <section className="user-detail-section">
                 <h4>Wallet ledger</h4>
                 <table className="user-detail-table">
@@ -528,6 +546,11 @@ export function UserDetailModal({
                     ))}
                   </tbody>
                 </table>
+              </section>
+            ) : (
+              <section className="user-detail-section">
+                <h4>Wallet ledger</h4>
+                <p className="muted">No wallet transactions yet.</p>
               </section>
             )}
           </div>

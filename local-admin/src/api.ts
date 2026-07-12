@@ -721,6 +721,8 @@ export type UserRow = {
   emailAssessment?: EmailAssessment;
   kyc?: { status: string } | null;
   virtualAccount?: { tier: string; score: number; totalProfit: string } | null;
+  walletBalance?: number;
+  walletLocked?: number;
   _count: { signals: number; payouts: number };
 };
 
@@ -744,6 +746,11 @@ export type AdminUserDetail = {
   createdAt: string;
   updatedAt: string;
   emailAssessment?: EmailAssessment;
+  platformWallet?: {
+    availableBalance: number;
+    lockedBalance: number;
+    updatedAt: string | null;
+  } | null;
   profile: {
     firstName: string | null;
     lastName: string | null;

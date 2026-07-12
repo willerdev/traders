@@ -1974,6 +1974,7 @@ export default function App() {
                   <th>Status</th>
                   <th>KYC</th>
                   <th>Paid</th>
+                  <th>Wallet</th>
                   <th>Setups</th>
                   <th>Joined</th>
                   <th />
@@ -2037,6 +2038,15 @@ export default function App() {
                     </td>
                     <td>{u.kyc?.status ?? "—"}</td>
                     <td>{u.registrationPaid ? "Yes" : "No"}</td>
+                    <td
+                      title={
+                        (u.walletLocked ?? 0) > 0
+                          ? `Locked: ${fmtMoney(u.walletLocked ?? 0)}`
+                          : undefined
+                      }
+                    >
+                      {fmtMoney(u.walletBalance ?? 0)}
+                    </td>
                     <td>{u._count.signals}</td>
                     <td>{fmtDate(u.createdAt)}</td>
                     <td className="actions-cell">
