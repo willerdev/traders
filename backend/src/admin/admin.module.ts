@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { PayoutsModule } from '../payouts/payouts.module';
@@ -13,6 +13,7 @@ import { UploadsModule } from '../uploads/uploads.module';
 import { MetaApiModule } from '../metaapi/metaapi.module';
 import { PresenceModule } from '../presence/presence.module';
 import { WalletModule } from '../wallet/wallet.module';
+import { InvestorModule } from '../investor/investor.module';
 import { AdminPermissionGuard } from '../auth/guards/admin-permission.guard';
 
 @Module({
@@ -29,6 +30,7 @@ import { AdminPermissionGuard } from '../auth/guards/admin-permission.guard';
     UploadsModule,
     PresenceModule,
     WalletModule,
+    forwardRef(() => InvestorModule),
   ],
   controllers: [AdminController],
   providers: [AdminService, AdminPermissionGuard],

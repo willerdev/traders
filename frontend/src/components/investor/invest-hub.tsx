@@ -97,6 +97,8 @@ export function InvestHub() {
   } | null>(null);
   const [progress, setProgress] = useState<Progress>("waiting");
   const [copied, setCopied] = useState(false);
+  const [transferAmount, setTransferAmount] = useState("");
+  const [transferLoading, setTransferLoading] = useState(false);
 
   const feeUsdt = status?.feeUsdt ?? 50;
 
@@ -197,16 +199,16 @@ export function InvestHub() {
               Start investing with MT5
             </h2>
             <p className="mt-2 max-w-lg text-sm text-gray-400">
-              Link your MT5 account, pay a one-time {formatCurrency(feeUsdt)}{" "}
-              fee, and let the platform trade system signals at 1:2 RR with your
-              chosen risk %. Earn {status?.dailyYieldPercent ?? 0.5}% daily on
-              your wallet balance.
+              Pay a one-time {formatCurrency(feeUsdt)} fee, then trade on the
+              platform MT5 with your investment balance (or link your own MT5 for
+              auto-copy). Earn {status?.dailyYieldPercent ?? 8}% daily on
+              investment — credited to wallet at 16:00.
             </p>
             <ul className="mt-5 grid gap-3 sm:grid-cols-3">
               {[
-                { icon: LineChart, text: "Auto-trade on your MT5" },
+                { icon: LineChart, text: "Trade on platform MT5" },
                 { icon: Shield, text: "1:2 risk-reward always" },
-                { icon: Wallet, text: "Daily wallet earnings" },
+                { icon: Wallet, text: "Daily investment yield" },
               ].map(({ icon: Icon, text }) => (
                 <li
                   key={text}
@@ -345,7 +347,7 @@ export function InvestHub() {
           <div>
             <p className="text-xs font-medium text-indigo-200">Your investment</p>
             <p className="mt-1 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-              {formatCurrency(status.investmentDeposited)}
+              {formatCurrency(status.investmentBalance ?? status.investmentDeposited)}
             </p>
             <p className="mt-2 text-sm text-indigo-200/80">
               {status.enrolledAt
@@ -354,6 +356,11 @@ export function InvestHub() {
               {status.settings?.paused && (
                 <span className="ml-2 rounded bg-amber-500/20 px-1.5 py-0.5 text-xs text-amber-200">
                   Trading paused
+                </span>
+              )}
+              {status.settings?.yieldPaused && (
+                <span className="ml-2 rounded bg-amber-500/20 px-1.5 py-0.5 text-xs text-amber-200">
+                  Yield paused
                 </span>
               )}
             </p>
@@ -373,9 +380,9 @@ export function InvestHub() {
 
       <div className="grid gap-3 sm:grid-cols-3">
         <StatCard
-          label="Invested"
-          value={formatCurrency(status.investmentDeposited)}
-          sub={`Enrollment ${formatCurrency(status.enrollmentPaid)} + deposits ${formatCurrency(status.walletDeposited)}`}
+          label="Investment balance"
+          value={formatCurrency(status.investmentBalance ?? 0)}
+          sub={`${status.dailyYieldPercent}% daily · credited to wallet at 16:00`}
           accent="invest"
           delay={0.05}
         />
@@ -397,6 +404,75 @@ export function InvestHub() {
 
       <motion.div
         {...fadeUp}
+        transition={{ delay: 0.18 }}
+        className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+      >
+        <h3 className="text-sm font-semibold text-white">Move funds</h3>
+        <p className="mt-1 text-xs text-gray-500">
+          Wallet {formatCurrency(status.walletBalance)} · Investment{" "}
+          {formatCurrency(status.investmentBalance ?? 0)}. Daily yield is based on
+          investment balance.
+        </p>
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <div className="min-w-[140px] flex-1">
+            <label className="mb-1 block text-xs text-gray-400">Amount (USDT)</label>
+            <Input
+              type="number"
+              min={0.01}
+              step="0.01"
+              value={transferAmount}
+              onChange={(e) => setTransferAmount(e.target.value)}
+            />
+          </div>
+          <Button
+            type="button"
+            disabled={transferLoading}
+            onClick={() => {
+              const amount = Number(transferAmount);
+              setTransferLoading(true);
+              setError("");
+              void api.investor
+                .allocate(amount)
+                .then(() => {
+                  setTransferAmount("");
+                  return refresh();
+                })
+                .catch((e) =>
+                  setError(e instanceof Error ? e.message : "Transfer failed"),
+                )
+                .finally(() => setTransferLoading(false));
+            }}
+          >
+            Wallet → Investment
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={transferLoading}
+            onClick={() => {
+              const amount = Number(transferAmount);
+              setTransferLoading(true);
+              setError("");
+              void api.investor
+                .redeem(amount)
+                .then(() => {
+                  setTransferAmount("");
+                  return refresh();
+                })
+                .catch((e) =>
+                  setError(e instanceof Error ? e.message : "Transfer failed"),
+                )
+                .finally(() => setTransferLoading(false));
+            }}
+          >
+            Investment → Wallet
+          </Button>
+        </div>
+        {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+      </motion.div>
+
+      <motion.div
+        {...fadeUp}
         transition={{ delay: 0.2 }}
         className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
       >
@@ -407,17 +483,14 @@ export function InvestHub() {
             value: `${status.dailyYieldPercent}%`,
           },
           {
-            label: "MT5 balance",
+            label: "On MT5",
+            value: formatCurrency(status.investmentBalance ?? 0),
+          },
+          {
+            label: "Broker MT5",
             value:
               status.mt5Balance != null
                 ? `${formatCurrency(status.mt5Balance)} ${status.currency}`
-                : "—",
-          },
-          {
-            label: "MT5 equity",
-            value:
-              status.mt5Equity != null
-                ? `${formatCurrency(status.mt5Equity)} ${status.currency}`
                 : "—",
           },
         ].map((item) => (
@@ -438,16 +511,21 @@ export function InvestHub() {
       >
         <div className="flex items-center gap-2">
           <Zap className="h-5 w-5 text-cyan-400" />
-          <h3 className="text-base font-semibold text-white">MT5 auto-trading</h3>
+          <h3 className="text-base font-semibold text-white">Trade on MT5</h3>
         </div>
+        <p className="mt-1 text-sm text-gray-400">
+          Open the platform MT5 terminal to trade with your investment balance
+          ({formatCurrency(status.investmentBalance ?? 0)}). Optionally link your
+          own MT5 for auto-copy of system signals.
+        </p>
         <p className="mt-2 text-sm text-gray-400">
-          Status:{" "}
+          Link status:{" "}
           <span className="text-white">
             {status.mt5Connected
               ? "Connected"
               : status.mt5Linked
                 ? "Linked — checking…"
-                : "Not linked"}
+                : "Not linked (optional)"}
           </span>
           {status.mt5HealthMessage && (
             <span className="ml-2 text-xs text-gray-500">
@@ -502,9 +580,9 @@ export function InvestHub() {
             </Button>
           )}
           <Link href="/mt5" className="ml-auto">
-            <Button size="sm" variant="ghost" className="gap-1.5">
+            <Button size="sm" className="gap-1.5">
               <TrendingUp className="h-4 w-4" />
-              Open MT5
+              Open MT5 terminal
             </Button>
           </Link>
         </div>

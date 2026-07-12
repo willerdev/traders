@@ -97,6 +97,8 @@ enum WalletTxType {
   DEPOSITOR_EARNING
   DEPOSITOR_WITHDRAW
   INVESTOR_EARNING
+  INVESTOR_ALLOCATE
+  INVESTOR_REDEEM
   SUBSCRIPTION
 }
 
@@ -859,9 +861,11 @@ model PlatformConfig {
   mt5SyncFeeUsdt         Decimal @default(5) @db.Decimal(10, 2)
   weeklyTierPayoutsEnabled Boolean @default(false)
   investorFeeUsdt          Decimal @default(50) @db.Decimal(10, 2)
-  investorDailyYieldPercent Decimal @default(0.5) @db.Decimal(5, 2)
+  investorDailyYieldPercent Decimal @default(8) @db.Decimal(5, 2)
+  investorYieldPaused      Boolean @default(false)
   depositorDailyYieldPercent Decimal @default(0.5) @db.Decimal(5, 2)
   depositorMinDepositUsdt  Decimal @default(50) @db.Decimal(10, 2)
+  loginOtpEnabled          Boolean @default(false) @map("login_otp_enabled")
 
   @@map("platform_config")
 }
@@ -871,6 +875,7 @@ model PlatformWallet {
   userId           String   @unique
   availableBalance Decimal  @default(0) @db.Decimal(12, 2)
   lockedBalance    Decimal  @default(0) @db.Decimal(12, 2)
+  investorBalance  Decimal  @default(0) @db.Decimal(12, 2)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -919,6 +924,7 @@ model InvestorSettings {
   dailyYieldPercent Decimal? @db.Decimal(5, 2)
   useTwoToOneRr   Boolean  @default(true)
   paused          Boolean  @default(false)
+  yieldPaused     Boolean  @default(false)
   lastHealthAt    DateTime?
   lastHealthReady Boolean  @default(false)
   lastHealthMessage String?

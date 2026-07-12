@@ -542,6 +542,7 @@ export class AdminController {
     body: {
       investorFeeUsdt?: number;
       investorDailyYieldPercent?: number;
+      investorYieldPaused?: boolean;
       depositorDailyYieldPercent?: number;
       depositorMinDepositUsdt?: number;
       loginOtpEnabled?: boolean;
@@ -569,6 +570,32 @@ export class AdminController {
     @Body() body: { dailyYieldPercent: number | null },
   ) {
     return this.adminService.updateInvestorYield(userId, body.dailyYieldPercent);
+  }
+
+  @Patch('investors/:userId/yield-pause')
+  setInvestorYieldPaused(
+    @Param('userId') userId: string,
+    @Body() body: { paused: boolean },
+  ) {
+    return this.adminService.setInvestorYieldPaused(
+      userId,
+      body.paused === true,
+    );
+  }
+
+  @Post('investors/:userId/transfer')
+  transferInvestorFunds(
+    @Param('userId') userId: string,
+    @Request() req: { user: { id: string } },
+    @Body()
+    body: { amount: number; direction: 'to_investment' | 'to_wallet' },
+  ) {
+    return this.adminService.transferInvestorFunds(
+      userId,
+      req.user.id,
+      Number(body.amount),
+      body.direction,
+    );
   }
 
   @Get('income-journal')

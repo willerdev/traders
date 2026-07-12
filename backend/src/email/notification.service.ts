@@ -1766,7 +1766,13 @@ export class NotificationService {
 
   investorDailyEarning(
     userId: string,
-    data: { amount: number; yieldPercent: number; balance: number },
+    data: {
+      amount: number;
+      yieldPercent: number;
+      balance: number;
+      investmentBalance?: number;
+      baseBalance?: number;
+    },
   ) {
     this.dispatch(
       this.sendInvestorDailyEarning(userId, data),
@@ -1776,22 +1782,39 @@ export class NotificationService {
 
   private async sendInvestorDailyEarning(
     userId: string,
-    data: { amount: number; yieldPercent: number; balance: number },
+    data: {
+      amount: number;
+      yieldPercent: number;
+      balance: number;
+      investmentBalance?: number;
+      baseBalance?: number;
+    },
   ) {
     const user = await this.userContact(userId);
     if (!user) return false;
+    const investmentBlock =
+      data.investmentBalance != null
+        ? `<p>Investment balance: <strong>$${data.investmentBalance.toFixed(2)} USDT</strong></p>`
+        : '';
+    const baseBlock =
+      data.baseBalance != null
+        ? `<p>Earned on investment principal: <strong>$${data.baseBalance.toFixed(2)} USDT</strong></p>`
+        : '';
     const html = this.email.layout(
       'Investor daily earning credited',
       `<p>Hi ${this.escape(user.name)},</p>
       <p>Your investor daily earning at <strong>${data.yieldPercent}%</strong>: <strong>$${data.amount.toFixed(2)} USDT</strong></p>
-      <p>Wallet balance: <strong>$${data.balance.toFixed(2)} USDT</strong></p>
-      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+      ${baseBlock}
+      ${investmentBlock}
+      <p>Wallet balance (available): <strong>$${data.balance.toFixed(2)} USDT</strong></p>
+      <p style="color:#94a3b8;font-size:14px;">Earnings are credited to your wallet. You can move funds into investment anytime from Invest.</p>
+      ${this.email.button(`${this.email.frontendUrl}/invest`, 'View investment')}`,
     );
     return this.email.send({
       to: user.email,
-      subject: `Investor earning — $${data.amount.toFixed(2)} USDT`,
+      subject: `Investor earning — $${data.amount.toFixed(2)} USDT (${data.yieldPercent}%)`,
       html,
-      text: `Investor daily earning: $${data.amount.toFixed(2)} USDT.`,
+      text: `Investor daily earning: $${data.amount.toFixed(2)} USDT at ${data.yieldPercent}%. Wallet: $${data.balance.toFixed(2)}.`,
     });
   }
 

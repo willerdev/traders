@@ -5473,6 +5473,14 @@ export class SignalsService {
       }
     }
 
+    const investorLedger = await this.buildMt5InvestorAccountSummary(
+      userId,
+      floatingProfit,
+    );
+    if (investorLedger) {
+      return { account: investorLedger, accountSource: 'investor_live' };
+    }
+
     const liveAccountId = this.resolveLiveMt5AccountId({
       syncActive,
       metaApiAccountId,
@@ -5509,6 +5517,83 @@ export class SignalsService {
     return {
       account: await this.buildMt5UserAccountSummary(userId, floatingProfit),
       accountSource: 'virtual',
+    };
+  }
+
+  /** Investor MT5 hub — show investment principal + platform trade P/L. */
+  private async buildMt5InvestorAccountSummary(
+    userId: string,
+    floatingProfit: number,
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        investorActive: true,
+        platformWallet: { select: { investorBalance: true } },
+      },
+    });
+    if (!user?.investorActive) return null;
+
+    const investmentBalance = Number(user.platformWallet?.investorBalance ?? 0);
+    const realizedAgg = await this.prisma.trade.aggregate({
+      where: {
+        userId,
+        closedAt: { not: null },
+        pnl: { not: null },
+        signal: { source: 'mt5_chart' },
+      },
+      _sum: { pnl: true },
+    });
+
+    const realizedProfit = Number(realizedAgg._sum.pnl ?? 0);
+    const totalProfit = realizedProfit + floatingProfit;
+
+    return {
+      startingBalance: investmentBalance,
+      currency: 'USD',
+      realizedProfit,
+      floatingProfit,
+      totalProfit,
+      equity: investmentBalance + totalProfit,
+    };
+  }
+
+  /** Risk settings for investor chart orders (investment balance as equity). */
+  private async resolveInvestorChartRisk(userId: string): Promise<{
+    riskPercent: number;
+    maxRiskAmount: number;
+    equityOverride: number;
+  } | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        investorActive: true,
+        investorSettings: { select: { riskPercent: true, paused: true } },
+        platformWallet: { select: { investorBalance: true } },
+      },
+    });
+    if (!user?.investorActive) return null;
+    if (user.investorSettings?.paused) {
+      throw new BadRequestException(
+        'Investor trading is paused — resume from Invest to place orders',
+      );
+    }
+
+    const investmentBalance = Number(user.platformWallet?.investorBalance ?? 0);
+    if (investmentBalance <= 0) {
+      throw new BadRequestException(
+        'Allocate funds to investment before trading on MT5',
+      );
+    }
+
+    const riskPercent = Number(user.investorSettings?.riskPercent ?? 2);
+    return {
+      riskPercent: Math.max(riskPercent, 0.5),
+      maxRiskAmount: Math.min(
+        MAX_RISK_PER_TRADE,
+        (investmentBalance * riskPercent) / 100,
+      ),
+      equityOverride: investmentBalance,
     };
   }
 
@@ -6172,7 +6257,9 @@ export class SignalsService {
       terminalAccountId || this.metaApi.resolveAccountId(dbUser.metaApiAccountId);
     if (!accountId) {
       throw new BadRequestException(
-        'No trading account linked — select an evaluation account or link one in Settings',
+        dbUser.investorActive
+          ? 'Platform MT5 is not configured — try again shortly or contact support'
+          : 'No trading account linked — select an evaluation account or link one in Settings',
       );
     }
 
@@ -6221,12 +6308,13 @@ export class SignalsService {
       digits,
     );
 
-    const riskPercent = Number(
-      user.virtualAccount?.riskPercent ?? RISK_PERCENT,
-    );
-    const maxRiskAmount = Number(
-      user.virtualAccount?.maxRiskPerTrade ?? MAX_RISK_PER_TRADE,
-    );
+    const investorRisk = await this.resolveInvestorChartRisk(userId);
+    const riskPercent = investorRisk
+      ? investorRisk.riskPercent
+      : Number(user.virtualAccount?.riskPercent ?? RISK_PERCENT);
+    const maxRiskAmount = investorRisk
+      ? investorRisk.maxRiskAmount
+      : Number(user.virtualAccount?.maxRiskPerTrade ?? MAX_RISK_PER_TRADE);
 
     const sizing = await this.tradeRisk.calculatePositionSize({
       account,
@@ -6237,6 +6325,7 @@ export class SignalsService {
       takeProfit: defaults.takeProfit,
       riskPercent: Math.max(riskPercent, RISK_PERCENT),
       maxRiskAmount,
+      equityOverride: investorRisk?.equityOverride,
       fixedVolume:
         volumeRaw != null && Number.isFinite(volumeRaw) && volumeRaw > 0
           ? volumeRaw
@@ -6295,12 +6384,13 @@ export class SignalsService {
     const riskRewardRatio =
       risk > 0 ? Number((reward / risk).toFixed(2)) : 0;
 
-    const riskPercent = Number(
-      user.virtualAccount?.riskPercent ?? RISK_PERCENT,
-    );
-    const maxRiskAmount = Number(
-      user.virtualAccount?.maxRiskPerTrade ?? MAX_RISK_PER_TRADE,
-    );
+    const investorRisk = await this.resolveInvestorChartRisk(userId);
+    const riskPercent = investorRisk
+      ? investorRisk.riskPercent
+      : Number(user.virtualAccount?.riskPercent ?? RISK_PERCENT);
+    const maxRiskAmount = investorRisk
+      ? investorRisk.maxRiskAmount
+      : Number(user.virtualAccount?.maxRiskPerTrade ?? MAX_RISK_PER_TRADE);
 
     const screenshotHash = createHash('sha256')
       .update(`mt5-chart:${userId}:${symbol}:${Date.now()}`)
@@ -6339,6 +6429,7 @@ export class SignalsService {
       takeProfit,
       riskPercent: Math.max(riskPercent, RISK_PERCENT),
       maxRiskAmount,
+      equityOverride: investorRisk?.equityOverride,
       skipAiReview: true,
     };
 

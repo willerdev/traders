@@ -87,7 +87,7 @@ export class InvestorService {
     const config = await this.prisma.platformConfig.findUnique({
       where: { id: 'default' },
     });
-    const platformDailyYield = Number(config?.investorDailyYieldPercent ?? 0.5);
+    const platformDailyYield = Number(config?.investorDailyYieldPercent ?? 8);
     const effectiveDailyYield =
       user.investorSettings?.dailyYieldPercent != null
         ? Number(user.investorSettings.dailyYieldPercent)
@@ -110,6 +110,7 @@ export class InvestorService {
             riskPercent: Number(user.investorSettings.riskPercent),
             useTwoToOneRr: user.investorSettings.useTwoToOneRr,
             paused: user.investorSettings.paused,
+            yieldPaused: user.investorSettings.yieldPaused,
           }
         : null,
       recentTrades: user.investorTrades.map((t) => ({
@@ -130,7 +131,10 @@ export class InvestorService {
     userId: string,
     user: {
       metaApiAccountId: string | null;
-      platformWallet: { availableBalance: unknown } | null;
+      platformWallet: {
+        availableBalance: unknown;
+        investorBalance?: unknown;
+      } | null;
     },
   ) {
     const [
@@ -150,7 +154,7 @@ export class InvestorService {
       this.prisma.walletTransaction.aggregate({
         where: {
           userId,
-          type: { in: ['DEPOSIT', 'DEPOSITOR_DEPOSIT'] },
+          type: { in: ['DEPOSIT', 'DEPOSITOR_DEPOSIT', 'INVESTOR_ALLOCATE'] },
         },
         _sum: { amount: true },
       }),
@@ -167,6 +171,7 @@ export class InvestorService {
     const enrollmentPaid = Number(enrollmentAgg._sum.amount ?? 0);
     const walletDeposited = Number(depositAgg._sum.amount ?? 0);
     const walletBalance = Number(user.platformWallet?.availableBalance ?? 0);
+    const investmentBalance = Number(user.platformWallet?.investorBalance ?? 0);
     const investmentDeposited = enrollmentPaid + walletDeposited;
     const tradingProfit = Number(tradingProfitAgg._sum.profit ?? 0);
     const walletEarnings = Number(walletEarningsAgg._sum.amount ?? 0);
@@ -195,6 +200,7 @@ export class InvestorService {
 
     return {
       investmentDeposited,
+      investmentBalance,
       enrollmentPaid,
       walletDeposited,
       walletBalance,
@@ -442,22 +448,155 @@ export class InvestorService {
     return { paused };
   }
 
-  private utcToday() {
-    const now = new Date();
-    return new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-    );
+  async setYieldPaused(userId: string, yieldPaused: boolean) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user?.investorActive) {
+      throw new BadRequestException('Enroll in the investor program first');
+    }
+
+    const settings = await this.prisma.investorSettings.upsert({
+      where: { userId },
+      create: { userId, yieldPaused },
+      update: { yieldPaused },
+    });
+
+    return { yieldPaused: settings.yieldPaused };
+  }
+
+  /**
+   * Move funds between liquid wallet and investment balance.
+   * direction: to_investment = wallet → investment, to_wallet = investment → wallet
+   */
+  async transferInvestment(
+    userId: string,
+    amount: number,
+    direction: 'to_investment' | 'to_wallet',
+    opts?: { adminId?: string },
+  ) {
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Amount must be greater than zero');
+    }
+    const rounded = Math.round(amount * 100) / 100;
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (!user.investorActive) {
+      throw new BadRequestException('User must be enrolled in the investor program');
+    }
+
+    const wallet = await this.walletService.getOrCreateWallet(userId);
+    const available = Number(wallet.availableBalance);
+    const invested = Number(wallet.investorBalance ?? 0);
+
+    if (direction === 'to_investment') {
+      if (available < rounded) {
+        throw new BadRequestException(
+          `Insufficient wallet balance — need $${rounded.toFixed(2)} but have $${available.toFixed(2)}`,
+        );
+      }
+      const nextAvailable = available - rounded;
+      const nextInvested = invested + rounded;
+      await this.prisma.$transaction([
+        this.prisma.platformWallet.update({
+          where: { userId },
+          data: {
+            availableBalance: nextAvailable,
+            investorBalance: nextInvested,
+          },
+        }),
+        this.prisma.walletTransaction.create({
+          data: {
+            userId,
+            amount: -rounded,
+            type: 'INVESTOR_ALLOCATE',
+            referenceId: opts?.adminId ? `admin_${opts.adminId}` : userId,
+            description: opts?.adminId
+              ? `Admin moved $${rounded.toFixed(2)} USDT from wallet to investment`
+              : `Moved $${rounded.toFixed(2)} USDT from wallet to investment`,
+            balanceAfter: nextAvailable,
+          },
+        }),
+      ]);
+      return {
+        direction,
+        amount: rounded,
+        walletBalance: nextAvailable,
+        investmentBalance: nextInvested,
+      };
+    }
+
+    if (invested < rounded) {
+      throw new BadRequestException(
+        `Insufficient investment balance — need $${rounded.toFixed(2)} but have $${invested.toFixed(2)}`,
+      );
+    }
+    const nextAvailable = available + rounded;
+    const nextInvested = invested - rounded;
+    await this.prisma.$transaction([
+      this.prisma.platformWallet.update({
+        where: { userId },
+        data: {
+          availableBalance: nextAvailable,
+          investorBalance: nextInvested,
+        },
+      }),
+      this.prisma.walletTransaction.create({
+        data: {
+          userId,
+          amount: rounded,
+          type: 'INVESTOR_REDEEM',
+          referenceId: opts?.adminId ? `admin_${opts.adminId}` : userId,
+          description: opts?.adminId
+            ? `Admin moved $${rounded.toFixed(2)} USDT from investment to wallet`
+            : `Moved $${rounded.toFixed(2)} USDT from investment to wallet`,
+          balanceAfter: nextAvailable,
+        },
+      }),
+    ]);
+    return {
+      direction,
+      amount: rounded,
+      walletBalance: nextAvailable,
+      investmentBalance: nextInvested,
+    };
+  }
+
+  /** Calendar date in Africa/Kampala (platform local time). */
+  private kampalaToday() {
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Kampala',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const parts = fmt.formatToParts(new Date());
+    const y = Number(parts.find((p) => p.type === 'year')?.value);
+    const m = Number(parts.find((p) => p.type === 'month')?.value);
+    const d = Number(parts.find((p) => p.type === 'day')?.value);
+    return new Date(Date.UTC(y, m - 1, d));
   }
 
   async platformInvestorDailyYield() {
     const config = await this.prisma.platformConfig.findUnique({
       where: { id: 'default' },
     });
-    return Number(config?.investorDailyYieldPercent ?? 0.5);
+    return Number(config?.investorDailyYieldPercent ?? 8);
+  }
+
+  async isGlobalInvestorYieldPaused() {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    return Boolean(config?.investorYieldPaused);
   }
 
   async creditDailyEarnings() {
-    const today = this.utcToday();
+    if (await this.isGlobalInvestorYieldPaused()) {
+      this.logger.warn('Investor daily yield skipped — paused globally by admin');
+      return { credited: 0, skipped: 'global_pause' as const };
+    }
+
+    const today = this.kampalaToday();
     const platformYield = await this.platformInvestorDailyYield();
 
     const investors = await this.prisma.user.findMany({
@@ -466,7 +605,13 @@ export class InvestorService {
     });
 
     let credited = 0;
+    let pausedUsers = 0;
     for (const user of investors) {
+      if (user.investorSettings?.yieldPaused) {
+        pausedUsers++;
+        continue;
+      }
+
       const existing = await this.prisma.investorDailyCredit.findUnique({
         where: {
           userId_creditDate: { userId: user.id, creditDate: today },
@@ -479,14 +624,16 @@ export class InvestorService {
           ? Number(user.investorSettings.dailyYieldPercent)
           : platformYield;
 
-      const baseBalance = Number(user.platformWallet?.availableBalance ?? 0);
+      const baseBalance = Number(user.platformWallet?.investorBalance ?? 0);
       if (baseBalance <= 0 || yieldPercent <= 0) continue;
 
-      const earningAmount = (baseBalance * yieldPercent) / 100;
+      const earningAmount =
+        Math.round(((baseBalance * yieldPercent) / 100) * 100) / 100;
       if (earningAmount <= 0) continue;
 
       const wallet = await this.walletService.getOrCreateWallet(user.id);
-      const newBalance = Number(wallet.availableBalance) + earningAmount;
+      const newWalletBalance = Number(wallet.availableBalance) + earningAmount;
+      const investmentBalance = Number(wallet.investorBalance ?? 0);
 
       await this.prisma.$transaction([
         this.prisma.investorDailyCredit.create({
@@ -500,7 +647,7 @@ export class InvestorService {
         }),
         this.prisma.platformWallet.update({
           where: { userId: user.id },
-          data: { availableBalance: newBalance },
+          data: { availableBalance: newWalletBalance },
         }),
         this.prisma.walletTransaction.create({
           data: {
@@ -508,8 +655,8 @@ export class InvestorService {
             amount: earningAmount,
             type: 'INVESTOR_EARNING',
             referenceId: user.id,
-            description: `Investor daily earning — $${earningAmount.toFixed(2)} USDT`,
-            balanceAfter: newBalance,
+            description: `Investor daily earning ${yieldPercent}% on $${baseBalance.toFixed(2)} investment — $${earningAmount.toFixed(2)} USDT`,
+            balanceAfter: newWalletBalance,
           },
         }),
       ]);
@@ -517,12 +664,14 @@ export class InvestorService {
       this.notifications.investorDailyEarning(user.id, {
         amount: earningAmount,
         yieldPercent,
-        balance: newBalance,
+        balance: newWalletBalance,
+        investmentBalance,
+        baseBalance,
       });
       credited++;
     }
 
-    return { credited };
+    return { credited, pausedUsers };
   }
 
   /** Enrollment + wallet deposits for MT5 investor display. */
@@ -532,7 +681,9 @@ export class InvestorService {
       select: {
         investorActive: true,
         metaApiAccountId: true,
-        platformWallet: { select: { availableBalance: true } },
+        platformWallet: {
+          select: { availableBalance: true, investorBalance: true },
+        },
       },
     });
     if (!user?.investorActive) return null;

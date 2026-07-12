@@ -43,7 +43,8 @@ export function TradeScreen() {
   const accountSource = terminal?.accountSource ?? running?.accountSource;
   const mode = mt5AccountModeFromSource(
     accountSource,
-    terminal?.investor?.investmentDeposited,
+    terminal?.investor?.investmentBalance ??
+      terminal?.investor?.investmentDeposited,
   );
   const modeDetail = mt5AccountModeDetail(accountSource);
 

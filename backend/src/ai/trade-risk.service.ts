@@ -22,6 +22,8 @@ export type TradeRiskInput = {
   takeProfit: number;
   riskPercent?: number;
   maxRiskAmount?: number;
+  /** Override broker equity (e.g. investor investment balance). */
+  equityOverride?: number;
   /** Use this lot size instead of risk-based sizing. */
   fixedVolume?: number;
   /** Skip DeepSeek volume review for faster order placement on submit. */
@@ -248,7 +250,14 @@ Rules:
       throw new BadRequestException('Trading is not allowed on this account');
     }
 
-    const equity = accountInfo.equity > 0 ? accountInfo.equity : accountInfo.balance;
+    const brokerEquity =
+      accountInfo.equity > 0 ? accountInfo.equity : accountInfo.balance;
+    const equity =
+      input.equityOverride != null &&
+      Number.isFinite(input.equityOverride) &&
+      input.equityOverride > 0
+        ? input.equityOverride
+        : brokerEquity;
     const slDistance = Math.abs(input.entryPrice - input.stopLoss);
     if (slDistance <= 0) {
       throw new BadRequestException('Stop loss must differ from entry price');

@@ -978,6 +978,26 @@ class ApiClient {
       this.request<{ paused: boolean }>("/investor/resume", {
         method: "POST",
       }),
+    allocate: (amount: number) =>
+      this.request<{
+        direction: string;
+        amount: number;
+        walletBalance: number;
+        investmentBalance: number;
+      }>("/investor/allocate", {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+      }),
+    redeem: (amount: number) =>
+      this.request<{
+        direction: string;
+        amount: number;
+        walletBalance: number;
+        investmentBalance: number;
+      }>("/investor/redeem", {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+      }),
   };
 
   evaluations = {
@@ -1478,6 +1498,7 @@ export interface InvestorStatus {
   mt5Connected: boolean;
   mt5HealthMessage: string | null;
   investmentDeposited: number;
+  investmentBalance: number;
   enrollmentPaid: number;
   walletDeposited: number;
   walletBalance: number;
@@ -1491,6 +1512,7 @@ export interface InvestorStatus {
     riskPercent: number;
     useTwoToOneRr: boolean;
     paused: boolean;
+    yieldPaused?: boolean;
   } | null;
   recentTrades: Array<{
     id: string;
@@ -2289,6 +2311,7 @@ export type UserMt5AccountSource =
 
 export interface UserMt5InvestorSummary {
   investmentDeposited: number;
+  investmentBalance: number;
   enrollmentPaid: number;
   walletDeposited: number;
   walletBalance: number;

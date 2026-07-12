@@ -53,4 +53,30 @@ export class InvestorController {
   resume(@Request() req: { user: { id: string } }) {
     return this.investor.setPaused(req.user.id, false);
   }
+
+  @Post('allocate')
+  @UseGuards(JwtAuthGuard)
+  allocate(
+    @Request() req: { user: { id: string } },
+    @Body() body: { amount: number },
+  ) {
+    return this.investor.transferInvestment(
+      req.user.id,
+      Number(body.amount),
+      'to_investment',
+    );
+  }
+
+  @Post('redeem')
+  @UseGuards(JwtAuthGuard)
+  redeem(
+    @Request() req: { user: { id: string } },
+    @Body() body: { amount: number },
+  ) {
+    return this.investor.transferInvestment(
+      req.user.id,
+      Number(body.amount),
+      'to_wallet',
+    );
+  }
 }

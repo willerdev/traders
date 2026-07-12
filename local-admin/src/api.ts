@@ -532,6 +532,7 @@ export const api = {
   updateInvestorDepositorSettings: (data: {
     investorFeeUsdt?: number;
     investorDailyYieldPercent?: number;
+    investorYieldPaused?: boolean;
     depositorDailyYieldPercent?: number;
     depositorMinDepositUsdt?: number;
     loginOtpEnabled?: boolean;
@@ -552,13 +553,36 @@ export const api = {
     return request<InvestorListResult>(`/admin/investors${suffix}`);
   },
   updateInvestorYield: (userId: string, dailyYieldPercent: number | null) =>
-    request<{ userId: string; dailyYieldPercent: number | null; effectiveDailyYieldPercent: number }>(
-      `/admin/investors/${encodeURIComponent(userId)}/yield`,
+    request<{
+      userId: string;
+      dailyYieldPercent: number | null;
+      effectiveDailyYieldPercent: number;
+      yieldPaused?: boolean;
+    }>(`/admin/investors/${encodeURIComponent(userId)}/yield`, {
+      method: "PATCH",
+      body: JSON.stringify({ dailyYieldPercent }),
+    }),
+  setInvestorYieldPaused: (userId: string, paused: boolean) =>
+    request<{ yieldPaused: boolean }>(
+      `/admin/investors/${encodeURIComponent(userId)}/yield-pause`,
       {
         method: "PATCH",
-        body: JSON.stringify({ dailyYieldPercent }),
+        body: JSON.stringify({ paused }),
       },
     ),
+  transferInvestorFunds: (
+    userId: string,
+    body: { amount: number; direction: "to_investment" | "to_wallet" },
+  ) =>
+    request<{
+      direction: string;
+      amount: number;
+      walletBalance: number;
+      investmentBalance: number;
+    }>(`/admin/investors/${encodeURIComponent(userId)}/transfer`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   incomeJournal: (params?: {
     limit?: number;
     offset?: number;
@@ -669,6 +693,7 @@ export type PaymentForecast = {
 export type InvestorDepositorSettings = {
   investorFeeUsdt: number;
   investorDailyYieldPercent: number;
+  investorYieldPaused: boolean;
   depositorDailyYieldPercent: number;
   depositorMinDepositUsdt: number;
   loginOtpEnabled: boolean;
@@ -680,11 +705,13 @@ export type InvestorRow = {
   displayName: string;
   enrolledAt: string | null;
   walletBalance: number;
+  investmentBalance: number;
   dailyYieldPercent: number | null;
   effectiveDailyYieldPercent: number;
   platformDailyYieldPercent: number;
   riskPercent: number | null;
   paused: boolean;
+  yieldPaused: boolean;
   incomeEntries: number;
 };
 

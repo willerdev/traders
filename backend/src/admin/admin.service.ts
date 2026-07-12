@@ -26,6 +26,7 @@ import { assessEmail } from '../common/email-quality.util';
 import { resolveAdminPermissions } from './admin-permissions.util';
 import { PresenceService } from '../presence/presence.service';
 import { WalletService } from '../wallet/wallet.service';
+import { InvestorService } from '../investor/investor.service';
 
 @Injectable()
 export class AdminService {
@@ -47,6 +48,7 @@ export class AdminService {
     private config: ConfigService,
     private presence: PresenceService,
     private walletService: WalletService,
+    private investorService: InvestorService,
   ) {}
 
   getLivePresence() {
@@ -1549,8 +1551,9 @@ export class AdminService {
     return {
       investorFeeUsdt: Number(config?.investorFeeUsdt ?? 50),
       investorDailyYieldPercent: Number(
-        config?.investorDailyYieldPercent ?? 0.5,
+        config?.investorDailyYieldPercent ?? 8,
       ),
+      investorYieldPaused: Boolean(config?.investorYieldPaused),
       depositorDailyYieldPercent: Number(config?.depositorDailyYieldPercent ?? 0.5),
       depositorMinDepositUsdt: Number(config?.depositorMinDepositUsdt ?? 50),
       loginOtpEnabled: otpRows[0]?.enabled ?? false,
@@ -1560,12 +1563,13 @@ export class AdminService {
   async updateInvestorDepositorSettings(input: {
     investorFeeUsdt?: number;
     investorDailyYieldPercent?: number;
+    investorYieldPaused?: boolean;
     depositorDailyYieldPercent?: number;
     depositorMinDepositUsdt?: number;
     loginOtpEnabled?: boolean;
   }) {
     await this.ensureLoginOtpColumn();
-    const data: Record<string, number> = {};
+    const data: Record<string, number | boolean> = {};
     if (input.investorFeeUsdt != null) {
       if (input.investorFeeUsdt <= 0) {
         throw new BadRequestException('Investor fee must be positive');
@@ -1580,6 +1584,9 @@ export class AdminService {
         throw new BadRequestException('Investor daily yield must be 0–100%');
       }
       data.investorDailyYieldPercent = input.investorDailyYieldPercent;
+    }
+    if (typeof input.investorYieldPaused === 'boolean') {
+      data.investorYieldPaused = input.investorYieldPaused;
     }
     if (input.depositorDailyYieldPercent != null) {
       if (
@@ -1640,7 +1647,7 @@ export class AdminService {
         await this.prisma.platformConfig.findUnique({
           where: { id: 'default' },
         })
-      )?.investorDailyYieldPercent ?? 0.5,
+      )?.investorDailyYieldPercent ?? 8,
     );
 
     const where = {
@@ -1672,9 +1679,16 @@ export class AdminService {
           displayName: true,
           investorEnrolledAt: true,
           investorSettings: {
-            select: { dailyYieldPercent: true, riskPercent: true, paused: true },
+            select: {
+              dailyYieldPercent: true,
+              riskPercent: true,
+              paused: true,
+              yieldPaused: true,
+            },
           },
-          platformWallet: { select: { availableBalance: true } },
+          platformWallet: {
+            select: { availableBalance: true, investorBalance: true },
+          },
           _count: { select: { investorDailyCredits: true } },
         },
       }),
@@ -1688,6 +1702,7 @@ export class AdminService {
         displayName: u.displayName,
         enrolledAt: u.investorEnrolledAt?.toISOString() ?? null,
         walletBalance: Number(u.platformWallet?.availableBalance ?? 0),
+        investmentBalance: Number(u.platformWallet?.investorBalance ?? 0),
         dailyYieldPercent:
           u.investorSettings?.dailyYieldPercent != null
             ? Number(u.investorSettings.dailyYieldPercent)
@@ -1701,6 +1716,7 @@ export class AdminService {
           ? Number(u.investorSettings.riskPercent)
           : null,
         paused: u.investorSettings?.paused ?? false,
+        yieldPaused: u.investorSettings?.yieldPaused ?? false,
         incomeEntries: u._count.investorDailyCredits,
       })),
       count,
@@ -1740,7 +1756,7 @@ export class AdminService {
         await this.prisma.platformConfig.findUnique({
           where: { id: 'default' },
         })
-      )?.investorDailyYieldPercent ?? 0.5,
+      )?.investorDailyYieldPercent ?? 8,
     );
 
     return {
@@ -1753,7 +1769,31 @@ export class AdminService {
         settings.dailyYieldPercent != null
           ? Number(settings.dailyYieldPercent)
           : platformYield,
+      yieldPaused: settings.yieldPaused,
     };
+  }
+
+  async setInvestorYieldPaused(userId: string, yieldPaused: boolean) {
+    return this.investorService.setYieldPaused(userId, yieldPaused);
+  }
+
+  async transferInvestorFunds(
+    userId: string,
+    adminId: string,
+    amount: number,
+    direction: 'to_investment' | 'to_wallet',
+  ) {
+    const result = await this.investorService.transferInvestment(
+      userId,
+      amount,
+      direction,
+      { adminId },
+    );
+    await this.logAction(adminId, 'INVESTOR_TRANSFER', userId, {
+      amount,
+      direction,
+    });
+    return result;
   }
 
   async getIncomeJournal(

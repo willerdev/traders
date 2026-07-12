@@ -20,6 +20,11 @@ export class ComplianceService {
       throw new ForbiddenException('Account is suspended');
     }
 
+    // Enrolled investors can trade on the platform MT5 without weekly trader access.
+    if (user.investorActive) {
+      return user;
+    }
+
     if (!hasActiveTradingAccess(user)) {
       throw new ForbiddenException(
         user.registrationPaid
@@ -33,7 +38,12 @@ export class ComplianceService {
 
   /** Block MT5 when the trader's latest evaluation was breached. */
   async requireEvaluationTradingAccess(userId: string) {
-    await this.requireActiveTrader(userId);
+    const user = await this.requireActiveTrader(userId);
+
+    // Investors use investment balance on MT5 — not blocked by evaluation breaches.
+    if (user.investorActive) {
+      return;
+    }
 
     const active = await this.prisma.evaluationEnrollment.findFirst({
       where: { userId, status: EvaluationStatus.ACTIVE },

@@ -353,6 +353,8 @@ export function mt5BalanceLabel(accountSource?: UserMt5AccountSource): string {
       return "Copy balance";
     case "linked_live":
       return "Linked balance";
+    case "investor_live":
+      return "Investment balance";
     default:
       return "Balance";
   }

@@ -208,7 +208,7 @@ export default function Mt5UserPage() {
   const floating = data?.stats.floatingProfit ?? 0;
   const account = data?.account;
   const accountSource = data?.accountSource;
-  const accountMode = mt5AccountModeFromSource(accountSource);
+  const accountMode = mt5AccountModeFromSource(accountSource, data?.investor);
   const accountModeDetail = mt5AccountModeDetail(accountSource);
   const limitCount = data?.stats.limitCount ?? 0;
   const runningCount = data?.stats.runningCount ?? displayRunningTrades.length;

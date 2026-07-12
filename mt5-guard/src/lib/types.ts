@@ -132,7 +132,12 @@ export interface UserMt5Terminal {
   accountSource?: UserMt5AccountSource;
   message?: string;
   account?: UserMt5AccountSummary;
-  investor?: { investmentDeposited: number; mt5Balance?: number; currency: string };
+  investor?: {
+    investmentDeposited: number;
+    investmentBalance?: number;
+    mt5Balance?: number;
+    currency: string;
+  };
   trades: UserMt5Trade[];
   history: { items: UserMt5HistoryItem[]; count: number };
   stats: {

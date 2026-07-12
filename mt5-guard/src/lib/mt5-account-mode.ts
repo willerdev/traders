@@ -27,7 +27,7 @@ export function mt5AccountModeDetail(
     case "linked_live":
       return "Linked MT5";
     case "investor_live":
-      return "Investor";
+      return "Investment";
     case "evaluation_live":
       return "Evaluation";
     default:

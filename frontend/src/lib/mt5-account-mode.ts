@@ -14,7 +14,10 @@ export function mt5AccountModeFromSource(
   ) {
     return "real";
   }
-  if (investor && investor.investmentDeposited > 0) {
+  if (
+    investor &&
+    (investor.investmentBalance > 0 || investor.investmentDeposited > 0)
+  ) {
     return "real";
   }
   return "demo";
@@ -29,7 +32,7 @@ export function mt5AccountModeDetail(
     case "linked_live":
       return "Linked MT5";
     case "investor_live":
-      return "Investor";
+      return "Investment";
     case "evaluation_live":
       return "Evaluation";
     default:

@@ -215,8 +215,8 @@ export class PlatformJobsService implements OnModuleInit {
     }
   }
 
-  /** Daily at 00:15 UTC — credit investor daily earnings. */
-  @Cron('15 0 * * *')
+  /** Daily at 16:00 Africa/Kampala — credit investor daily earnings. */
+  @Cron('0 16 * * *', { timeZone: 'Africa/Kampala' })
   async investorDailyEarningsJob() {
     try {
       const result = await this.investorService.creditDailyEarnings();
@@ -224,6 +224,8 @@ export class PlatformJobsService implements OnModuleInit {
         this.logger.log(
           `Investor daily earnings credited: ${result.credited} investor(s)`,
         );
+      } else if (result.skipped === 'global_pause') {
+        this.logger.warn('Investor daily earnings skipped — global yield pause');
       }
     } catch (err) {
       this.logger.error(

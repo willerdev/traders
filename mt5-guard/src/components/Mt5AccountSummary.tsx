@@ -16,7 +16,9 @@ export function Mt5AccountSummary({ account, accountSource }: Props) {
       ? "Evaluation balance"
       : accountSource === "virtual"
         ? "Wallet balance"
-        : "Balance";
+        : accountSource === "investor_live"
+          ? "Investment balance"
+          : "Balance";
   const balance =
     accountSource && accountSource !== "virtual" && accountSource !== "investor_live"
       ? account.startingBalance

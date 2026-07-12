@@ -33,9 +33,11 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
   const [depositorYield, setDepositorYield] = useState("");
   const [minDeposit, setMinDeposit] = useState("");
   const [loginOtpEnabled, setLoginOtpEnabled] = useState(false);
+  const [investorYieldPaused, setInvestorYieldPaused] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
 
   const [yieldDrafts, setYieldDrafts] = useState<Record<string, string>>({});
+  const [transferDrafts, setTransferDrafts] = useState<Record<string, string>>({});
   const [journalSource, setJournalSource] = useState<"" | "INVESTOR" | "DEPOSITOR">("");
 
   const [creditEmail, setCreditEmail] = useState("");
@@ -58,6 +60,7 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
     setDepositorYield(String(s.depositorDailyYieldPercent));
     setMinDeposit(String(s.depositorMinDepositUsdt));
     setLoginOtpEnabled(s.loginOtpEnabled);
+    setInvestorYieldPaused(Boolean(s.investorYieldPaused));
   }, []);
 
   const load = useCallback(async () => {
@@ -92,6 +95,10 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
 
   const stats = useMemo(() => {
     const totalWallet = investors.reduce((sum, i) => sum + i.walletBalance, 0);
+    const totalInvestment = investors.reduce(
+      (sum, i) => sum + (i.investmentBalance ?? 0),
+      0,
+    );
     const investorIncome = incomeJournal
       .filter((e) => e.source === "INVESTOR")
       .reduce((sum, e) => sum + e.amount, 0);
@@ -101,6 +108,7 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
     return {
       investorCount: investors.length,
       totalWallet,
+      totalInvestment,
       investorIncome,
       depositorIncome,
       journalCount: incomeJournal.length,
@@ -113,6 +121,7 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
       const updated = await api.updateInvestorDepositorSettings({
         investorFeeUsdt: Number(investorFee),
         investorDailyYieldPercent: Number(investorYield),
+        investorYieldPaused,
         depositorDailyYieldPercent: Number(depositorYield),
         depositorMinDepositUsdt: Number(minDeposit),
         loginOtpEnabled,
@@ -204,7 +213,9 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
         >
           <span className="platform-stat-label">Investor wallets</span>
           <strong className="platform-stat-value">{fmtMoney(stats.totalWallet)}</strong>
-          <span className="platform-stat-meta">Combined available balance</span>
+          <span className="platform-stat-meta">
+            Available · invested {fmtMoney(stats.totalInvestment)}
+          </span>
         </article>
         <article
           className="platform-stat-card platform-stat-depositor platform-animate-in"
@@ -275,6 +286,21 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
                   />
                 </label>
               </div>
+              <label className="platform-toggle" style={{ marginTop: "1rem" }}>
+                <input
+                  type="checkbox"
+                  checked={investorYieldPaused}
+                  onChange={(e) => setInvestorYieldPaused(e.target.checked)}
+                />
+                <span className="platform-toggle-track" />
+                <span className="platform-toggle-text">
+                  Pause all investor daily revenue (global)
+                </span>
+              </label>
+              <p className="muted" style={{ marginTop: "0.5rem", fontSize: 12 }}>
+                Credits run daily at 16:00 Africa/Kampala on each investor&apos;s
+                investment balance. Earnings land in their wallet.
+              </p>
             </section>
 
             <section className="platform-card platform-card-depositor">
@@ -348,8 +374,10 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
               <div>
                 <h3>Active investors</h3>
                 <p>
-                  Override daily yield per user. Blank uses platform default (
-                  {settings?.investorDailyYieldPercent ?? "—"}%).
+                  Move wallet ↔ investment, override yield, or pause revenue per
+                  user. Blank yield uses platform default (
+                  {settings?.investorDailyYieldPercent ?? "—"}%). Global pause:{" "}
+                  {settings?.investorYieldPaused ? "ON" : "off"}.
                 </p>
               </div>
             </div>
@@ -366,9 +394,9 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
                     <tr>
                       <th>User</th>
                       <th>Wallet</th>
-                      <th>Risk</th>
-                      <th>Effective yield</th>
-                      <th>Custom yield</th>
+                      <th>Investment</th>
+                      <th>Yield</th>
+                      <th>Transfer</th>
                       <th />
                     </tr>
                   </thead>
@@ -384,55 +412,193 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
                             <strong>{inv.displayName}</strong>
                             <span>{inv.email ?? inv.id.slice(0, 8)}</span>
                             {inv.paused && (
-                              <span className="platform-pill platform-pill-warn">Paused</span>
+                              <span className="platform-pill platform-pill-warn">
+                                MT5 paused
+                              </span>
+                            )}
+                            {inv.yieldPaused && (
+                              <span className="platform-pill platform-pill-warn">
+                                Yield paused
+                              </span>
                             )}
                           </div>
                         </td>
-                        <td className="platform-money">{fmtMoney(inv.walletBalance)}</td>
-                        <td>{inv.riskPercent != null ? `${inv.riskPercent}%` : "—"}</td>
-                        <td>
-                          <span className="platform-pill platform-pill-investor">
-                            {inv.effectiveDailyYieldPercent}%
-                          </span>
+                        <td className="platform-money">
+                          {fmtMoney(inv.walletBalance)}
+                        </td>
+                        <td className="platform-money">
+                          {fmtMoney(inv.investmentBalance ?? 0)}
                         </td>
                         <td>
-                          <input
-                            className="platform-input platform-input-compact"
-                            placeholder="Default"
-                            value={yieldDrafts[inv.id] ?? ""}
-                            onChange={(e) =>
-                              setYieldDrafts((prev) => ({
-                                ...prev,
-                                [inv.id]: e.target.value,
-                              }))
-                            }
-                          />
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <span className="platform-pill platform-pill-investor">
+                              {inv.effectiveDailyYieldPercent}%
+                            </span>
+                            <input
+                              className="platform-input platform-input-compact"
+                              placeholder="Default"
+                              style={{ width: 72 }}
+                              value={yieldDrafts[inv.id] ?? ""}
+                              onChange={(e) =>
+                                setYieldDrafts((prev) => ({
+                                  ...prev,
+                                  [inv.id]: e.target.value,
+                                }))
+                              }
+                            />
+                            <button
+                              type="button"
+                              className="platform-btn platform-btn-ghost"
+                              onClick={() => {
+                                const raw = yieldDrafts[inv.id]?.trim();
+                                const dailyYieldPercent =
+                                  raw === "" ? null : Number(raw);
+                                void api
+                                  .updateInvestorYield(inv.id, dailyYieldPercent)
+                                  .then((res) => {
+                                    setInvestors((prev) =>
+                                      prev.map((row) =>
+                                        row.id === inv.id
+                                          ? {
+                                              ...row,
+                                              dailyYieldPercent: res.dailyYieldPercent,
+                                              effectiveDailyYieldPercent:
+                                                res.effectiveDailyYieldPercent,
+                                            }
+                                          : row,
+                                      ),
+                                    );
+                                    onMessage(
+                                      `Investor yield updated for ${inv.displayName}.`,
+                                    );
+                                  })
+                                  .catch((e) =>
+                                    onMessage(
+                                      e instanceof Error ? e.message : "Update failed",
+                                    ),
+                                  );
+                              }}
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <input
+                              className="platform-input platform-input-compact"
+                              placeholder="Amount"
+                              style={{ width: 80 }}
+                              value={transferDrafts[inv.id] ?? ""}
+                              onChange={(e) =>
+                                setTransferDrafts((prev) => ({
+                                  ...prev,
+                                  [inv.id]: e.target.value,
+                                }))
+                              }
+                            />
+                            <button
+                              type="button"
+                              className="platform-btn platform-btn-ghost"
+                              title="Wallet → Investment"
+                              onClick={() => {
+                                const amount = Number(transferDrafts[inv.id]);
+                                void api
+                                  .transferInvestorFunds(inv.id, {
+                                    amount,
+                                    direction: "to_investment",
+                                  })
+                                  .then((res) => {
+                                    setInvestors((prev) =>
+                                      prev.map((row) =>
+                                        row.id === inv.id
+                                          ? {
+                                              ...row,
+                                              walletBalance: res.walletBalance,
+                                              investmentBalance: res.investmentBalance,
+                                            }
+                                          : row,
+                                      ),
+                                    );
+                                    setTransferDrafts((prev) => ({
+                                      ...prev,
+                                      [inv.id]: "",
+                                    }));
+                                    onMessage(
+                                      `Moved ${fmtMoney(res.amount)} to investment for ${inv.displayName}.`,
+                                    );
+                                  })
+                                  .catch((e) =>
+                                    onMessage(
+                                      e instanceof Error ? e.message : "Transfer failed",
+                                    ),
+                                  );
+                              }}
+                            >
+                              → Inv
+                            </button>
+                            <button
+                              type="button"
+                              className="platform-btn platform-btn-ghost"
+                              title="Investment → Wallet"
+                              onClick={() => {
+                                const amount = Number(transferDrafts[inv.id]);
+                                void api
+                                  .transferInvestorFunds(inv.id, {
+                                    amount,
+                                    direction: "to_wallet",
+                                  })
+                                  .then((res) => {
+                                    setInvestors((prev) =>
+                                      prev.map((row) =>
+                                        row.id === inv.id
+                                          ? {
+                                              ...row,
+                                              walletBalance: res.walletBalance,
+                                              investmentBalance: res.investmentBalance,
+                                            }
+                                          : row,
+                                      ),
+                                    );
+                                    setTransferDrafts((prev) => ({
+                                      ...prev,
+                                      [inv.id]: "",
+                                    }));
+                                    onMessage(
+                                      `Moved ${fmtMoney(res.amount)} to wallet for ${inv.displayName}.`,
+                                    );
+                                  })
+                                  .catch((e) =>
+                                    onMessage(
+                                      e instanceof Error ? e.message : "Transfer failed",
+                                    ),
+                                  );
+                              }}
+                            >
+                              → Wallet
+                            </button>
+                          </div>
                         </td>
                         <td>
                           <button
                             type="button"
                             className="platform-btn platform-btn-ghost"
                             onClick={() => {
-                              const raw = yieldDrafts[inv.id]?.trim();
-                              const dailyYieldPercent =
-                                raw === "" ? null : Number(raw);
+                              const next = !inv.yieldPaused;
                               void api
-                                .updateInvestorYield(inv.id, dailyYieldPercent)
+                                .setInvestorYieldPaused(inv.id, next)
                                 .then((res) => {
                                   setInvestors((prev) =>
                                     prev.map((row) =>
                                       row.id === inv.id
-                                        ? {
-                                            ...row,
-                                            dailyYieldPercent: res.dailyYieldPercent,
-                                            effectiveDailyYieldPercent:
-                                              res.effectiveDailyYieldPercent,
-                                          }
+                                        ? { ...row, yieldPaused: res.yieldPaused }
                                         : row,
                                     ),
                                   );
                                   onMessage(
-                                    `Investor yield updated for ${inv.displayName}.`,
+                                    next
+                                      ? `Yield paused for ${inv.displayName}.`
+                                      : `Yield resumed for ${inv.displayName}.`,
                                   );
                                 })
                                 .catch((e) =>
@@ -442,7 +608,7 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
                                 );
                             }}
                           >
-                            Save
+                            {inv.yieldPaused ? "Resume yield" : "Pause yield"}
                           </button>
                         </td>
                       </tr>
