@@ -2629,6 +2629,11 @@ export default function App() {
             <div className="toolbar">
               <h2>Payout requests</h2>
             </div>
+            <p className="muted" style={{ margin: "0 0 1rem" }}>
+              Every TP claim is queued here as a <strong>TP reward</strong>. Approving
+              credits the trader&apos;s platform wallet. If the claim is still pending
+              review, Approve also verifies the screenshots first.
+            </p>
 
             <div className="kyc-card" style={{ marginBottom: "1rem" }}>
               <h3 style={{ margin: "0 0 0.5rem" }}>Credit user wallet</h3>
@@ -3066,7 +3071,14 @@ export default function App() {
               <tbody>
                 {payouts.map((p) => (
                   <tr key={p.id}>
-                    <td>{p.user.displayName}</td>
+                    <td>
+                      {p.user.displayName}
+                      {p.source === "TP_REWARD" && p.tpClaim?.status && (
+                        <div className="muted" style={{ fontSize: "0.75rem" }}>
+                          Claim: {p.tpClaim.status.replace(/_/g, " ").toLowerCase()}
+                        </div>
+                      )}
+                    </td>
                     <td className="muted">{payoutSourceLabel(p)}</td>
                     <td>{fmtMoney(p.traderShare)}</td>
                     <td>{p.payoutMethod === "MOBILE_MONEY" ? "Mobile money" : p.payoutMethod === "TRC20" ? "TRC20" : "—"}</td>
@@ -3203,6 +3215,12 @@ export default function App() {
             <div className="toolbar">
               <h2>TP claims review ({tpClaims.length} pending)</h2>
             </div>
+            <p className="muted" style={{ margin: "0 0 1rem" }}>
+              Review screenshots here, then credit the reward from{" "}
+              <strong>Payouts</strong> (every claim is queued there as a TP reward).
+              You can also approve directly from Payouts — that verifies the claim
+              and credits the wallet in one step.
+            </p>
             <div className="kyc-grid">
               {tpClaims.length === 0 ? (
                 <p className="muted">No pending TP claims</p>
@@ -3262,9 +3280,11 @@ export default function App() {
                             .approveTpClaim(item.id)
                             .then((res) => {
                               setMessage(
-                                res?.creditedToWallet
-                                  ? `Approved — $${Number(res.reward ?? 0).toFixed(2)} credited to platform wallet.`
-                                  : "TP claim approved.",
+                                res?.awaitsPayoutApproval
+                                  ? `Evidence approved — $${Number(res.reward ?? 0).toFixed(2)} is in Payouts waiting for wallet credit.`
+                                  : res?.creditedToWallet
+                                    ? `Approved — $${Number(res.reward ?? 0).toFixed(2)} credited to platform wallet.`
+                                    : "TP claim approved.",
                               );
                               return loadTab("tpClaims");
                             })
@@ -3277,7 +3297,7 @@ export default function App() {
                             )
                         }
                       >
-                        Approve & credit {item.claimType === "RR_1_TO_1" ? "1:1 RR" : "TP"}
+                        Approve evidence
                       </button>
                       <button
                         type="button"
@@ -5723,7 +5743,10 @@ export default function App() {
             <p className="muted">
               {payoutNeedsDestination(approvePayoutModal)
                 ? "This will send USDT from NOWPayments to the user's saved payout destination."
-                : "This will credit the user's platform wallet (not an on-chain transfer)."}
+                : approvePayoutModal.source === "TP_REWARD" &&
+                    approvePayoutModal.tpClaim?.status === "PENDING_REVIEW"
+                  ? "This verifies the TP claim screenshots and credits the reward to the platform wallet."
+                  : "This will credit the user's platform wallet (not an on-chain transfer)."}
             </p>
             {(approvePayoutModal.user.kyc?.status !== "APPROVED" ||
               (payoutNeedsDestination(approvePayoutModal) &&

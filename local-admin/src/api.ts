@@ -1005,6 +1005,15 @@ export type PayoutRow = {
   payoutMethod?: string;
   requestedAt: string;
   gatewayPayoutId?: string | null;
+  tpClaimId?: string | null;
+  tpClaim?: {
+    id: string;
+    status: string;
+    claimType?: string | null;
+    symbol?: string | null;
+    beforeScreenshotUrl?: string | null;
+    afterScreenshotUrl?: string | null;
+  } | null;
   user: {
     displayName: string;
     email: string;

@@ -175,21 +175,37 @@ export class NotificationService {
         ? `<p>New wallet balance: <strong>$${data.walletBalance.toFixed(2)} USDT</strong></p>`
         : '';
 
+    const credited =
+      data.walletBalance != null
+        ? `<p><strong>$${data.reward.toFixed(2)} USDT</strong> has been credited to your platform wallet.</p>
+      ${balanceLine}
+      <p>Withdraw anytime from the Wallet page (KYC required for withdrawals).</p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`
+        : `<p>Your claim for <strong>$${data.reward.toFixed(2)} USDT</strong> passed review.</p>
+      <p>An admin will finalize the reward from the payouts queue — you’ll get another email when it hits your wallet.</p>
+      ${this.email.button(`${this.email.frontendUrl}/tp-claims`, 'View TP claims')}`;
+
     const html = this.email.layout(
       'TP claim approved',
       `<p>Hi ${user.name},</p>
       <p>Your take-profit claim for <strong>${data.symbol}</strong> was approved.</p>
-      <p><strong>$${data.reward.toFixed(2)} USDT</strong> has been credited to your platform wallet.</p>
-      ${balanceLine}
-      <p>Withdraw anytime from the Wallet page (KYC required for withdrawals).</p>
-      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+      ${credited}`,
     );
+
+    const subject =
+      data.walletBalance != null
+        ? `TP claim approved — $${data.reward.toFixed(2)} USDT in your wallet`
+        : `TP claim approved — $${data.reward.toFixed(2)} USDT awaiting payout`;
+    const text =
+      data.walletBalance != null
+        ? `Your TP claim for ${data.symbol} was approved. $${data.reward.toFixed(2)} USDT credited to your platform wallet.`
+        : `Your TP claim for ${data.symbol} was approved. $${data.reward.toFixed(2)} USDT will be credited after payout approval.`;
 
     return this.email.send({
       to: user.email,
-      subject: `TP claim approved — $${data.reward.toFixed(2)} USDT in your wallet`,
+      subject,
       html,
-      text: `Your TP claim for ${data.symbol} was approved. $${data.reward.toFixed(2)} USDT credited to your platform wallet.`,
+      text,
     });
   }
 

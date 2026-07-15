@@ -22,7 +22,6 @@ import {
   Target,
 } from "lucide-react";
 import { ClaimTpModal } from "@/components/dashboard/claim-tp-modal";
-import { PayoutRequestForm } from "@/components/payments/payout-request-form";
 
 function statusBadge(status: TpClaimRecord["status"]) {
   switch (status) {
@@ -35,10 +34,10 @@ function statusBadge(status: TpClaimRecord["status"]) {
   }
 }
 
-function payoutStatusLabel(status: string, hasWallet: boolean) {
+function payoutStatusLabel(status: string) {
   if (status === "PAID") return "Credited to wallet";
-  if (status === "PENDING" && hasWallet) return "Awaiting admin approval";
-  if (status === "PENDING") return "Pending";
+  if (status === "PENDING") return "Awaiting payout approval";
+  if (status === "REJECTED") return "Payout rejected";
   return status;
 }
 
@@ -96,7 +95,9 @@ export default function TpClaimsPage() {
   }
 
   const pending = claims.filter((c) => c.status === "PENDING_REVIEW");
-  const readyForPayout = claims.filter((c) => c.canRequestPayout);
+  const awaitingWallet = claims.filter(
+    (c) => c.awaitsPayoutApproval || (c.status === "APPROVED" && c.payout?.status === "PENDING"),
+  );
   const kycStatus = settings?.kyc?.status ?? "NOT_STARTED";
   const kycApproved = kycStatus === "APPROVED";
 
@@ -108,7 +109,7 @@ export default function TpClaimsPage() {
             <h1 className="text-2xl font-bold text-white">TP Claims</h1>
             <p className="mt-1 text-sm text-gray-400">
               Claim take profit when price hits TP1 or full TP — submit evidence here.
-              After admin approval, the reward is credited to your platform wallet.
+              After admin payout approval, the reward is credited to your platform wallet.
             </p>
           </div>
           <Button variant="secondary" size="sm" onClick={() => void load()} disabled={loading}>
@@ -215,7 +216,7 @@ export default function TpClaimsPage() {
           </Card>
         )}
 
-        {!kycApproved && readyForPayout.length > 0 && (
+        {!kycApproved && awaitingWallet.length > 0 && (
           <Card className="mb-6 border-rank-gold/30 bg-rank-gold/5">
             <CardContent className="flex flex-col gap-4 pt-6 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex gap-3">
@@ -223,7 +224,7 @@ export default function TpClaimsPage() {
                 <div>
                   <p className="font-semibold text-white">KYC required to withdraw</p>
                   <p className="text-sm text-gray-400">
-                    Complete identity verification before requesting TP reward payouts.
+                    Once your reward hits the wallet, KYC is required before you can withdraw.
                   </p>
                 </div>
               </div>
@@ -236,16 +237,17 @@ export default function TpClaimsPage() {
           </Card>
         )}
 
-        {readyForPayout.length > 0 && kycApproved && (
+        {awaitingWallet.length > 0 && (
           <Card className="mb-6 border-primary/30 bg-primary/5">
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Wallet className="h-5 w-5 text-primary" />
-                Ready for payout
+                Awaiting payout approval
               </CardTitle>
               <CardDescription>
-                {readyForPayout.length} approved claim
-                {readyForPayout.length !== 1 ? "s" : ""} can be withdrawn as USDT
+                {awaitingWallet.length} approved claim
+                {awaitingWallet.length !== 1 ? "s" : ""} waiting for an admin to credit
+                your platform wallet.
               </CardDescription>
             </CardHeader>
           </Card>
@@ -341,10 +343,11 @@ export default function TpClaimsPage() {
                       <div className="space-y-3">
                         {claim.reviewedAt && (
                           <p className="text-sm text-success">
-                            Approved {fmtDate(claim.reviewedAt)} —{" "}
-                            {formatCurrency(claim.rewardAmount ?? 5)} credited to
-                            your platform wallet.
-                            {!claim.payout && (
+                            Approved {fmtDate(claim.reviewedAt)}
+                            {claim.walletCredited || claim.payout?.status === "PAID"
+                              ? ` — ${formatCurrency(claim.rewardAmount ?? 5)} credited to your platform wallet.`
+                              : ` — ${formatCurrency(claim.rewardAmount ?? 5)} is queued for payout approval.`}
+                            {(claim.walletCredited || claim.payout?.status === "PAID") && (
                               <>
                                 {" "}
                                 <Link
@@ -358,23 +361,6 @@ export default function TpClaimsPage() {
                           </p>
                         )}
 
-                        {claim.canRequestPayout && (
-                          <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
-                            <p className="mb-3 text-sm font-medium text-white">
-                              Request {formatCurrency(claim.rewardAmount ?? 5)} USDT payout
-                            </p>
-                            <PayoutRequestForm
-                              disabled={!kycApproved}
-                              settings={settings}
-                              submitLabel="Request TP payout"
-                              onSubmit={async (walletAddress) => {
-                                await api.tpClaims.requestPayout(claim.id, walletAddress);
-                                await load();
-                              }}
-                            />
-                          </div>
-                        )}
-
                         {claim.payout && (
                           <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-sm">
                             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -382,34 +368,22 @@ export default function TpClaimsPage() {
                                 Payout {formatCurrency(claim.payout.amount)}
                               </span>
                               <Badge variant="secondary">
-                                {payoutStatusLabel(
-                                  claim.payout.status,
-                                  Boolean(claim.payout.walletAddress),
-                                )}
+                                {payoutStatusLabel(claim.payout.status)}
                               </Badge>
                             </div>
-                            {claim.payout.walletAddress && (
-                              <p className="mt-1 truncate font-mono text-xs text-gray-500">
-                                {claim.payout.walletAddress}
-                              </p>
-                            )}
                             <p className="mt-1 text-xs text-gray-600">
                               {claim.payout.status === "PAID"
                                 ? `Processed ${fmtDate(claim.payout.requestedAt)}`
-                                : `Requested ${fmtDate(claim.payout.requestedAt)}`}
+                                : `Queued ${fmtDate(claim.payout.requestedAt)}`}
                             </p>
-                            <Link
-                              href={
-                                claim.payout.status === "PAID"
-                                  ? "/wallet"
-                                  : "/payouts"
-                              }
-                              className="mt-2 inline-block text-xs text-primary hover:underline"
-                            >
-                              {claim.payout.status === "PAID"
-                                ? "Open wallet"
-                                : "View all payouts"}
-                            </Link>
+                            {claim.payout.status === "PAID" && (
+                              <Link
+                                href="/wallet"
+                                className="mt-2 inline-block text-xs text-primary hover:underline"
+                              >
+                                Open wallet
+                              </Link>
+                            )}
                           </div>
                         )}
                       </div>

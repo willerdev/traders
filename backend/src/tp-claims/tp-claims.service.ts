@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletService as TradeWalletService } from '../trades/wallet.service';
-import { WalletService as PlatformWalletService } from '../wallet/wallet.service';
 import { PriceMonitorService } from '../trades/price-monitor.service';
 import { NotificationService } from '../email/notification.service';
 import { Signal, Trade, TpClaimType } from '@prisma/client';
@@ -19,7 +18,6 @@ export class TpClaimsService {
   constructor(
     private prisma: PrismaService,
     private tradeWallet: TradeWalletService,
-    private platformWallet: PlatformWalletService,
     private priceMonitor: PriceMonitorService,
     private notifications: NotificationService,
     private metaApi: MetaApiService,
@@ -98,7 +96,12 @@ export class TpClaimsService {
         claimType,
         status: 'PENDING_REVIEW',
       },
+      include: {
+        signal: { select: { signalId: true } },
+      },
     });
+
+    await this.ensurePendingTpPayout(claim);
 
     const isRr1 = claimType === 'RR_1_TO_1';
     return {
@@ -107,8 +110,8 @@ export class TpClaimsService {
       claimType,
       signalId: signal.signalId,
       message: isRr1
-        ? '1:1 RR claim submitted for review. An admin will verify your before/after screenshots before crediting your reward.'
-        : 'TP claim submitted for review. Upload confirmed — an admin will verify your before/after screenshots before crediting your account.',
+        ? '1:1 RR claim submitted for review. An admin will verify your screenshots, then approve your reward from the payouts list.'
+        : 'TP claim submitted for review. An admin will verify your screenshots, then approve your reward from the payouts list.',
     };
   }
 
@@ -173,14 +176,19 @@ export class TpClaimsService {
         reviewedById: null,
         submittedAt: new Date(),
       },
+      include: {
+        signal: { select: { signalId: true } },
+      },
     });
+
+    await this.ensurePendingTpPayout(updated);
 
     return {
       status: 'pending_review' as const,
       claimId: updated.id,
       signalId: claim.signal.signalId,
       message:
-        'TP claim resubmitted for review. An admin will verify your updated screenshots.',
+        'TP claim resubmitted for review. An admin will verify your updated screenshots, then approve your reward from the payouts list.',
     };
   }
 
@@ -222,7 +230,12 @@ export class TpClaimsService {
       canResubmit:
         c.status === 'REJECTED' &&
         ['OPEN', 'ARCHIVED'].includes(c.signal.status ?? ''),
-      canRequestPayout: c.status === 'APPROVED' && !c.payout,
+      // Admin credits the platform wallet from Payouts — traders withdraw via /wallet.
+      canRequestPayout: false,
+      awaitsPayoutApproval:
+        c.status === 'APPROVED' &&
+        Boolean(c.payout && c.payout.status === 'PENDING'),
+      walletCredited: Boolean(c.payout && c.payout.status === 'PAID'),
       payout: c.payout
         ? {
             id: c.payout.id,
@@ -374,54 +387,17 @@ export class TpClaimsService {
       claim.signal.signalId,
     );
 
-    // Real USDT balance: credit PlatformWallet on claim approval (not VirtualAccount).
-    // Record a PAID payout so the trader cannot request a duplicate TP payout later.
     const reviewedAt = new Date();
-    const { weekNumber, year } = this.isoWeekYear(reviewedAt);
-    const platformCreditRef = `tp_claim_${claimId}`;
-    const priorPlatformCredit = await this.prisma.walletTransaction.findFirst({
-      where: {
-        userId: claim.userId,
-        type: 'TP_REWARD',
-        referenceId: platformCreditRef,
-      },
-      select: { id: true },
-    });
 
-    let platformBalance: number | null = null;
-    if (!priorPlatformCredit) {
-      const credited = await this.platformWallet.creditBalance(
-        claim.userId,
-        reward,
-        'TP_REWARD',
-        `$${reward} ${rewardLabel} — ${claim.symbol} (${claim.signal.signalId})`,
-        platformCreditRef,
-      );
-      platformBalance = credited.balance;
-    }
-
-    const existingPayout = await this.prisma.payout.findUnique({
-      where: { tpClaimId: claimId },
-      select: { id: true },
+    // Evidence approved — queue / keep a PENDING payout so admin credits
+    // the platform wallet from the Payouts list (no auto wallet credit here).
+    await this.ensurePendingTpPayout({
+      id: claim.id,
+      userId: claim.userId,
+      symbol: claim.symbol,
+      claimType: claim.claimType,
+      signal: { signalId: claim.signal.signalId },
     });
-    if (!existingPayout) {
-      await this.prisma.payout.create({
-        data: {
-          userId: claim.userId,
-          tpClaimId: claimId,
-          source: 'TP_REWARD',
-          virtualProfit: reward,
-          traderShare: reward,
-          platformShare: 0,
-          traderPercent: 100,
-          weekNumber,
-          year,
-          status: 'PAID',
-          processedAt: reviewedAt,
-          notes: `Approved by admin ${adminId} — $${reward.toFixed(2)} USDT credited to platform wallet`,
-        },
-      });
-    }
 
     await this.prisma.tpClaim.update({
       where: { id: claimId },
@@ -442,8 +418,8 @@ export class TpClaimsService {
           signalId: claim.signal.signalId,
           reward: result.reward,
           claimType: claim.claimType,
-          platformWalletCredited: !priorPlatformCredit,
-          platformBalance,
+          platformWalletCredited: false,
+          awaitsPayoutApproval: true,
         },
       },
     });
@@ -452,7 +428,6 @@ export class TpClaimsService {
       symbol: claim.symbol,
       reward: result.reward,
       signalId: claim.signal.signalId,
-      walletBalance: platformBalance ?? undefined,
     });
 
     return {
@@ -460,9 +435,96 @@ export class TpClaimsService {
       claimId,
       reward: result.reward,
       signalId: claim.signal.signalId,
-      creditedToWallet: !priorPlatformCredit,
-      walletBalance: platformBalance,
+      creditedToWallet: false,
+      awaitsPayoutApproval: true,
     };
+  }
+
+  /**
+   * Ensure every open TP claim has a PENDING payout row so it appears
+   * in Admin → Payouts for wallet credit approval.
+   */
+  async syncPendingClaimPayouts(): Promise<number> {
+    const claims = await this.prisma.tpClaim.findMany({
+      where: {
+        status: { in: ['PENDING_REVIEW', 'APPROVED'] },
+        OR: [{ payout: null }, { payout: { status: 'REJECTED' } }],
+      },
+      include: {
+        signal: { select: { signalId: true } },
+        payout: { select: { id: true, status: true } },
+      },
+      take: 200,
+    });
+
+    let created = 0;
+    for (const claim of claims) {
+      if (claim.payout?.status === 'PAID' || claim.payout?.status === 'APPROVED') {
+        continue;
+      }
+      await this.ensurePendingTpPayout(claim);
+      created += 1;
+    }
+    return created;
+  }
+
+  private async ensurePendingTpPayout(claim: {
+    id: string;
+    userId: string;
+    symbol: string;
+    claimType?: string | null;
+    signal: { signalId: string };
+  }) {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    const fullReward = Number(config?.tpRewardUsd ?? TP_REWARD_USD);
+    const isRr1 = claim.claimType === 'RR_1_TO_1';
+    const reward = isRr1 ? Math.round(fullReward * 50) / 100 : fullReward;
+    const { weekNumber, year } = this.isoWeekYear(new Date());
+    const notes = `TP reward — ${claim.symbol} (${claim.signal.signalId})${
+      isRr1 ? ' · 1:1 RR' : ''
+    }`;
+
+    const existing = await this.prisma.payout.findUnique({
+      where: { tpClaimId: claim.id },
+    });
+
+    if (existing) {
+      if (existing.status === 'PAID' || existing.status === 'APPROVED') {
+        return existing;
+      }
+      return this.prisma.payout.update({
+        where: { id: existing.id },
+        data: {
+          status: 'PENDING',
+          virtualProfit: reward,
+          traderShare: reward,
+          platformShare: 0,
+          traderPercent: 100,
+          weekNumber,
+          year,
+          notes,
+          processedAt: null,
+        },
+      });
+    }
+
+    return this.prisma.payout.create({
+      data: {
+        userId: claim.userId,
+        tpClaimId: claim.id,
+        source: 'TP_REWARD',
+        virtualProfit: reward,
+        traderShare: reward,
+        platformShare: 0,
+        traderPercent: 100,
+        weekNumber,
+        year,
+        status: 'PENDING',
+        notes,
+      },
+    });
   }
 
   private isoWeekYear(date: Date): { weekNumber: number; year: number } {
@@ -481,7 +543,10 @@ export class TpClaimsService {
   async rejectClaim(claimId: string, adminId: string, reason: string) {
     const claim = await this.prisma.tpClaim.findUnique({
       where: { id: claimId },
-      include: { signal: { select: { signalId: true } } },
+      include: {
+        signal: { select: { signalId: true } },
+        payout: { select: { id: true, status: true } },
+      },
     });
 
     if (!claim) throw new NotFoundException('TP claim not found');
@@ -500,6 +565,17 @@ export class TpClaimsService {
         reviewedById: adminId,
       },
     });
+
+    if (claim.payout && claim.payout.status === 'PENDING') {
+      await this.prisma.payout.update({
+        where: { id: claim.payout.id },
+        data: {
+          status: 'REJECTED',
+          processedAt: new Date(),
+          notes: `TP claim rejected — ${note}`,
+        },
+      });
+    }
 
     await this.prisma.auditLog.create({
       data: {

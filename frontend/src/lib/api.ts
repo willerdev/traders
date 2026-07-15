@@ -2503,6 +2503,8 @@ export interface TpClaimRecord {
   updatedAt: string;
   rewardAmount?: number;
   canRequestPayout?: boolean;
+  awaitsPayoutApproval?: boolean;
+  walletCredited?: boolean;
   payout?: {
     id: string;
     status: string;

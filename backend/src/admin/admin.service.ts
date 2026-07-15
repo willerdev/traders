@@ -1185,6 +1185,9 @@ export class AdminService {
   }
 
   async listPayouts(status?: string, limit = 50, offset = 0) {
+    // Backfill PENDING payouts for open TP claims so they show in this list.
+    await this.tpClaims.syncPendingClaimPayouts().catch(() => undefined);
+
     const take = Math.min(Math.max(limit, 1), 100);
     const skip = Math.max(offset, 0);
     const where = status
@@ -1206,6 +1209,16 @@ export class AdminService {
               kyc: { select: { status: true } },
             },
           },
+          tpClaim: {
+            select: {
+              id: true,
+              status: true,
+              claimType: true,
+              symbol: true,
+              beforeScreenshotUrl: true,
+              afterScreenshotUrl: true,
+            },
+          },
         },
       }),
       this.prisma.payout.count({ where }),
@@ -1217,7 +1230,10 @@ export class AdminService {
   async approvePayout(payoutId: string, adminId: string) {
     const payout = await this.prisma.payout.findUnique({
       where: { id: payoutId },
-      include: { user: { include: { kyc: true } } },
+      include: {
+        user: { include: { kyc: true } },
+        tpClaim: { select: { id: true, status: true } },
+      },
     });
 
     if (!payout) throw new NotFoundException('Payout not found');
@@ -1232,6 +1248,25 @@ export class AdminService {
           'Cannot approve payout — trader KYC is not verified',
         );
       }
+    }
+
+    // TP rewards: verify screenshots (approve claim) before wallet credit if needed.
+    if (
+      payout.source === 'TP_REWARD' &&
+      payout.tpClaimId &&
+      payout.tpClaim?.status === 'PENDING_REVIEW'
+    ) {
+      await this.tpClaims.approveClaim(payout.tpClaimId, adminId);
+    }
+
+    if (
+      payout.source === 'TP_REWARD' &&
+      payout.tpClaimId &&
+      payout.tpClaim?.status === 'REJECTED'
+    ) {
+      throw new BadRequestException(
+        'Cannot approve payout — linked TP claim was rejected',
+      );
     }
 
     const result = await this.payoutService.approveAndSendPayout(
