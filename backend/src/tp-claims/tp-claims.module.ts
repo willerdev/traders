@@ -6,9 +6,17 @@ import { PayoutsModule } from '../payouts/payouts.module';
 import { MetaApiModule } from '../metaapi/metaapi.module';
 import { EmailModule } from '../email/email.module';
 import { ProfitShareModule } from '../profit-share/profit-share.module';
+import { WalletModule } from '../wallet/wallet.module';
 
 @Module({
-  imports: [TradesModule, PayoutsModule, MetaApiModule, EmailModule, ProfitShareModule],
+  imports: [
+    TradesModule,
+    PayoutsModule,
+    MetaApiModule,
+    EmailModule,
+    ProfitShareModule,
+    WalletModule,
+  ],
   controllers: [TpClaimsController],
   providers: [TpClaimsService],
   exports: [TpClaimsService],

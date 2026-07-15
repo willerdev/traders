@@ -3260,7 +3260,21 @@ export default function App() {
                         onClick={() =>
                           void api
                             .approveTpClaim(item.id)
-                            .then(() => loadTab("tpClaims"))
+                            .then((res) => {
+                              setMessage(
+                                res?.creditedToWallet
+                                  ? `Approved — $${Number(res.reward ?? 0).toFixed(2)} credited to platform wallet.`
+                                  : "TP claim approved.",
+                              );
+                              return loadTab("tpClaims");
+                            })
+                            .catch((err) =>
+                              setMessage(
+                                err instanceof Error
+                                  ? err.message
+                                  : "TP approve failed",
+                              ),
+                            )
                         }
                       >
                         Approve & credit {item.claimType === "RR_1_TO_1" ? "1:1 RR" : "TP"}

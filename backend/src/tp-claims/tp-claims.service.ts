@@ -5,7 +5,8 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { WalletService } from '../trades/wallet.service';
+import { WalletService as TradeWalletService } from '../trades/wallet.service';
+import { WalletService as PlatformWalletService } from '../wallet/wallet.service';
 import { PriceMonitorService } from '../trades/price-monitor.service';
 import { NotificationService } from '../email/notification.service';
 import { Signal, Trade, TpClaimType } from '@prisma/client';
@@ -17,7 +18,8 @@ import { MetaApiService } from '../metaapi/metaapi.service';
 export class TpClaimsService {
   constructor(
     private prisma: PrismaService,
-    private wallet: WalletService,
+    private tradeWallet: TradeWalletService,
+    private platformWallet: PlatformWalletService,
     private priceMonitor: PriceMonitorService,
     private notifications: NotificationService,
     private metaApi: MetaApiService,
@@ -328,17 +330,19 @@ export class TpClaimsService {
     const isRr1 = claim.claimType === 'RR_1_TO_1';
     const reward = isRr1 ? Math.round(fullReward * 50) / 100 : fullReward;
 
+    const rewardLabel = isRr1 ? '1:1 RR TP reward' : 'TP reward';
+
     let result: {
       reward: number;
       newBalance: number;
       signalId: string;
-    } | null = await this.wallet.creditTpReward(
+    } | null = await this.tradeWallet.creditTpReward(
       claim.userId,
       claim.signalId,
       exitPrice,
       {
         reward,
-        rewardLabel: isRr1 ? '1:1 RR TP reward' : 'TP reward',
+        rewardLabel,
         scoringRr: isRr1 ? 1 : Number(claim.signal.riskRewardRatio),
       },
     );
@@ -346,13 +350,13 @@ export class TpClaimsService {
     // Setup already resolved (e.g. closed manually by an admin or auto-expired)
     // — the trader still earned the TP, so credit the reward directly.
     if (!result) {
-      result = await this.wallet.creditTpRewardForResolvedSetup(
+      result = await this.tradeWallet.creditTpRewardForResolvedSetup(
         claim.userId,
         claim.signalId,
         exitPrice,
         {
           reward,
-          rewardLabel: isRr1 ? '1:1 RR TP reward' : 'TP reward',
+          rewardLabel,
         },
       );
     }
@@ -370,11 +374,60 @@ export class TpClaimsService {
       claim.signal.signalId,
     );
 
+    // Real USDT balance: credit PlatformWallet on claim approval (not VirtualAccount).
+    // Record a PAID payout so the trader cannot request a duplicate TP payout later.
+    const reviewedAt = new Date();
+    const { weekNumber, year } = this.isoWeekYear(reviewedAt);
+    const platformCreditRef = `tp_claim_${claimId}`;
+    const priorPlatformCredit = await this.prisma.walletTransaction.findFirst({
+      where: {
+        userId: claim.userId,
+        type: 'TP_REWARD',
+        referenceId: platformCreditRef,
+      },
+      select: { id: true },
+    });
+
+    let platformBalance: number | null = null;
+    if (!priorPlatformCredit) {
+      const credited = await this.platformWallet.creditBalance(
+        claim.userId,
+        reward,
+        'TP_REWARD',
+        `$${reward} ${rewardLabel} — ${claim.symbol} (${claim.signal.signalId})`,
+        platformCreditRef,
+      );
+      platformBalance = credited.balance;
+    }
+
+    const existingPayout = await this.prisma.payout.findUnique({
+      where: { tpClaimId: claimId },
+      select: { id: true },
+    });
+    if (!existingPayout) {
+      await this.prisma.payout.create({
+        data: {
+          userId: claim.userId,
+          tpClaimId: claimId,
+          source: 'TP_REWARD',
+          virtualProfit: reward,
+          traderShare: reward,
+          platformShare: 0,
+          traderPercent: 100,
+          weekNumber,
+          year,
+          status: 'PAID',
+          processedAt: reviewedAt,
+          notes: `Approved by admin ${adminId} — $${reward.toFixed(2)} USDT credited to platform wallet`,
+        },
+      });
+    }
+
     await this.prisma.tpClaim.update({
       where: { id: claimId },
       data: {
         status: 'APPROVED',
-        reviewedAt: new Date(),
+        reviewedAt,
         reviewedById: adminId,
       },
     });
@@ -389,6 +442,8 @@ export class TpClaimsService {
           signalId: claim.signal.signalId,
           reward: result.reward,
           claimType: claim.claimType,
+          platformWalletCredited: !priorPlatformCredit,
+          platformBalance,
         },
       },
     });
@@ -397,6 +452,7 @@ export class TpClaimsService {
       symbol: claim.symbol,
       reward: result.reward,
       signalId: claim.signal.signalId,
+      walletBalance: platformBalance ?? undefined,
     });
 
     return {
@@ -404,7 +460,22 @@ export class TpClaimsService {
       claimId,
       reward: result.reward,
       signalId: claim.signal.signalId,
+      creditedToWallet: !priorPlatformCredit,
+      walletBalance: platformBalance,
     };
+  }
+
+  private isoWeekYear(date: Date): { weekNumber: number; year: number } {
+    const d = new Date(
+      Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
+    );
+    const day = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - day);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    const weekNumber = Math.ceil(
+      ((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
+    );
+    return { weekNumber, year: d.getUTCFullYear() };
   }
 
   async rejectClaim(claimId: string, adminId: string, reason: string) {

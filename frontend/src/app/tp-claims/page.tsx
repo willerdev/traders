@@ -36,6 +36,7 @@ function statusBadge(status: TpClaimRecord["status"]) {
 }
 
 function payoutStatusLabel(status: string, hasWallet: boolean) {
+  if (status === "PAID") return "Credited to wallet";
   if (status === "PENDING" && hasWallet) return "Awaiting admin approval";
   if (status === "PENDING") return "Pending";
   return status;
@@ -107,7 +108,7 @@ export default function TpClaimsPage() {
             <h1 className="text-2xl font-bold text-white">TP Claims</h1>
             <p className="mt-1 text-sm text-gray-400">
               Claim take profit when price hits TP1 or full TP — submit evidence here.
-              KYC and payout are only needed after admin approval if you want USDT.
+              After admin approval, the reward is credited to your platform wallet.
             </p>
           </div>
           <Button variant="secondary" size="sm" onClick={() => void load()} disabled={loading}>
@@ -341,7 +342,19 @@ export default function TpClaimsPage() {
                         {claim.reviewedAt && (
                           <p className="text-sm text-success">
                             Approved {fmtDate(claim.reviewedAt)} —{" "}
-                            {formatCurrency(claim.rewardAmount ?? 5)} reward credited.
+                            {formatCurrency(claim.rewardAmount ?? 5)} credited to
+                            your platform wallet.
+                            {!claim.payout && (
+                              <>
+                                {" "}
+                                <Link
+                                  href="/wallet"
+                                  className="text-primary hover:underline"
+                                >
+                                  View wallet
+                                </Link>
+                              </>
+                            )}
                           </p>
                         )}
 
@@ -381,13 +394,21 @@ export default function TpClaimsPage() {
                               </p>
                             )}
                             <p className="mt-1 text-xs text-gray-600">
-                              Requested {fmtDate(claim.payout.requestedAt)}
+                              {claim.payout.status === "PAID"
+                                ? `Processed ${fmtDate(claim.payout.requestedAt)}`
+                                : `Requested ${fmtDate(claim.payout.requestedAt)}`}
                             </p>
                             <Link
-                              href="/payouts"
+                              href={
+                                claim.payout.status === "PAID"
+                                  ? "/wallet"
+                                  : "/payouts"
+                              }
                               className="mt-2 inline-block text-xs text-primary hover:underline"
                             >
-                              View all payouts
+                              {claim.payout.status === "PAID"
+                                ? "Open wallet"
+                                : "View all payouts"}
                             </Link>
                           </div>
                         )}

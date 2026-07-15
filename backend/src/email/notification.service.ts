@@ -148,32 +148,48 @@ export class NotificationService {
 
   tpClaimApproved(
     userId: string,
-    data: { symbol: string; reward: number; signalId: string },
+    data: {
+      symbol: string;
+      reward: number;
+      signalId: string;
+      walletBalance?: number;
+    },
   ) {
     this.dispatch(this.sendTpClaimApproved(userId, data), 'TP claim approved');
   }
 
   private async sendTpClaimApproved(
     userId: string,
-    data: { symbol: string; reward: number; signalId: string },
+    data: {
+      symbol: string;
+      reward: number;
+      signalId: string;
+      walletBalance?: number;
+    },
   ) {
     const user = await this.userContact(userId);
     if (!user) return false;
+
+    const balanceLine =
+      data.walletBalance != null
+        ? `<p>New wallet balance: <strong>$${data.walletBalance.toFixed(2)} USDT</strong></p>`
+        : '';
 
     const html = this.email.layout(
       'TP claim approved',
       `<p>Hi ${user.name},</p>
       <p>Your take-profit claim for <strong>${data.symbol}</strong> was approved.</p>
-      <p><strong>$${data.reward.toFixed(2)}</strong> has been credited to your account.</p>
-      <p>Request your USDT payout from the TP Claims page once KYC is verified.</p>
-      ${this.email.button(`${this.email.frontendUrl}/tp-claims`, 'Request TP payout')}`,
+      <p><strong>$${data.reward.toFixed(2)} USDT</strong> has been credited to your platform wallet.</p>
+      ${balanceLine}
+      <p>Withdraw anytime from the Wallet page (KYC required for withdrawals).</p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
     );
 
     return this.email.send({
       to: user.email,
-      subject: `TP claim approved — ${data.symbol}`,
+      subject: `TP claim approved — $${data.reward.toFixed(2)} USDT in your wallet`,
       html,
-      text: `Your TP claim for ${data.symbol} was approved. $${data.reward.toFixed(2)} credited.`,
+      text: `Your TP claim for ${data.symbol} was approved. $${data.reward.toFixed(2)} USDT credited to your platform wallet.`,
     });
   }
 
