@@ -22,7 +22,7 @@ import { PlaceOrderModal } from "../components/PlaceOrderModal";
 import { Screen } from "../components/ui";
 import type { MainTabParamList } from "../navigation/types";
 
-const SYMBOLS = ["1HZ75V", "BTCUSD", "XAUUSD", "EURUSD", "GBPUSD", "NAS100"];
+const SYMBOLS = ["1HZ75V", "1HZ100V", "BTCUSD", "XAUUSD", "EURUSD", "GBPUSD", "NAS100"];
 const TRADE_BAR_KEY = "mt5-guard-chart-trade-bar";
 
 export function ChartsScreen() {

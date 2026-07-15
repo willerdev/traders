@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useAuth } from "../stores/auth";
 import { fmtPrice } from "../lib/format";
@@ -11,26 +11,48 @@ type Props = {
   active: boolean;
 };
 
+const QUOTE_MS = 400;
+const PREVIEW_MS = 8_000;
+
 export function Mt5TradeHeader({ symbol, onBuy, onSell, active }: Props) {
   const { api } = useAuth();
   const { theme } = useTheme();
   const [bid, setBid] = useState<number | null>(null);
   const [ask, setAsk] = useState<number | null>(null);
   const [volume, setVolume] = useState<string>("—");
+  const [tickDir, setTickDir] = useState<"up" | "down" | "flat">("flat");
+  const midRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!active) return;
     let cancelled = false;
+    midRef.current = null;
+    setBid(null);
+    setAsk(null);
+    setTickDir("flat");
 
-    async function load() {
+    async function loadQuote() {
       try {
-        const [quote, preview] = await Promise.all([
-          api.signals.mt5Quote(symbol),
-          api.signals.mt5OrderPreview(symbol, "BUY").catch(() => null),
-        ]);
+        const quote = await api.signals.mt5Quote(symbol);
         if (cancelled) return;
+        const mid = quote.mid ?? ((quote.bid ?? 0) + (quote.ask ?? 0)) / 2;
+        const prev = midRef.current;
+        if (prev != null && Number.isFinite(mid)) {
+          if (mid > prev) setTickDir("up");
+          else if (mid < prev) setTickDir("down");
+        }
+        midRef.current = mid;
         setBid(quote.bid);
         setAsk(quote.ask);
+      } catch {
+        /* keep last */
+      }
+    }
+
+    async function loadPreview() {
+      try {
+        const preview = await api.signals.mt5OrderPreview(symbol, "BUY");
+        if (cancelled) return;
         if (preview?.risk?.volume != null) {
           setVolume(String(preview.risk.volume));
         }
@@ -39,24 +61,26 @@ export function Mt5TradeHeader({ symbol, onBuy, onSell, active }: Props) {
       }
     }
 
-    void load();
-    const id = setInterval(() => void load(), 800);
+    void loadQuote();
+    void loadPreview();
+    const quoteId = setInterval(() => void loadQuote(), QUOTE_MS);
+    const previewId = setInterval(() => void loadPreview(), PREVIEW_MS);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      clearInterval(quoteId);
+      clearInterval(previewId);
     };
   }, [active, api, symbol]);
 
   const btnColor = theme.mode === "light" ? "#2563eb" : theme.buy;
+  const flash =
+    tickDir === "up" ? theme.buy : tickDir === "down" ? theme.sell : undefined;
 
   return (
     <View style={[styles.bar, { backgroundColor: theme.surface, borderColor: theme.divider }]}>
-      <Pressable
-        onPress={onSell}
-        style={[styles.sideBtn, { backgroundColor: theme.sell }]}
-      >
+      <Pressable onPress={onSell} style={[styles.sideBtn, { backgroundColor: theme.sell }]}>
         <Text style={styles.sideLabel}>SELL</Text>
-        <Text style={styles.sidePrice}>
+        <Text style={[styles.sidePrice, flash === theme.sell && styles.flash]}>
           {bid != null ? fmtPrice(bid) : "—"}
         </Text>
       </Pressable>
@@ -70,12 +94,9 @@ export function Mt5TradeHeader({ symbol, onBuy, onSell, active }: Props) {
         )}
       </View>
 
-      <Pressable
-        onPress={onBuy}
-        style={[styles.sideBtn, { backgroundColor: btnColor }]}
-      >
+      <Pressable onPress={onBuy} style={[styles.sideBtn, { backgroundColor: btnColor }]}>
         <Text style={styles.sideLabel}>BUY</Text>
-        <Text style={styles.sidePrice}>
+        <Text style={[styles.sidePrice, flash === theme.buy && styles.flash]}>
           {ask != null ? fmtPrice(ask) : "—"}
         </Text>
       </Pressable>
@@ -112,6 +133,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "800",
     marginTop: 2,
+  },
+  flash: {
+    textShadowColor: "rgba(255,255,255,0.55)",
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 6,
   },
   lotBox: {
     width: 72,
