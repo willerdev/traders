@@ -1,4 +1,4 @@
-/** Investor subscription fee by intended investment size (USDT). */
+/** Investor subscription fee by deposit size (USDT). Fee is deducted from the deposit. */
 export const INVESTOR_FEE_TIERS = [
   { min: 100, max: 200, fee: 10, label: '$100 – $200' },
   { min: 201, max: 500, fee: 50, label: '$201 – $500' },

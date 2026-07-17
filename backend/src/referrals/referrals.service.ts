@@ -72,6 +72,89 @@ export class ReferralsService {
       data: { referredById: referrer.id },
     });
     this.logger.log(`User ${newUserId} referred by ${referrer.id} (${code})`);
+    await this.creditAndNotifyOnInviteUsed(newUserId);
+  }
+
+  /**
+   * When someone signs up with a referral code: credit the referrer wallet
+   * immediately (subscription reward amount) and email them. Idempotent.
+   * Marks the paid milestone settled so subscription pay does not double-credit.
+   */
+  async creditAndNotifyOnInviteUsed(referredUserId: string) {
+    const { paidReward } = await this.rewardAmounts();
+    if (paidReward <= 0) return;
+
+    const referred = await this.prisma.user.findUnique({
+      where: { id: referredUserId },
+      select: {
+        id: true,
+        displayName: true,
+        referredById: true,
+        referralPaidRewardedAt: true,
+        referralPaidSettledAt: true,
+      },
+    });
+    if (!referred?.referredById) return;
+    if (referred.referralPaidRewardedAt || referred.referralPaidSettledAt) {
+      return;
+    }
+
+    const referrerId = referred.referredById;
+    const now = new Date();
+
+    await this.prisma.user.update({
+      where: { id: referredUserId },
+      data: {
+        referralPaidRewardedAt: now,
+        referralPaidSettledAt: now,
+      },
+    });
+
+    let wallet = await this.prisma.platformWallet.findUnique({
+      where: { userId: referrerId },
+    });
+    if (!wallet) {
+      wallet = await this.prisma.platformWallet.create({
+        data: { userId: referrerId },
+      });
+    }
+    const balance = Number(wallet.availableBalance) + paidReward;
+    await this.prisma.$transaction([
+      this.prisma.platformWallet.update({
+        where: { userId: referrerId },
+        data: { availableBalance: balance },
+      }),
+      this.prisma.walletTransaction.create({
+        data: {
+          userId: referrerId,
+          amount: paidReward,
+          type: 'REFERRAL_REWARD',
+          description: `Referral invite used — ${referred.displayName} joined`,
+          referenceId: referredUserId,
+          balanceAfter: balance,
+        },
+      }),
+    ]);
+
+    this.notifications.referralInviteUsed(referrerId, {
+      amount: paidReward,
+      balance,
+      inviteeName: referred.displayName,
+    });
+
+    await this.platformNotifications
+      .create({
+        userId: referrerId,
+        type: 'REFERRAL_REWARD',
+        title: `Invite used — $${paidReward.toFixed(2)} USDT`,
+        body: `${referred.displayName} signed up with your link. $${paidReward.toFixed(2)} USDT was credited to your wallet.`,
+        linkUrl: '/wallet',
+      })
+      .catch(() => undefined);
+
+    this.logger.log(
+      `Referral invite credited: $${paidReward} to ${referrerId} (${referred.displayName} joined)`,
+    );
   }
 
   /** Called when a referred user's KYC is approved. Idempotent. Accrues unpaid reward. */

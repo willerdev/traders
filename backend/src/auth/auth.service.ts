@@ -126,6 +126,16 @@ export class AuthService {
       `Invite-only registration: ${user.id} referred by ${referrer.id} (${referralCode})`,
     );
 
+    try {
+      await this.referrals.creditAndNotifyOnInviteUsed(user.id);
+    } catch (err) {
+      this.logger.error(
+        `Referral invite credit failed for ${user.id}: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    }
+
     return {
       user: this.sanitizeUser(user),
       message:

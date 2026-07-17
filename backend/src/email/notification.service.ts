@@ -1613,6 +1613,16 @@ export class NotificationService {
     );
   }
 
+  referralInviteUsed(
+    userId: string,
+    data: { amount: number; balance: number; inviteeName: string },
+  ) {
+    this.dispatch(
+      this.sendReferralInviteUsed(userId, data),
+      'Referral invite used',
+    );
+  }
+
   private async sendWalletAdminCredit(
     userId: string,
     data: { amount: number; balance: number },
@@ -1670,6 +1680,28 @@ export class NotificationService {
       subject: `Referral reward paid — $${data.amount.toFixed(2)} USDT`,
       html,
       text: `$${data.amount.toFixed(2)} USDT referral reward credited for ${breakdown}. Balance: $${data.balance.toFixed(2)} USDT.`,
+    });
+  }
+
+  private async sendReferralInviteUsed(
+    userId: string,
+    data: { amount: number; balance: number; inviteeName: string },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Your invite was used',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p><strong>${this.escape(data.inviteeName)}</strong> just signed up with your referral link.</p>
+      <p><strong>$${data.amount.toFixed(2)} USDT</strong> has been credited to your platform wallet.</p>
+      <p>Available balance: <strong>$${data.balance.toFixed(2)} USDT</strong></p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Invite used — $${data.amount.toFixed(2)} USDT credited`,
+      html,
+      text: `${data.inviteeName} signed up with your link. $${data.amount.toFixed(2)} USDT credited. Balance: $${data.balance.toFixed(2)} USDT.`,
     });
   }
 

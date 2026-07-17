@@ -78,6 +78,23 @@ export class InvestorService {
     return amount;
   }
 
+  /** Deposit T → fee F deducted → net N invested. */
+  private splitDeposit(raw: unknown): {
+    deposit: number;
+    fee: number;
+    netInvested: number;
+  } {
+    const deposit = this.normalizeInvestmentAmount(raw);
+    const fee = this.resolveFeeForInvestment(deposit);
+    const netInvested = Math.round((deposit - fee) * 100) / 100;
+    if (netInvested <= 0) {
+      throw new BadRequestException(
+        'Deposit must be greater than the subscription fee for that tier',
+      );
+    }
+    return { deposit, fee, netInvested };
+  }
+
   async getStatus(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -172,24 +189,25 @@ export class InvestorService {
     },
   ) {
     const [
-      enrollmentAgg,
+      feeAgg,
       depositAgg,
+      allocateAgg,
       tradingProfitAgg,
       walletEarningsAgg,
     ] = await Promise.all([
-      this.prisma.payment.aggregate({
-        where: {
-          userId,
-          purpose: 'investor_enrollment',
-          status: 'CONFIRMED',
-        },
+      this.prisma.walletTransaction.aggregate({
+        where: { userId, type: 'INVESTOR_FEE' },
         _sum: { amount: true },
       }),
       this.prisma.walletTransaction.aggregate({
         where: {
           userId,
-          type: { in: ['DEPOSIT', 'DEPOSITOR_DEPOSIT', 'INVESTOR_ALLOCATE'] },
+          type: { in: ['DEPOSIT', 'DEPOSITOR_DEPOSIT'] },
         },
+        _sum: { amount: true },
+      }),
+      this.prisma.walletTransaction.aggregate({
+        where: { userId, type: 'INVESTOR_ALLOCATE' },
         _sum: { amount: true },
       }),
       this.prisma.investorTrade.aggregate({
@@ -202,11 +220,12 @@ export class InvestorService {
       }),
     ]);
 
-    const enrollmentPaid = Number(enrollmentAgg._sum.amount ?? 0);
+    const enrollmentPaid = Math.abs(Number(feeAgg._sum.amount ?? 0));
     const walletDeposited = Number(depositAgg._sum.amount ?? 0);
+    const allocatedToInvestment = Math.abs(Number(allocateAgg._sum.amount ?? 0));
     const walletBalance = Number(user.platformWallet?.availableBalance ?? 0);
     const investmentBalance = Number(user.platformWallet?.investorBalance ?? 0);
-    const investmentDeposited = enrollmentPaid + walletDeposited;
+    const investmentDeposited = allocatedToInvestment;
     const tradingProfit = Number(tradingProfitAgg._sum.profit ?? 0);
     const walletEarnings = Number(walletEarningsAgg._sum.amount ?? 0);
     const totalProfit = tradingProfit + walletEarnings;
@@ -263,24 +282,24 @@ export class InvestorService {
       };
     }
 
-    const investmentAmount = this.normalizeInvestmentAmount(investmentAmountRaw);
-    const fee = this.resolveFeeForInvestment(investmentAmount);
+    const { deposit, fee, netInvested } = this.splitDeposit(investmentAmountRaw);
 
     if (source === 'wallet') {
-      return this.payEnrollmentFromWallet(userId, fee, investmentAmount);
+      return this.payEnrollmentFromWallet(userId, deposit, fee, netInvested);
     }
 
     const payment = await this.prisma.payment.create({
       data: {
         userId,
-        amount: fee,
+        amount: deposit,
         currency: 'USDT',
         network,
         purpose: 'investor_enrollment',
         gatewayId: `pending_${Date.now()}`,
         gatewayResponse: {
-          investmentAmount,
+          investmentAmount: deposit,
           feeUsdt: fee,
+          netInvested,
         } as object,
       },
     });
@@ -293,10 +312,10 @@ export class InvestorService {
 
     try {
       const npPayment = await this.nowPayments.createPayment({
-        amount: fee,
+        amount: deposit,
         orderId: payment.id,
         network,
-        description: `TraderRank investor enrollment ($${investmentAmount} investment)`,
+        description: `TraderRank invest $${deposit} (fee $${fee} → net $${netInvested})`,
         ipnCallbackUrl: this.ipnUrl(),
       });
 
@@ -306,8 +325,9 @@ export class InvestorService {
           gatewayId: String(npPayment.payment_id),
           gatewayResponse: {
             ...(npPayment as object),
-            investmentAmount,
+            investmentAmount: deposit,
             feeUsdt: fee,
+            netInvested,
           } as object,
           payAddress: npPayment.pay_address,
           payAmount: npPayment.pay_amount,
@@ -316,9 +336,10 @@ export class InvestorService {
 
       return {
         paymentId: payment.id,
-        amount: fee,
-        investmentAmount,
+        amount: deposit,
+        investmentAmount: deposit,
         feeUsdt: fee,
+        netInvested,
         currency: 'USDT',
         network,
         purpose: 'investor_enrollment',
@@ -345,30 +366,31 @@ export class InvestorService {
 
   private async payEnrollmentFromWallet(
     userId: string,
+    deposit: number,
     fee: number,
-    investmentAmount: number,
+    netInvested: number,
   ) {
     const wallet = await this.walletService.getOrCreateWallet(userId);
     const balance = Number(wallet.availableBalance);
-    const totalNeeded = fee + investmentAmount;
-    if (balance < totalNeeded) {
+    if (balance < deposit) {
       throw new BadRequestException(
-        `Insufficient wallet balance — need $${totalNeeded.toFixed(2)} USDT ($${fee.toFixed(2)} fee + $${investmentAmount.toFixed(2)} investment) but have $${balance.toFixed(2)}`,
+        `Insufficient wallet balance — need $${deposit.toFixed(2)} USDT (fee $${fee.toFixed(2)} deducted → $${netInvested.toFixed(2)} invested) but have $${balance.toFixed(2)}`,
       );
     }
 
     const payment = await this.prisma.payment.create({
       data: {
         userId,
-        amount: fee,
+        amount: deposit,
         currency: 'USDT',
         network: 'WALLET',
         purpose: 'investor_enrollment',
         gatewayId: `wallet_${Date.now()}`,
         gatewayResponse: {
           paymentSource: 'wallet',
-          investmentAmount,
+          investmentAmount: deposit,
           feeUsdt: fee,
+          netInvested,
         } as object,
       },
     });
@@ -377,30 +399,32 @@ export class InvestorService {
       userId,
       fee,
       'INVESTOR_FEE',
-      `Investor subscription fee — $${fee.toFixed(2)} USDT for $${investmentAmount.toFixed(2)} investment`,
+      `Investor subscription fee — $${fee.toFixed(2)} USDT deducted from $${deposit.toFixed(2)} deposit`,
       payment.id,
     );
 
     await this.confirmEnrollment(payment.id, {
       paymentSource: 'wallet',
-      investmentAmount,
+      investmentAmount: deposit,
       feeUsdt: fee,
+      netInvested,
     });
 
-    await this.transferInvestment(userId, investmentAmount, 'to_investment');
+    await this.transferInvestment(userId, netInvested, 'to_investment');
 
     return {
       success: true,
       active: true,
       paymentId: payment.id,
-      amount: fee,
+      amount: deposit,
       feeUsdt: fee,
-      investmentAmount,
+      investmentAmount: deposit,
+      netInvested,
       currency: 'USDT',
       network: 'WALLET',
       source: 'wallet',
-      message: `Paid $${fee.toFixed(2)} fee and allocated $${investmentAmount.toFixed(2)} to investment`,
-      balanceAfter: balance - totalNeeded,
+      message: `Paid $${deposit.toFixed(2)} — $${fee.toFixed(2)} fee deducted, $${netInvested.toFixed(2)} invested`,
+      balanceAfter: balance - deposit,
     };
   }
 
@@ -423,44 +447,49 @@ export class InvestorService {
         : {}),
       ...(gatewayPayload as Record<string, unknown>),
     };
-    const investmentAmountRaw = Number(
-      payload.investmentAmount ??
-        (gatewayPayload as { investmentAmount?: number }).investmentAmount,
+
+    const depositRaw = Number(
+      payload.investmentAmount ?? Number(payment.amount),
     );
-    let committedAmount: number | null = null;
-    if (Number.isFinite(investmentAmountRaw) && investmentAmountRaw > 0) {
+    const feeRaw = Number(payload.feeUsdt);
+    let fee =
+      Number.isFinite(feeRaw) && feeRaw > 0
+        ? Math.round(feeRaw * 100) / 100
+        : null;
+    let deposit: number | null = null;
+    let netInvested: number | null = null;
+
+    if (Number.isFinite(depositRaw) && depositRaw > 0) {
       try {
-        committedAmount = this.normalizeInvestmentAmount(investmentAmountRaw);
+        const split = this.splitDeposit(depositRaw);
+        deposit = split.deposit;
+        fee = fee ?? split.fee;
+        const netRaw = Number(payload.netInvested);
+        netInvested =
+          Number.isFinite(netRaw) && netRaw > 0
+            ? Math.round(netRaw * 100) / 100
+            : split.netInvested;
       } catch {
-        committedAmount = null;
+        deposit = null;
+        netInvested = null;
       }
     }
 
-    const now = new Date();
-    const walletTx =
-      payment.network === 'WALLET'
-        ? []
-        : [
-            this.prisma.walletTransaction.create({
-              data: {
-                userId: payment.userId,
-                amount: -Number(payment.amount),
-                type: 'INVESTOR_FEE',
-                referenceId: paymentId,
-                description: committedAmount
-                  ? `Investor subscription fee — $${Number(payment.amount).toFixed(2)} USDT for $${committedAmount.toFixed(2)} investment`
-                  : `Investor program enrollment — $${Number(payment.amount).toFixed(2)} USDT`,
-              },
-            }),
-          ];
+    const committedAmount = netInvested;
 
+    const now = new Date();
     await this.prisma.$transaction([
       this.prisma.payment.update({
         where: { id: paymentId },
         data: {
           status: 'CONFIRMED',
           confirmedAt: now,
-          gatewayResponse: payload as object,
+          gatewayResponse: {
+            ...payload,
+            ...(deposit != null ? { investmentAmount: deposit } : {}),
+            ...(fee != null ? { feeUsdt: fee } : {}),
+            ...(netInvested != null ? { netInvested } : {}),
+          } as object,
           ...(opts?.gatewayId ? { gatewayId: opts.gatewayId } : {}),
           ...(opts?.txHash ? { txHash: opts.txHash } : {}),
         },
@@ -487,17 +516,41 @@ export class InvestorService {
             : {}),
         },
       }),
-      ...walletTx,
     ]);
 
+    // Crypto: credit full deposit, deduct fee, allocate net to investment.
+    if (payment.network !== 'WALLET' && deposit != null && fee != null && netInvested != null) {
+      await this.walletService.creditBalance(
+        payment.userId,
+        deposit,
+        'DEPOSIT',
+        `Investor deposit — $${deposit.toFixed(2)} USDT`,
+        paymentId,
+      );
+      await this.walletService.debitBalance(
+        payment.userId,
+        fee,
+        'INVESTOR_FEE',
+        `Investor subscription fee — $${fee.toFixed(2)} USDT deducted from deposit`,
+        paymentId,
+      );
+      await this.transferInvestment(
+        payment.userId,
+        netInvested,
+        'to_investment',
+      );
+    }
+
     this.notifications.investorEnrollmentConfirmed(payment.userId, {
-      amount: Number(payment.amount),
+      amount: fee ?? Number(payment.amount),
     });
 
     return {
       confirmed: true,
       userId: payment.userId,
-      investmentAmount: committedAmount,
+      investmentAmount: deposit,
+      feeUsdt: fee,
+      netInvested: committedAmount,
     };
   }
 

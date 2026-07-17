@@ -127,7 +127,11 @@ export function InvestHub() {
       : null) ??
     tiers[0]?.fee ??
     10;
-  const totalFromWallet = feeUsdt + (Number.isFinite(parsedInvestment) ? parsedInvestment : 0);
+  const netInvested =
+    Number.isFinite(parsedInvestment) && parsedInvestment > feeUsdt
+      ? Math.round((parsedInvestment - feeUsdt) * 100) / 100
+      : 0;
+  const depositDue = Number.isFinite(parsedInvestment) ? parsedInvestment : 0;
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -335,8 +339,10 @@ export function InvestHub() {
                     {copied ? "Copied!" : "Copy address"}
                   </Button>
                   <p className="text-xs text-gray-500">
-                    After the fee confirms, deposit and move{" "}
-                    {formatCurrency(parsedInvestment)} from wallet to investment.
+                    After payment confirms,{" "}
+                    {formatCurrency(feeUsdt)} fee is deducted and{" "}
+                    {formatCurrency(netInvested || parsedInvestment)} is invested
+                    automatically.
                   </p>
                 </>
               )}
@@ -356,23 +362,22 @@ export function InvestHub() {
                   onChange={(e) => setInvestmentAmount(e.target.value)}
                 />
                 <p className="mt-1.5 text-xs text-gray-500">
-                  Subscription fee for this size:{" "}
-                  <strong className="text-white">{formatCurrency(feeUsdt)}</strong>
-                  {source === "wallet" && Number.isFinite(parsedInvestment) && (
-                    <>
-                      {" "}
-                      · Total from wallet:{" "}
-                      <strong className="text-white">
-                        {formatCurrency(totalFromWallet)}
-                      </strong>{" "}
-                      (fee + investment)
-                    </>
-                  )}
+                  You pay{" "}
+                  <strong className="text-white">
+                    {formatCurrency(depositDue || 0)}
+                  </strong>
+                  {" — "}
+                  <strong className="text-white">{formatCurrency(feeUsdt)}</strong>{" "}
+                  fee deducted,{" "}
+                  <strong className="text-white">
+                    {formatCurrency(netInvested)}
+                  </strong>{" "}
+                  invested
                 </p>
               </div>
               <PaymentSourceSelector
                 walletBalance={walletBalance}
-                amountDue={source === "wallet" ? totalFromWallet : feeUsdt}
+                amountDue={depositDue}
                 source={source}
                 onSourceChange={setSource}
               />
@@ -391,12 +396,12 @@ export function InvestHub() {
                   ))}
                 </div>
               )}
-              {source === "wallet" && walletBalance < totalFromWallet && (
+              {source === "wallet" && walletBalance < depositDue && (
                 <p className="text-sm text-gray-500">
                   <Link href="/wallet" className="text-primary hover:underline">
                     Deposit to wallet
                   </Link>{" "}
-                  or pay the fee with crypto, then fund investment separately.
+                  at least {formatCurrency(depositDue)} to start.
                 </p>
               )}
               {error && <p className="text-sm text-danger">{error}</p>}
@@ -409,9 +414,7 @@ export function InvestHub() {
                 {payLoading && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
-                {source === "wallet"
-                  ? `Start — ${formatCurrency(feeUsdt)} fee + ${formatCurrency(parsedInvestment || 0)} investment`
-                  : `Pay ${formatCurrency(feeUsdt)} fee`}
+                {`Invest ${formatCurrency(depositDue || 0)}`}
               </Button>
             </div>
           )}
