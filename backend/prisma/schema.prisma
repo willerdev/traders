@@ -918,18 +918,19 @@ model DepositorDailyCredit {
 }
 
 model InvestorSettings {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  riskPercent     Decimal  @default(2) @db.Decimal(5, 2)
-  dailyYieldPercent Decimal? @db.Decimal(5, 2)
-  useTwoToOneRr   Boolean  @default(true)
-  paused          Boolean  @default(false)
-  yieldPaused     Boolean  @default(false)
-  lastHealthAt    DateTime?
-  lastHealthReady Boolean  @default(false)
-  lastHealthMessage String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                        String   @id @default(cuid())
+  userId                    String   @unique
+  riskPercent               Decimal  @default(2) @db.Decimal(5, 2)
+  dailyYieldPercent         Decimal? @db.Decimal(5, 2)
+  committedInvestmentAmount Decimal? @db.Decimal(12, 2)
+  useTwoToOneRr             Boolean  @default(true)
+  paused                    Boolean  @default(false)
+  yieldPaused               Boolean  @default(false)
+  lastHealthAt              DateTime?
+  lastHealthReady           Boolean  @default(false)
+  lastHealthMessage         String?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

@@ -28,7 +28,6 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
   const [investors, setInvestors] = useState<InvestorRow[]>([]);
   const [incomeJournal, setIncomeJournal] = useState<IncomeJournalEntry[]>([]);
 
-  const [investorFee, setInvestorFee] = useState("");
   const [investorYield, setInvestorYield] = useState("");
   const [depositorYield, setDepositorYield] = useState("");
   const [minDeposit, setMinDeposit] = useState("");
@@ -55,7 +54,6 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
 
   const applySettings = useCallback((s: InvestorDepositorSettings) => {
     setSettings(s);
-    setInvestorFee(String(s.investorFeeUsdt));
     setInvestorYield(String(s.investorDailyYieldPercent));
     setDepositorYield(String(s.depositorDailyYieldPercent));
     setMinDeposit(String(s.depositorMinDepositUsdt));
@@ -119,7 +117,6 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
     setSettingsSaving(true);
     try {
       const updated = await api.updateInvestorDepositorSettings({
-        investorFeeUsdt: Number(investorFee),
         investorDailyYieldPercent: Number(investorYield),
         investorYieldPaused,
         depositorDailyYieldPercent: Number(depositorYield),
@@ -203,8 +200,7 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
           <span className="platform-stat-label">Active investors</span>
           <strong className="platform-stat-value">{stats.investorCount}</strong>
           <span className="platform-stat-meta">
-            Fee {fmtMoney(settings?.investorFeeUsdt ?? 0)} ·{" "}
-            {settings?.investorDailyYieldPercent ?? "—"}% daily
+            Tiered fees ($10–$200) · {settings?.investorDailyYieldPercent ?? "—"}% daily
           </span>
         </article>
         <article
@@ -265,18 +261,44 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
                 <span className="platform-card-icon platform-card-icon-investor">IN</span>
                 <div>
                   <h3>Investor program</h3>
-                  <p>One-time enrollment fee and daily wallet earning rate.</p>
+                  <p>
+                    Subscription fee by investment size, plus daily wallet earning
+                    rate.
+                  </p>
                 </div>
               </div>
               <div className="platform-field-grid">
-                <label className="platform-field">
-                  <span>Enrollment fee (USDT)</span>
-                  <input
-                    className="platform-input"
-                    value={investorFee}
-                    onChange={(e) => setInvestorFee(e.target.value)}
-                  />
-                </label>
+                <div className="platform-field" style={{ gridColumn: "1 / -1" }}>
+                  <span>Subscription fee tiers</span>
+                  <table style={{ width: "100%", fontSize: 13, marginTop: 6 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: "left" }}>Investment</th>
+                        <th style={{ textAlign: "right" }}>Fee</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(settings?.investorFeeTiers ?? [
+                        { label: "$100 – $200", fee: 10 },
+                        { label: "$201 – $500", fee: 50 },
+                        { label: "$501 – under $1,000", fee: 100 },
+                        { label: "$1,000 – $5,000", fee: 200 },
+                      ]).map((tier) => (
+                        <tr key={tier.label}>
+                          <td>{tier.label}</td>
+                          <td style={{ textAlign: "right" }}>
+                            {fmtMoney(tier.fee)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="muted" style={{ marginTop: 6, fontSize: 12 }}>
+                    Fee is charged at enrollment based on the investment amount the
+                    trader selects ({settings?.investmentMin ?? 100}–
+                    {settings?.investmentMax ?? 5000} USDT).
+                  </p>
+                </div>
                 <label className="platform-field">
                   <span>Daily yield (%)</span>
                   <input

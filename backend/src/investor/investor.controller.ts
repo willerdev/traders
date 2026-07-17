@@ -24,12 +24,18 @@ export class InvestorController {
   @UseGuards(JwtAuthGuard)
   enrollCheckout(
     @Request() req: { user: { id: string } },
-    @Body() body: { network?: string; source?: 'wallet' | 'crypto' },
+    @Body()
+    body: {
+      network?: string;
+      source?: 'wallet' | 'crypto';
+      investmentAmount?: number;
+    },
   ) {
     return this.investor.createEnrollmentCheckout(
       req.user.id,
       body.network ?? 'TRC20',
       body.source ?? 'crypto',
+      body.investmentAmount,
     );
   }
 

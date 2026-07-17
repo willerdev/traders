@@ -690,8 +690,18 @@ export type PaymentForecast = {
   }>;
 };
 
+export type InvestorFeeTier = {
+  min: number;
+  max: number;
+  fee: number;
+  label: string;
+};
+
 export type InvestorDepositorSettings = {
   investorFeeUsdt: number;
+  investorFeeTiers?: InvestorFeeTier[];
+  investmentMin?: number;
+  investmentMax?: number;
   investorDailyYieldPercent: number;
   investorYieldPaused: boolean;
   depositorDailyYieldPercent: number;

@@ -27,6 +27,11 @@ import { resolveAdminPermissions } from './admin-permissions.util';
 import { PresenceService } from '../presence/presence.service';
 import { WalletService } from '../wallet/wallet.service';
 import { InvestorService } from '../investor/investor.service';
+import {
+  INVESTOR_INVESTMENT_MAX,
+  INVESTOR_INVESTMENT_MIN,
+  listInvestorFeeTiers,
+} from '../investor/investor-fee.util';
 
 @Injectable()
 export class AdminService {
@@ -1585,6 +1590,9 @@ export class AdminService {
     `;
     return {
       investorFeeUsdt: Number(config?.investorFeeUsdt ?? 10),
+      investorFeeTiers: listInvestorFeeTiers(),
+      investmentMin: INVESTOR_INVESTMENT_MIN,
+      investmentMax: INVESTOR_INVESTMENT_MAX,
       investorDailyYieldPercent: Number(
         config?.investorDailyYieldPercent ?? 8,
       ),

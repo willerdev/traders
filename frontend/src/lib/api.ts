@@ -959,10 +959,14 @@ class ApiClient {
 
   investor = {
     status: () => this.request<InvestorStatus>("/investor/status"),
-    enrollCheckout: (network: string, source?: "wallet" | "crypto") =>
+    enrollCheckout: (
+      network: string,
+      source?: "wallet" | "crypto",
+      investmentAmount?: number,
+    ) =>
       this.request<InvestorCheckout>("/investor/enroll/checkout", {
         method: "POST",
-        body: JSON.stringify({ network, source }),
+        body: JSON.stringify({ network, source, investmentAmount }),
       }),
     updateSettings: (riskPercent: number) =>
       this.request<{ riskPercent: number; paused: boolean }>(
@@ -1488,10 +1492,21 @@ export interface DailyCalendarResult {
   days: Record<string, DailyCalendarDay>;
 }
 
+export interface InvestorFeeTier {
+  min: number;
+  max: number;
+  fee: number;
+  label: string;
+}
+
 export interface InvestorStatus {
   active: boolean;
   enrolledAt: string | null;
   feeUsdt: number;
+  feeTiers?: InvestorFeeTier[];
+  investmentMin?: number;
+  investmentMax?: number;
+  committedInvestmentAmount?: number | null;
   dailyYieldPercent: number;
   platformDailyYieldPercent: number;
   mt5Linked: boolean;
@@ -1530,6 +1545,8 @@ export interface InvestorStatus {
 export interface InvestorCheckout {
   paymentId?: string;
   amount?: number;
+  feeUsdt?: number;
+  investmentAmount?: number;
   currency?: string;
   network?: string;
   payAddress?: string;

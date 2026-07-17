@@ -27,6 +27,21 @@ import { cn, formatCurrency } from "@/lib/utils";
 
 const NETWORKS = ["TRC20", "BEP20", "ERC20"] as const;
 
+const DEFAULT_FEE_TIERS = [
+  { min: 100, max: 200, fee: 10, label: "$100 – $200" },
+  { min: 201, max: 500, fee: 50, label: "$201 – $500" },
+  { min: 501, max: 999.99, fee: 100, label: "$501 – under $1,000" },
+  { min: 1000, max: 5000, fee: 200, label: "$1,000 – $5,000" },
+] as const;
+
+function resolveFeeClient(amount: number): number | null {
+  if (!Number.isFinite(amount) || amount < 100 || amount > 5000) return null;
+  if (amount <= 200) return 10;
+  if (amount <= 500) return 50;
+  if (amount < 1000) return 100;
+  return 200;
+}
+
 type Progress = "waiting" | "confirming" | "complete" | "failed";
 
 const fadeUp = {
@@ -99,8 +114,19 @@ export function InvestHub() {
   const [copied, setCopied] = useState(false);
   const [transferAmount, setTransferAmount] = useState("");
   const [transferLoading, setTransferLoading] = useState(false);
+  const [investmentAmount, setInvestmentAmount] = useState("100");
 
-  const feeUsdt = status?.feeUsdt ?? 10;
+  const tiers = status?.feeTiers?.length ? status.feeTiers : DEFAULT_FEE_TIERS;
+  const investmentMin = status?.investmentMin ?? 100;
+  const investmentMax = status?.investmentMax ?? 5000;
+  const parsedInvestment = Number(investmentAmount);
+  const feeUsdt =
+    (Number.isFinite(parsedInvestment)
+      ? resolveFeeClient(parsedInvestment)
+      : null) ??
+    tiers[0]?.fee ??
+    10;
+  const totalFromWallet = feeUsdt + (Number.isFinite(parsedInvestment) ? parsedInvestment : 0);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -146,8 +172,17 @@ export function InvestHub() {
     setPayLoading(true);
     setError("");
     try {
+      const amount = Number(investmentAmount);
+      if (!Number.isFinite(amount) || amount < investmentMin || amount > investmentMax) {
+        throw new Error(
+          `Enter an investment between ${formatCurrency(investmentMin)} and ${formatCurrency(investmentMax)}`,
+        );
+      }
+      if (resolveFeeClient(amount) == null) {
+        throw new Error("Investment amount is outside a fee tier");
+      }
       const paySource = source === "wallet" ? "wallet" : "crypto";
-      const res = await api.investor.enrollCheckout(network, paySource);
+      const res = await api.investor.enrollCheckout(network, paySource, amount);
       if (res.active || res.success) {
         await refresh();
         setCheckout(null);
@@ -199,10 +234,10 @@ export function InvestHub() {
               Start investing with MT5
             </h2>
             <p className="mt-2 max-w-lg text-sm text-gray-400">
-              Pay a one-time {formatCurrency(feeUsdt)} fee, then trade on the
-              platform MT5 with your investment balance (or link your own MT5 for
-              auto-copy). Earn {status?.dailyYieldPercent ?? 8}% daily on
-              investment — credited to wallet at 16:00.
+              Choose your investment size, pay the matching one-time subscription
+              fee, then earn {status?.dailyYieldPercent ?? 8}% daily on investment —
+              credited to wallet at 16:00. Trade on platform MT5 or link your own
+              for auto-copy.
             </p>
             <ul className="mt-5 grid gap-3 sm:grid-cols-3">
               {[
@@ -219,6 +254,26 @@ export function InvestHub() {
                 </li>
               ))}
             </ul>
+            <div className="mt-5 overflow-hidden rounded-xl border border-white/10 bg-black/25">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-white/10 text-xs uppercase tracking-wide text-gray-500">
+                    <th className="px-3 py-2 font-medium">Investment</th>
+                    <th className="px-3 py-2 font-medium text-right">Fee</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tiers.map((tier) => (
+                    <tr key={tier.label} className="border-b border-white/5 last:border-0">
+                      <td className="px-3 py-2 text-gray-300">{tier.label}</td>
+                      <td className="px-3 py-2 text-right font-medium text-white">
+                        {formatCurrency(tier.fee)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </motion.div>
 
@@ -259,7 +314,7 @@ export function InvestHub() {
                     <strong className="text-white">
                       {checkout.payAmount} USDT
                     </strong>{" "}
-                    on {network} to:
+                    fee on {network} to:
                   </p>
                   <code className="block break-all rounded-lg bg-black/40 p-3 text-xs text-primary">
                     {checkout.payAddress}
@@ -278,14 +333,45 @@ export function InvestHub() {
                     <Copy className="h-3.5 w-3.5" />
                     {copied ? "Copied!" : "Copy address"}
                   </Button>
+                  <p className="text-xs text-gray-500">
+                    After the fee confirms, deposit and move{" "}
+                    {formatCurrency(parsedInvestment)} from wallet to investment.
+                  </p>
                 </>
               )}
             </div>
           ) : (
             <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-xs text-gray-400">
+                  Investment amount (USDT)
+                </label>
+                <Input
+                  type="number"
+                  min={investmentMin}
+                  max={investmentMax}
+                  step="1"
+                  value={investmentAmount}
+                  onChange={(e) => setInvestmentAmount(e.target.value)}
+                />
+                <p className="mt-1.5 text-xs text-gray-500">
+                  Subscription fee for this size:{" "}
+                  <strong className="text-white">{formatCurrency(feeUsdt)}</strong>
+                  {source === "wallet" && Number.isFinite(parsedInvestment) && (
+                    <>
+                      {" "}
+                      · Total from wallet:{" "}
+                      <strong className="text-white">
+                        {formatCurrency(totalFromWallet)}
+                      </strong>{" "}
+                      (fee + investment)
+                    </>
+                  )}
+                </p>
+              </div>
               <PaymentSourceSelector
                 walletBalance={walletBalance}
-                amountDue={feeUsdt}
+                amountDue={source === "wallet" ? totalFromWallet : feeUsdt}
                 source={source}
                 onSourceChange={setSource}
               />
@@ -304,12 +390,12 @@ export function InvestHub() {
                   ))}
                 </div>
               )}
-              {source === "wallet" && walletBalance < feeUsdt && (
+              {source === "wallet" && walletBalance < totalFromWallet && (
                 <p className="text-sm text-gray-500">
                   <Link href="/wallet" className="text-primary hover:underline">
                     Deposit to wallet
                   </Link>{" "}
-                  or pay with crypto.
+                  or pay the fee with crypto, then fund investment separately.
                 </p>
               )}
               {error && <p className="text-sm text-danger">{error}</p>}
@@ -323,8 +409,8 @@ export function InvestHub() {
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
                 {source === "wallet"
-                  ? `Start investing — ${formatCurrency(feeUsdt)} from wallet`
-                  : `Start investing — ${formatCurrency(feeUsdt)}`}
+                  ? `Start — ${formatCurrency(feeUsdt)} fee + ${formatCurrency(parsedInvestment || 0)} investment`
+                  : `Pay ${formatCurrency(feeUsdt)} fee`}
               </Button>
             </div>
           )}

@@ -20,6 +20,12 @@ import {
 import { NotificationService } from '../email/notification.service';
 import { MetaApiService } from '../metaapi/metaapi.service';
 import { WalletService } from '../wallet/wallet.service';
+import {
+  INVESTOR_INVESTMENT_MAX,
+  INVESTOR_INVESTMENT_MIN,
+  listInvestorFeeTiers,
+  resolveInvestorSubscriptionFee,
+} from './investor-fee.util';
 
 @Injectable()
 export class InvestorService {
@@ -44,11 +50,32 @@ export class InvestorService {
     return url;
   }
 
+  /** @deprecated Prefer resolveFeeForInvestment — flat config is no longer the source of truth. */
   async investorFee(): Promise<number> {
-    const config = await this.prisma.platformConfig.findUnique({
-      where: { id: 'default' },
-    });
-    return Number(config?.investorFeeUsdt ?? 10);
+    return listInvestorFeeTiers()[0]?.fee ?? 10;
+  }
+
+  resolveFeeForInvestment(investmentAmount: number): number {
+    try {
+      return resolveInvestorSubscriptionFee(investmentAmount);
+    } catch (err) {
+      throw new BadRequestException(
+        err instanceof Error ? err.message : 'Invalid investment amount',
+      );
+    }
+  }
+
+  private normalizeInvestmentAmount(raw: unknown): number {
+    const amount = Math.round(Number(raw) * 100) / 100;
+    if (!Number.isFinite(amount)) {
+      throw new BadRequestException('Investment amount is required');
+    }
+    if (amount < INVESTOR_INVESTMENT_MIN || amount > INVESTOR_INVESTMENT_MAX) {
+      throw new BadRequestException(
+        `Investment must be between $${INVESTOR_INVESTMENT_MIN} and $${INVESTOR_INVESTMENT_MAX} USDT`,
+      );
+    }
+    return amount;
   }
 
   async getStatus(userId: string) {
@@ -83,7 +110,7 @@ export class InvestorService {
       }
     }
 
-    const fee = await this.investorFee();
+    const feeTiers = listInvestorFeeTiers();
     const config = await this.prisma.platformConfig.findUnique({
       where: { id: 'default' },
     });
@@ -98,7 +125,14 @@ export class InvestorService {
     return {
       active: user.investorActive,
       enrolledAt: user.investorEnrolledAt?.toISOString() ?? null,
-      feeUsdt: fee,
+      feeUsdt: feeTiers[0]?.fee ?? 10,
+      feeTiers,
+      investmentMin: INVESTOR_INVESTMENT_MIN,
+      investmentMax: INVESTOR_INVESTMENT_MAX,
+      committedInvestmentAmount:
+        user.investorSettings?.committedInvestmentAmount != null
+          ? Number(user.investorSettings.committedInvestmentAmount)
+          : null,
       dailyYieldPercent: effectiveDailyYield,
       platformDailyYieldPercent: platformDailyYield,
       mt5Linked: Boolean(user.metaApiAccountId),
@@ -217,6 +251,7 @@ export class InvestorService {
     userId: string,
     network: string,
     source: 'wallet' | 'crypto' = 'crypto',
+    investmentAmountRaw?: number,
   ) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
@@ -228,20 +263,25 @@ export class InvestorService {
       };
     }
 
-    const amount = await this.investorFee();
+    const investmentAmount = this.normalizeInvestmentAmount(investmentAmountRaw);
+    const fee = this.resolveFeeForInvestment(investmentAmount);
 
     if (source === 'wallet') {
-      return this.payEnrollmentFromWallet(userId, amount);
+      return this.payEnrollmentFromWallet(userId, fee, investmentAmount);
     }
 
     const payment = await this.prisma.payment.create({
       data: {
         userId,
-        amount,
+        amount: fee,
         currency: 'USDT',
         network,
         purpose: 'investor_enrollment',
         gatewayId: `pending_${Date.now()}`,
+        gatewayResponse: {
+          investmentAmount,
+          feeUsdt: fee,
+        } as object,
       },
     });
 
@@ -253,10 +293,10 @@ export class InvestorService {
 
     try {
       const npPayment = await this.nowPayments.createPayment({
-        amount,
+        amount: fee,
         orderId: payment.id,
         network,
-        description: 'TraderRank investor program enrollment',
+        description: `TraderRank investor enrollment ($${investmentAmount} investment)`,
         ipnCallbackUrl: this.ipnUrl(),
       });
 
@@ -264,7 +304,11 @@ export class InvestorService {
         where: { id: payment.id },
         data: {
           gatewayId: String(npPayment.payment_id),
-          gatewayResponse: npPayment as object,
+          gatewayResponse: {
+            ...(npPayment as object),
+            investmentAmount,
+            feeUsdt: fee,
+          } as object,
           payAddress: npPayment.pay_address,
           payAmount: npPayment.pay_amount,
         },
@@ -272,7 +316,9 @@ export class InvestorService {
 
       return {
         paymentId: payment.id,
-        amount,
+        amount: fee,
+        investmentAmount,
+        feeUsdt: fee,
         currency: 'USDT',
         network,
         purpose: 'investor_enrollment',
@@ -297,47 +343,64 @@ export class InvestorService {
     }
   }
 
-  private async payEnrollmentFromWallet(userId: string, amount: number) {
+  private async payEnrollmentFromWallet(
+    userId: string,
+    fee: number,
+    investmentAmount: number,
+  ) {
     const wallet = await this.walletService.getOrCreateWallet(userId);
     const balance = Number(wallet.availableBalance);
-    if (balance < amount) {
+    const totalNeeded = fee + investmentAmount;
+    if (balance < totalNeeded) {
       throw new BadRequestException(
-        `Insufficient wallet balance — you need $${amount.toFixed(2)} USDT but have $${balance.toFixed(2)}`,
+        `Insufficient wallet balance — need $${totalNeeded.toFixed(2)} USDT ($${fee.toFixed(2)} fee + $${investmentAmount.toFixed(2)} investment) but have $${balance.toFixed(2)}`,
       );
     }
 
     const payment = await this.prisma.payment.create({
       data: {
         userId,
-        amount,
+        amount: fee,
         currency: 'USDT',
         network: 'WALLET',
         purpose: 'investor_enrollment',
         gatewayId: `wallet_${Date.now()}`,
-        gatewayResponse: { paymentSource: 'wallet' } as object,
+        gatewayResponse: {
+          paymentSource: 'wallet',
+          investmentAmount,
+          feeUsdt: fee,
+        } as object,
       },
     });
 
     await this.walletService.debitBalance(
       userId,
-      amount,
+      fee,
       'INVESTOR_FEE',
-      `Investor program enrollment — $${amount.toFixed(2)} USDT`,
+      `Investor subscription fee — $${fee.toFixed(2)} USDT for $${investmentAmount.toFixed(2)} investment`,
       payment.id,
     );
 
-    await this.confirmEnrollment(payment.id, { paymentSource: 'wallet' });
+    await this.confirmEnrollment(payment.id, {
+      paymentSource: 'wallet',
+      investmentAmount,
+      feeUsdt: fee,
+    });
+
+    await this.transferInvestment(userId, investmentAmount, 'to_investment');
 
     return {
       success: true,
       active: true,
       paymentId: payment.id,
-      amount,
+      amount: fee,
+      feeUsdt: fee,
+      investmentAmount,
       currency: 'USDT',
       network: 'WALLET',
       source: 'wallet',
-      message: 'Paid from wallet balance',
-      balanceAfter: balance - amount,
+      message: `Paid $${fee.toFixed(2)} fee and allocated $${investmentAmount.toFixed(2)} to investment`,
+      balanceAfter: balance - totalNeeded,
     };
   }
 
@@ -353,6 +416,26 @@ export class InvestorService {
       return { alreadyConfirmed: true };
     }
 
+    const payload = {
+      ...(typeof payment.gatewayResponse === 'object' &&
+      payment.gatewayResponse != null
+        ? (payment.gatewayResponse as Record<string, unknown>)
+        : {}),
+      ...(gatewayPayload as Record<string, unknown>),
+    };
+    const investmentAmountRaw = Number(
+      payload.investmentAmount ??
+        (gatewayPayload as { investmentAmount?: number }).investmentAmount,
+    );
+    let committedAmount: number | null = null;
+    if (Number.isFinite(investmentAmountRaw) && investmentAmountRaw > 0) {
+      try {
+        committedAmount = this.normalizeInvestmentAmount(investmentAmountRaw);
+      } catch {
+        committedAmount = null;
+      }
+    }
+
     const now = new Date();
     const walletTx =
       payment.network === 'WALLET'
@@ -364,7 +447,9 @@ export class InvestorService {
                 amount: -Number(payment.amount),
                 type: 'INVESTOR_FEE',
                 referenceId: paymentId,
-                description: `Investor program enrollment — $${Number(payment.amount).toFixed(2)} USDT`,
+                description: committedAmount
+                  ? `Investor subscription fee — $${Number(payment.amount).toFixed(2)} USDT for $${committedAmount.toFixed(2)} investment`
+                  : `Investor program enrollment — $${Number(payment.amount).toFixed(2)} USDT`,
               },
             }),
           ];
@@ -375,7 +460,7 @@ export class InvestorService {
         data: {
           status: 'CONFIRMED',
           confirmedAt: now,
-          gatewayResponse: gatewayPayload as object,
+          gatewayResponse: payload as object,
           ...(opts?.gatewayId ? { gatewayId: opts.gatewayId } : {}),
           ...(opts?.txHash ? { txHash: opts.txHash } : {}),
         },
@@ -389,8 +474,18 @@ export class InvestorService {
       }),
       this.prisma.investorSettings.upsert({
         where: { userId: payment.userId },
-        create: { userId: payment.userId, riskPercent: 2 },
-        update: {},
+        create: {
+          userId: payment.userId,
+          riskPercent: 2,
+          ...(committedAmount != null
+            ? { committedInvestmentAmount: committedAmount }
+            : {}),
+        },
+        update: {
+          ...(committedAmount != null
+            ? { committedInvestmentAmount: committedAmount }
+            : {}),
+        },
       }),
       ...walletTx,
     ]);
@@ -399,7 +494,11 @@ export class InvestorService {
       amount: Number(payment.amount),
     });
 
-    return { confirmed: true, userId: payment.userId };
+    return {
+      confirmed: true,
+      userId: payment.userId,
+      investmentAmount: committedAmount,
+    };
   }
 
   async updateSettings(userId: string, riskPercent: number) {
