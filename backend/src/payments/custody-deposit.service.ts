@@ -49,7 +49,12 @@ export class CustodyDepositService {
       };
     }
 
-    const payoutConfigured = this.nowPayments.isPayoutConfigured;
+    const payoutStatus = this.nowPayments.getPayoutConfigStatus();
+    const missing: string[] = [];
+    if (!payoutStatus.payoutEmailSet) missing.push('NOWPAYMENTS_PAYOUT_EMAIL');
+    if (!payoutStatus.payoutPasswordSet) {
+      missing.push('NOWPAYMENTS_PAYOUT_PASSWORD');
+    }
 
     const [balances, pendingAgg] = await Promise.all([
       this.nowPayments.getBalance(),
@@ -66,10 +71,12 @@ export class CustodyDepositService {
 
     return {
       configured: true,
-      payoutConfigured,
-      message: payoutConfigured
+      payoutConfigured: payoutStatus.payoutConfigured,
+      payoutEmailSet: payoutStatus.payoutEmailSet,
+      payoutPasswordSet: payoutStatus.payoutPasswordSet,
+      message: payoutStatus.payoutConfigured
         ? undefined
-        : 'Wallet withdrawals need NOWPAYMENTS_PAYOUT_EMAIL and NOWPAYMENTS_PAYOUT_PASSWORD on the API server (your NOWPayments login)',
+        : `Wallet withdrawals need ${missing.join(' and ')} on the Render service traders-api (backend / traders-c53s), not the frontend. Set them, then Manual Deploy / restart that API service.`,
       usdtBalance: this.nowPayments.sumUsdtBalance(balances),
       balances,
       pendingCryptoPayoutTotal: Number(pendingAgg._sum.traderShare ?? 0),

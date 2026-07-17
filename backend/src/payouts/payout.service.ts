@@ -538,8 +538,15 @@ export class PayoutService {
     }
 
     if (!this.nowPayments.isPayoutConfigured) {
+      const status = this.nowPayments.getPayoutConfigStatus();
+      const missing = [
+        !status.payoutEmailSet ? 'NOWPAYMENTS_PAYOUT_EMAIL' : null,
+        !status.payoutPasswordSet ? 'NOWPAYMENTS_PAYOUT_PASSWORD' : null,
+      ].filter(Boolean);
       throw new BadRequestException(
-        'NOWPayments payout login is not configured — set NOWPAYMENTS_PAYOUT_EMAIL and NOWPAYMENTS_PAYOUT_PASSWORD on the API server (same email/password you use at account.nowpayments.io), then restart the backend',
+        `NOWPayments payout login is not configured on traders-api — set ${missing.join(
+          ' and ',
+        )} on the Render backend service (not the frontend), then Manual Deploy / restart`,
       );
     }
 

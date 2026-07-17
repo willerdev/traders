@@ -42,6 +42,13 @@ export class NowPaymentsService {
       this.config.get<string>('NOWPAYMENTS_API_URL') ||
       'https://api.nowpayments.io/v1';
     this.apiKey = this.config.get<string>('NOWPAYMENTS_API_KEY') || '';
+    if (this.apiKey) {
+      this.logger.log(
+        `NOWPayments API key loaded · payout email ${
+          this.payoutEmail() ? 'set' : 'MISSING'
+        } · payout password ${this.payoutPassword() ? 'set' : 'MISSING'}`,
+      );
+    }
   }
 
   get isConfigured(): boolean {
@@ -49,23 +56,60 @@ export class NowPaymentsService {
   }
 
   get isPayoutConfigured(): boolean {
-    return this.isConfigured && Boolean(this.payoutEmail()) && Boolean(this.payoutPassword());
+    return (
+      this.isConfigured &&
+      Boolean(this.payoutEmail()) &&
+      Boolean(this.payoutPassword())
+    );
+  }
+
+  /** Safe diagnostics for admin UI — never returns secret values. */
+  getPayoutConfigStatus() {
+    const emailSet = Boolean(this.payoutEmail());
+    const passwordSet = Boolean(this.payoutPassword());
+    return {
+      apiKeySet: this.isConfigured,
+      payoutEmailSet: emailSet,
+      payoutPasswordSet: passwordSet,
+      payoutConfigured: this.isConfigured && emailSet && passwordSet,
+    };
+  }
+
+  /**
+   * Read env from Nest ConfigService or process.env.
+   * Accepts aliases and strips wrapping quotes (common Render paste mistake).
+   */
+  private envValue(...keys: string[]): string {
+    for (const key of keys) {
+      const raw =
+        this.config.get<string>(key) ?? process.env[key] ?? '';
+      const value = String(raw)
+        .trim()
+        .replace(/^['"]+|['"]+$/g, '')
+        .trim();
+      if (value) return value;
+    }
+    return '';
   }
 
   private payoutEmail(): string {
-    return (
-      this.config.get<string>('NOWPAYMENTS_PAYOUT_EMAIL') ||
-      process.env.NOWPAYMENTS_PAYOUT_EMAIL ||
-      ''
-    ).trim();
+    return this.envValue(
+      'NOWPAYMENTS_PAYOUT_EMAIL',
+      'NOW_PAYMENTS_PAYOUT_EMAIL',
+      'NOWPAYMENTS_EMAIL',
+      'NOWPAYMENTS_LOGIN_EMAIL',
+      'NOWPAYMENTS_ACCOUNT_EMAIL',
+    );
   }
 
   private payoutPassword(): string {
-    return (
-      this.config.get<string>('NOWPAYMENTS_PAYOUT_PASSWORD') ||
-      process.env.NOWPAYMENTS_PAYOUT_PASSWORD ||
-      ''
-    ).trim();
+    return this.envValue(
+      'NOWPAYMENTS_PAYOUT_PASSWORD',
+      'NOW_PAYMENTS_PAYOUT_PASSWORD',
+      'NOWPAYMENTS_PASSWORD',
+      'NOWPAYMENTS_LOGIN_PASSWORD',
+      'NOWPAYMENTS_ACCOUNT_PASSWORD',
+    );
   }
 
   private headers(extra: Record<string, string> = {}) {

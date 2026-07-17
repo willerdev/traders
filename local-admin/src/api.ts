@@ -1043,6 +1043,8 @@ export type ApprovePayoutResponse = {
 export type NowPaymentsWalletSummary = {
   configured: boolean;
   payoutConfigured?: boolean;
+  payoutEmailSet?: boolean;
+  payoutPasswordSet?: boolean;
   message?: string;
   usdtBalance: number;
   balances?: Record<string, { amount?: number; pendingAmount?: number }>;

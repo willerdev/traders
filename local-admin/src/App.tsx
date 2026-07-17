@@ -2791,7 +2791,15 @@ export default function App() {
                   {npWallet.configured && npWallet.payoutConfigured === false && (
                     <p className="message error" style={{ marginTop: "0.5rem" }}>
                       {npWallet.message ??
-                        "Set NOWPAYMENTS_PAYOUT_EMAIL and NOWPAYMENTS_PAYOUT_PASSWORD on the API server, then restart it — wallet withdrawals cannot be sent until then."}
+                        "Set NOWPAYMENTS_PAYOUT_EMAIL and NOWPAYMENTS_PAYOUT_PASSWORD on traders-api (backend), then restart."}
+                      <br />
+                      <span className="muted">
+                        Detected: email{" "}
+                        {npWallet.payoutEmailSet ? "set" : "missing"} · password{" "}
+                        {npWallet.payoutPasswordSet ? "set" : "missing"}. These
+                        must be on the API service (traders-c53s / traders-api),
+                        not traders-web.
+                      </span>
                     </p>
                   )}
                 </>
@@ -5764,7 +5772,15 @@ export default function App() {
                   : ""}
                 {payoutNeedsDestination(approvePayoutModal) &&
                 npWallet?.payoutConfigured === false
-                  ? " NOWPayments payout login is not configured on the API server."
+                  ? ` NOWPayments payout login missing on traders-api${
+                      npWallet.payoutEmailSet === false
+                        ? " (NOWPAYMENTS_PAYOUT_EMAIL)"
+                        : ""
+                    }${
+                      npWallet.payoutPasswordSet === false
+                        ? " (NOWPAYMENTS_PAYOUT_PASSWORD)"
+                        : ""
+                    }. Set on the backend service, then redeploy.`
                   : ""}
               </p>
             )}
