@@ -188,7 +188,7 @@ class ApiClient {
   }
 
   auth = {
-    register: (data: { email: string; password: string; displayName: string; acceptTerms: boolean; referralCode?: string }) =>
+    register: (data: { email: string; password: string; displayName: string; acceptTerms: boolean; referralCode: string }) =>
       this.request("/auth/register", { method: "POST", body: JSON.stringify(data) }),
     login: (data: { email: string; password: string }) =>
       this.request<LoginResponse>(
