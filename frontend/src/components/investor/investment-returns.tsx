@@ -20,6 +20,22 @@ function project(balance: number, dailyPercent: number, days: number) {
   return Math.round(balance * (dailyPercent / 100) * days * 100) / 100;
 }
 
+type ChartPoint = {
+  label: string;
+  value: number;
+};
+
+function linePath(points: ChartPoint[], width = 320, height = 116) {
+  const max = Math.max(...points.map((p) => p.value), 1);
+  return points
+    .map((point, index) => {
+      const x = (index / Math.max(points.length - 1, 1)) * width;
+      const y = height - (point.value / max) * (height - 12);
+      return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
 export function InvestmentReturnsPanel({
   investmentBalance,
   dailyYieldPercent,
@@ -61,6 +77,36 @@ export function InvestmentReturnsPanel({
       .filter((e) => new Date(e.creditedAt).getTime() >= cutoff)
       .reduce((sum, e) => sum + e.amount, 0);
   }, [entries]);
+
+  const historyPoints = useMemo<ChartPoint[]>(() => {
+    const byDate = new Map(entries.map((entry) => [entry.creditDate, entry.amount]));
+    return Array.from({ length: 14 }, (_, index) => {
+      const date = new Date();
+      date.setUTCHours(0, 0, 0, 0);
+      date.setUTCDate(date.getUTCDate() - (13 - index));
+      const key = date.toISOString().slice(0, 10);
+      return {
+        label: date.toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+        }),
+        value: byDate.get(key) ?? 0,
+      };
+    });
+  }, [entries]);
+
+  const growthPoints = useMemo<ChartPoint[]>(
+    () =>
+      [0, 7, 14, 21, 30].map((days) => ({
+        label: days === 0 ? "Now" : `${days}d`,
+        value: investmentBalance + project(investmentBalance, dailyYieldPercent, days),
+      })),
+    [dailyYieldPercent, investmentBalance],
+  );
+
+  const growthPath = useMemo(() => linePath(growthPoints), [growthPoints]);
+  const growthAreaPath = `${growthPath} L 320 116 L 0 116 Z`;
+  const maxHistory = Math.max(...historyPoints.map((point) => point.value), 1);
 
   return (
     <div className="space-y-4">
@@ -116,6 +162,160 @@ export function InvestmentReturnsPanel({
               +{formatCurrency(last7)}
             </strong>
           </span>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-semibold text-white">
+                Daily returns
+              </h4>
+              <p className="mt-0.5 text-xs text-gray-500">
+                Actual yield credited over 14 days
+              </p>
+            </div>
+            <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-xs font-medium text-emerald-300">
+              +{formatCurrency(last7)} / 7d
+            </span>
+          </div>
+
+          <div className="mt-4 h-36">
+            <svg
+              viewBox="0 0 320 116"
+              className="h-full w-full overflow-visible"
+              role="img"
+              aria-label="Actual daily investment returns for the last fourteen days"
+            >
+              {[29, 58, 87, 116].map((y) => (
+                <line
+                  key={y}
+                  x1="0"
+                  x2="320"
+                  y1={y}
+                  y2={y}
+                  stroke="rgba(255,255,255,0.06)"
+                  strokeWidth="1"
+                />
+              ))}
+              {historyPoints.map((point, index) => {
+                const barWidth = 14;
+                const gap = 8;
+                const x = index * (barWidth + gap) + 7;
+                const barHeight =
+                  point.value > 0
+                    ? Math.max((point.value / maxHistory) * 100, 3)
+                    : 1;
+                return (
+                  <g key={`${point.label}-${index}`}>
+                    <rect
+                      x={x}
+                      y={116 - barHeight}
+                      width={barWidth}
+                      height={barHeight}
+                      rx="4"
+                      fill={
+                        point.value > 0
+                          ? "rgba(52, 211, 153, 0.85)"
+                          : "rgba(255,255,255,0.08)"
+                      }
+                    >
+                      <title>
+                        {point.label}: {formatCurrency(point.value)}
+                      </title>
+                    </rect>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+          <div className="flex justify-between text-[10px] text-gray-600">
+            <span>{historyPoints[0]?.label}</span>
+            <span>{historyPoints[6]?.label}</span>
+            <span>{historyPoints[13]?.label}</span>
+          </div>
+        </div>
+
+        <div className="overflow-hidden rounded-2xl border border-indigo-500/20 bg-gradient-to-br from-indigo-950/30 to-white/[0.02] p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-semibold text-white">
+                30-day growth projection
+              </h4>
+              <p className="mt-0.5 text-xs text-gray-500">
+                Balance plus estimated wallet yield
+              </p>
+            </div>
+            <span className="rounded-full bg-indigo-500/10 px-2 py-1 text-xs font-medium text-indigo-300">
+              {formatCurrency(growthPoints.at(-1)?.value ?? investmentBalance)}
+            </span>
+          </div>
+
+          <div className="mt-4 h-36">
+            <svg
+              viewBox="0 0 320 116"
+              className="h-full w-full overflow-visible"
+              role="img"
+              aria-label="Projected investment value over thirty days"
+            >
+              <defs>
+                <linearGradient id="investment-growth-area" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#818cf8" stopOpacity="0.36" />
+                  <stop offset="100%" stopColor="#818cf8" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              {[29, 58, 87, 116].map((y) => (
+                <line
+                  key={y}
+                  x1="0"
+                  x2="320"
+                  y1={y}
+                  y2={y}
+                  stroke="rgba(255,255,255,0.06)"
+                  strokeWidth="1"
+                />
+              ))}
+              <path d={growthAreaPath} fill="url(#investment-growth-area)" />
+              <path
+                d={growthPath}
+                fill="none"
+                stroke="#818cf8"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              {growthPoints.map((point, index) => {
+                const x = (index / Math.max(growthPoints.length - 1, 1)) * 320;
+                const max = Math.max(...growthPoints.map((p) => p.value), 1);
+                const y = 116 - (point.value / max) * 104;
+                return (
+                  <circle
+                    key={point.label}
+                    cx={x}
+                    cy={y}
+                    r="4"
+                    fill="#111827"
+                    stroke="#a5b4fc"
+                    strokeWidth="2"
+                  >
+                    <title>
+                      {point.label}: {formatCurrency(point.value)}
+                    </title>
+                  </circle>
+                );
+              })}
+            </svg>
+          </div>
+          <div className="flex justify-between text-[10px] text-gray-600">
+            {growthPoints.map((point) => (
+              <span key={point.label}>{point.label}</span>
+            ))}
+          </div>
+          <p className="mt-2 text-[10px] text-gray-600">
+            Projection assumes the current daily rate and balance; actual returns
+            may vary.
+          </p>
         </div>
       </div>
 
