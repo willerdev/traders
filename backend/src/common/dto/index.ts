@@ -42,10 +42,10 @@ export class RegisterDto {
   @Equals(true, { message: 'You must accept the terms and risk disclosure' })
   acceptTerms: boolean;
 
-  @IsOptional()
   @IsString()
+  @IsNotEmpty({ message: 'A referral invite code is required' })
   @MaxLength(32)
-  referralCode?: string;
+  referralCode: string;
 }
 
 export class UpdateReferralSettingsDto {

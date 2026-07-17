@@ -94,7 +94,9 @@ function PublicHeader() {
             </Button>
           </Link>
           <Link href="/register">
-            <Button size="sm">Get Started</Button>
+            <Button size="sm" variant="secondary">
+              Invite only
+            </Button>
           </Link>
         </div>
       </div>

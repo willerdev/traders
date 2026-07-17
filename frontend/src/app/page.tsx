@@ -108,6 +108,13 @@ export default function HomePage() {
     if (path.title === "Trader" && isLoggedIn) {
       return { ...path, href: "/dashboard", cta: "Open Dashboard" };
     }
+    if (!isLoggedIn) {
+      return {
+        ...path,
+        href: "/register",
+        cta: "Invite only",
+      };
+    }
     return path;
   });
 
@@ -312,38 +319,27 @@ export default function HomePage() {
       <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6">
         <div className="glass-card rounded-3xl border border-primary/20 bg-primary/5 p-10 text-center">
           <h2 className="text-3xl font-bold text-white">
-            Ready to Prove Yourself?
+            Closed community
           </h2>
           <p className="mx-auto mt-3 max-w-lg text-gray-400">
-            {promo ? (
-              <>
-                Register for{" "}
-                <span className="font-semibold text-rank-gold">
-                  {promo.finalAmount} USDT
-                </span>{" "}
-                <span className="line-through opacity-60">
-                  {promo.originalAmount} USDT
-                </span>{" "}
-                with code{" "}
-                <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono font-bold uppercase text-white">
-                  {promo.code}
-                </code>
-                .
-              </>
-            ) : (
-              <>Register for {fee} USDT.</>
-            )}{" "}
-            Get your $1,000 virtual account. Start submitting signals today.
+            Registrations are done through referrals only. Ask a current member
+            for their invite link to join TraderRank Pro.
           </p>
-          <Link href="/register" className="mt-8 inline-block">
-            <Button size="lg" variant="gold" className="gap-2">
-              Join TraderRank Pro
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </Link>
+          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Link href="/register">
+              <Button size="lg" variant="secondary" className="gap-2">
+                How to join
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
+            <Link href="/login">
+              <Button size="lg" variant="gold">
+                Sign in
+              </Button>
+            </Link>
+          </div>
           <p className="mt-4 text-xs text-gray-500">
-            Payments in USDT (TRC20, BEP20, ERC20) · Local payment methods
-            coming soon
+            Direct public registration is disabled
           </p>
         </div>
       </section>

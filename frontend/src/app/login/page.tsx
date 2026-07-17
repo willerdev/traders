@@ -276,9 +276,9 @@ function LoginForm() {
               </form>
             )}
             <p className="mt-6 text-center text-sm text-gray-400">
-              Don&apos;t have an account?{" "}
+              New here?{" "}
               <Link href="/register" className="text-primary hover:underline">
-                Register
+                Invite-only registration
               </Link>
             </p>
           </CardContent>

@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   UnauthorizedException,
   ConflictException,
   BadRequestException,
@@ -48,6 +49,8 @@ const PASSWORD_RESET_GENERIC_MESSAGE =
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
@@ -89,6 +92,23 @@ export class AuthService {
 
     const displayName = assertAllowedDisplayName(dto.displayName);
 
+    const referralCode = dto.referralCode?.trim().toUpperCase();
+    if (!referralCode) {
+      throw new BadRequestException(
+        'Registration is invite-only. Ask a current member for their referral link.',
+      );
+    }
+
+    const referrer = await this.prisma.user.findUnique({
+      where: { referralCode },
+      select: { id: true },
+    });
+    if (!referrer) {
+      throw new BadRequestException(
+        'Invalid referral invite. Ask a current member for a fresh link.',
+      );
+    }
+
     const user = await this.prisma.user.create({
       data: {
         email,
@@ -98,14 +118,13 @@ export class AuthService {
         lastLoginIp: ip,
         termsAcceptedAt: new Date(),
         status: 'PENDING_PAYMENT',
+        referredById: referrer.id,
       },
     });
 
-    if (dto.referralCode) {
-      await this.referrals
-        .attachReferral(user.id, dto.referralCode)
-        .catch(() => undefined);
-    }
+    this.logger.log(
+      `Invite-only registration: ${user.id} referred by ${referrer.id} (${referralCode})`,
+    );
 
     return {
       user: this.sanitizeUser(user),
