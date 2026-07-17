@@ -48,7 +48,7 @@ export class InvestorService {
     const config = await this.prisma.platformConfig.findUnique({
       where: { id: 'default' },
     });
-    return Number(config?.investorFeeUsdt ?? 50);
+    return Number(config?.investorFeeUsdt ?? 10);
   }
 
   async getStatus(userId: string) {

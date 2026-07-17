@@ -100,7 +100,7 @@ export function InvestHub() {
   const [transferAmount, setTransferAmount] = useState("");
   const [transferLoading, setTransferLoading] = useState(false);
 
-  const feeUsdt = status?.feeUsdt ?? 50;
+  const feeUsdt = status?.feeUsdt ?? 10;
 
   const refresh = useCallback(async () => {
     setLoading(true);

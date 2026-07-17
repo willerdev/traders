@@ -860,7 +860,7 @@ model PlatformConfig {
   copyHealthCheckedAt    DateTime?
   mt5SyncFeeUsdt         Decimal @default(5) @db.Decimal(10, 2)
   weeklyTierPayoutsEnabled Boolean @default(false)
-  investorFeeUsdt          Decimal @default(50) @db.Decimal(10, 2)
+  investorFeeUsdt          Decimal @default(10) @db.Decimal(10, 2)
   investorDailyYieldPercent Decimal @default(8) @db.Decimal(5, 2)
   investorYieldPaused      Boolean @default(false)
   depositorDailyYieldPercent Decimal @default(0.5) @db.Decimal(5, 2)

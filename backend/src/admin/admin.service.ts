@@ -1584,7 +1584,7 @@ export class AdminService {
       LIMIT 1
     `;
     return {
-      investorFeeUsdt: Number(config?.investorFeeUsdt ?? 50),
+      investorFeeUsdt: Number(config?.investorFeeUsdt ?? 10),
       investorDailyYieldPercent: Number(
         config?.investorDailyYieldPercent ?? 8,
       ),
