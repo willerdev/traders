@@ -14,7 +14,6 @@ import {
   LineChart,
   ScrollText,
   TrendingUp,
-  Target,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore, useDashboardStore } from "@/stores/auth";
@@ -31,17 +30,16 @@ import {
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", shortLabel: "Home", icon: LayoutDashboard },
-  { href: "/evaluations", label: "Evaluations", shortLabel: "Evals", icon: Target },
+  { href: "/submit", label: "Submit Setup", shortLabel: "Submit", icon: Send },
   { href: "/invest", label: "Invest", shortLabel: "Invest", icon: TrendingUp },
-  { href: "/wallet", label: "Wallet", shortLabel: "Wallet", icon: Wallet },
   { href: "/journal", label: "Journal", shortLabel: "Journal", icon: ScrollText },
+  { href: "/wallet", label: "Wallet", shortLabel: "Wallet", icon: Wallet },
   {
     href: "/mt5",
     label: "MT5",
     shortLabel: "MT5",
     icon: LineChart,
   },
-  { href: "/submit", label: "Submit Signal", shortLabel: "Submit", icon: Send },
   { href: "/leaderboard", label: "Leaderboard", shortLabel: "Ranks", icon: Trophy },
   { href: "/tp-claims", label: "TP Claims", shortLabel: "Claims", icon: ClipboardCheck },
   { href: "/messages", label: "Messages", shortLabel: "Chat", icon: MessageCircle },
@@ -85,9 +83,9 @@ function PublicHeader() {
           <Logo className="text-lg" />
         </Link>
         <div className="flex gap-2">
-          <Link href="/evaluations">
+          <Link href="/invest">
             <Button variant="ghost" size="sm">
-              Evaluations
+              Invest
             </Button>
           </Link>
           <Link href="/login">

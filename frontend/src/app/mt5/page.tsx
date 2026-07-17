@@ -647,10 +647,6 @@ export default function Mt5UserPage() {
             tab === "chart" && "md:flex md:min-h-0 md:flex-1",
           )}
         >
-          <Mt5EvaluationAccountPicker
-            selectedId={selectedEvaluationId}
-            onSelected={handleEvaluationSelected}
-          />
           <Mt5ChartTerminal
             quotes={quotes}
             runningTrades={displayRunningTrades}

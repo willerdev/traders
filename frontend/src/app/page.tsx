@@ -14,8 +14,6 @@ import {
   Tag,
   Wallet,
   LineChart,
-  PiggyBank,
-  Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -32,24 +30,6 @@ type FeaturedPromo = {
 
 const paths = [
   {
-    icon: LineChart,
-    title: "Investor",
-    description:
-      "Link your MT5, pay $50, set your risk %. The platform trades system signals on your account at 1:2 RR.",
-    href: "/register?intent=investor",
-    cta: "Start as Investor",
-    accent: "border-cyan-500/30 bg-cyan-500/5",
-  },
-  {
-    icon: PiggyBank,
-    title: "Depositor",
-    description:
-      "Deposit USDT, pick your risk %, and see daily loss/gain over 5 days. Earn at the platform daily rate.",
-    href: "/register?intent=depositor",
-    cta: "Start Earning",
-    accent: "border-emerald-500/30 bg-emerald-500/5",
-  },
-  {
     icon: Trophy,
     title: "Trader",
     description:
@@ -59,22 +39,28 @@ const paths = [
     accent: "border-rank-gold/30 bg-rank-gold/5",
   },
   {
-    icon: Target,
-    title: "Evaluations",
+    icon: LineChart,
+    title: "Investor",
     description:
-      "Professional evaluation programs with MT5 trading. Clear risk rules and profit splits when you pass.",
-    href: "/evaluations",
-    cta: "View Programs",
-    accent: "border-blue-500/30 bg-blue-500/5",
+      "Choose your investment size, pay a tiered subscription fee, and earn daily yield on your balance — trade on platform MT5 or auto-copy.",
+    href: "/register?intent=investor",
+    cta: "Start Investing",
+    accent: "border-cyan-500/30 bg-cyan-500/5",
   },
 ];
 
 const features = [
   {
-    icon: TrendingUp,
-    title: "Virtual Funded Accounts",
+    icon: Zap,
+    title: "Setup acquisition",
     description:
-      "Start with $1,000 virtual balance. Fixed 5% risk per trade. Scale up to $25,000 as you climb ranks.",
+      "Submit immutable trade setups with screenshots. Compete weekly and earn TP rewards when price hits target.",
+  },
+  {
+    icon: TrendingUp,
+    title: "Smart investing",
+    description:
+      "Tiered subscription fees by capital size. Daily yield credited to wallet with a clear returns journal.",
   },
   {
     icon: Shield,
@@ -93,12 +79,6 @@ const features = [
     title: "Weekly Payouts",
     description:
       "Earn 40% of virtual profits. Payouts funded by subscriptions, premium memberships, and marketplace fees.",
-  },
-  {
-    icon: Zap,
-    title: "Immutable Signals",
-    description:
-      "Submit setups before execution. Every signal gets a unique ID and timestamp — no edits allowed.",
   },
   {
     icon: Users,
@@ -125,11 +105,8 @@ export default function HomePage() {
     if (path.title === "Investor" && isLoggedIn) {
       return { ...path, href: "/invest", cta: "Open Invest" };
     }
-    if (path.title === "Depositor" && isLoggedIn) {
-      return { ...path, href: "/dashboard?tab=depositor", cta: "Open Depositor" };
-    }
-    if (path.title === "Evaluations" && isLoggedIn) {
-      return { ...path, href: "/evaluations", cta: "Open Programs" };
+    if (path.title === "Trader" && isLoggedIn) {
+      return { ...path, href: "/dashboard", cta: "Open Dashboard" };
     }
     return path;
   });

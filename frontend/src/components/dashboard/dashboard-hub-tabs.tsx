@@ -9,13 +9,12 @@ const tabs: Array<{
   label: string;
   href?: string;
 }> = [
-  { id: "trader", label: "Trader" },
-  { id: "investor", label: "Investor", href: "/invest" },
-  { id: "depositor", label: "Depositor" },
+  { id: "trader", label: "Setups" },
+  { id: "investor", label: "Invest", href: "/invest" },
   { id: "wallet", label: "Wallet", href: "/wallet" },
 ];
 
-export type DashboardTab = "trader" | "investor" | "depositor" | "wallet";
+export type DashboardTab = "trader" | "investor" | "wallet";
 
 export function DashboardHubTabs({
   active,
@@ -59,8 +58,9 @@ export function DashboardHubTabs({
 export function useDashboardTab(): DashboardTab {
   const params = useSearchParams();
   const tab = params.get("tab");
-  if (tab === "investor" || tab === "depositor" || tab === "wallet") {
+  if (tab === "investor" || tab === "wallet") {
     return tab;
   }
+  // Legacy depositor links fall back to setups
   return "trader";
 }

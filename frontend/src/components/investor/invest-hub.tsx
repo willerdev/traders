@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { api, type InvestorStatus } from "@/lib/api";
 import { Mt5ConnectForm } from "@/components/mt5/mt5-connect-form";
+import { InvestmentReturnsPanel } from "@/components/investor/investment-returns";
 import {
   PaymentSourceSelector,
   type PaymentSource,
@@ -555,6 +556,15 @@ export function InvestHub() {
           </Button>
         </div>
         {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+      </motion.div>
+
+      <motion.div {...fadeUp} transition={{ delay: 0.19 }}>
+        <InvestmentReturnsPanel
+          investmentBalance={status.investmentBalance ?? 0}
+          dailyYieldPercent={status.dailyYieldPercent}
+          walletEarnings={status.walletEarnings}
+          yieldPaused={status.settings?.yieldPaused}
+        />
       </motion.div>
 
       <motion.div
