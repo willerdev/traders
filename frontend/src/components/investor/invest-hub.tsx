@@ -424,10 +424,10 @@ export function InvestHub() {
   const riskPercent = status.settings?.riskPercent ?? 2;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 xl:grid xl:grid-cols-12 xl:items-start xl:gap-5 xl:space-y-0">
       <motion.div
         {...fadeUp}
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 via-indigo-800 to-[#1e3a8a] p-5 shadow-lg shadow-indigo-900/30"
+        className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 via-indigo-800 to-[#1e3a8a] p-5 shadow-lg shadow-indigo-900/30 xl:col-span-7 xl:row-start-1 xl:h-full xl:min-h-44"
       >
         <div className="absolute -right-10 -top-10 h-36 w-36 rounded-full bg-white/10 blur-2xl" />
         <div className="relative flex items-start justify-between gap-3">
@@ -465,7 +465,7 @@ export function InvestHub() {
         </div>
       </motion.div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-3 xl:col-span-5 xl:row-start-1 xl:h-full">
         <StatCard
           label="Investment balance"
           value={formatCurrency(status.investmentBalance ?? 0)}
@@ -492,7 +492,7 @@ export function InvestHub() {
       <motion.div
         {...fadeUp}
         transition={{ delay: 0.18 }}
-        className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+        className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 xl:col-span-5 xl:row-start-2"
       >
         <h3 className="text-sm font-semibold text-white">Move funds</h3>
         <p className="mt-1 text-xs text-gray-500">
@@ -558,7 +558,11 @@ export function InvestHub() {
         {error && <p className="mt-2 text-sm text-danger">{error}</p>}
       </motion.div>
 
-      <motion.div {...fadeUp} transition={{ delay: 0.19 }}>
+      <motion.div
+        {...fadeUp}
+        transition={{ delay: 0.19 }}
+        className="xl:col-span-7 xl:col-start-6 xl:row-span-3 xl:row-start-2"
+      >
         <InvestmentReturnsPanel
           investmentBalance={status.investmentBalance ?? 0}
           dailyYieldPercent={status.dailyYieldPercent}
@@ -570,7 +574,7 @@ export function InvestHub() {
       <motion.div
         {...fadeUp}
         transition={{ delay: 0.2 }}
-        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+        className="grid gap-3 sm:grid-cols-2 xl:col-span-5 xl:row-start-3 xl:grid-cols-2"
       >
         {[
           { label: "Wallet balance", value: formatCurrency(status.walletBalance) },
@@ -603,7 +607,7 @@ export function InvestHub() {
       <motion.div
         {...fadeUp}
         transition={{ delay: 0.25 }}
-        className="rounded-2xl border border-white/10 bg-white/[0.02] p-5"
+        className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 xl:col-span-5 xl:row-start-4"
       >
         <div className="flex items-center gap-2">
           <Zap className="h-5 w-5 text-cyan-400" />
@@ -688,7 +692,7 @@ export function InvestHub() {
         <motion.div
           {...fadeUp}
           transition={{ delay: 0.3 }}
-          className="rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden"
+          className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] xl:col-span-12 xl:row-start-5"
         >
           <div className="border-b border-white/5 px-5 py-4">
             <h3 className="text-base font-semibold text-white">Recent trades</h3>
