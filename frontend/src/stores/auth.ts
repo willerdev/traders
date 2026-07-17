@@ -88,6 +88,7 @@ export const useAuthStore = create<AuthState>()(
         if (userId) clearMt5Cache(userId);
         api.setToken(null);
         set({ user: null, token: null, isAuthenticated: false });
+        useDashboardStore.setState({ data: null, error: null, loading: false });
       },
 
       setAuth: (token, user) => {

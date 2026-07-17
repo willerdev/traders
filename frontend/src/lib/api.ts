@@ -17,7 +17,7 @@ function apiErrorMessage(body: unknown, statusText: string): string {
     if (Array.isArray(msg)) return msg.join(", ");
     if (typeof msg === "string" && msg.trim()) {
       if (msg === "Unauthorized") {
-        return "Your session expired — log out and sign in again, then retry.";
+        return "Your session expired — signing you out.";
       }
       if (/validation failed/i.test(msg)) {
         return "That MT5 account is no longer available. Retrying with another pool account — if this persists, contact support.";
@@ -40,6 +40,17 @@ function readStoredToken(): string | null {
   }
 }
 
+/** Clear persisted auth when the API rejects the JWT (avoid circular import). */
+function signOutExpiredSession() {
+  if (typeof window === "undefined") return;
+  void import("@/stores/auth").then(({ useAuthStore }) => {
+    const state = useAuthStore.getState();
+    if (state.token || state.isAuthenticated) {
+      state.logout();
+    }
+  });
+}
+
 class ApiClient {
   private token: string | null = readStoredToken();
 
@@ -49,6 +60,14 @@ class ApiClient {
 
   getToken() {
     return this.token ?? readStoredToken();
+  }
+
+  /** If we sent a Bearer token and got 401, the session is dead — sign out. */
+  private clearSessionIfUnauthorized(status: number, sentAuth: boolean) {
+    if (status === 401 && sentAuth) {
+      this.token = null;
+      signOutExpiredSession();
+    }
   }
 
   private async request<T>(
@@ -65,6 +84,7 @@ class ApiClient {
     }
 
     const token = this.getToken();
+    const sentAuth = Boolean(token);
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
@@ -80,6 +100,7 @@ class ApiClient {
     }
 
     if (!res.ok) {
+      this.clearSessionIfUnauthorized(res.status, sentAuth);
       const text = await res.text();
       let error: { message?: unknown } = { message: res.statusText };
       try {
@@ -97,6 +118,35 @@ class ApiClient {
     } catch {
       throw new Error("Invalid response from server — try again shortly");
     }
+  }
+
+  private async uploadRequest<T>(
+    path: string,
+    formData: FormData,
+    failLabel: string,
+  ): Promise<T> {
+    const headers: Record<string, string> = {};
+    const token = this.getToken();
+    const sentAuth = Boolean(token);
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers,
+      body: formData,
+    }).catch(() => {
+      throw new Error(networkErrorMessage());
+    });
+
+    if (!res.ok) {
+      this.clearSessionIfUnauthorized(res.status, sentAuth);
+      const error = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(apiErrorMessage(error, res.statusText) || failLabel);
+    }
+
+    return res.json() as Promise<T>;
   }
 
   private isMissingRouteError(err: unknown): boolean {
@@ -529,98 +579,38 @@ class ApiClient {
     setup: async (file: File) => {
       const formData = new FormData();
       formData.append("file", file);
-
-      const headers: Record<string, string> = {};
-      if (this.token) {
-        headers.Authorization = `Bearer ${this.token}`;
-      }
-
-      const res = await fetch(`${API_BASE}/uploads/setup`, {
-        method: "POST",
-        headers,
-        body: formData,
-      }).catch(() => {
-        throw new Error(networkErrorMessage());
-      });
-
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({ message: res.statusText }));
-        throw new Error(apiErrorMessage(error, res.statusText) || "Upload failed");
-      }
-
-      return res.json() as Promise<{ url: string; filename: string }>;
+      return this.uploadRequest<{ url: string; filename: string }>(
+        "/uploads/setup",
+        formData,
+        "Upload failed",
+      );
     },
     ingestSetup: async (file: File) => {
       const formData = new FormData();
       formData.append("file", file);
-
-      const headers: Record<string, string> = {};
-      if (this.token) {
-        headers.Authorization = `Bearer ${this.token}`;
-      }
-
-      const res = await fetch(`${API_BASE}/uploads/setup/ingest`, {
-        method: "POST",
-        headers,
-        body: formData,
-      }).catch(() => {
-        throw new Error(networkErrorMessage());
-      });
-
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({ message: res.statusText }));
-        throw new Error(apiErrorMessage(error, res.statusText) || "Upload failed");
-      }
-
-      return res.json() as Promise<{
+      return this.uploadRequest<{
         url: string;
         filename: string;
         analysis: SetupAnalysis;
-      }>;
+      }>("/uploads/setup/ingest", formData, "Upload failed");
     },
     kyc: async (file: File) => {
       const formData = new FormData();
       formData.append("file", file);
-
-      const headers: Record<string, string> = {};
-      if (this.token) {
-        headers.Authorization = `Bearer ${this.token}`;
-      }
-
-      const res = await fetch(`${API_BASE}/uploads/kyc`, {
-        method: "POST",
-        headers,
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({ message: res.statusText }));
-        throw new Error(apiErrorMessage(error, res.statusText) || "Upload failed");
-      }
-
-      return res.json() as Promise<{ url: string; filename: string }>;
+      return this.uploadRequest<{ url: string; filename: string }>(
+        "/uploads/kyc",
+        formData,
+        "Upload failed",
+      );
     },
     analyzeSetup: async (file: File) => {
       const formData = new FormData();
       formData.append("file", file);
-
-      const headers: Record<string, string> = {};
-      if (this.token) {
-        headers.Authorization = `Bearer ${this.token}`;
-      }
-
-      const res = await fetch(`${API_BASE}/uploads/setup/analyze`, {
-        method: "POST",
-        headers,
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({ message: res.statusText }));
-        throw new Error(apiErrorMessage(error, res.statusText) || "AI analysis failed");
-      }
-
-      return res.json() as Promise<{ analysis: SetupAnalysis }>;
+      return this.uploadRequest<{ analysis: SetupAnalysis }>(
+        "/uploads/setup/analyze",
+        formData,
+        "AI analysis failed",
+      );
     },
   };
 
