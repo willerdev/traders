@@ -28,7 +28,7 @@ export default function JournalPage() {
   }
 
   return (
-    <div className="mx-auto max-w-lg space-y-6 px-4 py-6 md:max-w-3xl">
+    <div className="mx-auto max-w-lg space-y-6 px-4 py-6 md:max-w-3xl xl:max-w-7xl xl:px-8 xl:py-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Returns journal</h1>
@@ -53,6 +53,7 @@ export default function JournalPage() {
           dailyYieldPercent={investor.dailyYieldPercent}
           walletEarnings={investor.walletEarnings}
           yieldPaused={investor.settings?.yieldPaused}
+          displayCurrency={investor.displayCurrency}
         />
       ) : (
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 text-sm text-gray-400">

@@ -92,7 +92,7 @@ export default function WalletPage() {
   }
 
   return (
-    <div className="mx-auto max-w-lg space-y-4 px-4 py-4 sm:max-w-xl sm:px-6 sm:py-6">
+    <div className="mx-auto max-w-lg space-y-4 px-4 py-4 sm:max-w-xl sm:px-6 sm:py-6 xl:max-w-7xl xl:px-8 xl:py-8">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">Wallet</h1>
@@ -125,141 +125,147 @@ export default function WalletPage() {
         </div>
       )}
 
-      {summary && (
-        <WalletBalanceCard
-          balance={summary.availableBalance}
-          totalEarned={summary.totalEarned}
-          totalDeposited={summary.totalDeposited}
-          displayCurrency={summary.displayCurrency}
-          onWithdraw={() => setWithdrawOpen(true)}
-          onDeposit={() => setDepositOpen(true)}
-        />
-      )}
+      <div className="space-y-4 xl:grid xl:grid-cols-12 xl:items-start xl:gap-5 xl:space-y-0">
+        {summary && (
+          <div className="xl:col-span-7 xl:row-start-1">
+            <WalletBalanceCard
+              balance={summary.availableBalance}
+              totalEarned={summary.totalEarned}
+              totalDeposited={summary.totalDeposited}
+              displayCurrency={summary.displayCurrency}
+              onWithdraw={() => setWithdrawOpen(true)}
+              onDeposit={() => setDepositOpen(true)}
+            />
+          </div>
+        )}
 
-      {summary && (
-        <WalletWithdrawFeeNotice feeUsdt={summary.withdrawalFeeUsdt ?? 3} />
-      )}
+        {summary && (
+          <div className="xl:col-span-7 xl:row-start-2">
+            <WalletWithdrawFeeNotice feeUsdt={summary.withdrawalFeeUsdt ?? 3} />
+          </div>
+        )}
 
-      {summary && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Withdrawal wallets</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <WalletSavedWithdrawalWallets />
-          </CardContent>
-        </Card>
-      )}
+        {summary && (
+          <Card className="xl:col-span-5 xl:row-span-2 xl:row-start-1 xl:h-full">
+            <CardHeader>
+              <CardTitle className="text-base">Withdrawal wallets</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <WalletSavedWithdrawalWallets />
+            </CardContent>
+          </Card>
+        )}
 
-      {summary && (
-        <div className="grid grid-cols-3 gap-2">
-          {[
-            { label: "Deposited", value: summary.totalDeposited },
-            { label: "Earned", value: summary.totalEarned },
-            { label: "Locked", value: summary.lockedBalance },
-          ].map((item) => (
-            <div
-              key={item.label}
-              className="rounded-xl border border-white/5 bg-white/[0.02] px-3 py-3"
-            >
-              <p className="text-[10px] uppercase tracking-wide text-gray-500">
-                {item.label}
-              </p>
-              <p
-                className={cn(
-                  "font-bold text-white",
-                  localCurrency ? "text-xs sm:text-sm" : "text-sm",
-                )}
+        {summary && (
+          <div className="grid grid-cols-3 gap-2 xl:col-span-7 xl:row-start-3">
+            {[
+              { label: "Deposited", value: summary.totalDeposited },
+              { label: "Earned", value: summary.totalEarned },
+              { label: "Locked", value: summary.lockedBalance },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className="rounded-xl border border-white/5 bg-white/[0.02] px-3 py-3"
               >
-                {formatMoney(item.value, summary.displayCurrency)}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-base">Assets</CardTitle>
-          <span className="text-xs text-gray-500">
-            {summary?.displayCurrency?.code ?? "USDT"}
-          </span>
-        </CardHeader>
-        <CardContent>
-          {summary ? (
-            <div className="flex items-center justify-between gap-3 rounded-xl border border-white/5 px-3 py-3">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20 text-sm font-bold text-emerald-400">
-                  ₮
-                </div>
-                <div>
-                  <p className="font-medium text-white">USDT</p>
-                  <p className="text-xs text-gray-500">
-                    Shown as {summary.displayCurrency?.code ?? "USDT"}
-                  </p>
-                </div>
-              </div>
-              <div className="text-right">
+                <p className="text-[10px] uppercase tracking-wide text-gray-500">
+                  {item.label}
+                </p>
                 <p
                   className={cn(
                     "font-bold text-white",
-                    localCurrency ? "text-sm" : "text-base",
+                    localCurrency ? "text-xs sm:text-sm" : "text-sm",
                   )}
                 >
-                  {formatMoney(
-                    summary.availableBalance,
-                    summary.displayCurrency,
-                  )}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {formatCurrency(summary.availableBalance)} USDT
+                  {formatMoney(item.value, summary.displayCurrency)}
                 </p>
               </div>
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500">
-              Balance unavailable — tap Retry above.
-            </p>
-          )}
-        </CardContent>
-      </Card>
+            ))}
+          </div>
+        )}
 
-      <Card id="wallet-activity">
-        <CardHeader>
-          <CardTitle className="text-base">Transactions</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {txs.length === 0 ? (
-            <p className="text-sm text-gray-500">
-              {summary ? "No transactions yet." : "Transactions unavailable."}
-            </p>
-          ) : (
-            txs.map((tx) => (
-              <div
-                key={tx.id}
-                className="flex items-center justify-between gap-3 rounded-lg border border-white/5 px-3 py-2.5"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm text-white">{tx.description}</p>
-                  <p className="text-[10px] text-gray-500">
-                    {new Date(tx.createdAt).toLocaleString()}
+        <Card className="xl:col-span-5 xl:row-start-3">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-base">Assets</CardTitle>
+            <span className="text-xs text-gray-500">
+              {summary?.displayCurrency?.code ?? "USDT"}
+            </span>
+          </CardHeader>
+          <CardContent>
+            {summary ? (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-white/5 px-3 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20 text-sm font-bold text-emerald-400">
+                    ₮
+                  </div>
+                  <div>
+                    <p className="font-medium text-white">USDT</p>
+                    <p className="text-xs text-gray-500">
+                      Shown as {summary.displayCurrency?.code ?? "USDT"}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p
+                    className={cn(
+                      "font-bold text-white",
+                      localCurrency ? "text-sm" : "text-base",
+                    )}
+                  >
+                    {formatMoney(
+                      summary.availableBalance,
+                      summary.displayCurrency,
+                    )}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {formatCurrency(summary.availableBalance)} USDT
                   </p>
                 </div>
-                <span
-                  className={
-                    tx.amount >= 0
-                      ? "text-sm font-bold text-success"
-                      : "text-sm font-bold text-danger"
-                  }
-                >
-                  {tx.amount >= 0 ? "+" : ""}
-                  {formatCurrency(tx.amount)}
-                </span>
               </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+            ) : (
+              <p className="text-sm text-gray-500">
+                Balance unavailable — tap Retry above.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card id="wallet-activity" className="xl:col-span-12 xl:row-start-4">
+          <CardHeader>
+            <CardTitle className="text-base">Transactions</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 xl:grid xl:grid-cols-2 xl:gap-3 xl:space-y-0">
+            {txs.length === 0 ? (
+              <p className="text-sm text-gray-500 xl:col-span-2">
+                {summary ? "No transactions yet." : "Transactions unavailable."}
+              </p>
+            ) : (
+              txs.map((tx) => (
+                <div
+                  key={tx.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-white/5 px-3 py-2.5"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm text-white">{tx.description}</p>
+                    <p className="text-[10px] text-gray-500">
+                      {new Date(tx.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                  <span
+                    className={
+                      tx.amount >= 0
+                        ? "text-sm font-bold text-success"
+                        : "text-sm font-bold text-danger"
+                    }
+                  >
+                    {tx.amount >= 0 ? "+" : ""}
+                    {formatCurrency(tx.amount)}
+                  </span>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <WalletDepositModal
         open={depositOpen}

@@ -1129,7 +1129,7 @@ export default function SubmitSignalPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
+    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 xl:max-w-5xl xl:px-8">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
         {executionWarmupOk === false && (
           <div className="mb-4 rounded-lg border border-rank-gold/30 bg-rank-gold/5 px-4 py-3 text-sm text-muted">
