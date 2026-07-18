@@ -13,6 +13,20 @@ export type DisplayCurrency = {
   derivedFromCountry?: string | null;
 };
 
+export function isLocalCurrencyDisplay(
+  display?: DisplayCurrency | null,
+): boolean {
+  const code = display?.code?.toUpperCase() || "USDT";
+  return Boolean(
+    display &&
+      code !== "USDT" &&
+      display.source !== "fallback" &&
+      display.rate != null &&
+      Number.isFinite(display.rate) &&
+      display.rate > 0,
+  );
+}
+
 /** Legacy USDT/USD formatter (ledger amounts). */
 export function formatCurrency(value: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -46,13 +60,7 @@ export function formatMoney(
 ): string {
   const code = display?.code?.toUpperCase() || "USDT";
   const rate = display?.rate;
-  const useLocal =
-    Boolean(display) &&
-    code !== "USDT" &&
-    display?.source !== "fallback" &&
-    rate != null &&
-    Number.isFinite(rate) &&
-    rate > 0;
+  const useLocal = isLocalCurrencyDisplay(display);
 
   if (!useLocal) {
     return `${formatCurrency(amountUsdt)} USDT`;

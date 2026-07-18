@@ -5,7 +5,12 @@ import Link from "next/link";
 import { CalendarDays, Loader2, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api, type DailyIncomeEntry } from "@/lib/api";
-import { cn, formatMoney, type DisplayCurrency } from "@/lib/utils";
+import {
+  cn,
+  formatMoney,
+  isLocalCurrencyDisplay,
+  type DisplayCurrency,
+} from "@/lib/utils";
 
 type Props = {
   investmentBalance: number;
@@ -46,6 +51,7 @@ export function InvestmentReturnsPanel({
   displayCurrency,
 }: Props) {
   const money = (n: number) => formatMoney(n, displayCurrency);
+  const localCurrency = isLocalCurrencyDisplay(displayCurrency);
   const [entries, setEntries] = useState<DailyIncomeEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -147,7 +153,12 @@ export function InvestmentReturnsPanel({
               className="rounded-xl border border-white/10 bg-black/25 px-3 py-3"
             >
               <p className="text-xs text-gray-500">{row.label}</p>
-              <p className="mt-1 text-lg font-semibold tabular-nums text-emerald-300">
+              <p
+                className={cn(
+                  "mt-1 font-semibold tabular-nums text-emerald-300",
+                  localCurrency ? "text-sm xl:text-base" : "text-lg",
+                )}
+              >
                 +{money(row.value)}
               </p>
             </div>
@@ -179,7 +190,12 @@ export function InvestmentReturnsPanel({
                 Actual yield credited over 14 days
               </p>
             </div>
-            <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-xs font-medium text-emerald-300">
+            <span
+              className={cn(
+                "rounded-full bg-emerald-500/10 px-2 py-1 font-medium text-emerald-300",
+                localCurrency ? "text-[10px]" : "text-xs",
+              )}
+            >
               +{money(last7)} / 7d
             </span>
           </div>
@@ -250,7 +266,12 @@ export function InvestmentReturnsPanel({
                 Balance plus estimated wallet yield
               </p>
             </div>
-            <span className="rounded-full bg-indigo-500/10 px-2 py-1 text-xs font-medium text-indigo-300">
+            <span
+              className={cn(
+                "rounded-full bg-indigo-500/10 px-2 py-1 font-medium text-indigo-300",
+                localCurrency ? "text-[10px]" : "text-xs",
+              )}
+            >
               {money(growthPoints.at(-1)?.value ?? investmentBalance)}
             </span>
           </div>

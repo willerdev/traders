@@ -24,7 +24,12 @@ import {
   PaymentSourceSelector,
   type PaymentSource,
 } from "@/components/wallet/payment-source-selector";
-import { cn, formatCurrency, formatMoney } from "@/lib/utils";
+import {
+  cn,
+  formatCurrency,
+  formatMoney,
+  isLocalCurrencyDisplay,
+} from "@/lib/utils";
 
 const NETWORKS = ["TRC20", "BEP20", "ERC20"] as const;
 
@@ -55,12 +60,14 @@ function StatCard({
   value,
   sub,
   accent,
+  compactValue = false,
   delay = 0,
 }: {
   label: string;
   value: string;
   sub?: string;
   accent?: "invest" | "risk" | "profit" | "neutral";
+  compactValue?: boolean;
   delay?: number;
 }) {
   const accentClass =
@@ -84,7 +91,14 @@ function StatCard({
       <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
         {label}
       </p>
-      <p className="mt-1 text-2xl font-bold tracking-tight text-white">{value}</p>
+      <p
+        className={cn(
+          "mt-1 font-bold tracking-tight text-white",
+          compactValue ? "text-lg xl:text-xl" : "text-2xl",
+        )}
+      >
+        {value}
+      </p>
       {sub && <p className="mt-1 text-xs text-gray-500">{sub}</p>}
     </motion.div>
   );
@@ -441,6 +455,7 @@ export function InvestHub() {
   const riskPercent = status.settings?.riskPercent ?? 2;
   const display = status.displayCurrency;
   const vip = status.vip;
+  const localCurrency = isLocalCurrencyDisplay(display);
 
   return (
     <div className="space-y-5 xl:grid xl:grid-cols-12 xl:items-start xl:gap-5 xl:space-y-0">
@@ -452,7 +467,14 @@ export function InvestHub() {
         <div className="relative flex items-start justify-between gap-3">
           <div>
             <p className="text-xs font-medium text-indigo-200">Your investment</p>
-            <p className="mt-1 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+            <p
+              className={cn(
+                "mt-1 font-bold tracking-tight text-white",
+                localCurrency
+                  ? "text-2xl sm:text-3xl"
+                  : "text-3xl sm:text-4xl",
+              )}
+            >
               {formatMoney(
                 status.investmentBalance ?? status.investmentDeposited,
                 display,
@@ -498,6 +520,7 @@ export function InvestHub() {
           value={formatMoney(status.investmentBalance ?? 0, display)}
           sub={`${status.dailyYieldPercent}% daily · credited to wallet at 16:00`}
           accent="invest"
+          compactValue={localCurrency}
           delay={0.05}
         />
         <StatCard
@@ -512,6 +535,7 @@ export function InvestHub() {
           value={`${profitPositive ? "+" : ""}${formatMoney(status.totalProfit, display)}`}
           sub={`Trading ${formatMoney(status.tradingProfit, display)} · Wallet ${formatMoney(status.walletEarnings, display)}`}
           accent="profit"
+          compactValue={localCurrency}
           delay={0.15}
         />
       </div>
@@ -670,7 +694,14 @@ export function InvestHub() {
             className="rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3"
           >
             <p className="text-xs text-gray-500">{item.label}</p>
-            <p className="mt-0.5 text-lg font-semibold text-white">{item.value}</p>
+            <p
+              className={cn(
+                "mt-0.5 font-semibold text-white",
+                localCurrency ? "text-base" : "text-lg",
+              )}
+            >
+              {item.value}
+            </p>
           </div>
         ))}
       </motion.div>

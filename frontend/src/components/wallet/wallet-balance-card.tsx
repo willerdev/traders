@@ -1,6 +1,12 @@
 "use client";
 
-import { formatMoney, formatUsdtHint, type DisplayCurrency } from "@/lib/utils";
+import {
+  cn,
+  formatMoney,
+  formatUsdtHint,
+  isLocalCurrencyDisplay,
+  type DisplayCurrency,
+} from "@/lib/utils";
 import { ArrowDownLeft, ArrowUpRight, Settings } from "lucide-react";
 import Link from "next/link";
 
@@ -24,6 +30,7 @@ export function WalletBalanceCard({
   const changePct =
     totalDeposited > 0 ? (totalEarned / totalDeposited) * 100 : 0;
   const usdtHint = formatUsdtHint(balance, displayCurrency);
+  const localCurrency = isLocalCurrencyDisplay(displayCurrency);
   const badge =
     displayCurrency?.source === "coinbase" && displayCurrency.code !== "USDT"
       ? displayCurrency.code
@@ -47,7 +54,14 @@ export function WalletBalanceCard({
               {badge}
             </span>
           </p>
-          <p className="mt-1 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+          <p
+            className={cn(
+              "mt-1 font-bold tracking-tight text-white",
+              localCurrency
+                ? "text-2xl sm:text-3xl"
+                : "text-3xl sm:text-4xl",
+            )}
+          >
             {formatMoney(balance, displayCurrency)}
           </p>
           {usdtHint && (

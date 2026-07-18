@@ -9,7 +9,12 @@ import { WalletDepositModal } from "@/components/wallet/wallet-deposit-modal";
 import { WalletWithdrawModal } from "@/components/wallet/wallet-withdraw-modal";
 import { WalletWithdrawFeeNotice } from "@/components/wallet/wallet-withdraw-fee-notice";
 import { WalletSavedWithdrawalWallets } from "@/components/wallet/wallet-saved-withdrawal-wallets";
-import { formatCurrency, formatMoney } from "@/lib/utils";
+import {
+  cn,
+  formatCurrency,
+  formatMoney,
+  isLocalCurrencyDisplay,
+} from "@/lib/utils";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { syncApiAuthToken, useAuthStore } from "@/stores/auth";
 import { Loader2, RefreshCw } from "lucide-react";
@@ -23,6 +28,7 @@ export default function WalletPage() {
   const [error, setError] = useState<string | null>(null);
   const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const localCurrency = isLocalCurrencyDisplay(summary?.displayCurrency);
 
   const refresh = useCallback(async () => {
     const authToken = syncApiAuthToken();
@@ -159,7 +165,12 @@ export default function WalletPage() {
               <p className="text-[10px] uppercase tracking-wide text-gray-500">
                 {item.label}
               </p>
-              <p className="text-sm font-bold text-white">
+              <p
+                className={cn(
+                  "font-bold text-white",
+                  localCurrency ? "text-xs sm:text-sm" : "text-sm",
+                )}
+              >
                 {formatMoney(item.value, summary.displayCurrency)}
               </p>
             </div>
@@ -189,7 +200,12 @@ export default function WalletPage() {
                 </div>
               </div>
               <div className="text-right">
-                <p className="font-bold text-white">
+                <p
+                  className={cn(
+                    "font-bold text-white",
+                    localCurrency ? "text-sm" : "text-base",
+                  )}
+                >
                   {formatMoney(
                     summary.availableBalance,
                     summary.displayCurrency,
