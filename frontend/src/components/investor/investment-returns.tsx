@@ -5,7 +5,7 @@ import Link from "next/link";
 import { CalendarDays, Loader2, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api, type DailyIncomeEntry } from "@/lib/api";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatMoney, type DisplayCurrency } from "@/lib/utils";
 
 type Props = {
   investmentBalance: number;
@@ -13,6 +13,7 @@ type Props = {
   walletEarnings: number;
   yieldPaused?: boolean;
   compact?: boolean;
+  displayCurrency?: DisplayCurrency | null;
 };
 
 function project(balance: number, dailyPercent: number, days: number) {
@@ -42,7 +43,9 @@ export function InvestmentReturnsPanel({
   walletEarnings,
   yieldPaused,
   compact,
+  displayCurrency,
 }: Props) {
+  const money = (n: number) => formatMoney(n, displayCurrency);
   const [entries, setEntries] = useState<DailyIncomeEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -126,7 +129,7 @@ export function InvestmentReturnsPanel({
             </h3>
             <p className="mt-1 text-sm text-gray-400">
               {dailyYieldPercent}% daily on{" "}
-              {formatCurrency(investmentBalance)}
+              {money(investmentBalance)}
               {yieldPaused ? " · yield paused" : " · credited ~16:00 Kampala"}
             </p>
           </div>
@@ -145,7 +148,7 @@ export function InvestmentReturnsPanel({
             >
               <p className="text-xs text-gray-500">{row.label}</p>
               <p className="mt-1 text-lg font-semibold tabular-nums text-emerald-300">
-                +{formatCurrency(row.value)}
+                +{money(row.value)}
               </p>
             </div>
           ))}
@@ -154,12 +157,12 @@ export function InvestmentReturnsPanel({
         <div className="mt-4 flex flex-wrap gap-4 text-sm text-gray-400">
           <span>
             Lifetime yield:{" "}
-            <strong className="text-white">{formatCurrency(walletEarnings)}</strong>
+            <strong className="text-white">{money(walletEarnings)}</strong>
           </span>
           <span>
             Last 7 days:{" "}
             <strong className="text-emerald-300">
-              +{formatCurrency(last7)}
+              +{money(last7)}
             </strong>
           </span>
         </div>
@@ -177,7 +180,7 @@ export function InvestmentReturnsPanel({
               </p>
             </div>
             <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-xs font-medium text-emerald-300">
-              +{formatCurrency(last7)} / 7d
+              +{money(last7)} / 7d
             </span>
           </div>
 
@@ -222,7 +225,7 @@ export function InvestmentReturnsPanel({
                       }
                     >
                       <title>
-                        {point.label}: {formatCurrency(point.value)}
+                        {point.label}: {money(point.value)}
                       </title>
                     </rect>
                   </g>
@@ -248,7 +251,7 @@ export function InvestmentReturnsPanel({
               </p>
             </div>
             <span className="rounded-full bg-indigo-500/10 px-2 py-1 text-xs font-medium text-indigo-300">
-              {formatCurrency(growthPoints.at(-1)?.value ?? investmentBalance)}
+              {money(growthPoints.at(-1)?.value ?? investmentBalance)}
             </span>
           </div>
 
@@ -300,7 +303,7 @@ export function InvestmentReturnsPanel({
                     strokeWidth="2"
                   >
                     <title>
-                      {point.label}: {formatCurrency(point.value)}
+                      {point.label}: {money(point.value)}
                     </title>
                   </circle>
                 );
@@ -354,11 +357,11 @@ export function InvestmentReturnsPanel({
                 <div>
                   <p className="font-medium text-white">{e.creditDate}</p>
                   <p className="text-xs text-gray-500">
-                    {e.yieldPercent}% on {formatCurrency(e.baseBalance)}
+                    {e.yieldPercent}% on {money(e.baseBalance)}
                   </p>
                 </div>
                 <span className="font-semibold tabular-nums text-emerald-400">
-                  +{formatCurrency(e.amount)}
+                  +{money(e.amount)}
                 </span>
               </li>
             ))}

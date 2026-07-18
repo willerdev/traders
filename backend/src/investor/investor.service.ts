@@ -26,6 +26,14 @@ import {
   listInvestorFeeTiers,
   resolveInvestorSubscriptionFee,
 } from './investor-fee.util';
+import {
+  INVESTOR_VIP_FEE_USDT,
+  INVESTOR_VIP_REMINDER_DAYS,
+  isInvestorVipActive,
+  nextVipExpiry,
+} from './investor-vip.util';
+import { FxRatesService } from '../fx/fx-rates.service';
+import { resolvePreferredDisplayCurrency } from '../fx/country-currency.util';
 
 @Injectable()
 export class InvestorService {
@@ -39,6 +47,7 @@ export class InvestorService {
     private metaApi: MetaApiService,
     @Inject(forwardRef(() => WalletService))
     private walletService: WalletService,
+    private fxRates: FxRatesService,
   ) {}
 
   private ipnUrl() {
@@ -101,6 +110,7 @@ export class InvestorService {
       include: {
         platformWallet: true,
         investorSettings: true,
+        profile: { select: { country: true, preferredCurrency: true } },
         investorTrades: {
           orderBy: { createdAt: 'desc' },
           take: 10,
@@ -138,10 +148,25 @@ export class InvestorService {
         : platformDailyYield;
 
     const financials = await this.getInvestorFinancials(userId, user);
+    const vipActive = isInvestorVipActive(user);
+    const resolved = resolvePreferredDisplayCurrency({
+      preferredCurrency: user.profile?.preferredCurrency,
+      country: user.profile?.country,
+    });
+    const displayCurrency = await this.fxRates.buildDisplayCurrency(resolved);
 
     return {
       active: user.investorActive,
       enrolledAt: user.investorEnrolledAt?.toISOString() ?? null,
+      vip: {
+        active: vipActive,
+        expiresAt: user.investorVipExpiresAt?.toISOString() ?? null,
+        feeUsdt: INVESTOR_VIP_FEE_USDT,
+        benefits: {
+          weekendEarnings: true,
+          zeroWithdrawalFee: true,
+        },
+      },
       feeUsdt: feeTiers[0]?.fee ?? 10,
       feeTiers,
       investmentMin: INVESTOR_INVESTMENT_MIN,
@@ -152,6 +177,7 @@ export class InvestorService {
           : null,
       dailyYieldPercent: effectiveDailyYield,
       platformDailyYieldPercent: platformDailyYield,
+      displayCurrency,
       mt5Linked: Boolean(user.metaApiAccountId),
       mt5Connected,
       mt5HealthMessage,
@@ -728,6 +754,185 @@ export class InvestorService {
     return new Date(Date.UTC(y, m - 1, d));
   }
 
+  /** 0 = Sunday … 6 = Saturday in Africa/Kampala. */
+  private kampalaDayOfWeek(date: Date): number {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Africa/Kampala',
+      weekday: 'short',
+    });
+    const day = fmt.format(date);
+    const map: Record<string, number> = {
+      Sun: 0,
+      Mon: 1,
+      Tue: 2,
+      Wed: 3,
+      Thu: 4,
+      Fri: 5,
+      Sat: 6,
+    };
+    return map[day] ?? date.getUTCDay();
+  }
+
+  async getVipStatus(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        investorActive: true,
+        investorVipActive: true,
+        investorVipExpiresAt: true,
+        platformWallet: { select: { availableBalance: true } },
+      },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    const active = isInvestorVipActive(user);
+    return {
+      eligible: user.investorActive,
+      active,
+      expiresAt: user.investorVipExpiresAt?.toISOString() ?? null,
+      feeUsdt: INVESTOR_VIP_FEE_USDT,
+      walletBalance: Number(user.platformWallet?.availableBalance ?? 0),
+      benefits: {
+        weekendEarnings: true,
+        zeroWithdrawalFee: true,
+      },
+    };
+  }
+
+  async upgradeVip(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        investorActive: true,
+        investorVipActive: true,
+        investorVipExpiresAt: true,
+      },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    if (!user.investorActive) {
+      throw new BadRequestException(
+        'Enroll in the investor program before upgrading to VIP',
+      );
+    }
+
+    const fee = INVESTOR_VIP_FEE_USDT;
+    const wallet = await this.walletService.getOrCreateWallet(userId);
+    const balance = Number(wallet.availableBalance);
+    if (balance < fee) {
+      throw new BadRequestException(
+        `Insufficient wallet balance — need $${fee.toFixed(2)} USDT for VIP but have $${balance.toFixed(2)}`,
+      );
+    }
+
+    const expiresAt = nextVipExpiry(user.investorVipExpiresAt);
+    const payment = await this.prisma.payment.create({
+      data: {
+        userId,
+        amount: fee,
+        currency: 'USDT',
+        network: 'WALLET',
+        purpose: 'investor_vip',
+        status: 'CONFIRMED',
+        confirmedAt: new Date(),
+        gatewayId: `vip_wallet_${Date.now()}`,
+        gatewayResponse: {
+          paymentSource: 'wallet',
+          expiresAt: expiresAt.toISOString(),
+          months: 1,
+        } as object,
+      },
+    });
+
+    await this.walletService.debitBalance(
+      userId,
+      fee,
+      'SUBSCRIPTION',
+      `Investor VIP — $${fee.toFixed(2)} USDT / 30 days`,
+      payment.id,
+    );
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        investorVipActive: true,
+        investorVipExpiresAt: expiresAt,
+        investorVipRemindedAt: null,
+      },
+    });
+
+    this.notifications.investorVipActivated(userId, {
+      feeUsdt: fee,
+      expiresAt: expiresAt.toISOString(),
+    });
+
+    return {
+      success: true,
+      active: true,
+      feeUsdt: fee,
+      expiresAt: expiresAt.toISOString(),
+      paymentId: payment.id,
+      message: `VIP active until ${expiresAt.toISOString().slice(0, 10)}`,
+    };
+  }
+
+  /** Clear expired VIP flags and send renewal reminders (~3 days before). */
+  async maintainVipSubscriptions() {
+    const now = new Date();
+    const expired = await this.prisma.user.updateMany({
+      where: {
+        investorVipActive: true,
+        OR: [
+          { investorVipExpiresAt: null },
+          { investorVipExpiresAt: { lt: now } },
+        ],
+      },
+      data: { investorVipActive: false },
+    });
+
+    const reminderBefore = new Date(
+      now.getTime() + INVESTOR_VIP_REMINDER_DAYS * 24 * 60 * 60 * 1000,
+    );
+    const reminderAfter = now;
+    const candidates = await this.prisma.user.findMany({
+      where: {
+        investorVipActive: true,
+        investorVipExpiresAt: {
+          gt: reminderAfter,
+          lte: reminderBefore,
+        },
+        OR: [
+          { investorVipRemindedAt: null },
+          {
+            investorVipRemindedAt: {
+              lt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        investorVipExpiresAt: true,
+      },
+      take: 200,
+    });
+
+    let reminded = 0;
+    for (const user of candidates) {
+      if (!user.investorVipExpiresAt) continue;
+      this.notifications.investorVipExpiring(user.id, {
+        expiresAt: user.investorVipExpiresAt.toISOString(),
+        feeUsdt: INVESTOR_VIP_FEE_USDT,
+      });
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { investorVipRemindedAt: now },
+      });
+      reminded++;
+    }
+
+    return { expired: expired.count, reminded };
+  }
+
   async platformInvestorDailyYield() {
     const config = await this.prisma.platformConfig.findUnique({
       where: { id: 'default' },
@@ -749,6 +954,8 @@ export class InvestorService {
     }
 
     const today = this.kampalaToday();
+    const dow = this.kampalaDayOfWeek(today);
+    const isWeekend = dow === 0 || dow === 6;
     const platformYield = await this.platformInvestorDailyYield();
 
     const investors = await this.prisma.user.findMany({
@@ -758,9 +965,15 @@ export class InvestorService {
 
     let credited = 0;
     let pausedUsers = 0;
+    let weekendSkipped = 0;
     for (const user of investors) {
       if (user.investorSettings?.yieldPaused) {
         pausedUsers++;
+        continue;
+      }
+
+      if (isWeekend && !isInvestorVipActive(user)) {
+        weekendSkipped++;
         continue;
       }
 
@@ -807,7 +1020,7 @@ export class InvestorService {
             amount: earningAmount,
             type: 'INVESTOR_EARNING',
             referenceId: user.id,
-            description: `Investor daily earning ${yieldPercent}% on $${baseBalance.toFixed(2)} investment — $${earningAmount.toFixed(2)} USDT`,
+            description: `Investor daily earning ${yieldPercent}% on $${baseBalance.toFixed(2)} investment — $${earningAmount.toFixed(2)} USDT${isWeekend ? ' (VIP weekend)' : ''}`,
             balanceAfter: newWalletBalance,
           },
         }),
@@ -823,7 +1036,7 @@ export class InvestorService {
       credited++;
     }
 
-    return { credited, pausedUsers };
+    return { credited, pausedUsers, weekendSkipped };
   }
 
   /** Enrollment + wallet deposits for MT5 investor display. */

@@ -10,6 +10,7 @@ import {
   SubmitKycDto,
   UpdatePaymentDetailsDto,
   UpdateTradingAccountDto,
+  UpdateDisplayCurrencyDto,
 } from '../common/dto';
 import { currentWeekYear } from '../common/week.util';
 import { assertAllowedDisplayName } from '../common/display-name.util';
@@ -23,6 +24,13 @@ import {
 import { ProfitShareService } from '../profit-share/profit-share.service';
 import { Mt5PoolService } from '../mt5-sync/mt5-pool.service';
 import { resolveAdminPermissions } from '../admin/admin-permissions.util';
+import {
+  DISPLAY_CURRENCY_OPTIONS,
+  isSupportedDisplayCurrency,
+  normalizeCurrencyCode,
+  resolvePreferredDisplayCurrency,
+} from '../fx/country-currency.util';
+import { FxRatesService } from '../fx/fx-rates.service';
 
 @Injectable()
 export class UsersService {
@@ -31,6 +39,7 @@ export class UsersService {
     private metaApi: MetaApiService,
     private profitShare: ProfitShareService,
     private mt5Pool: Mt5PoolService,
+    private fxRates: FxRatesService,
   ) {}
 
   async getDashboard(userId: string) {
@@ -157,11 +166,42 @@ export class UsersService {
       },
       profile: user.profile,
       kyc: user.kyc ?? { status: 'NOT_STARTED' },
+      displayCurrency: await this.fxRates.buildDisplayCurrency(
+        resolvePreferredDisplayCurrency({
+          preferredCurrency: user.profile?.preferredCurrency,
+          country: user.profile?.country,
+        }),
+      ),
+      currencyOptions: [...DISPLAY_CURRENCY_OPTIONS],
       metaApi: {
         configured: this.metaApi.isConfigured,
         defaultAccountId: this.metaApi.resolveAccountId(null),
       },
     };
+  }
+
+  async updateDisplayCurrency(
+    userId: string,
+    dto: UpdateDisplayCurrencyDto,
+  ) {
+    let preferred: string | null = null;
+    if (dto.preferredCurrency != null && String(dto.preferredCurrency).trim()) {
+      const code = normalizeCurrencyCode(String(dto.preferredCurrency));
+      if (!code || !isSupportedDisplayCurrency(code)) {
+        throw new BadRequestException(
+          'Unsupported currency — pick from the available list or choose Auto',
+        );
+      }
+      preferred = code === 'USDT' ? 'USDT' : code;
+    }
+
+    await this.prisma.userProfile.upsert({
+      where: { userId },
+      create: { userId, preferredCurrency: preferred },
+      update: { preferredCurrency: preferred },
+    });
+
+    return this.getSettings(userId);
   }
 
   async updateTradingAccount(userId: string, dto: UpdateTradingAccountDto) {

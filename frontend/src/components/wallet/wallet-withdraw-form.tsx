@@ -10,9 +10,11 @@ import { WalletWithdrawFeeNotice, WALLET_WITHDRAWAL_FEE_USD, walletWithdrawNetAm
 
 export function WalletWithdrawForm({
   availableBalance,
+  feeUsdt = WALLET_WITHDRAWAL_FEE_USD,
   onComplete,
 }: {
   availableBalance: number;
+  feeUsdt?: number;
   onComplete?: () => void;
 }) {
   const [amount, setAmount] = useState("");
@@ -46,9 +48,10 @@ export function WalletWithdrawForm({
     );
   }
 
+  const fee = feeUsdt ?? WALLET_WITHDRAWAL_FEE_USD;
   const gross = Number(amount);
-  const net = walletWithdrawNetAmount(amount);
-  const minWithdraw = WALLET_WITHDRAWAL_FEE_USD + 0.01;
+  const net = walletWithdrawNetAmount(amount, fee);
+  const minWithdraw = fee > 0 ? fee + 0.01 : 0.01;
 
   return (
     <div className="space-y-3">
@@ -64,7 +67,7 @@ export function WalletWithdrawForm({
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
         />
-        <WalletWithdrawFeeNotice amount={amount} className="mt-2" />
+        <WalletWithdrawFeeNotice amount={amount} feeUsdt={fee} className="mt-2" />
       </div>
       <div>
         <label className="mb-1 block text-xs text-gray-400">

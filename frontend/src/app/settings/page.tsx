@@ -165,6 +165,9 @@ export default function SettingsPage() {
     addressLine2: "",
     postalCode: "",
   });
+  const [preferredCurrency, setPreferredCurrency] = useState("");
+  const [currencyOptions, setCurrencyOptions] = useState<string[]>([]);
+  const [currencySaving, setCurrencySaving] = useState(false);
 
   const [kycForm, setKycForm] = useState({
     documentType: "PASSPORT" as "PASSPORT" | "NATIONAL_ID" | "DRIVERS_LICENSE",
@@ -214,6 +217,8 @@ export default function SettingsPage() {
         addressLine2: data.profile?.addressLine2 ?? "",
         postalCode: data.profile?.postalCode ?? "",
       });
+      setPreferredCurrency(data.profile?.preferredCurrency ?? "");
+      setCurrencyOptions(data.currencyOptions ?? []);
       if (data.kyc?.documentType) {
         setKycForm({
           documentType: data.kyc.documentType,
@@ -295,6 +300,28 @@ export default function SettingsPage() {
       setError(err instanceof Error ? err.message : "Failed to save address");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveCurrency() {
+    setCurrencySaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const updated = await api.users.updateCurrency(
+        preferredCurrency.trim() ? preferredCurrency.trim().toUpperCase() : null,
+      );
+      setSettings(updated);
+      setPreferredCurrency(updated.profile?.preferredCurrency ?? "");
+      setMessage(
+        preferredCurrency.trim()
+          ? `Display currency set to ${preferredCurrency.trim().toUpperCase()}`
+          : "Display currency set to Auto (from country)",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save currency");
+    } finally {
+      setCurrencySaving(false);
     }
   }
 
@@ -639,6 +666,59 @@ export default function SettingsPage() {
             </div>
             <Button onClick={() => void saveAddress()} disabled={saving}>
               {saving ? "Saving..." : "Save address"}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Display currency */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Wallet className="h-5 w-5 text-primary" />
+              <CardTitle>Display currency</CardTitle>
+            </div>
+            <CardDescription>
+              Wallet and earnings default to your country&apos;s currency. Falls
+              back to USDT if rates are unavailable.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="displayCurrency">Preferred currency</Label>
+              <select
+                id="displayCurrency"
+                value={preferredCurrency}
+                onChange={(e) => setPreferredCurrency(e.target.value)}
+                className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+              >
+                <option value="">Auto (from country)</option>
+                {(currencyOptions.length
+                  ? currencyOptions
+                  : ["USDT", "RWF", "UGX", "KES", "USD", "EUR"]
+                ).map((code) => (
+                  <option key={code} value={code}>
+                    {code}
+                  </option>
+                ))}
+              </select>
+              {settings?.displayCurrency && (
+                <p className="text-xs text-gray-500">
+                  Currently showing{" "}
+                  <strong className="text-gray-300">
+                    {settings.displayCurrency.code}
+                  </strong>
+                  {settings.displayCurrency.source === "coinbase" &&
+                  settings.displayCurrency.rate
+                    ? ` · 1 USDT ≈ ${settings.displayCurrency.rate.toLocaleString()} ${settings.displayCurrency.code}`
+                    : " · USDT fallback"}
+                </p>
+              )}
+            </div>
+            <Button
+              onClick={() => void saveCurrency()}
+              disabled={currencySaving}
+            >
+              {currencySaving ? "Saving..." : "Save currency"}
             </Button>
           </CardContent>
         </Card>

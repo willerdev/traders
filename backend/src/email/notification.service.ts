@@ -1844,6 +1844,26 @@ export class NotificationService {
     );
   }
 
+  investorVipActivated(
+    userId: string,
+    data: { feeUsdt: number; expiresAt: string },
+  ) {
+    this.dispatch(
+      this.sendInvestorVipActivated(userId, data),
+      'Investor VIP activated',
+    );
+  }
+
+  investorVipExpiring(
+    userId: string,
+    data: { expiresAt: string; feeUsdt: number },
+  ) {
+    this.dispatch(
+      this.sendInvestorVipExpiring(userId, data),
+      'Investor VIP expiring',
+    );
+  }
+
   private async sendInvestorDailyEarning(
     userId: string,
     data: {
@@ -1879,6 +1899,54 @@ export class NotificationService {
       subject: `Investor earning — $${data.amount.toFixed(2)} USDT (${data.yieldPercent}%)`,
       html,
       text: `Investor daily earning: $${data.amount.toFixed(2)} USDT at ${data.yieldPercent}%. Wallet: $${data.balance.toFixed(2)}.`,
+    });
+  }
+
+  private async sendInvestorVipActivated(
+    userId: string,
+    data: { feeUsdt: number; expiresAt: string },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const expires = data.expiresAt.slice(0, 10);
+    const html = this.email.layout(
+      'VIP investor activated',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your <strong>VIP</strong> investor badge is active.</p>
+      <p>You paid <strong>$${data.feeUsdt.toFixed(2)} USDT</strong> for 30 days (expires <strong>${this.escape(expires)}</strong>).</p>
+      <ul>
+        <li>Weekend daily earnings</li>
+        <li>$0 wallet withdrawal fee</li>
+      </ul>
+      ${this.email.button(`${this.email.frontendUrl}/dashboard?tab=invest`, 'View Invest')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `VIP activated — expires ${expires}`,
+      html,
+      text: `VIP investor activated until ${expires}. Weekend earnings + $0 withdrawal fee.`,
+    });
+  }
+
+  private async sendInvestorVipExpiring(
+    userId: string,
+    data: { expiresAt: string; feeUsdt: number },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const expires = data.expiresAt.slice(0, 10);
+    const html = this.email.layout(
+      'VIP expiring soon',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your VIP investor badge expires on <strong>${this.escape(expires)}</strong>.</p>
+      <p>Renew for <strong>$${data.feeUsdt.toFixed(2)} USDT</strong> from your wallet to keep weekend earnings and $0 withdrawal fees.</p>
+      ${this.email.button(`${this.email.frontendUrl}/dashboard?tab=invest`, 'Renew VIP')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `VIP expires ${expires} — renew to keep benefits`,
+      html,
+      text: `VIP expires ${expires}. Renew for $${data.feeUsdt.toFixed(2)} USDT to keep benefits.`,
     });
   }
 

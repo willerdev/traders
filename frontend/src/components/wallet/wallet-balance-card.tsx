@@ -1,6 +1,6 @@
 "use client";
 
-import { formatCurrency } from "@/lib/utils";
+import { formatMoney, formatUsdtHint, type DisplayCurrency } from "@/lib/utils";
 import { ArrowDownLeft, ArrowUpRight, Settings } from "lucide-react";
 import Link from "next/link";
 
@@ -8,6 +8,7 @@ type WalletBalanceCardProps = {
   balance: number;
   totalEarned: number;
   totalDeposited: number;
+  displayCurrency?: DisplayCurrency | null;
   onWithdraw: () => void;
   onDeposit: () => void;
 };
@@ -16,11 +17,17 @@ export function WalletBalanceCard({
   balance,
   totalEarned,
   totalDeposited,
+  displayCurrency,
   onWithdraw,
   onDeposit,
 }: WalletBalanceCardProps) {
   const changePct =
     totalDeposited > 0 ? (totalEarned / totalDeposited) * 100 : 0;
+  const usdtHint = formatUsdtHint(balance, displayCurrency);
+  const badge =
+    displayCurrency?.source === "coinbase" && displayCurrency.code !== "USDT"
+      ? displayCurrency.code
+      : "USDT";
 
   const actions = [
     { label: "Withdraw", icon: ArrowUpRight, onClick: onWithdraw },
@@ -37,15 +44,18 @@ export function WalletBalanceCard({
           <p className="text-xs font-medium text-white/70">
             Current balance{" "}
             <span className="rounded bg-white/15 px-1.5 py-0.5 text-[10px] uppercase">
-              USDT
+              {badge}
             </span>
           </p>
           <p className="mt-1 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-            {formatCurrency(balance)}
+            {formatMoney(balance, displayCurrency)}
           </p>
+          {usdtHint && (
+            <p className="mt-0.5 text-xs text-white/60">{usdtHint}</p>
+          )}
           {totalEarned > 0 && (
             <p className="mt-1 text-sm text-emerald-300">
-              ↑ {formatCurrency(totalEarned)}
+              ↑ {formatMoney(totalEarned, displayCurrency)}
               {changePct > 0 && ` (+${changePct.toFixed(1)}%)`}
             </p>
           )}

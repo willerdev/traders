@@ -30,6 +30,7 @@ import { WalletModule } from './wallet/wallet.module';
 import { InvestorModule } from './investor/investor.module';
 import { EvaluationsModule } from './evaluations/evaluations.module';
 import { FlutterwaveModule } from './flutterwave/flutterwave.module';
+import { FxModule } from './fx/fx.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { FlutterwaveModule } from './flutterwave/flutterwave.module';
     ScheduleModule.forRoot(),
     EmailModule,
     PrismaModule,
+    FxModule,
     ComplianceModule,
     AuthModule,
     UsersModule,

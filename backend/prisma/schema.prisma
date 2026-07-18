@@ -230,6 +230,9 @@ model User {
   mt5SyncEnabled      Boolean    @default(true)
   investorActive      Boolean    @default(false)
   investorEnrolledAt  DateTime?
+  investorVipActive   Boolean    @default(false)
+  investorVipExpiresAt DateTime?
+  investorVipRemindedAt DateTime?
   depositorActive     Boolean    @default(false)
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
@@ -287,6 +290,7 @@ model UserProfile {
   phone                  String?
   dateOfBirth            DateTime?
   country                String?
+  preferredCurrency      String?
   state                  String?
   city                   String?
   addressLine1           String?

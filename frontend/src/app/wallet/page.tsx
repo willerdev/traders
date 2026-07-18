@@ -9,7 +9,7 @@ import { WalletDepositModal } from "@/components/wallet/wallet-deposit-modal";
 import { WalletWithdrawModal } from "@/components/wallet/wallet-withdraw-modal";
 import { WalletWithdrawFeeNotice } from "@/components/wallet/wallet-withdraw-fee-notice";
 import { WalletSavedWithdrawalWallets } from "@/components/wallet/wallet-saved-withdrawal-wallets";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatMoney } from "@/lib/utils";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { syncApiAuthToken, useAuthStore } from "@/stores/auth";
 import { Loader2, RefreshCw } from "lucide-react";
@@ -91,7 +91,7 @@ export default function WalletPage() {
         <div>
           <h1 className="text-2xl font-bold text-white">Wallet</h1>
           <p className="mt-1 text-sm text-gray-400">
-            USDT balance for subscriptions, deposits, and earnings
+            Balance and earnings in your local currency (USDT ledger)
           </p>
         </div>
         <Button
@@ -124,13 +124,14 @@ export default function WalletPage() {
           balance={summary.availableBalance}
           totalEarned={summary.totalEarned}
           totalDeposited={summary.totalDeposited}
+          displayCurrency={summary.displayCurrency}
           onWithdraw={() => setWithdrawOpen(true)}
           onDeposit={() => setDepositOpen(true)}
         />
       )}
 
       {summary && (
-        <WalletWithdrawFeeNotice />
+        <WalletWithdrawFeeNotice feeUsdt={summary.withdrawalFeeUsdt ?? 3} />
       )}
 
       {summary && (
@@ -159,7 +160,7 @@ export default function WalletPage() {
                 {item.label}
               </p>
               <p className="text-sm font-bold text-white">
-                {formatCurrency(item.value)}
+                {formatMoney(item.value, summary.displayCurrency)}
               </p>
             </div>
           ))}
@@ -169,7 +170,9 @@ export default function WalletPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-base">Assets</CardTitle>
-          <span className="text-xs text-gray-500">USDT</span>
+          <span className="text-xs text-gray-500">
+            {summary?.displayCurrency?.code ?? "USDT"}
+          </span>
         </CardHeader>
         <CardContent>
           {summary ? (
@@ -180,14 +183,21 @@ export default function WalletPage() {
                 </div>
                 <div>
                   <p className="font-medium text-white">USDT</p>
-                  <p className="text-xs text-gray-500">Tether USD</p>
+                  <p className="text-xs text-gray-500">
+                    Shown as {summary.displayCurrency?.code ?? "USDT"}
+                  </p>
                 </div>
               </div>
               <div className="text-right">
                 <p className="font-bold text-white">
-                  {formatCurrency(summary.availableBalance)}
+                  {formatMoney(
+                    summary.availableBalance,
+                    summary.displayCurrency,
+                  )}
                 </p>
-                <p className="text-xs text-gray-500">Available</p>
+                <p className="text-xs text-gray-500">
+                  {formatCurrency(summary.availableBalance)} USDT
+                </p>
               </div>
             </div>
           ) : (
@@ -245,6 +255,7 @@ export default function WalletPage() {
         open={withdrawOpen}
         onClose={() => setWithdrawOpen(false)}
         availableBalance={summary?.availableBalance ?? 0}
+        feeUsdt={summary?.withdrawalFeeUsdt ?? 3}
         onComplete={() => void refresh()}
       />
     </div>

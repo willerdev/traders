@@ -222,7 +222,10 @@ export class PlatformJobsService implements OnModuleInit {
       const result = await this.investorService.creditDailyEarnings();
       if (result.credited > 0) {
         this.logger.log(
-          `Investor daily earnings credited: ${result.credited} investor(s)`,
+          `Investor daily earnings credited: ${result.credited} investor(s)` +
+            (result.weekendSkipped
+              ? ` (${result.weekendSkipped} weekend skip)`
+              : ''),
         );
       } else if (result.skipped === 'global_pause') {
         this.logger.warn('Investor daily earnings skipped — global yield pause');
@@ -230,6 +233,23 @@ export class PlatformJobsService implements OnModuleInit {
     } catch (err) {
       this.logger.error(
         `Investor earnings job failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  /** Hourly — expire VIP and send renewal reminders. */
+  @Cron(CronExpression.EVERY_HOUR)
+  async investorVipMaintenanceJob() {
+    try {
+      const result = await this.investorService.maintainVipSubscriptions();
+      if (result.expired > 0 || result.reminded > 0) {
+        this.logger.log(
+          `VIP maintenance: expired=${result.expired}, reminded=${result.reminded}`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `VIP maintenance failed: ${err instanceof Error ? err.message : err}`,
       );
     }
   }

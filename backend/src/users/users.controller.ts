@@ -15,6 +15,7 @@ import {
   UpdatePaymentDetailsDto,
   UpdateTradingAccountDto,
   LinkMt5AccountDto,
+  UpdateDisplayCurrencyDto,
 } from '../common/dto';
 import { JwtAuthGuard } from '../auth/guards';
 
@@ -52,6 +53,14 @@ export class UsersController {
     @Body() dto: UpdateAddressDto,
   ) {
     return this.usersService.updateAddress(req.user.id, dto);
+  }
+
+  @Patch('currency')
+  updateCurrency(
+    @Request() req: { user: { id: string } },
+    @Body() dto: UpdateDisplayCurrencyDto,
+  ) {
+    return this.usersService.updateDisplayCurrency(req.user.id, dto);
   }
 
   @Patch('payment-details')

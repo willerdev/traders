@@ -20,6 +20,18 @@ export class InvestorController {
     return this.investor.getStatus(req.user.id);
   }
 
+  @Get('vip/status')
+  @UseGuards(JwtAuthGuard)
+  vipStatus(@Request() req: { user: { id: string } }) {
+    return this.investor.getVipStatus(req.user.id);
+  }
+
+  @Post('vip/upgrade')
+  @UseGuards(JwtAuthGuard)
+  vipUpgrade(@Request() req: { user: { id: string } }) {
+    return this.investor.upgradeVip(req.user.id);
+  }
+
   @Post('enroll/checkout')
   @UseGuards(JwtAuthGuard)
   enrollCheckout(

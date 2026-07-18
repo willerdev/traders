@@ -24,7 +24,7 @@ import {
   PaymentSourceSelector,
   type PaymentSource,
 } from "@/components/wallet/payment-source-selector";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, formatMoney } from "@/lib/utils";
 
 const NETWORKS = ["TRC20", "BEP20", "ERC20"] as const;
 
@@ -116,6 +116,7 @@ export function InvestHub() {
   const [transferAmount, setTransferAmount] = useState("");
   const [transferLoading, setTransferLoading] = useState(false);
   const [investmentAmount, setInvestmentAmount] = useState("100");
+  const [vipLoading, setVipLoading] = useState(false);
 
   const tiers = status?.feeTiers?.length ? status.feeTiers : DEFAULT_FEE_TIERS;
   const investmentMin = status?.investmentMin ?? 100;
@@ -212,6 +213,19 @@ export function InvestHub() {
   async function saveRisk() {
     await api.investor.updateSettings(Number(risk));
     await refresh();
+  }
+
+  async function upgradeVip() {
+    setVipLoading(true);
+    setError("");
+    try {
+      await api.investor.vipUpgrade();
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "VIP upgrade failed");
+    } finally {
+      setVipLoading(false);
+    }
   }
 
   if (loading && !status) {
@@ -425,6 +439,8 @@ export function InvestHub() {
 
   const profitPositive = status.totalProfit >= 0;
   const riskPercent = status.settings?.riskPercent ?? 2;
+  const display = status.displayCurrency;
+  const vip = status.vip;
 
   return (
     <div className="space-y-5 xl:grid xl:grid-cols-12 xl:items-start xl:gap-5 xl:space-y-0">
@@ -437,12 +453,20 @@ export function InvestHub() {
           <div>
             <p className="text-xs font-medium text-indigo-200">Your investment</p>
             <p className="mt-1 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-              {formatCurrency(status.investmentBalance ?? status.investmentDeposited)}
+              {formatMoney(
+                status.investmentBalance ?? status.investmentDeposited,
+                display,
+              )}
             </p>
             <p className="mt-2 text-sm text-indigo-200/80">
               {status.enrolledAt
                 ? `Enrolled ${new Date(status.enrolledAt).toLocaleDateString()}`
                 : "Active investor"}
+              {vip?.active && (
+                <span className="ml-2 rounded bg-amber-400/25 px-1.5 py-0.5 text-xs font-semibold text-amber-100">
+                  VIP
+                </span>
+              )}
               {status.settings?.paused && (
                 <span className="ml-2 rounded bg-amber-500/20 px-1.5 py-0.5 text-xs text-amber-200">
                   Trading paused
@@ -471,7 +495,7 @@ export function InvestHub() {
       <div className="grid gap-3 sm:grid-cols-3 xl:col-span-5 xl:row-start-1 xl:h-full">
         <StatCard
           label="Investment balance"
-          value={formatCurrency(status.investmentBalance ?? 0)}
+          value={formatMoney(status.investmentBalance ?? 0, display)}
           sub={`${status.dailyYieldPercent}% daily · credited to wallet at 16:00`}
           accent="invest"
           delay={0.05}
@@ -485,8 +509,8 @@ export function InvestHub() {
         />
         <StatCard
           label="Total profit"
-          value={`${profitPositive ? "+" : ""}${formatCurrency(status.totalProfit)}`}
-          sub={`Trading ${formatCurrency(status.tradingProfit)} · Wallet ${formatCurrency(status.walletEarnings)}`}
+          value={`${profitPositive ? "+" : ""}${formatMoney(status.totalProfit, display)}`}
+          sub={`Trading ${formatMoney(status.tradingProfit, display)} · Wallet ${formatMoney(status.walletEarnings, display)}`}
           accent="profit"
           delay={0.15}
         />
@@ -494,14 +518,54 @@ export function InvestHub() {
 
       <motion.div
         {...fadeUp}
+        transition={{ delay: 0.16 }}
+        className="rounded-2xl border border-amber-500/25 bg-gradient-to-br from-amber-500/10 via-transparent to-transparent p-4 xl:col-span-5 xl:row-start-2"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <Badge className="bg-amber-400/20 text-amber-100">VIP</Badge>
+              <h3 className="text-sm font-semibold text-white">
+                {vip?.active ? "VIP active" : "Upgrade to VIP"}
+              </h3>
+            </div>
+            <p className="mt-1 text-xs text-gray-400">
+              {vip?.active
+                ? `Expires ${vip.expiresAt ? new Date(vip.expiresAt).toLocaleDateString() : "—"} · weekend earnings + $0 withdrawal fee`
+                : `$${vip?.feeUsdt ?? 20}/month from wallet · weekend earnings + $0 withdrawal fee`}
+            </p>
+            <ul className="mt-2 space-y-1 text-xs text-gray-400">
+              <li>• Earn daily yield on Saturdays &amp; Sundays</li>
+              <li>• Zero commission on wallet withdrawals</li>
+            </ul>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            disabled={vipLoading || walletBalance < (vip?.feeUsdt ?? 20)}
+            onClick={() => void upgradeVip()}
+          >
+            {vipLoading && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+            {vip?.active ? "Renew VIP" : "Upgrade — $20"}
+          </Button>
+        </div>
+        {!vip?.active && walletBalance < (vip?.feeUsdt ?? 20) && (
+          <p className="mt-2 text-xs text-gray-500">
+            Need {formatCurrency(vip?.feeUsdt ?? 20)} in wallet to upgrade.
+          </p>
+        )}
+      </motion.div>
+
+      <motion.div
+        {...fadeUp}
         transition={{ delay: 0.18 }}
-        className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 xl:col-span-5 xl:row-start-2"
+        className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 xl:col-span-5 xl:row-start-3"
       >
         <h3 className="text-sm font-semibold text-white">Move funds</h3>
         <p className="mt-1 text-xs text-gray-500">
-          Wallet {formatCurrency(status.walletBalance)} · Investment{" "}
-          {formatCurrency(status.investmentBalance ?? 0)}. Daily yield is based on
-          investment balance.
+          Wallet {formatMoney(status.walletBalance, display)} · Investment{" "}
+          {formatMoney(status.investmentBalance ?? 0, display)}. Daily yield is
+          based on investment balance.
         </p>
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <div className="min-w-[140px] flex-1">
@@ -564,30 +628,34 @@ export function InvestHub() {
       <motion.div
         {...fadeUp}
         transition={{ delay: 0.19 }}
-        className="xl:col-span-7 xl:col-start-6 xl:row-span-3 xl:row-start-2"
+        className="xl:col-span-7 xl:col-start-6 xl:row-span-4 xl:row-start-2"
       >
         <InvestmentReturnsPanel
           investmentBalance={status.investmentBalance ?? 0}
           dailyYieldPercent={status.dailyYieldPercent}
           walletEarnings={status.walletEarnings}
           yieldPaused={status.settings?.yieldPaused}
+          displayCurrency={display}
         />
       </motion.div>
 
       <motion.div
         {...fadeUp}
         transition={{ delay: 0.2 }}
-        className="grid gap-3 sm:grid-cols-2 xl:col-span-5 xl:row-start-3 xl:grid-cols-2"
+        className="grid gap-3 sm:grid-cols-2 xl:col-span-5 xl:row-start-4 xl:grid-cols-2"
       >
         {[
-          { label: "Wallet balance", value: formatCurrency(status.walletBalance) },
+          {
+            label: "Wallet balance",
+            value: formatMoney(status.walletBalance, display),
+          },
           {
             label: "Daily yield",
             value: `${status.dailyYieldPercent}%`,
           },
           {
             label: "On MT5",
-            value: formatCurrency(status.investmentBalance ?? 0),
+            value: formatMoney(status.investmentBalance ?? 0, display),
           },
           {
             label: "Broker MT5",

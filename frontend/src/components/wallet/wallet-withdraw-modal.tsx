@@ -20,11 +20,13 @@ export function WalletWithdrawModal({
   open,
   onClose,
   availableBalance,
+  feeUsdt = WALLET_WITHDRAWAL_FEE_USD,
   onComplete,
 }: {
   open: boolean;
   onClose: () => void;
   availableBalance: number;
+  feeUsdt?: number;
   onComplete?: () => void;
 }) {
   const [amount, setAmount] = useState("");
@@ -83,8 +85,9 @@ export function WalletWithdrawModal({
   if (!open) return null;
 
   const gross = Number(amount);
-  const net = walletWithdrawNetAmount(amount);
-  const minWithdraw = WALLET_WITHDRAWAL_FEE_USD + 0.01;
+  const fee = feeUsdt ?? WALLET_WITHDRAWAL_FEE_USD;
+  const net = walletWithdrawNetAmount(amount, fee);
+  const minWithdraw = fee > 0 ? fee + 0.01 : 0.01;
   const selectedWallet = wallets.find((w) => w.id === selectedWalletId);
   const canSubmit =
     !loading &&
@@ -144,7 +147,11 @@ export function WalletWithdrawModal({
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                   />
-                  <WalletWithdrawFeeNotice amount={amount} className="mt-2" />
+                  <WalletWithdrawFeeNotice
+                    amount={amount}
+                    feeUsdt={fee}
+                    className="mt-2"
+                  />
                 </div>
                 <div>
                   <div className="mb-1 flex items-center justify-between gap-2">

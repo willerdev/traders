@@ -5,6 +5,15 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export type DisplayCurrency = {
+  code: string;
+  rate: number | null;
+  source?: "coinbase" | "fallback";
+  preferredCurrency?: string | null;
+  derivedFromCountry?: string | null;
+};
+
+/** Legacy USDT/USD formatter (ledger amounts). */
 export function formatCurrency(value: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -12,6 +21,74 @@ export function formatCurrency(value: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+const CURRENCY_LOCALES: Record<string, string> = {
+  RWF: "en-RW",
+  UGX: "en-UG",
+  KES: "en-KE",
+  TZS: "en-TZ",
+  NGN: "en-NG",
+  GHS: "en-GH",
+  ZAR: "en-ZA",
+  EUR: "en-EU",
+  GBP: "en-GB",
+  USD: "en-US",
+};
+
+/**
+ * Format a USDT ledger amount in the user's display currency.
+ * Falls back to USDT when rate is missing or code is USDT.
+ */
+export function formatMoney(
+  amountUsdt: number,
+  display?: DisplayCurrency | null,
+): string {
+  const code = display?.code?.toUpperCase() || "USDT";
+  const rate = display?.rate;
+  const useLocal =
+    Boolean(display) &&
+    code !== "USDT" &&
+    display?.source !== "fallback" &&
+    rate != null &&
+    Number.isFinite(rate) &&
+    rate > 0;
+
+  if (!useLocal) {
+    return `${formatCurrency(amountUsdt)} USDT`;
+  }
+
+  const local = amountUsdt * (rate as number);
+  const maxFrac = (rate as number) >= 100 ? 0 : 2;
+  try {
+    return new Intl.NumberFormat(CURRENCY_LOCALES[code] ?? "en", {
+      style: "currency",
+      currency: code,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: maxFrac,
+    }).format(local);
+  } catch {
+    const rounded =
+      maxFrac === 0 ? Math.round(local) : Math.round(local * 100) / 100;
+    return `${code} ${rounded.toLocaleString("en-US")}`;
+  }
+}
+
+/** Secondary USDT line when showing local currency. */
+export function formatUsdtHint(
+  amountUsdt: number,
+  display?: DisplayCurrency | null,
+): string | null {
+  const code = display?.code?.toUpperCase() || "USDT";
+  if (
+    !display ||
+    code === "USDT" ||
+    display.source === "fallback" ||
+    display.rate == null
+  ) {
+    return null;
+  }
+  return `≈ ${formatCurrency(amountUsdt)} USDT`;
 }
 
 export function formatPercent(value: number): string {

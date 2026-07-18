@@ -27,6 +27,9 @@ import {
   isMomoWithdrawalNetwork,
 } from '../flutterwave/flutterwave.constants';
 import { FlutterwavePaymentsService } from '../flutterwave/flutterwave-payments.service';
+import { FxRatesService } from '../fx/fx-rates.service';
+import { resolvePreferredDisplayCurrency } from '../fx/country-currency.util';
+import { isInvestorVipActive } from '../investor/investor-vip.util';
 
 const PLAN_DAYS = 5;
 const DEPOSIT_MIN_FALLBACK_USDT = 10;
@@ -46,6 +49,7 @@ export class WalletService {
     private payments: PaymentsService,
     @Inject(forwardRef(() => FlutterwavePaymentsService))
     private flutterwavePayments: FlutterwavePaymentsService,
+    private fxRates: FxRatesService,
   ) {}
 
   private ipnUrl() {
@@ -176,6 +180,23 @@ export class WalletService {
 
     const config = await this.getPlatformConfig();
 
+    const profile = await this.prisma.userProfile.findUnique({
+      where: { userId },
+      select: { country: true, preferredCurrency: true },
+    });
+    const resolved = resolvePreferredDisplayCurrency({
+      preferredCurrency: profile?.preferredCurrency,
+      country: profile?.country,
+    });
+    const displayCurrency = await this.fxRates.buildDisplayCurrency(resolved);
+
+    const vipUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { investorVipActive: true, investorVipExpiresAt: true },
+    });
+    const vipActive = isInvestorVipActive(vipUser ?? {});
+    const withdrawalFeeUsdt = vipActive ? 0 : WALLET_WITHDRAWAL_FEE_USD;
+
     return {
       availableBalance: Number(wallet.availableBalance),
       lockedBalance: Number(wallet.lockedBalance),
@@ -188,6 +209,9 @@ export class WalletService {
       totalDeposited,
       totalEarned,
       totalWithdrawn,
+      displayCurrency,
+      withdrawalFeeUsdt,
+      vipActive,
       activePlan: activePlan
         ? {
             id: activePlan.id,
@@ -856,13 +880,19 @@ export class WalletService {
     }
 
     const grossAmount = Math.round(amount * 100) / 100;
-    const fee = WALLET_WITHDRAWAL_FEE_USD;
+    const vipUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { investorVipActive: true, investorVipExpiresAt: true },
+    });
+    const fee = isInvestorVipActive(vipUser ?? {})
+      ? 0
+      : WALLET_WITHDRAWAL_FEE_USD;
     const netPayout = Math.round((grossAmount - fee) * 100) / 100;
 
     if (grossAmount <= 0) {
       throw new BadRequestException('Withdrawal amount must be positive');
     }
-    if (grossAmount <= fee) {
+    if (fee > 0 && grossAmount <= fee) {
       throw new BadRequestException(
         `Minimum withdrawal is $${(fee + 0.01).toFixed(2)} USDT (includes $${fee.toFixed(2)} processing fee)`,
       );
@@ -900,8 +930,12 @@ export class WalletService {
           amount: -grossAmount,
           type: 'DEPOSITOR_WITHDRAW',
           description: isMomo
-            ? `MoMo withdrawal — $${grossAmount.toFixed(2)} USDT ($${fee.toFixed(2)} fee, $${netPayout.toFixed(2)} payout) → ${walletLabel}`
-            : `Wallet withdrawal — $${grossAmount.toFixed(2)} USDT ($${fee.toFixed(2)} fee, $${netPayout.toFixed(2)} payout) → ${walletLabel}`,
+            ? fee > 0
+              ? `MoMo withdrawal — $${grossAmount.toFixed(2)} USDT ($${fee.toFixed(2)} fee, $${netPayout.toFixed(2)} payout) → ${walletLabel}`
+              : `MoMo withdrawal — $${grossAmount.toFixed(2)} USDT (VIP $0 fee) → ${walletLabel}`
+            : fee > 0
+              ? `Wallet withdrawal — $${grossAmount.toFixed(2)} USDT ($${fee.toFixed(2)} fee, $${netPayout.toFixed(2)} payout) → ${walletLabel}`
+              : `Wallet withdrawal — $${grossAmount.toFixed(2)} USDT (VIP $0 fee) → ${walletLabel}`,
           balanceAfter: newBalance,
         },
       });
@@ -912,7 +946,10 @@ export class WalletService {
           virtualProfit: grossAmount,
           traderShare: netPayout,
           platformShare: fee,
-          traderPercent: Math.round((netPayout / grossAmount) * 10000) / 100,
+          traderPercent:
+            grossAmount > 0
+              ? Math.round((netPayout / grossAmount) * 10000) / 100
+              : 100,
           weekNumber,
           year,
           status: 'PENDING',

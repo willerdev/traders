@@ -473,6 +473,13 @@ export class UpdateAddressDto {
   postalCode?: string;
 }
 
+export class UpdateDisplayCurrencyDto {
+  /** ISO 4217 code, or null/empty to auto-derive from country. */
+  @IsOptional()
+  @IsString()
+  preferredCurrency?: string | null;
+}
+
 export class SubmitKycDto {
   @IsEnum(KycDocumentType)
   documentType: KycDocumentType;

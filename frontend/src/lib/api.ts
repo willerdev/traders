@@ -236,6 +236,11 @@ class ApiClient {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
+    updateCurrency: (preferredCurrency: string | null) =>
+      this.request<UserSettings>("/users/currency", {
+        method: "PATCH",
+        body: JSON.stringify({ preferredCurrency }),
+      }),
     updatePaymentDetails: (data: UpdatePaymentDetailsInput) =>
       this.request<UserSettings>("/users/payment-details", {
         method: "PATCH",
@@ -949,6 +954,24 @@ class ApiClient {
 
   investor = {
     status: () => this.request<InvestorStatus>("/investor/status"),
+    vipStatus: () =>
+      this.request<{
+        eligible: boolean;
+        active: boolean;
+        expiresAt: string | null;
+        feeUsdt: number;
+        walletBalance: number;
+        benefits: { weekendEarnings: boolean; zeroWithdrawalFee: boolean };
+      }>("/investor/vip/status"),
+    vipUpgrade: () =>
+      this.request<{
+        success: boolean;
+        active: boolean;
+        feeUsdt: number;
+        expiresAt: string;
+        paymentId: string;
+        message: string;
+      }>("/investor/vip/upgrade", { method: "POST" }),
     enrollCheckout: (
       network: string,
       source?: "wallet" | "crypto",
@@ -1366,6 +1389,14 @@ export interface WalletTransaction {
   createdAt: string;
 }
 
+export interface DisplayCurrencyInfo {
+  code: string;
+  rate: number | null;
+  source: "coinbase" | "fallback";
+  preferredCurrency: string | null;
+  derivedFromCountry: string | null;
+}
+
 export interface WalletSummary {
   availableBalance: number;
   lockedBalance: number;
@@ -1378,6 +1409,9 @@ export interface WalletSummary {
   platformDailyYieldPercent: number;
   investorDailyYieldPercent: number;
   minDepositUsdt: number;
+  displayCurrency?: DisplayCurrencyInfo;
+  withdrawalFeeUsdt?: number;
+  vipActive?: boolean;
   activePlan: {
     id: string;
     amount: number;
@@ -1492,6 +1526,15 @@ export interface InvestorFeeTier {
 export interface InvestorStatus {
   active: boolean;
   enrolledAt: string | null;
+  vip?: {
+    active: boolean;
+    expiresAt: string | null;
+    feeUsdt: number;
+    benefits: {
+      weekendEarnings: boolean;
+      zeroWithdrawalFee: boolean;
+    };
+  };
   feeUsdt: number;
   feeTiers?: InvestorFeeTier[];
   investmentMin?: number;
@@ -1499,6 +1542,7 @@ export interface InvestorStatus {
   committedInvestmentAmount?: number | null;
   dailyYieldPercent: number;
   platformDailyYieldPercent: number;
+  displayCurrency?: DisplayCurrencyInfo;
   mt5Linked: boolean;
   mt5Connected: boolean;
   mt5HealthMessage: string | null;
@@ -1678,6 +1722,8 @@ export interface UserSettings {
   };
   profile: UserProfileRecord | null;
   kyc: KycRecord;
+  displayCurrency?: DisplayCurrencyInfo;
+  currencyOptions?: string[];
   metaApi?: {
     configured: boolean;
     defaultAccountId: string | null;
@@ -1691,6 +1737,7 @@ export interface UserProfileRecord {
   phone: string | null;
   dateOfBirth: string | null;
   country: string | null;
+  preferredCurrency?: string | null;
   state: string | null;
   city: string | null;
   addressLine1: string | null;
