@@ -678,7 +678,7 @@ export function InvestHub() {
       <motion.div
         {...fadeUp}
         transition={{ delay: 0.25 }}
-        className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 xl:col-span-5 xl:row-start-4"
+        className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 xl:col-span-5 xl:row-start-5"
       >
         <div className="flex items-center gap-2">
           <Zap className="h-5 w-5 text-cyan-400" />
@@ -763,7 +763,7 @@ export function InvestHub() {
         <motion.div
           {...fadeUp}
           transition={{ delay: 0.3 }}
-          className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] xl:col-span-12 xl:row-start-5"
+          className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] xl:col-span-12 xl:row-start-6"
         >
           <div className="border-b border-white/5 px-5 py-4">
             <h3 className="text-base font-semibold text-white">Recent trades</h3>
