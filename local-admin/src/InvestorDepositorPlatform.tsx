@@ -817,8 +817,7 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
                   })
                   .then((res) => {
                     onMessage(
-                      res.message ||
-                        `Enrolled ${res.displayName} — invested ${fmtMoney(res.netInvested)} (fee ${fmtMoney(res.feeUsdt)}).`,
+                      `${res.message || `Enrolled ${res.displayName} — invested ${fmtMoney(res.netInvested)} (fee ${fmtMoney(res.feeUsdt)}).`} Confirmation email sent.`,
                     );
                     setEnrollEmail("");
                     setEnrollAmount("100");

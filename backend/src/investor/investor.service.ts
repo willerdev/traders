@@ -395,6 +395,7 @@ export class InvestorService {
     deposit: number,
     fee: number,
     netInvested: number,
+    opts?: { suppressNotification?: boolean },
   ) {
     const wallet = await this.walletService.getOrCreateWallet(userId);
     const balance = Number(wallet.availableBalance);
@@ -429,12 +430,16 @@ export class InvestorService {
       payment.id,
     );
 
-    await this.confirmEnrollment(payment.id, {
-      paymentSource: 'wallet',
-      investmentAmount: deposit,
-      feeUsdt: fee,
-      netInvested,
-    });
+    await this.confirmEnrollment(
+      payment.id,
+      {
+        paymentSource: 'wallet',
+        investmentAmount: deposit,
+        feeUsdt: fee,
+        netInvested,
+      },
+      { suppressNotification: opts?.suppressNotification },
+    );
 
     await this.transferInvestment(userId, netInvested, 'to_investment');
 
@@ -477,7 +482,15 @@ export class InvestorService {
         deposit,
         fee,
         netInvested,
+        { suppressNotification: true },
       );
+      this.notifications.investorAdminEnrolled(userId, {
+        investmentAmount: deposit,
+        feeUsdt: fee,
+        netInvested,
+        source: 'wallet',
+        note: opts?.note,
+      });
       return {
         ...result,
         source: 'wallet' as const,
@@ -547,8 +560,12 @@ export class InvestorService {
       adminId: opts?.adminId,
     });
 
-    this.notifications.investorEnrollmentConfirmed(userId, {
-      amount: deposit,
+    this.notifications.investorAdminEnrolled(userId, {
+      investmentAmount: deposit,
+      feeUsdt: fee,
+      netInvested,
+      source: 'comp',
+      note: opts?.note ?? note,
     });
 
     const wallet = await this.walletService.getOrCreateWallet(userId);
@@ -575,7 +592,7 @@ export class InvestorService {
   async confirmEnrollment(
     paymentId: string,
     gatewayPayload: object,
-    opts?: { gatewayId?: string; txHash?: string },
+    opts?: { gatewayId?: string; txHash?: string; suppressNotification?: boolean },
   ) {
     const payment = await this.prisma.payment.findUnique({
       where: { id: paymentId },
@@ -685,9 +702,11 @@ export class InvestorService {
       );
     }
 
-    this.notifications.investorEnrollmentConfirmed(payment.userId, {
-      amount: fee ?? Number(payment.amount),
-    });
+    if (!opts?.suppressNotification) {
+      this.notifications.investorEnrollmentConfirmed(payment.userId, {
+        amount: fee ?? Number(payment.amount),
+      });
+    }
 
     return {
       confirmed: true,

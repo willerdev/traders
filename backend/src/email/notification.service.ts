@@ -2005,6 +2005,23 @@ export class NotificationService {
     );
   }
 
+  /** Admin activated a user in the investor program (complimentary or wallet charge). */
+  investorAdminEnrolled(
+    userId: string,
+    data: {
+      investmentAmount: number;
+      feeUsdt: number;
+      netInvested: number;
+      source: 'wallet' | 'comp';
+      note?: string | null;
+    },
+  ) {
+    this.dispatch(
+      this.sendInvestorAdminEnrolled(userId, data),
+      'Investor admin enrolled',
+    );
+  }
+
   private async sendInvestorEnrollmentConfirmed(
     userId: string,
     data: { amount: number },
@@ -2016,13 +2033,56 @@ export class NotificationService {
       `<p>Hi ${this.escape(user.name)},</p>
       <p>Your investor enrollment payment of <strong>$${data.amount.toFixed(2)} USDT</strong> was confirmed.</p>
       <p>Link your MT5 account and set your risk % to start automated system trading at 1:2 RR.</p>
-      ${this.email.button(`${this.email.frontendUrl}/dashboard?tab=investor`, 'Set up investor account')}`,
+      ${this.email.button(`${this.email.frontendUrl}/invest`, 'Open Smart Invest')}`,
     );
     return this.email.send({
       to: user.email,
       subject: 'Investor program activated',
       html,
-      text: `Investor enrollment confirmed ($${data.amount.toFixed(2)} USDT).`,
+      text: `Investor enrollment confirmed ($${data.amount.toFixed(2)} USDT). Open ${this.email.frontendUrl}/invest`,
+    });
+  }
+
+  private async sendInvestorAdminEnrolled(
+    userId: string,
+    data: {
+      investmentAmount: number;
+      feeUsdt: number;
+      netInvested: number;
+      source: 'wallet' | 'comp';
+      note?: string | null;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const complimentary = data.source === 'comp';
+    const feeLine = complimentary
+      ? `<p>Enrollment fee: <strong>waived</strong> (complimentary activation).</p>`
+      : `<p>Enrollment fee: <strong>$${data.feeUsdt.toFixed(2)} USDT</strong> (charged from your wallet).</p>`;
+    const noteLine =
+      data.note?.trim()
+        ? `<p style="color:#94a3b8;font-size:14px;">Note: ${this.escape(data.note.trim())}</p>`
+        : '';
+    const html = this.email.layout(
+      'You have been enrolled as an investor',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>An administrator activated your <strong>Smart Invest</strong> account.</p>
+      <p>Investment amount: <strong>$${data.investmentAmount.toFixed(2)} USDT</strong></p>
+      ${feeLine}
+      <p>Amount invested: <strong>$${data.netInvested.toFixed(2)} USDT</strong></p>
+      ${noteLine}
+      <p>Open Invest to review your balance, daily yield, and MT5 settings.</p>
+      ${this.email.button(`${this.email.frontendUrl}/invest`, 'Open Smart Invest')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: complimentary
+        ? 'You have been enrolled in Smart Invest'
+        : 'Smart Invest enrollment confirmed',
+      html,
+      text: complimentary
+        ? `An admin enrolled you in Smart Invest. $${data.netInvested.toFixed(2)} USDT invested (fee waived). ${this.email.frontendUrl}/invest`
+        : `An admin enrolled you in Smart Invest. $${data.investmentAmount.toFixed(2)} USDT deposit, $${data.feeUsdt.toFixed(2)} fee, $${data.netInvested.toFixed(2)} invested. ${this.email.frontendUrl}/invest`,
     });
   }
 
