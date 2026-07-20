@@ -314,9 +314,11 @@ export default function SettingsPage() {
       setSettings(updated);
       setPreferredCurrency(updated.profile?.preferredCurrency ?? "");
       setMessage(
-        preferredCurrency.trim()
-          ? `Display currency set to ${preferredCurrency.trim().toUpperCase()}`
-          : "Display currency set to Auto (from country)",
+        preferredCurrency.trim() === "LOCAL"
+          ? "Display currency set to local (from country)"
+          : preferredCurrency.trim()
+            ? `Display currency set to ${preferredCurrency.trim().toUpperCase()}`
+            : "Display currency set to USDT (default)",
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save currency");
@@ -678,8 +680,8 @@ export default function SettingsPage() {
               <CardTitle>Display currency</CardTitle>
             </div>
             <CardDescription>
-              Wallet and earnings default to your country&apos;s currency. Falls
-              back to USDT if rates are unavailable.
+              Amounts default to USDT. Switch to your local currency anytime —
+              falls back to USDT if rates are unavailable.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -691,10 +693,17 @@ export default function SettingsPage() {
                 onChange={(e) => setPreferredCurrency(e.target.value)}
                 className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
               >
-                <option value="">Auto (from country)</option>
+                <option value="">USDT (default)</option>
+                <option value="USDT">USDT</option>
+                <option value="LOCAL">
+                  Local
+                  {settings?.displayCurrency?.localCurrencyCode
+                    ? ` (${settings.displayCurrency.localCurrencyCode})`
+                    : " (from country)"}
+                </option>
                 {(currencyOptions.length
-                  ? currencyOptions
-                  : ["USDT", "RWF", "UGX", "KES", "USD", "EUR"]
+                  ? currencyOptions.filter((c) => c !== "USDT")
+                  : ["RWF", "UGX", "KES", "USD", "EUR"]
                 ).map((code) => (
                   <option key={code} value={code}>
                     {code}
@@ -710,7 +719,14 @@ export default function SettingsPage() {
                   {settings.displayCurrency.source === "coinbase" &&
                   settings.displayCurrency.rate
                     ? ` · 1 USDT ≈ ${settings.displayCurrency.rate.toLocaleString()} ${settings.displayCurrency.code}`
-                    : " · USDT fallback"}
+                    : settings.displayCurrency.code === "USDT"
+                      ? " · ledger currency"
+                      : " · USDT fallback"}
+                </p>
+              )}
+              {!settings?.displayCurrency?.localCurrencyCode && (
+                <p className="text-xs text-amber-400/80">
+                  Add your country in Address above to enable local currency.
                 </p>
               )}
             </div>

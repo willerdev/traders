@@ -14,6 +14,7 @@ export type DisplayCurrencyInfo = {
   source: 'coinbase' | 'fallback';
   preferredCurrency: string | null;
   derivedFromCountry: string | null;
+  localCurrencyCode: string | null;
 };
 
 export type ConvertedAmount = {
@@ -130,8 +131,10 @@ export class FxRatesService {
     code: string;
     preferredCurrency: string | null;
     derivedFromCountry: string | null;
+    localCurrencyCode?: string | null;
   }): Promise<DisplayCurrencyInfo> {
     const code = opts.code.trim().toUpperCase() || 'USDT';
+    const localCurrencyCode = opts.localCurrencyCode ?? null;
     if (code === 'USDT') {
       return {
         code: 'USDT',
@@ -139,6 +142,7 @@ export class FxRatesService {
         source: 'fallback',
         preferredCurrency: opts.preferredCurrency,
         derivedFromCountry: opts.derivedFromCountry,
+        localCurrencyCode,
       };
     }
 
@@ -150,6 +154,7 @@ export class FxRatesService {
         source: 'fallback',
         preferredCurrency: opts.preferredCurrency,
         derivedFromCountry: opts.derivedFromCountry,
+        localCurrencyCode,
       };
     }
 
@@ -159,6 +164,7 @@ export class FxRatesService {
       source: 'coinbase',
       preferredCurrency: opts.preferredCurrency,
       derivedFromCountry: opts.derivedFromCountry,
+      localCurrencyCode,
     };
   }
 

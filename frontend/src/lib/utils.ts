@@ -11,6 +11,7 @@ export type DisplayCurrency = {
   source?: "coinbase" | "fallback";
   preferredCurrency?: string | null;
   derivedFromCountry?: string | null;
+  localCurrencyCode?: string | null;
 };
 
 export function isLocalCurrencyDisplay(

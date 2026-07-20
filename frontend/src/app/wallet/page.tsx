@@ -9,6 +9,7 @@ import { WalletDepositModal } from "@/components/wallet/wallet-deposit-modal";
 import { WalletWithdrawModal } from "@/components/wallet/wallet-withdraw-modal";
 import { WalletWithdrawFeeNotice } from "@/components/wallet/wallet-withdraw-fee-notice";
 import { WalletSavedWithdrawalWallets } from "@/components/wallet/wallet-saved-withdrawal-wallets";
+import { CurrencySwitcher } from "@/components/currency-switcher";
 import {
   cn,
   formatCurrency,
@@ -97,19 +98,25 @@ export default function WalletPage() {
         <div>
           <h1 className="text-2xl font-bold text-white">Wallet</h1>
           <p className="mt-1 text-sm text-gray-400">
-            Balance and earnings in your local currency (USDT ledger)
+            Balance and earnings — USDT ledger with optional local display
           </p>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="shrink-0 text-muted"
-          onClick={() => void refresh()}
-          disabled={loading}
-        >
-          <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <CurrencySwitcher
+            displayCurrency={summary?.displayCurrency}
+            onChanged={refresh}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="shrink-0 text-muted"
+            onClick={() => void refresh()}
+            disabled={loading}
+          >
+            <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+          </Button>
+        </div>
       </div>
 
       {error && (

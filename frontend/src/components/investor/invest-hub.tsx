@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { api, type InvestorStatus } from "@/lib/api";
 import { Mt5ConnectForm } from "@/components/mt5/mt5-connect-form";
 import { InvestmentReturnsPanel } from "@/components/investor/investment-returns";
+import { CurrencySwitcher } from "@/components/currency-switcher";
 import {
   PaymentSourceSelector,
   type PaymentSource,
@@ -253,6 +254,12 @@ export function InvestHub() {
   if (!status?.active) {
     return (
       <div className="space-y-5">
+        <div className="flex justify-end">
+          <CurrencySwitcher
+            displayCurrency={status?.displayCurrency}
+            onChanged={refresh}
+          />
+        </div>
         <motion.div
           {...fadeUp}
           className="relative overflow-hidden rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-950/80 via-[#0f1419] to-cyan-950/40 p-6"
@@ -458,7 +465,11 @@ export function InvestHub() {
   const localCurrency = isLocalCurrencyDisplay(display);
 
   return (
-    <div className="space-y-5 xl:grid xl:grid-cols-12 xl:items-start xl:gap-5 xl:space-y-0">
+    <div className="space-y-5">
+      <div className="flex justify-end">
+        <CurrencySwitcher displayCurrency={display} onChanged={refresh} />
+      </div>
+      <div className="space-y-5 xl:grid xl:grid-cols-12 xl:items-start xl:gap-5 xl:space-y-0">
       <motion.div
         {...fadeUp}
         className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 via-indigo-800 to-[#1e3a8a] p-5 shadow-lg shadow-indigo-900/30 xl:col-span-7 xl:row-start-1 xl:h-full xl:min-h-44"
@@ -837,6 +848,7 @@ export function InvestHub() {
           </div>
         </motion.div>
       )}
+      </div>
     </div>
   );
 }

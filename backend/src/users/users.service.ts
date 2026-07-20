@@ -187,12 +187,20 @@ export class UsersService {
     let preferred: string | null = null;
     if (dto.preferredCurrency != null && String(dto.preferredCurrency).trim()) {
       const code = normalizeCurrencyCode(String(dto.preferredCurrency));
-      if (!code || !isSupportedDisplayCurrency(code)) {
+      if (!code) {
+        throw new BadRequestException('Invalid currency code');
+      }
+      if (code === 'USDT') {
+        preferred = 'USDT';
+      } else if (code === 'LOCAL') {
+        preferred = 'LOCAL';
+      } else if (isSupportedDisplayCurrency(code)) {
+        preferred = code;
+      } else {
         throw new BadRequestException(
-          'Unsupported currency — pick from the available list or choose Auto',
+          'Unsupported currency — pick USDT, Local, or a listed currency',
         );
       }
-      preferred = code === 'USDT' ? 'USDT' : code;
     }
 
     await this.prisma.userProfile.upsert({

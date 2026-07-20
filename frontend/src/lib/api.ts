@@ -1395,6 +1395,7 @@ export interface DisplayCurrencyInfo {
   source: "coinbase" | "fallback";
   preferredCurrency: string | null;
   derivedFromCountry: string | null;
+  localCurrencyCode?: string | null;
 }
 
 export interface WalletSummary {

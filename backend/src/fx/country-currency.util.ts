@@ -130,6 +130,7 @@ export function normalizeCurrencyCode(
 ): string | null {
   if (!raw) return null;
   const code = raw.trim().toUpperCase();
+  if (code === 'LOCAL') return 'LOCAL';
   if (!/^[A-Z]{3,4}$/.test(code)) return null;
   return code;
 }
@@ -150,29 +151,44 @@ export function currencyFromCountry(
   return COUNTRY_TO_CURRENCY[key] ?? null;
 }
 
+/**
+ * Resolve display currency.
+ * Default is always USDT. Users can pick LOCAL (country currency) or a specific code.
+ */
 export function resolvePreferredDisplayCurrency(opts: {
   preferredCurrency?: string | null;
   country?: string | null;
-}): { code: string; derivedFromCountry: string | null; preferredCurrency: string | null } {
+}): {
+  code: string;
+  derivedFromCountry: string | null;
+  preferredCurrency: string | null;
+  localCurrencyCode: string | null;
+} {
+  const localCurrencyCode = currencyFromCountry(opts.country);
   const preferred = normalizeCurrencyCode(opts.preferredCurrency);
-  if (preferred) {
+
+  if (!preferred || preferred === 'USDT') {
     return {
-      code: preferred,
+      code: 'USDT',
       derivedFromCountry: null,
-      preferredCurrency: preferred,
+      preferredCurrency: preferred === 'USDT' ? 'USDT' : null,
+      localCurrencyCode,
     };
   }
-  const fromCountry = currencyFromCountry(opts.country);
-  if (fromCountry) {
+
+  if (preferred === 'LOCAL') {
     return {
-      code: fromCountry,
-      derivedFromCountry: opts.country?.trim() ?? null,
-      preferredCurrency: null,
+      code: localCurrencyCode ?? 'USDT',
+      derivedFromCountry: localCurrencyCode ? opts.country?.trim() ?? null : null,
+      preferredCurrency: 'LOCAL',
+      localCurrencyCode,
     };
   }
+
   return {
-    code: 'USDT',
-    derivedFromCountry: opts.country?.trim() ?? null,
-    preferredCurrency: null,
+    code: preferred,
+    derivedFromCountry: null,
+    preferredCurrency: preferred,
+    localCurrencyCode,
   };
 }

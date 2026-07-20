@@ -474,7 +474,7 @@ export class UpdateAddressDto {
 }
 
 export class UpdateDisplayCurrencyDto {
-  /** ISO 4217 code, or null/empty to auto-derive from country. */
+  /** ISO 4217 code, LOCAL (country currency), USDT, or null/empty for USDT default. */
   @IsOptional()
   @IsString()
   preferredCurrency?: string | null;
