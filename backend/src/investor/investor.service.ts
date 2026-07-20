@@ -454,6 +454,124 @@ export class InvestorService {
     };
   }
 
+  /**
+   * Admin enrollment: charge the user's wallet (normal fee split) or grant a
+   * complimentary enrollment with the full amount invested and $0 fee.
+   */
+  async adminEnroll(
+    userId: string,
+    investmentAmountRaw: number,
+    source: 'wallet' | 'comp',
+    opts?: { adminId?: string; note?: string },
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.investorActive) {
+      throw new BadRequestException('User is already enrolled as an investor');
+    }
+
+    if (source === 'wallet') {
+      const { deposit, fee, netInvested } = this.splitDeposit(investmentAmountRaw);
+      const result = await this.payEnrollmentFromWallet(
+        userId,
+        deposit,
+        fee,
+        netInvested,
+      );
+      return {
+        ...result,
+        source: 'wallet' as const,
+        adminId: opts?.adminId ?? null,
+        note: opts?.note ?? null,
+      };
+    }
+
+    const deposit = this.normalizeInvestmentAmount(investmentAmountRaw);
+    const fee = 0;
+    const netInvested = deposit;
+    const note =
+      opts?.note?.trim() ||
+      `Admin complimentary investor enrollment — $${deposit.toFixed(2)} USDT invested`;
+
+    const payment = await this.prisma.payment.create({
+      data: {
+        userId,
+        amount: deposit,
+        currency: 'USDT',
+        network: 'ADMIN',
+        purpose: 'investor_enrollment',
+        status: 'CONFIRMED',
+        confirmedAt: new Date(),
+        gatewayId: `admin_${opts?.adminId ?? 'system'}_${Date.now()}`,
+        gatewayResponse: {
+          paymentSource: 'admin_comp',
+          adminId: opts?.adminId ?? null,
+          investmentAmount: deposit,
+          feeUsdt: fee,
+          netInvested,
+          note,
+        } as object,
+      },
+    });
+
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          investorActive: true,
+          investorEnrolledAt: now,
+        },
+      }),
+      this.prisma.investorSettings.upsert({
+        where: { userId },
+        create: {
+          userId,
+          riskPercent: 2,
+          committedInvestmentAmount: netInvested,
+        },
+        update: {
+          committedInvestmentAmount: netInvested,
+        },
+      }),
+    ]);
+
+    await this.walletService.creditBalance(
+      userId,
+      deposit,
+      'DEPOSIT',
+      note,
+      payment.id,
+    );
+    await this.transferInvestment(userId, netInvested, 'to_investment', {
+      adminId: opts?.adminId,
+    });
+
+    this.notifications.investorEnrollmentConfirmed(userId, {
+      amount: deposit,
+    });
+
+    const wallet = await this.walletService.getOrCreateWallet(userId);
+
+    return {
+      success: true,
+      active: true,
+      paymentId: payment.id,
+      amount: deposit,
+      feeUsdt: fee,
+      investmentAmount: deposit,
+      netInvested,
+      currency: 'USDT',
+      network: 'ADMIN',
+      source: 'comp' as const,
+      message: `Complimentary enrollment — $${deposit.toFixed(2)} USDT invested (fee waived)`,
+      walletBalance: Number(wallet.availableBalance),
+      investmentBalance: Number(wallet.investorBalance ?? 0),
+      adminId: opts?.adminId ?? null,
+      note,
+    };
+  }
+
   async confirmEnrollment(
     paymentId: string,
     gatewayPayload: object,

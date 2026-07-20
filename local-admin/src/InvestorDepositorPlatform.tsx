@@ -44,6 +44,12 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
   const [creditNote, setCreditNote] = useState("");
   const [creditSaving, setCreditSaving] = useState(false);
 
+  const [enrollEmail, setEnrollEmail] = useState("");
+  const [enrollAmount, setEnrollAmount] = useState("100");
+  const [enrollSource, setEnrollSource] = useState<"wallet" | "comp">("comp");
+  const [enrollNote, setEnrollNote] = useState("");
+  const [enrollSaving, setEnrollSaving] = useState(false);
+
   const [systemSymbol, setSystemSymbol] = useState("EURUSD");
   const [systemDirection, setSystemDirection] = useState<"BUY" | "SELL">("BUY");
   const [systemEntryMin, setSystemEntryMin] = useState("1.0850");
@@ -148,7 +154,7 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
     { id: "overview", label: "Overview", hint: "Rates & security" },
     { id: "investors", label: "Investors", hint: "Active accounts" },
     { id: "income", label: "Income", hint: "Daily journal" },
-    { id: "tools", label: "Tools", hint: "Wallet & signals" },
+    { id: "tools", label: "Tools", hint: "Enroll, wallet & signals" },
   ];
 
   if (loading && !settings) {
@@ -737,6 +743,99 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
 
       {section === "tools" && (
         <div className="platform-section platform-tools-grid platform-animate-in">
+          <section className="platform-card platform-card-investor">
+            <div className="platform-card-head">
+              <span className="platform-card-icon platform-card-icon-investor">IN</span>
+              <div>
+                <h3>Enroll investor</h3>
+                <p>
+                  Activate a user in the investor program by email. Complimentary
+                  grants the full amount as investment ($0 fee). Wallet charges the
+                  normal tiered fee from their balance.
+                </p>
+              </div>
+            </div>
+            <div className="platform-field-stack">
+              <label className="platform-field">
+                <span>User email</span>
+                <input
+                  className="platform-input"
+                  placeholder="trader@example.com"
+                  value={enrollEmail}
+                  onChange={(e) => setEnrollEmail(e.target.value)}
+                />
+              </label>
+              <label className="platform-field">
+                <span>Investment amount (USDT)</span>
+                <input
+                  className="platform-input"
+                  type="number"
+                  min="100"
+                  max="5000"
+                  step="1"
+                  value={enrollAmount}
+                  onChange={(e) => setEnrollAmount(e.target.value)}
+                />
+              </label>
+              <label className="platform-field">
+                <span>Payment source</span>
+                <select
+                  className="platform-input platform-input-select"
+                  value={enrollSource}
+                  onChange={(e) =>
+                    setEnrollSource(e.target.value as "wallet" | "comp")
+                  }
+                >
+                  <option value="comp">Complimentary (fee waived)</option>
+                  <option value="wallet">Charge user wallet</option>
+                </select>
+              </label>
+              <label className="platform-field">
+                <span>Note (optional)</span>
+                <input
+                  className="platform-input"
+                  placeholder="Promo, support grant, etc."
+                  value={enrollNote}
+                  onChange={(e) => setEnrollNote(e.target.value)}
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              className="platform-btn platform-btn-primary"
+              disabled={
+                enrollSaving || !enrollEmail.trim() || !enrollAmount
+              }
+              onClick={() => {
+                setEnrollSaving(true);
+                void api
+                  .enrollInvestor({
+                    email: enrollEmail.trim(),
+                    investmentAmount: Number(enrollAmount),
+                    source: enrollSource,
+                    note: enrollNote.trim() || undefined,
+                  })
+                  .then((res) => {
+                    onMessage(
+                      res.message ||
+                        `Enrolled ${res.displayName} — invested ${fmtMoney(res.netInvested)} (fee ${fmtMoney(res.feeUsdt)}).`,
+                    );
+                    setEnrollEmail("");
+                    setEnrollAmount("100");
+                    setEnrollNote("");
+                    setEnrollSource("comp");
+                    void load();
+                  })
+                  .catch((e) =>
+                    onMessage(e instanceof Error ? e.message : "Enroll failed"),
+                  )
+                  .finally(() => setEnrollSaving(false));
+              }}
+            >
+              {enrollSaving ? "Enrolling…" : "Enroll investor"}
+            </button>
+          </section>
+
           <section className="platform-card platform-card-tool">
             <div className="platform-card-head">
               <span className="platform-card-icon platform-card-icon-wallet">💳</span>

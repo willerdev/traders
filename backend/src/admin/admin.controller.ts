@@ -551,6 +551,21 @@ export class AdminController {
     return this.adminService.updateInvestorDepositorSettings(body);
   }
 
+  @Post('investors/enroll')
+  enrollInvestor(
+    @Request() req: { user: { id: string } },
+    @Body()
+    body: {
+      userId?: string;
+      email?: string;
+      investmentAmount: number;
+      source?: 'wallet' | 'comp';
+      note?: string;
+    },
+  ) {
+    return this.adminService.enrollInvestor(req.user.id, body);
+  }
+
   @Get('investors')
   listInvestors(
     @Query('search') search?: string,

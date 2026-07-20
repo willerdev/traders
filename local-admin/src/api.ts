@@ -552,6 +552,30 @@ export const api = {
     const suffix = q.toString() ? `?${q.toString()}` : "";
     return request<InvestorListResult>(`/admin/investors${suffix}`);
   },
+  enrollInvestor: (data: {
+    userId?: string;
+    email?: string;
+    investmentAmount: number;
+    source?: "wallet" | "comp";
+    note?: string;
+  }) =>
+    request<{
+      success?: boolean;
+      active: boolean;
+      userId: string;
+      email: string | null;
+      displayName: string;
+      amount: number;
+      feeUsdt: number;
+      netInvested: number;
+      source: "wallet" | "comp";
+      message?: string;
+      walletBalance?: number;
+      investmentBalance?: number;
+    }>("/admin/investors/enroll", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
   updateInvestorYield: (userId: string, dailyYieldPercent: number | null) =>
     request<{
       userId: string;

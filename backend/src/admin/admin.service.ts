@@ -1681,6 +1681,55 @@ export class AdminService {
     `);
   }
 
+  async enrollInvestor(
+    adminId: string,
+    input: {
+      userId?: string;
+      email?: string;
+      investmentAmount: number;
+      source?: 'wallet' | 'comp';
+      note?: string;
+    },
+  ) {
+    const email = input.email?.trim().toLowerCase();
+    const user = input.userId
+      ? await this.prisma.user.findUnique({ where: { id: input.userId } })
+      : email
+        ? await this.prisma.user.findFirst({
+            where: { email: { equals: email, mode: 'insensitive' } },
+          })
+        : null;
+
+    if (!user) {
+      throw new NotFoundException(
+        'User not found — provide a valid userId or email',
+      );
+    }
+
+    const source = input.source === 'wallet' ? 'wallet' : 'comp';
+    const result = await this.investorService.adminEnroll(
+      user.id,
+      Number(input.investmentAmount),
+      source,
+      { adminId, note: input.note },
+    );
+
+    await this.logAction(adminId, 'INVESTOR_ENROLL', user.id, {
+      source,
+      investmentAmount: Number(input.investmentAmount),
+      feeUsdt: result.feeUsdt,
+      netInvested: result.netInvested,
+      note: input.note ?? null,
+    });
+
+    return {
+      ...result,
+      userId: user.id,
+      email: user.email,
+      displayName: user.displayName,
+    };
+  }
+
   async listInvestors(search?: string, limit = 50, offset = 0) {
     const take = Math.min(Math.max(limit, 1), 100);
     const skip = Math.max(offset, 0);
