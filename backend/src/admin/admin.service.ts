@@ -1232,7 +1232,11 @@ export class AdminService {
     return { items, count, limit: take, offset: skip };
   }
 
-  async approvePayout(payoutId: string, adminId: string) {
+  async approvePayout(
+    payoutId: string,
+    adminId: string,
+    settlement?: 'gateway' | 'external',
+  ) {
     const payout = await this.prisma.payout.findUnique({
       where: { id: payoutId },
       include: {
@@ -1277,11 +1281,14 @@ export class AdminService {
     const result = await this.payoutService.approveAndSendPayout(
       payoutId,
       adminId,
+      'TRC20',
+      { settlement: settlement === 'external' ? 'external' : 'gateway' },
     );
 
     await this.logAction(adminId, 'PAYOUT_APPROVED', payoutId, {
       userId: payout.userId,
       amount: Number(payout.traderShare),
+      settlement: settlement === 'external' ? 'external' : 'gateway',
     });
 
     return result;

@@ -356,7 +356,12 @@ export class PayoutService {
     }
   }
 
-  async approveAndSendPayout(payoutId: string, adminId: string, network = 'TRC20') {
+  async approveAndSendPayout(
+    payoutId: string,
+    adminId: string,
+    network = 'TRC20',
+    options?: { settlement?: 'gateway' | 'external' },
+  ) {
     const payout = await this.prisma.payout.findUnique({
       where: { id: payoutId },
     });
@@ -371,8 +376,14 @@ export class PayoutService {
 
     const amount = Number(payout.traderShare);
     const creditToWallet = payout.source !== 'DEPOSITOR';
+    const settlement = options?.settlement === 'external' ? 'external' : 'gateway';
 
     if (creditToWallet) {
+      if (settlement === 'external') {
+        throw new BadRequestException(
+          'External settlement is only for wallet withdrawals sent to a payout destination',
+        );
+      }
       const newBalance = await this.prisma.$transaction(async (tx) => {
         const wallet = await tx.platformWallet.upsert({
           where: { userId: payout.userId },
@@ -427,7 +438,7 @@ export class PayoutService {
       };
     }
 
-    return this.sendExternalWalletPayout(payout, adminId);
+    return this.sendExternalWalletPayout(payout, adminId, settlement);
   }
 
   private async sendExternalWalletPayout(
@@ -443,6 +454,7 @@ export class PayoutService {
       source: PayoutSource;
     },
     adminId: string,
+    settlement: 'gateway' | 'external' = 'gateway',
   ) {
     const amount = Number(payout.traderShare);
     const destination = payout.walletAddress?.trim();
@@ -450,6 +462,32 @@ export class PayoutService {
       throw new BadRequestException(
         'Cannot approve wallet withdrawal — payout destination is missing',
       );
+    }
+
+    if (settlement === 'external') {
+      const updated = await this.prisma.payout.update({
+        where: { id: payout.id },
+        data: {
+          status: 'PAID',
+          processedAt: new Date(),
+          notes: `Confirmed by admin ${adminId}`,
+        },
+      });
+
+      this.notifications.payoutApproved(payout.userId, {
+        amount,
+        walletAddress: destination,
+        weekNumber: payout.weekNumber,
+        year: payout.year,
+      });
+
+      return {
+        payout: updated,
+        verificationRequired: false,
+        creditedToWallet: false,
+        settlement: 'external' as const,
+        message: 'Payout confirmed.',
+      };
     }
 
     const isMobileMoney = payout.payoutMethod === 'MOBILE_MONEY';

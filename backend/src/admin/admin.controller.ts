@@ -251,8 +251,9 @@ export class AdminController {
   approvePayout(
     @Param('payoutId') payoutId: string,
     @Request() req: { user: { id: string } },
+    @Body() body?: { settlement?: 'gateway' | 'external' },
   ) {
-    return this.adminService.approvePayout(payoutId, req.user.id);
+    return this.adminService.approvePayout(payoutId, req.user.id, body?.settlement);
   }
 
   @Post('payouts/:payoutId/verify')

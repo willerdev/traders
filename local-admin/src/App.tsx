@@ -68,10 +68,16 @@ function payoutNeedsDestination(p: PayoutRow) {
   return p.source === "DEPOSITOR";
 }
 
-function canApprovePayout(p: PayoutRow, payoutGatewayReady = true) {
+function canApprovePayout(
+  p: PayoutRow,
+  payoutGatewayReady = true,
+  externalSettlement = false,
+) {
   if (p.user.kyc?.status !== "APPROVED") return false;
   if (payoutNeedsDestination(p) && !p.walletAddress?.trim()) return false;
-  if (payoutNeedsDestination(p) && !payoutGatewayReady) return false;
+  if (payoutNeedsDestination(p) && !payoutGatewayReady && !externalSettlement) {
+    return false;
+  }
   return true;
 }
 
@@ -355,6 +361,7 @@ export default function App() {
   const [approvePayoutModal, setApprovePayoutModal] = useState<PayoutRow | null>(null);
   const [approvePayoutLoading, setApprovePayoutLoading] = useState(false);
   const [approvePayoutError, setApprovePayoutError] = useState("");
+  const [approvePayoutExternal, setApprovePayoutExternal] = useState(false);
   const [refundPayoutModal, setRefundPayoutModal] = useState<PayoutRow | null>(null);
   const [refundPayoutReason, setRefundPayoutReason] = useState("");
   const [refundPayoutLoading, setRefundPayoutLoading] = useState(false);
@@ -1207,12 +1214,14 @@ export default function App() {
   function openApprovePayoutModal(payout: PayoutRow) {
     setMessage("");
     setApprovePayoutError("");
+    setApprovePayoutExternal(false);
     setApprovePayoutModal(payout);
   }
 
   function closeApprovePayoutModal(force = false) {
     if (!force && approvePayoutLoading) return;
     setApprovePayoutModal(null);
+    setApprovePayoutExternal(false);
   }
 
   function closeRefundPayoutModal(force = false) {
@@ -1252,11 +1261,15 @@ export default function App() {
   async function confirmApprovePayout() {
     if (!approvePayoutModal) return;
     const payout = approvePayoutModal;
+    const settlement =
+      payoutNeedsDestination(payout) && approvePayoutExternal
+        ? ("external" as const)
+        : undefined;
     setApprovePayoutLoading(true);
     setMessage("");
     setApprovePayoutError("");
     try {
-      const res = await api.approvePayout(payout.id);
+      const res = await api.approvePayout(payout.id, settlement);
       const nextStatus =
         res.verificationRequired || res.payout?.status === "APPROVED"
           ? "APPROVED"
@@ -1286,7 +1299,9 @@ export default function App() {
             ? "Payout was already confirmed."
             : res.creditedToWallet
               ? "Reward credited to the user's platform wallet."
-              : res.message ?? "Payout confirmed.",
+              : settlement === "external"
+                ? "Marked paid — user notified as approved."
+                : res.message ?? "Payout confirmed.",
         );
       }
       void api.payouts().then((r) => setPayouts(r.items)).catch(() => {});
@@ -5750,16 +5765,41 @@ export default function App() {
             </dl>
             <p className="muted">
               {payoutNeedsDestination(approvePayoutModal)
-                ? "This will send USDT from NOWPayments to the user's saved payout destination."
+                ? approvePayoutExternal
+                  ? "Marks this withdrawal PAID without sending via NOWPayments. Use only after you already paid the destination yourself. The user gets the normal approved email."
+                  : "This will send USDT from NOWPayments to the user's saved payout destination."
                 : approvePayoutModal.source === "TP_REWARD" &&
                     approvePayoutModal.tpClaim?.status === "PENDING_REVIEW"
                   ? "This verifies the TP claim screenshots and credits the reward to the platform wallet."
                   : "This will credit the user's platform wallet (not an on-chain transfer)."}
             </p>
+            {payoutNeedsDestination(approvePayoutModal) && (
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "0.5rem",
+                  marginTop: "0.75rem",
+                  fontSize: "0.9rem",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={approvePayoutExternal}
+                  disabled={approvePayoutLoading}
+                  onChange={(e) => setApprovePayoutExternal(e.target.checked)}
+                  style={{ marginTop: "0.2rem" }}
+                />
+                <span>
+                  Already paid externally (skip NOWPayments — marks PAID)
+                </span>
+              </label>
+            )}
             {(approvePayoutModal.user.kyc?.status !== "APPROVED" ||
               (payoutNeedsDestination(approvePayoutModal) &&
                 !approvePayoutModal.walletAddress) ||
               (payoutNeedsDestination(approvePayoutModal) &&
+                !approvePayoutExternal &&
                 npWallet?.payoutConfigured === false)) && (
               <p className="muted">
                 Cannot approve yet:
@@ -5771,6 +5811,7 @@ export default function App() {
                   ? " Payout destination is missing."
                   : ""}
                 {payoutNeedsDestination(approvePayoutModal) &&
+                !approvePayoutExternal &&
                 npWallet?.payoutConfigured === false
                   ? ` NOWPayments payout login missing on traders-api${
                       npWallet.payoutEmailSet === false
@@ -5780,7 +5821,7 @@ export default function App() {
                       npWallet.payoutPasswordSet === false
                         ? " (NOWPAYMENTS_PAYOUT_PASSWORD)"
                         : ""
-                    }. Set on the backend service, then redeploy.`
+                    }. Set on the backend service, then redeploy — or check “Already paid externally”.`
                   : ""}
               </p>
             )}
@@ -5806,11 +5847,16 @@ export default function App() {
                   !canApprovePayout(
                     approvePayoutModal,
                     npWallet?.payoutConfigured !== false,
+                    approvePayoutExternal,
                   )
                 }
                 onClick={() => void confirmApprovePayout()}
               >
-                {approvePayoutLoading ? "Confirming…" : "Confirm payout"}
+                {approvePayoutLoading
+                  ? "Confirming…"
+                  : approvePayoutExternal
+                    ? "Mark paid"
+                    : "Confirm payout"}
               </button>
             </div>
           </div>

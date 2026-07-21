@@ -265,9 +265,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
-  approvePayout: (payoutId: string) =>
+  approvePayout: (
+    payoutId: string,
+    settlement?: "gateway" | "external",
+  ) =>
     request<ApprovePayoutResponse>(`/admin/payouts/${payoutId}/approve`, {
       method: "POST",
+      body: JSON.stringify(settlement ? { settlement } : {}),
     }),
 
   verifyPayout: (payoutId: string, code: string) =>
