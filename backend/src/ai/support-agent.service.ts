@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ModuleRef } from '@nestjs/core';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
@@ -122,8 +123,7 @@ export class SupportAgentService {
   constructor(
     private config: ConfigService,
     private prisma: PrismaService,
-    private investor: InvestorService,
-    private payouts: PayoutService,
+    private moduleRef: ModuleRef,
   ) {
     this.apiKey = this.config.get<string>('DEEPSEEK_API_KEY') || '';
     this.model = this.config.get<string>('DEEPSEEK_MODEL') || 'deepseek-chat';
@@ -409,7 +409,8 @@ Account tools:
       return { ok: false, error: 'payout_id is required' };
     }
 
-    const result = await this.payouts.approveVipAiWithdrawal(userId, payoutId);
+    const payouts = this.moduleRef.get(PayoutService, { strict: false });
+    const result = await payouts.approveVipAiWithdrawal(userId, payoutId);
     return { ok: true, ...result };
   }
 
@@ -428,7 +429,8 @@ Account tools:
     if (!Number.isFinite(amount) || amount <= 0) {
       return { ok: false, error: 'amount must be a positive number' };
     }
-    const result = await this.investor.transferInvestment(
+    const investor = this.moduleRef.get(InvestorService, { strict: false });
+    const result = await investor.transferInvestment(
       userId,
       amount,
       direction,
