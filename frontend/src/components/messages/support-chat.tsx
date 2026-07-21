@@ -37,6 +37,7 @@ export function SupportChat() {
   const [sending, setSending] = useState(false);
   const [agentTyping, setAgentTyping] = useState(false);
   const [escalating, setEscalating] = useState(false);
+  const [resumingAgent, setResumingAgent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [agentEnabled, setAgentEnabled] = useState(true);
   const [escalated, setEscalated] = useState(false);
@@ -191,6 +192,27 @@ export function SupportChat() {
     }
   }
 
+  async function handleResumeAgent() {
+    if (resumingAgent || agentEnabled) return;
+    setResumingAgent(true);
+    setAgentTyping(true);
+    shouldScrollRef.current = true;
+    try {
+      const result = await api.messages.resumeAgent();
+      if (result.reply) mergeMessages([result.reply]);
+      setAgentEnabled(true);
+      setEscalated(false);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not resume Agent");
+    } finally {
+      setResumingAgent(false);
+      setAgentTyping(false);
+    }
+  }
+
+  const showAgent = agentEnabled && !escalated;
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Header */}
@@ -202,12 +224,12 @@ export function SupportChat() {
               Support
             </h1>
             <p className="mt-0.5 truncate text-xs text-gray-400 sm:text-sm">
-              {agentEnabled && !escalated
+              {showAgent
                 ? "Agent replies instantly · escalate anytime"
-                : "Human admin queue · replies within 24h"}
+                : "Human admin queue · tap Chat with Agent to resume AI"}
             </p>
           </div>
-          {agentEnabled && !escalated && (
+          {showAgent ? (
             <Button
               type="button"
               variant="secondary"
@@ -223,6 +245,22 @@ export function SupportChat() {
               )}
               <span className="hidden sm:inline">Speak to admin</span>
               <span className="sm:hidden">Admin</span>
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              className="shrink-0 gap-1.5 text-xs"
+              disabled={resumingAgent}
+              onClick={() => void handleResumeAgent()}
+            >
+              {resumingAgent ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Bot className="h-3.5 w-3.5" />
+              )}
+              <span className="hidden sm:inline">Chat with Agent</span>
+              <span className="sm:hidden">Agent</span>
             </Button>
           )}
         </div>

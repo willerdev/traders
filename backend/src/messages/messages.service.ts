@@ -154,6 +154,11 @@ export class MessagesService {
       this.supportAgent.wantsHumanSupport(trimmed) ||
       /^(speak|talk)\s+to\s+admin$/i.test(trimmed);
 
+    const wantsAgent =
+      /\b(talk|chat|speak)\s+(to|with)\s+(the\s+)?agent\b/i.test(trimmed) ||
+      /\b(back\s+to\s+agent|resume\s+agent|enable\s+agent)\b/i.test(trimmed) ||
+      /^(hi|hello|hey)\s+agent\b/i.test(trimmed);
+
     const msg = await this.prisma.directMessage.create({
       data: {
         userId,
@@ -174,7 +179,7 @@ export class MessagesService {
 
       const agentReply = await this.createAgentMessage(
         userId,
-        'Understood — I have notified our admin team. A human will reply here as soon as possible, usually within 24 hours. You can keep sending details while you wait.',
+        'Understood — I have notified our admin team. A human will reply here as soon as possible, usually within 24 hours. You can keep sending details while you wait, or tap “Chat with Agent” to talk to me again.',
       );
       replies.push(agentReply);
 
@@ -186,7 +191,17 @@ export class MessagesService {
       };
     }
 
-    if (meta.agentEnabled) {
+    let agentEnabled = meta.agentEnabled;
+
+    if (!agentEnabled && wantsAgent) {
+      await this.prisma.messageThreadState.update({
+        where: { userId },
+        data: { agentEnabled: true, escalatedAt: null },
+      });
+      agentEnabled = true;
+    }
+
+    if (agentEnabled) {
       const history = await this.buildAgentHistory(userId);
       const agentText = await this.supportAgent.generateReply(
         userId,
@@ -200,8 +215,8 @@ export class MessagesService {
     return {
       message: this.mapMessage(msg, userId),
       replies,
-      agentEnabled: meta.agentEnabled,
-      escalated: false,
+      agentEnabled,
+      escalated: !agentEnabled,
     };
   }
 
@@ -216,12 +231,33 @@ export class MessagesService {
 
     const agentReply = await this.createAgentMessage(
       userId,
-      'You are now connected to our admin queue. A team member will reply here — typically within 24 hours. Feel free to describe your issue below.',
+      'You are now connected to our admin queue. A team member will reply here — typically within 24 hours. Feel free to describe your issue below. You can tap “Chat with Agent” anytime to talk to me again.',
     );
 
     return {
       agentEnabled: false,
       escalated: true,
+      reply: agentReply,
+    };
+  }
+
+  async resumeAgent(userId: string) {
+    await this.ensureUser(userId);
+
+    await this.prisma.messageThreadState.upsert({
+      where: { userId },
+      create: { userId, agentEnabled: true, escalatedAt: null },
+      update: { agentEnabled: true, escalatedAt: null },
+    });
+
+    const agentReply = await this.createAgentMessage(
+      userId,
+      'Agent is back. Ask me about VIP withdrawals, wallet ↔ investment transfers, KYC, setups, or how the platform works.',
+    );
+
+    return {
+      agentEnabled: true,
+      escalated: false,
       reply: agentReply,
     };
   }

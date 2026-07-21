@@ -652,6 +652,10 @@ class ApiClient {
       this.request<RequestAdminResult>("/messages/request-admin", {
         method: "POST",
       }),
+    resumeAgent: () =>
+      this.request<RequestAdminResult>("/messages/resume-agent", {
+        method: "POST",
+      }),
     unreadCount: () =>
       this.request<{ count: number }>("/messages/unread-count"),
   };

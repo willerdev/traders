@@ -36,6 +36,11 @@ export class MessagesController {
     return this.messages.requestHumanAdmin(req.user.id);
   }
 
+  @Post('resume-agent')
+  resumeAgent(@Request() req: { user: { id: string } }) {
+    return this.messages.resumeAgent(req.user.id);
+  }
+
   @Post()
   sendMessage(
     @Request() req: { user: { id: string } },
