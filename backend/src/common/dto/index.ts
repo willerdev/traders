@@ -259,6 +259,12 @@ export class RequestPayoutDto {
   walletAddress?: string;
 }
 
+export class ApprovePayoutDto {
+  @IsOptional()
+  @IsIn(['gateway', 'external'])
+  settlement?: 'gateway' | 'external';
+}
+
 export class RequestTpClaimPayoutDto {
   @IsOptional()
   @IsString()

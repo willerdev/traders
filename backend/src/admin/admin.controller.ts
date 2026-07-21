@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { AdminService } from './admin.service';
-import { CreatePromoCodeDto, BulkCreatePromoCodesDto, SendMessageDto, AdminRejectReasonDto, UpdateStaffPermissionsDto } from '../common/dto';
+import { CreatePromoCodeDto, BulkCreatePromoCodesDto, SendMessageDto, AdminRejectReasonDto, UpdateStaffPermissionsDto, ApprovePayoutDto } from '../common/dto';
 import { JwtAuthGuard, AdminPermissionGuard } from '../auth/guards';
 import { RequireAdminPermission } from '../auth/decorators/admin-permission.decorator';
 import { UploadStorageService } from '../uploads/upload-storage.service';
@@ -251,9 +251,23 @@ export class AdminController {
   approvePayout(
     @Param('payoutId') payoutId: string,
     @Request() req: { user: { id: string } },
-    @Body() body?: { settlement?: 'gateway' | 'external' },
+    @Body() body: ApprovePayoutDto,
   ) {
-    return this.adminService.approvePayout(payoutId, req.user.id, body?.settlement);
+    return this.adminService.approvePayout(
+      payoutId,
+      req.user.id,
+      body?.settlement,
+    );
+  }
+
+  /** Mark a wallet withdrawal paid without calling NOWPayments (admin already paid out-of-band). */
+  @Post('payouts/:payoutId/mark-external-paid')
+  @RequireAdminPermission('payout')
+  markPayoutExternalPaid(
+    @Param('payoutId') payoutId: string,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.adminService.approvePayout(payoutId, req.user.id, 'external');
   }
 
   @Post('payouts/:payoutId/verify')

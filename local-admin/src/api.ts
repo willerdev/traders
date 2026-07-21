@@ -269,10 +269,15 @@ export const api = {
     payoutId: string,
     settlement?: "gateway" | "external",
   ) =>
-    request<ApprovePayoutResponse>(`/admin/payouts/${payoutId}/approve`, {
-      method: "POST",
-      body: JSON.stringify(settlement ? { settlement } : {}),
-    }),
+    settlement === "external"
+      ? request<ApprovePayoutResponse>(
+          `/admin/payouts/${payoutId}/mark-external-paid`,
+          { method: "POST" },
+        )
+      : request<ApprovePayoutResponse>(`/admin/payouts/${payoutId}/approve`, {
+          method: "POST",
+          body: JSON.stringify(settlement ? { settlement } : {}),
+        }),
 
   verifyPayout: (payoutId: string, code: string) =>
     request<{ message: string }>(`/admin/payouts/${payoutId}/verify`, {
