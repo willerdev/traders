@@ -126,6 +126,8 @@ export class AuthService {
       `Invite-only registration: ${user.id} referred by ${referrer.id} (${referralCode})`,
     );
 
+    this.notifications.userRegistered(user.id);
+
     try {
       await this.referrals.creditAndNotifyOnInviteUsed(user.id);
     } catch (err) {

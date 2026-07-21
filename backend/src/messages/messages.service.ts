@@ -188,7 +188,11 @@ export class MessagesService {
 
     if (meta.agentEnabled) {
       const history = await this.buildAgentHistory(userId);
-      const agentText = await this.supportAgent.generateReply(trimmed, history);
+      const agentText = await this.supportAgent.generateReply(
+        userId,
+        trimmed,
+        history,
+      );
       const agentReply = await this.createAgentMessage(userId, agentText);
       replies.push(agentReply);
     }

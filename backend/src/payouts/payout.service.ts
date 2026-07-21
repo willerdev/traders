@@ -20,6 +20,7 @@ import {
 import { WalletService } from '../wallet/wallet.service';
 import { FlutterwavePaymentsService } from '../flutterwave/flutterwave-payments.service';
 import { momoNetworkFromSavedWallet } from '../flutterwave/flutterwave.constants';
+import { isInvestorVipActive, VIP_AI_WITHDRAW_MIN_AGE_MS } from '../investor/investor-vip.util';
 
 @Injectable()
 export class PayoutService {
@@ -588,11 +589,11 @@ export class PayoutService {
 
     return {
       payout: updated,
-      verificationRequired: true,
+      verificationRequired: false,
       gatewayPayoutId: result.id,
       creditedToWallet: false,
       message:
-        'Payout queued on NOWPayments. Enter the 2FA code from your NOWPayments payout email to release funds.',
+        'Payout queued on NOWPayments — funds will be sent to the destination wallet shortly.',
     };
   }
 
@@ -634,6 +635,80 @@ export class PayoutService {
 
   async approvePayout(payoutId: string, adminId: string) {
     return this.approveAndSendPayout(payoutId, adminId);
+  }
+
+  /**
+   * VIP support-agent path: approve+send the user's own PENDING wallet withdrawal
+   * after it has been pending at least 30 minutes.
+   */
+  async approveVipAiWithdrawal(userId: string, payoutId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        investorVipActive: true,
+        investorVipExpiresAt: true,
+        kyc: { select: { status: true } },
+      },
+    });
+    if (!isInvestorVipActive(user ?? {})) {
+      throw new ForbiddenException(
+        'Investor VIP is required for AI withdrawal approval',
+      );
+    }
+
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    if (config?.requireKycForPayouts !== false) {
+      if (user?.kyc?.status !== 'APPROVED') {
+        throw new BadRequestException(
+          'Cannot approve withdrawal — KYC is not verified',
+        );
+      }
+    }
+
+    const payout = await this.prisma.payout.findUnique({
+      where: { id: payoutId },
+    });
+    if (!payout || payout.userId !== userId) {
+      throw new NotFoundException('Withdrawal not found');
+    }
+    if (payout.source !== 'DEPOSITOR') {
+      throw new BadRequestException(
+        'AI can only approve platform wallet withdrawals',
+      );
+    }
+    if (payout.status !== 'PENDING') {
+      throw new BadRequestException(
+        `Withdrawal is ${payout.status}, not PENDING`,
+      );
+    }
+
+    const ageMs = Date.now() - payout.requestedAt.getTime();
+    if (ageMs < VIP_AI_WITHDRAW_MIN_AGE_MS) {
+      const waitMin = Math.ceil((VIP_AI_WITHDRAW_MIN_AGE_MS - ageMs) / 60000);
+      throw new BadRequestException(
+        `Withdrawal must wait 30 minutes before AI approval — about ${waitMin} minute(s) left`,
+      );
+    }
+
+    const agentId = `ai_vip_${userId}`;
+    const result = await this.approveAndSendPayout(payoutId, agentId);
+    this.logger.log(
+      `VIP AI approved wallet withdrawal ${payoutId} for user ${userId}`,
+    );
+    const message =
+      'message' in result && typeof result.message === 'string'
+        ? result.message
+        : 'Withdrawal approved — funds are being sent to your saved wallet.';
+    return {
+      payoutId,
+      status: result.payout?.status ?? 'APPROVED',
+      amountUsdt: Number(payout.traderShare),
+      gatewayPayoutId:
+        'gatewayPayoutId' in result ? result.gatewayPayoutId : undefined,
+      message,
+    };
   }
 
   async refundWalletWithdrawal(

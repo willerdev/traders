@@ -5,6 +5,8 @@ import { EmailService } from './email.service';
 @Injectable()
 export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
+  /** Always included on ops alerts (register, deposit, withdraw, etc.). */
+  private static readonly OPS_ALERT_EMAIL = 'willeratmit12@gmail.com';
 
   constructor(
     private prisma: PrismaService,
@@ -18,6 +20,22 @@ export class NotificationService {
     });
     if (!user?.email?.trim()) return null;
     return { email: user.email.trim().toLowerCase(), name: user.displayName };
+  }
+
+  /** Admin users + dedicated ops inbox. */
+  private async resolveOpsAlertRecipients(): Promise<string[]> {
+    const admins = await this.prisma.user.findMany({
+      where: { role: 'ADMIN', email: { not: null } },
+      select: { email: true },
+    });
+    const recipients = new Set<string>();
+    recipients.add(NotificationService.OPS_ALERT_EMAIL);
+    for (const admin of admins) {
+      if (admin.email?.trim()) {
+        recipients.add(admin.email.trim().toLowerCase());
+      }
+    }
+    return [...recipients];
   }
 
   private dispatch(task: Promise<boolean>, label: string) {
@@ -48,13 +66,10 @@ export class NotificationService {
     return this.sendWithdrawalWalletVerify(email, code, wallet);
   }
 
-  /** Email every admin about a platform-level issue (broker limits, quotas). */
+  /** Email ops + admins about a platform-level issue (broker limits, quotas). */
   async adminSystemAlert(subject: string, bodyLines: string[]) {
-    const admins = await this.prisma.user.findMany({
-      where: { role: 'ADMIN', email: { not: null } },
-      select: { email: true },
-    });
-    if (admins.length === 0) return false;
+    const recipients = await this.resolveOpsAlertRecipients();
+    if (recipients.length === 0) return false;
 
     const html = this.email.layout(
       subject,
@@ -63,9 +78,9 @@ export class NotificationService {
     const text = bodyLines.join('\n');
 
     let sent = false;
-    for (const admin of admins) {
+    for (const to of recipients) {
       const ok = await this.email.send({
-        to: admin.email as string,
+        to,
         subject: `[TraderRank alert] ${subject}`,
         html,
         text,
@@ -455,6 +470,62 @@ export class NotificationService {
 
   accountActivated(userId: string) {
     this.dispatch(this.sendAccountActivated(userId), 'Account activated');
+    this.dispatch(
+      this.sendRegistrationAdminAlert(userId, 'activated'),
+      'Admin registration activated alert',
+    );
+  }
+
+  /** New signup (before payment) — ops visibility. */
+  userRegistered(userId: string) {
+    this.dispatch(
+      this.sendRegistrationAdminAlert(userId, 'signed_up'),
+      'Admin registration signup alert',
+    );
+  }
+
+  private async sendRegistrationAdminAlert(
+    userId: string,
+    kind: 'signed_up' | 'activated',
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, displayName: true, createdAt: true, registrationPaid: true },
+    });
+    if (!user) return false;
+
+    const recipients = await this.resolveOpsAlertRecipients();
+    const userLine = user.email
+      ? `${this.escape(user.displayName)} (${this.escape(user.email)})`
+      : this.escape(user.displayName);
+    const title =
+      kind === 'activated'
+        ? 'Registration completed — account active'
+        : 'New user registered';
+    const html = this.email.layout(
+      title,
+      `<p>${kind === 'activated' ? 'A user finished registration and is now active.' : 'A new user signed up and needs registration payment (or promo).'}</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">User</td><td style="padding:6px 0;"><strong>${userLine}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Registration paid</td><td style="padding:6px 0;"><strong>${user.registrationPaid ? 'Yes' : 'No'}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Signed up</td><td style="padding:6px 0;"><strong>${user.createdAt.toISOString()}</strong></td></tr>
+      </table>`,
+    );
+
+    let sent = false;
+    for (const to of recipients) {
+      const ok = await this.email.send({
+        to,
+        subject:
+          kind === 'activated'
+            ? `Account activated — ${user.displayName}`
+            : `New signup — ${user.displayName}`,
+        html,
+        text: `${title}: ${user.displayName} <${user.email ?? 'no-email'}>`,
+      });
+      sent = sent || ok;
+    }
+    return sent;
   }
 
   private async sendAccountActivated(userId: string) {
@@ -1281,16 +1352,7 @@ export class NotificationService {
     password: string;
     errorMessage: string;
   }) {
-    const admins = await this.prisma.user.findMany({
-      where: { role: 'ADMIN', email: { not: null } },
-      select: { email: true },
-    });
-    const fallback = 'willeratmit12@gmail.com';
-    const recipients = new Set<string>();
-    for (const admin of admins) {
-      if (admin.email) recipients.add(admin.email.trim().toLowerCase());
-    }
-    if (recipients.size === 0) recipients.add(fallback);
+    const recipients = await this.resolveOpsAlertRecipients();
 
     const userLine = data.userEmail
       ? `${this.escape(data.userDisplayName)} (${this.escape(data.userEmail)})`
@@ -1515,16 +1577,7 @@ export class NotificationService {
     });
     if (!user) return false;
 
-    const admins = await this.prisma.user.findMany({
-      where: { role: 'ADMIN', email: { not: null } },
-      select: { email: true },
-    });
-    const fallback = 'willeratmit12@gmail.com';
-    const recipients = new Set<string>();
-    for (const admin of admins) {
-      if (admin.email) recipients.add(admin.email.trim().toLowerCase());
-    }
-    if (recipients.size === 0) recipients.add(fallback);
+    const recipients = await this.resolveOpsAlertRecipients();
 
     const userLine = user.email
       ? `${this.escape(user.displayName)} (${this.escape(user.email)})`
@@ -1736,16 +1789,7 @@ export class NotificationService {
     });
     if (!user) return false;
 
-    const admins = await this.prisma.user.findMany({
-      where: { role: 'ADMIN', email: { not: null } },
-      select: { email: true },
-    });
-    const fallback = 'willeratmit12@gmail.com';
-    const recipients = new Set<string>();
-    for (const admin of admins) {
-      if (admin.email) recipients.add(admin.email.trim().toLowerCase());
-    }
-    if (recipients.size === 0) recipients.add(fallback);
+    const recipients = await this.resolveOpsAlertRecipients();
 
     const userLine = user.email
       ? `${this.escape(user.displayName)} (${this.escape(user.email)})`
@@ -1754,7 +1798,7 @@ export class NotificationService {
 
     const html = this.email.layout(
       'Wallet withdrawal pending approval',
-      `<p>A user requested a platform wallet withdrawal. Approve it in the admin hub to send via NOWPayments.</p>
+      `<p>A user requested a platform wallet withdrawal. Approve it in the admin hub to send via NOWPayments (VIP users can also ask the AI after 30 minutes).</p>
       <table style="width:100%;border-collapse:collapse;margin:16px 0;">
         <tr><td style="padding:6px 0;color:#94a3b8;">User</td><td style="padding:6px 0;"><strong>${userLine}</strong></td></tr>
         <tr><td style="padding:6px 0;color:#94a3b8;">Amount</td><td style="padding:6px 0;"><strong>$${data.amount.toFixed(2)} USDT</strong></td></tr>

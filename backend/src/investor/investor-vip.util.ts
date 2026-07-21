@@ -2,6 +2,9 @@ export const INVESTOR_VIP_FEE_USDT = 20;
 export const INVESTOR_VIP_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
 export const INVESTOR_VIP_REMINDER_DAYS = 3;
 
+/** VIP AI may approve wallet withdrawals only after this pending age. */
+export const VIP_AI_WITHDRAW_MIN_AGE_MS = 30 * 60 * 1000;
+
 export function isInvestorVipActive(user: {
   investorVipActive?: boolean | null;
   investorVipExpiresAt?: Date | string | null;
