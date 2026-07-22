@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -66,10 +67,12 @@ export function LoginScreen({ navigation }: Props) {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <View style={styles.hero}>
-          <Text style={[styles.brand, { color: theme.primary }]}>TraderRank Pro</Text>
-          <Text style={[styles.sub, { color: theme.muted }]}>
-            Deposit · Invest · Compete · Support
-          </Text>
+          <Image
+            source={require("../../../assets/logo.png")}
+            style={styles.logo}
+            resizeMode="contain"
+            accessibilityLabel="Trade Guard"
+          />
         </View>
 
         <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.divider }]}>
@@ -119,8 +122,7 @@ function useStyles() {
         safe: { flex: 1 },
         container: { flex: 1, paddingHorizontal: 24, justifyContent: "center" },
         hero: { alignItems: "center", marginBottom: 28 },
-        brand: { fontSize: 32, fontWeight: "800", letterSpacing: -0.6 },
-        sub: { marginTop: 8, fontSize: 14 },
+        logo: { width: 220, height: 220 },
         card: { borderRadius: 20, borderWidth: 1, padding: 22 },
         cardTitle: { fontSize: 18, fontWeight: "800", marginBottom: 18 },
         error: { marginBottom: 12, fontSize: 13 },

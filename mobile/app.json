@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "TraderRank Pro",
-    "slug": "traderrank-pro",
+    "name": "Trade Guard",
+    "slug": "trade-guards",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -9,7 +9,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#121a2e"
+      "backgroundColor": "#FFFFFF"
     },
     "ios": {
       "supportsTablet": true,
@@ -20,7 +20,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#121a2e",
+        "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -46,9 +46,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
+        "projectId": "42108d7e-5fca-4d6d-8aa9-fac16092c064"
       }
     },
-    "owner": "willerbinance"
+    "owner": "willer256"
   }
 }
