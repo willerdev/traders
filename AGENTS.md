@@ -4,7 +4,7 @@ Trader talent-discovery platform — traders submit setups, compete weekly, earn
 
 ## Layout
 
-`frontend/` · `backend/` · `mt5-guard/` · `local-admin/` · `docs/`
+`frontend/` · `backend/` · `mobile/` · `mt5-guard/` · `local-admin/` · `docs/`
 
 ## Cursor rules
 

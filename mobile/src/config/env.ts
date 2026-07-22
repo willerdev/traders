@@ -1,0 +1,6 @@
+export const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_BASE_URL ??
+  "https://traders-c53s.onrender.com/api/v1";
+
+export const WEB_APP_URL =
+  process.env.EXPO_PUBLIC_WEB_APP_URL ?? "https://thetradeguard.com";

@@ -3,6 +3,13 @@ dist/
 .next/
 .env
 .env.local
+mobile/.env
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+*.orig.*
+web-build/
 *.log
 .DS_Store
 coverage/
