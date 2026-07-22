@@ -147,7 +147,10 @@ export function HomeScreen() {
           <SectionCard title="Virtual account">
             <MoneyRow label="Balance" value={formatUsdt(account.balance)} emphasize />
             <MoneyRow label="Weekly profit" value={formatUsdt(account.weeklyProfit)} />
-            <MoneyRow label="Win rate" value={`${account.winRate.toFixed(0)}%`} />
+            <MoneyRow
+              label="Win rate"
+              value={`${Number(account.winRate ?? 0).toFixed(0)}%`}
+            />
           </SectionCard>
         ) : null}
 
