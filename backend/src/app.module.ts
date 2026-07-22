@@ -31,6 +31,7 @@ import { InvestorModule } from './investor/investor.module';
 import { EvaluationsModule } from './evaluations/evaluations.module';
 import { FlutterwaveModule } from './flutterwave/flutterwave.module';
 import { FxModule } from './fx/fx.module';
+import { AccountTransferModule } from './account-transfer/account-transfer.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { FxModule } from './fx/fx.module';
     InvestorModule,
     EvaluationsModule,
     FlutterwaveModule,
+    AccountTransferModule,
   ],
 })
 export class AppModule {}

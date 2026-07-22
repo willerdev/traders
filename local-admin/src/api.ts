@@ -553,6 +553,18 @@ export const api = {
         body: JSON.stringify(data),
       },
     ),
+
+  broadcastYieldHoldPolicy: (force = false) =>
+    request<{
+      skipped: boolean;
+      announcedAt?: string;
+      total: number;
+      sent: number;
+      failed: number;
+    }>("/admin/notifications/yield-hold-policy", {
+      method: "POST",
+      body: JSON.stringify({ force }),
+    }),
   listInvestors: (params?: { search?: string; limit?: number; offset?: number }) => {
     const q = new URLSearchParams();
     if (params?.search) q.set("search", params.search);
@@ -643,10 +655,40 @@ export const api = {
       description: string;
       email: string | null;
       displayName: string;
+      emailSent: boolean;
     }>("/admin/wallet/credit", {
       method: "POST",
       body: JSON.stringify(data),
     }),
+
+  accountTransfers: (params?: { limit?: number; offset?: number; status?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.limit != null) q.set("limit", String(params.limit));
+    if (params?.offset != null) q.set("offset", String(params.offset));
+    if (params?.status) q.set("status", params.status);
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return request<AccountTransferListResult>(`/admin/account-transfers${suffix}`);
+  },
+  createAccountTransfer: (data: {
+    fromUserId?: string;
+    fromEmail?: string;
+    toUserId?: string;
+    toEmail?: string;
+    note?: string;
+  }) =>
+    request<AccountTransferRow>("/admin/account-transfers", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  cancelAccountTransfer: (id: string) =>
+    request<AccountTransferRow>(`/admin/account-transfers/${id}/cancel`, {
+      method: "POST",
+    }),
+  finalizeAccountTransfer: (id: string) =>
+    request<AccountTransferRow>(`/admin/account-transfers/${id}/finalize`, {
+      method: "POST",
+    }),
+
   publishSystemSignal: (body: {
     symbol: string;
     direction: "BUY" | "SELL";
@@ -1581,4 +1623,40 @@ export type MessageThreadDetail = {
   unreadCount: number;
   agentEnabled?: boolean;
   escalatedAt?: string | null;
+};
+
+export type AccountTransferRow = {
+  id: string;
+  fromUserId: string;
+  toUserId: string;
+  adminId: string;
+  status: string;
+  expiresAt: string;
+  userAgreedAt: string | null;
+  reviewStartedAt: string | null;
+  finalizeAfter: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  adminNote: string | null;
+  agreementVersion: string;
+  failureReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  fromUser?: {
+    email: string | null;
+    displayName: string;
+    status: string;
+  };
+  toUser?: {
+    email: string | null;
+    displayName: string;
+    status: string;
+  };
+};
+
+export type AccountTransferListResult = {
+  items: AccountTransferRow[];
+  count: number;
+  limit: number;
+  offset: number;
 };

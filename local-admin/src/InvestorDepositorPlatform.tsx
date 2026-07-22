@@ -43,6 +43,7 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
   const [creditAmount, setCreditAmount] = useState("");
   const [creditNote, setCreditNote] = useState("");
   const [creditSaving, setCreditSaving] = useState(false);
+  const [broadcastSaving, setBroadcastSaving] = useState(false);
 
   const [enrollEmail, setEnrollEmail] = useState("");
   const [enrollAmount, setEnrollAmount] = useState("100");
@@ -389,6 +390,47 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
               onClick={() => void saveSettings()}
             >
               {settingsSaving ? "Saving…" : "Save platform settings"}
+            </button>
+            <button
+              type="button"
+              className="platform-btn"
+              disabled={broadcastSaving}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    "Email all users about the 24-hour yield hold rule? Use Force only if you already sent once.",
+                  )
+                ) {
+                  return;
+                }
+                const force = window.confirm(
+                  "Force re-send even if already announced? Click Cancel for one-time send only.",
+                );
+                setBroadcastSaving(true);
+                void api
+                  .broadcastYieldHoldPolicy(force)
+                  .then((res) => {
+                    if (res.skipped) {
+                      onMessage(
+                        `Already announced at ${res.announcedAt ?? "—"}. Use force to re-send.`,
+                      );
+                      return;
+                    }
+                    onMessage(
+                      `Yield-hold emails: sent ${res.sent}/${res.total} (failed ${res.failed}).`,
+                    );
+                  })
+                  .catch((e) =>
+                    onMessage(
+                      e instanceof Error ? e.message : "Broadcast failed",
+                    ),
+                  )
+                  .finally(() => setBroadcastSaving(false));
+              }}
+            >
+              {broadcastSaving
+                ? "Emailing users…"
+                : "Email all: 24h yield rule"}
             </button>
           </div>
         </div>
@@ -888,7 +930,10 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
                   })
                   .then((res) => {
                     onMessage(
-                      `Credited ${fmtMoney(res.amount)} to ${res.displayName} — balance ${fmtMoney(res.balance)}.`,
+                      `Credited ${fmtMoney(res.amount)} to ${res.displayName} — balance ${fmtMoney(res.balance)}.` +
+                        (res.emailSent
+                          ? " Email sent."
+                          : " Email NOT sent (check Resend)."),
                     );
                     setCreditEmail("");
                     setCreditAmount("");

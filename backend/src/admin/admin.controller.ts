@@ -657,6 +657,16 @@ export class AdminController {
     return this.adminService.creditUserWallet(req.user.id, body);
   }
 
+  @Post('notifications/yield-hold-policy')
+  broadcastYieldHoldPolicy(
+    @Request() req: { user: { id: string } },
+    @Body() body?: { force?: boolean },
+  ) {
+    return this.adminService.broadcastInvestorYieldHoldPolicy(req.user.id, {
+      force: Boolean(body?.force),
+    });
+  }
+
   @Post('system-signals')
   publishSystemSignal(
     @Body()

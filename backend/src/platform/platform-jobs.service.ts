@@ -11,6 +11,7 @@ import { WEEKLY_ACCESS_MS } from '../common/weekly-access.util';
 import { WalletService } from '../wallet/wallet.service';
 import { InvestorService } from '../investor/investor.service';
 import { AbuseHunterService } from './abuse-hunter.service';
+import { AccountTransferService } from '../account-transfer/account-transfer.service';
 
 @Injectable()
 export class PlatformJobsService implements OnModuleInit {
@@ -25,6 +26,7 @@ export class PlatformJobsService implements OnModuleInit {
     private walletService: WalletService,
     private investorService: InvestorService,
     private abuseHunter: AbuseHunterService,
+    private accountTransfers: AccountTransferService,
   ) {}
 
   async onModuleInit() {
@@ -225,6 +227,9 @@ export class PlatformJobsService implements OnModuleInit {
           `Investor daily earnings credited: ${result.credited} investor(s)` +
             (result.weekendSkipped
               ? ` (${result.weekendSkipped} weekend skip)`
+              : '') +
+            (result.holdSkipped
+              ? ` (${result.holdSkipped} under 24h hold)`
               : ''),
         );
       } else if (result.skipped === 'global_pause') {
@@ -250,6 +255,23 @@ export class PlatformJobsService implements OnModuleInit {
     } catch (err) {
       this.logger.error(
         `VIP maintenance failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  /** Every 15 minutes — finalize account transfers past the 24h review hold. */
+  @Cron('*/15 * * * *')
+  async accountTransferFinalizeJob() {
+    try {
+      const result = await this.accountTransfers.finalizeDue();
+      if (result.processed > 0) {
+        this.logger.log(
+          `Account transfers finalized: completed=${result.completed} failed=${result.failed}`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Account transfer finalize job failed: ${err instanceof Error ? err.message : err}`,
       );
     }
   }

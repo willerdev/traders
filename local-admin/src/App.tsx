@@ -37,6 +37,7 @@ import { Sidebar, type Tab, isAdminTab, tabsForPermissions, resolveTabForPermiss
 import { UserDetailModal } from "./UserDetailModal";
 import { InvestorDepositorPlatform } from "./InvestorDepositorPlatform";
 import { TransactionsPanel } from "./TransactionsPanel";
+import { AccountTransfersPanel } from "./AccountTransfersPanel";
 
 function badgeClass(status: string) {
   return `badge ${status.toLowerCase()}`;
@@ -2143,6 +2144,10 @@ export default function App() {
           </>
         )}
 
+        {tab === "transfers" && (
+          <AccountTransfersPanel onMessage={setMessage} />
+        )}
+
         {tab === "transactions" && (
           <TransactionsPanel onOpenUser={(id) => setUserDetailId(id)} />
         )}
@@ -2719,7 +2724,10 @@ export default function App() {
                       })
                       .then((res) => {
                         setMessage(
-                          `Credited ${fmtMoney(res.amount)} to ${res.displayName} — balance ${fmtMoney(res.balance)}.`,
+                          `Credited ${fmtMoney(res.amount)} to ${res.displayName} — balance ${fmtMoney(res.balance)}.` +
+                            (res.emailSent
+                              ? " Email sent."
+                              : " Email NOT sent (check Resend)."),
                         );
                         setCreditWalletEmail("");
                         setCreditWalletAmount("");

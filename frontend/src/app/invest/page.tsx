@@ -14,7 +14,8 @@ export default function InvestPage() {
         <div>
           <h1 className="text-2xl font-bold text-white xl:text-3xl">Smart Invest</h1>
           <p className="mt-1 text-sm text-gray-400">
-            Capital, daily yield projections, and returns history
+            Capital, daily yield projections, and returns history. New
+            investment allocations earn yield only after 24 hours.
           </p>
         </div>
         <p className="mt-2 hidden text-xs uppercase tracking-[0.18em] text-emerald-300/70 xl:block">

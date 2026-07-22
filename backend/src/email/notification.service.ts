@@ -1643,12 +1643,20 @@ export class NotificationService {
 
   walletAdminCredit(
     userId: string,
-    data: { amount: number; balance: number },
+    data: { amount: number; balance: number; note?: string },
   ) {
     this.dispatch(
       this.sendWalletAdminCredit(userId, data),
       'Wallet admin credit',
     );
+  }
+
+  /** Awaitable admin deposit email (used when an admin credits a wallet). */
+  notifyWalletAdminCredit(
+    userId: string,
+    data: { amount: number; balance: number; note?: string },
+  ) {
+    return this.sendWalletAdminCredit(userId, data);
   }
 
   referralSettlementPaid(
@@ -1678,22 +1686,28 @@ export class NotificationService {
 
   private async sendWalletAdminCredit(
     userId: string,
-    data: { amount: number; balance: number },
+    data: { amount: number; balance: number; note?: string },
   ) {
     const user = await this.userContact(userId);
     if (!user) return false;
+    const noteLine =
+      data.note?.trim()
+        ? `<p style="color:#94a3b8;font-size:14px;">Note: ${this.escape(data.note.trim())}</p>`
+        : '';
     const html = this.email.layout(
-      'Wallet credited',
+      'Admin deposit received',
       `<p>Hi ${this.escape(user.name)},</p>
-      <p><strong>$${data.amount.toFixed(2)} USDT</strong> has been added to your platform wallet.</p>
+      <p>An administrator deposited <strong>$${data.amount.toFixed(2)} USDT</strong> into your platform wallet.</p>
       <p>Available balance: <strong>$${data.balance.toFixed(2)} USDT</strong></p>
+      ${noteLine}
+      <p style="color:#94a3b8;font-size:14px;">Funds moved into Smart Invest only earn daily yield after they have been invested for at least <strong>24 hours</strong>.</p>
       ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
     );
     return this.email.send({
       to: user.email,
-      subject: 'Your wallet has been credited',
+      subject: `Admin deposited $${data.amount.toFixed(2)} USDT to your wallet`,
       html,
-      text: `$${data.amount.toFixed(2)} USDT credited. Balance: $${data.balance.toFixed(2)} USDT.`,
+      text: `An admin deposited $${data.amount.toFixed(2)} USDT. Balance: $${data.balance.toFixed(2)} USDT. Invested funds earn yield only after 24 hours.`,
     });
   }
 
@@ -2305,6 +2319,234 @@ export class NotificationService {
       subject: `Payment confirmed — ${label}`,
       html,
       text: `Payment confirmed for ${label}: $${data.amount.toFixed(2)} USDT.`,
+    });
+  }
+
+  accountTransferRequest(
+    userId: string,
+    data: {
+      transferId: string;
+      token: string;
+      fromEmail: string | null;
+      fromDisplayName: string;
+      availableBalance: number;
+      lockedBalance: number;
+      investorBalance: number;
+      expiresAt: Date;
+    },
+  ) {
+    return this.sendAccountTransferRequest(userId, data);
+  }
+
+  accountTransferInReview(
+    userId: string,
+    data: {
+      transferId: string;
+      finalizeAfter: Date;
+      fromEmail: string | null;
+    },
+  ) {
+    this.dispatch(
+      this.sendAccountTransferInReview(userId, data),
+      'Account transfer in review',
+    );
+  }
+
+  accountTransferCompleted(
+    userId: string,
+    data: {
+      transferId: string;
+      fromEmail: string | null;
+      availableBalance: number;
+      lockedBalance: number;
+      investorBalance: number;
+    },
+  ) {
+    this.dispatch(
+      this.sendAccountTransferCompleted(userId, data),
+      'Account transfer completed',
+    );
+  }
+
+  accountTransferCancelled(userId: string, data: { transferId: string }) {
+    this.dispatch(
+      this.sendAccountTransferCancelled(userId, data),
+      'Account transfer cancelled',
+    );
+  }
+
+  private async sendAccountTransferRequest(
+    userId: string,
+    data: {
+      transferId: string;
+      token: string;
+      fromEmail: string | null;
+      fromDisplayName: string;
+      availableBalance: number;
+      lockedBalance: number;
+      investorBalance: number;
+      expiresAt: Date;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const url = `${this.email.frontendUrl}/account-transfer?token=${encodeURIComponent(data.token)}`;
+    const fromLabel = data.fromEmail
+      ? this.escape(data.fromEmail)
+      : this.escape(data.fromDisplayName);
+    const html = this.email.layout(
+      'Approve account asset transfer',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>An administrator started a transfer of assets from <strong>${fromLabel}</strong> onto <strong>this account</strong>.</p>
+      <p>Estimated balances to move:</p>
+      <ul style="padding-left:18px;color:#cbd5e1;">
+        <li>Available: <strong>$${data.availableBalance.toFixed(2)} USDT</strong></li>
+        <li>Locked: <strong>$${data.lockedBalance.toFixed(2)} USDT</strong></li>
+        <li>Investment: <strong>$${data.investorBalance.toFixed(2)} USDT</strong></li>
+      </ul>
+      <p>You must read and agree on the linked page. After you agree, assets enter a <strong>24-hour review</strong>. Then the old account is banned and funds appear here.</p>
+      <p style="color:#94a3b8;font-size:14px;">Link expires ${this.escape(data.expiresAt.toUTCString())}.</p>
+      ${this.email.button(url, 'Review and agree')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Action required: approve account asset transfer',
+      html,
+      text: `Approve transfer of assets from ${data.fromEmail ?? data.fromDisplayName} to this account: ${url}`,
+    });
+  }
+
+  private async sendAccountTransferInReview(
+    userId: string,
+    data: {
+      transferId: string;
+      finalizeAfter: Date;
+      fromEmail: string | null;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Transfer in 24-hour review',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>You approved the asset transfer${data.fromEmail ? ` from <strong>${this.escape(data.fromEmail)}</strong>` : ''}.</p>
+      <p>Funds stay in review until <strong>${this.escape(data.finalizeAfter.toUTCString())}</strong>. After that, the old account is banned and balances become available here.</p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'Open wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Account transfer is in 24-hour review',
+      html,
+      text: `Transfer ${data.transferId} is in review until ${data.finalizeAfter.toISOString()}.`,
+    });
+  }
+
+  private async sendAccountTransferCompleted(
+    userId: string,
+    data: {
+      transferId: string;
+      fromEmail: string | null;
+      availableBalance: number;
+      lockedBalance: number;
+      investorBalance: number;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Account transfer completed',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>The asset transfer${data.fromEmail ? ` from <strong>${this.escape(data.fromEmail)}</strong>` : ''} is complete. The old account has been banned.</p>
+      <p>Moved: available $${data.availableBalance.toFixed(2)}, locked $${data.lockedBalance.toFixed(2)}, investment $${data.investorBalance.toFixed(2)} USDT (plus history and related program state).</p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Account transfer completed',
+      html,
+      text: `Transfer ${data.transferId} completed. Assets are now on this account.`,
+    });
+  }
+
+  private async sendAccountTransferCancelled(
+    userId: string,
+    data: { transferId: string },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Account transfer cancelled',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>The pending account asset transfer (<code>${this.escape(data.transferId)}</code>) was cancelled by an administrator. No balances were moved.</p>`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Account transfer cancelled',
+      html,
+      text: `Transfer ${data.transferId} was cancelled. No balances were moved.`,
+    });
+  }
+
+  /**
+   * Email every user with an address about the 24h yield-hold rule.
+   * Sends sequentially with a short delay to respect Resend rate limits.
+   */
+  async broadcastInvestorYieldHoldPolicy(): Promise<{
+    total: number;
+    sent: number;
+    failed: number;
+  }> {
+    const users = await this.prisma.user.findMany({
+      where: {
+        email: { not: null },
+        status: { not: 'BANNED' },
+      },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    let sent = 0;
+    let failed = 0;
+    for (const user of users) {
+      try {
+        const ok = await this.sendInvestorYieldHoldPolicy(user.id);
+        if (ok) sent++;
+        else failed++;
+      } catch {
+        failed++;
+      }
+      await new Promise((r) => setTimeout(r, 80));
+    }
+
+    this.logger.log(
+      `Yield-hold policy broadcast: sent=${sent} failed=${failed} total=${users.length}`,
+    );
+    return { total: users.length, sent, failed };
+  }
+
+  private async sendInvestorYieldHoldPolicy(userId: string) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'New yield rule: 24-hour hold',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>To protect the platform and all investors, we are introducing a clear rule:</p>
+      <p><strong>New deposits and investment allocations only start earning daily yield after they have been in place for at least 24 hours.</strong></p>
+      <ul style="padding-left:18px;color:#cbd5e1;">
+        <li>Smart Invest: amounts moved into investment in the last 24 hours are excluded from that day’s yield.</li>
+        <li>Depositor plans: the first daily earning credits after a full 24 hours from plan start.</li>
+        <li>Existing capital that has already been invested for 24+ hours continues to earn as usual.</li>
+      </ul>
+      <p>This stops last-minute deposits timed around the daily payout, followed by an immediate withdrawal.</p>
+      <p>Thank you for helping keep returns fair for everyone.</p>
+      ${this.email.button(`${this.email.frontendUrl}/invest`, 'Open Invest')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'New rule: deposits earn yield only after 24 hours',
+      html,
+      text:
+        'New rule: deposits and investment allocations earn daily yield only after they have been in place for at least 24 hours. Existing capital older than 24 hours is unaffected. See thetradeguard.com/invest',
     });
   }
 }

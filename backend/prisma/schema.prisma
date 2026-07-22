@@ -26,6 +26,14 @@ enum UserStatus {
   BANNED
 }
 
+enum AccountTransferStatus {
+  PENDING_USER
+  IN_REVIEW
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
 enum RankTier {
   BRONZE
   SILVER
@@ -276,6 +284,8 @@ model User {
   referredBy         User?   @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
   referrals          User[]  @relation("UserReferrals")
   referralSettlements ReferralSettlement[]
+  accountTransfersFrom AccountTransfer[] @relation("AccountTransferFrom")
+  accountTransfersTo   AccountTransfer[] @relation("AccountTransferTo")
 
   @@index([status])
   @@index([role])
@@ -870,6 +880,8 @@ model PlatformConfig {
   depositorDailyYieldPercent Decimal @default(0.5) @db.Decimal(5, 2)
   depositorMinDepositUsdt  Decimal @default(50) @db.Decimal(10, 2)
   loginOtpEnabled          Boolean @default(false) @map("login_otp_enabled")
+  /// Set after the 24h investment/deposit yield-hold policy email is broadcast once.
+  investorYieldHoldAnnouncedAt DateTime?
 
   @@map("platform_config")
 }
@@ -1015,6 +1027,36 @@ model AuditLog {
   @@index([adminId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+/// Admin-initiated merge of assets from a duplicate/unwanted account onto a keep account.
+model AccountTransfer {
+  id               String                @id @default(cuid())
+  fromUserId       String
+  toUserId         String
+  adminId          String
+  status           AccountTransferStatus @default(PENDING_USER)
+  tokenHash        String                @unique
+  expiresAt        DateTime
+  userAgreedAt     DateTime?
+  reviewStartedAt  DateTime?
+  finalizeAfter    DateTime?
+  completedAt      DateTime?
+  cancelledAt      DateTime?
+  snapshot         Json?
+  adminNote        String?
+  agreementVersion String                @default("v1")
+  failureReason    String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  fromUser User @relation("AccountTransferFrom", fields: [fromUserId], references: [id], onDelete: Restrict)
+  toUser   User @relation("AccountTransferTo", fields: [toUserId], references: [id], onDelete: Restrict)
+
+  @@index([status, finalizeAfter])
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@map("account_transfers")
 }
 
 model PlatformNotification {

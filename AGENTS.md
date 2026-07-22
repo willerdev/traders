@@ -15,3 +15,4 @@ Scoped rules live in `.cursor/rules/` — loaded automatically by area. Do **not
 - API prefix: `/api/v1` · Swagger: `/api/docs`
 - Prisma: `db push` (no migrations)
 - KYC: payouts only · Payout split: 40/60
+- Duplicate accounts: admin **Transfers** tab → destination agrees at `/account-transfer` → 24h review → source banned

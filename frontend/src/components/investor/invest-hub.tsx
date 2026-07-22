@@ -599,8 +599,8 @@ export function InvestHub() {
         <h3 className="text-sm font-semibold text-white">Move funds</h3>
         <p className="mt-1 text-xs text-gray-500">
           Wallet {formatMoney(status.walletBalance, display)} · Investment{" "}
-          {formatMoney(status.investmentBalance ?? 0, display)}. Daily yield is
-          based on investment balance.
+          {formatMoney(status.investmentBalance ?? 0, display)}. Daily yield only
+          applies to capital that has been invested for at least 24 hours.
         </p>
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <div className="min-w-[140px] flex-1">

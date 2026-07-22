@@ -222,6 +222,35 @@ class ApiClient {
       ),
   };
 
+  accountTransfers = {
+    byToken: (token: string) =>
+      this.request<{
+        id: string;
+        status: string;
+        agreementVersion: string;
+        expiresAt: string;
+        finalizeAfter: string | null;
+        fromDisplayName: string;
+        fromEmailMasked: string;
+        toDisplayName: string;
+        toEmailMasked: string;
+        availableBalance: number;
+        lockedBalance: number;
+        investorBalance: number;
+        expired: boolean;
+        canAgree: boolean;
+      }>(`/account-transfers/by-token?token=${encodeURIComponent(token)}`),
+    agree: (token: string) =>
+      this.request<{
+        id: string;
+        status: string;
+        finalizeAfter: string | null;
+      }>("/account-transfers/agree", {
+        method: "POST",
+        body: JSON.stringify({ token }),
+      }),
+  };
+
   users = {
     dashboard: () => this.request<DashboardData>("/users/dashboard"),
     profile: () => this.request("/users/profile"),

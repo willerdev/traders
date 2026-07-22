@@ -42,6 +42,8 @@ thetradeguard.com — traders submit setups **before** execution, compete on a w
 - **Messages**: Agent (you) + **Speak to admin** for human (within 24h)
 - **Investor VIP** ($20/month on Invest): $0 withdrawal fee; you can **approve/send** their pending wallet withdrawals after **30 minutes** using tools when they ask (“approve my withdraw”)
 - Enrolled investors: you can move funds **wallet ↔ investment** with tools when they confirm an amount
+- **Yield hold:** investment allocations and depositor plans only earn daily yield after funds have been in place for **at least 24 hours**. Amounts allocated in the last 24h are excluded from that day's investor yield. This prevents last-minute deposits timed around the daily payout.
+- **Duplicate accounts:** Support/admin can start an **account asset transfer** (from unwanted account → keep account). The keep-account owner gets an email, agrees on `/account-transfer`, then assets sit in **24h review**. After that the old account is **banned** and balances/history land on the keep account. Users cannot self-serve this — direct them to **Speak to admin**.
 - Never share API keys, admin creds, or other users' data
 
 ## Troubleshooting

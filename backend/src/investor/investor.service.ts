@@ -38,6 +38,8 @@ import { resolvePreferredDisplayCurrency } from '../fx/country-currency.util';
 @Injectable()
 export class InvestorService {
   private readonly logger = new Logger(InvestorService.name);
+  /** Capital must sit in investment this long before it earns daily yield. */
+  static readonly YIELD_MIN_DEPOSIT_AGE_MS = 24 * 60 * 60 * 1000;
 
   constructor(
     private prisma: PrismaService,
@@ -1094,6 +1096,9 @@ export class InvestorService {
     const dow = this.kampalaDayOfWeek(today);
     const isWeekend = dow === 0 || dow === 6;
     const platformYield = await this.platformInvestorDailyYield();
+    const holdSince = new Date(
+      Date.now() - InvestorService.YIELD_MIN_DEPOSIT_AGE_MS,
+    );
 
     const investors = await this.prisma.user.findMany({
       where: { investorActive: true },
@@ -1103,6 +1108,7 @@ export class InvestorService {
     let credited = 0;
     let pausedUsers = 0;
     let weekendSkipped = 0;
+    let holdSkipped = 0;
     for (const user of investors) {
       if (user.investorSettings?.yieldPaused) {
         pausedUsers++;
@@ -1129,13 +1135,35 @@ export class InvestorService {
       const baseBalance = Number(user.platformWallet?.investorBalance ?? 0);
       if (baseBalance <= 0 || yieldPercent <= 0) continue;
 
+      // Exclude capital allocated within the last 24h (anti last-minute deposit gaming).
+      const recentAllocate = await this.prisma.walletTransaction.aggregate({
+        where: {
+          userId: user.id,
+          type: 'INVESTOR_ALLOCATE',
+          createdAt: { gte: holdSince },
+        },
+        _sum: { amount: true },
+      });
+      const recentAllocated = Math.abs(Number(recentAllocate._sum.amount ?? 0));
+      const eligibleBalance =
+        Math.round(Math.max(0, baseBalance - recentAllocated) * 100) / 100;
+      if (eligibleBalance <= 0) {
+        holdSkipped++;
+        continue;
+      }
+
       const earningAmount =
-        Math.round(((baseBalance * yieldPercent) / 100) * 100) / 100;
+        Math.round(((eligibleBalance * yieldPercent) / 100) * 100) / 100;
       if (earningAmount <= 0) continue;
 
       const wallet = await this.walletService.getOrCreateWallet(user.id);
       const newWalletBalance = Number(wallet.availableBalance) + earningAmount;
       const investmentBalance = Number(wallet.investorBalance ?? 0);
+
+      const holdNote =
+        recentAllocated > 0
+          ? ` (eligible $${eligibleBalance.toFixed(2)} of $${baseBalance.toFixed(2)}; $${recentAllocated.toFixed(2)} under 24h hold)`
+          : '';
 
       await this.prisma.$transaction([
         this.prisma.investorDailyCredit.create({
@@ -1143,7 +1171,7 @@ export class InvestorService {
             userId: user.id,
             amount: earningAmount,
             yieldPercent,
-            baseBalance,
+            baseBalance: eligibleBalance,
             creditDate: today,
           },
         }),
@@ -1157,7 +1185,7 @@ export class InvestorService {
             amount: earningAmount,
             type: 'INVESTOR_EARNING',
             referenceId: user.id,
-            description: `Investor daily earning ${yieldPercent}% on $${baseBalance.toFixed(2)} investment — $${earningAmount.toFixed(2)} USDT${isWeekend ? ' (VIP weekend)' : ''}`,
+            description: `Investor daily earning ${yieldPercent}% on $${eligibleBalance.toFixed(2)} investment — $${earningAmount.toFixed(2)} USDT${isWeekend ? ' (VIP weekend)' : ''}${holdNote}`,
             balanceAfter: newWalletBalance,
           },
         }),
@@ -1168,12 +1196,12 @@ export class InvestorService {
         yieldPercent,
         balance: newWalletBalance,
         investmentBalance,
-        baseBalance,
+        baseBalance: eligibleBalance,
       });
       credited++;
     }
 
-    return { credited, pausedUsers, weekendSkipped };
+    return { credited, pausedUsers, weekendSkipped, holdSkipped };
   }
 
   /** Enrollment + wallet deposits for MT5 investor display. */

@@ -2013,7 +2013,40 @@ export class AdminService {
       ...result,
       email: user.email,
       displayName: user.displayName,
+      emailSent: result.emailSent,
     };
+  }
+
+  /**
+   * Email all users about the 24h investment/deposit yield-hold rule.
+   * Marks PlatformConfig so startup/cron only sends once unless force=true.
+   */
+  async broadcastInvestorYieldHoldPolicy(
+    adminId: string,
+    opts?: { force?: boolean },
+  ) {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    if (config?.investorYieldHoldAnnouncedAt && !opts?.force) {
+      return {
+        skipped: true as const,
+        announcedAt: config.investorYieldHoldAnnouncedAt.toISOString(),
+        total: 0,
+        sent: 0,
+        failed: 0,
+      };
+    }
+
+    const result = await this.notifications.broadcastInvestorYieldHoldPolicy();
+    const announcedAt = new Date();
+    await this.prisma.platformConfig.upsert({
+      where: { id: 'default' },
+      create: { id: 'default', investorYieldHoldAnnouncedAt: announcedAt },
+      update: { investorYieldHoldAnnouncedAt: announcedAt },
+    });
+    await this.logAction(adminId, 'YIELD_HOLD_POLICY_BROADCAST', undefined, result);
+    return { skipped: false as const, announcedAt: announcedAt.toISOString(), ...result };
   }
 
   publishSystemSignal(body: {

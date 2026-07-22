@@ -5,6 +5,7 @@ export type Tab =
   | "paymentForecast"
   | "live"
   | "users"
+  | "transfers"
   | "transactions"
   | "messages"
   | "signals"
@@ -26,6 +27,7 @@ export const ADMIN_TABS: Tab[] = [
   "paymentForecast",
   "live",
   "users",
+  "transfers",
   "transactions",
   "messages",
   "signals",
@@ -96,6 +98,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "paymentForecast", label: "Payment forecast", icon: "forecast" },
   { id: "live", label: "Live activity", icon: "live" },
   { id: "users", label: "Users", icon: "users" },
+  { id: "transfers", label: "Transfers", icon: "transactions" },
   { id: "transactions", label: "Transactions", icon: "transactions" },
   { id: "messages", label: "Messages", icon: "messages" },
   { id: "signals", label: "Setups", icon: "setups" },

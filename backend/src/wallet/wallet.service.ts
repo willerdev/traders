@@ -339,7 +339,7 @@ export class WalletService {
 
     const note =
       description?.trim() ||
-      `Platform credit — $${amount.toFixed(2)} USDT`;
+      `Admin deposit — $${amount.toFixed(2)} USDT`;
     const { balance } = await this.creditBalance(
       userId,
       amount,
@@ -348,13 +348,18 @@ export class WalletService {
       `admin_${adminId}`,
     );
 
-    this.notifications.walletAdminCredit(userId, { amount, balance });
+    const emailSent = await this.notifications.notifyWalletAdminCredit(userId, {
+      amount,
+      balance,
+      note,
+    });
 
     return {
       userId,
       amount,
       balance,
       description: note,
+      emailSent,
     };
   }
 
@@ -692,11 +697,12 @@ export class WalletService {
         continue;
       }
 
+      // Full 24h periods only — no same-day credit after deposit (anti-gaming).
       const msPerDay = 24 * 60 * 60 * 1000;
       const elapsedDays = Math.floor(
         (now.getTime() - plan.startAt.getTime()) / msPerDay,
       );
-      const dayIndex = Math.min(elapsedDays + 1, PLAN_DAYS);
+      const dayIndex = Math.min(elapsedDays, PLAN_DAYS);
       const creditedDays = new Set(plan.credits.map((c) => c.dayIndex));
 
       if (dayIndex < 1 || creditedDays.has(dayIndex)) continue;
