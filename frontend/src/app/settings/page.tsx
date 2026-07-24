@@ -31,6 +31,10 @@ import { validateDisplayName } from "@/lib/display-name";
 import { cn } from "@/lib/utils";
 import { AuthenticatedImage } from "@/components/ui/authenticated-image";
 import { ReferralCard } from "@/components/settings/referral-card";
+import {
+  SettingsJumpNav,
+  SettingsSection,
+} from "@/components/settings/settings-section";
 import { Mt5LiveSyncCard } from "@/components/mt5/mt5-live-sync-card";
 import { Mt5ConnectForm } from "@/components/mt5/mt5-connect-form";
 
@@ -493,12 +497,15 @@ export default function SettingsPage() {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-8"
+        className="mb-6 space-y-4"
       >
-        <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-        <p className="mt-1 text-sm text-muted">
-          Manage your profile, address, identity verification, and preferences.
-        </p>
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Settings</h1>
+          <p className="mt-1 text-sm text-muted">
+            Profile, payouts, verification, trading links, and app preferences.
+          </p>
+        </div>
+        <SettingsJumpNav />
       </motion.div>
 
       {(error || message) && (
@@ -514,7 +521,12 @@ export default function SettingsPage() {
         </div>
       )}
 
-      <div className="space-y-6">
+      <div className="space-y-10">
+        <SettingsSection
+          id="profile"
+          title="Profile & address"
+          description="Who you are on the platform and where you live (needed for KYC)."
+        >
         {/* Profile */}
         <Card>
           <CardHeader>
@@ -671,7 +683,13 @@ export default function SettingsPage() {
             </Button>
           </CardContent>
         </Card>
+        </SettingsSection>
 
+        <SettingsSection
+          id="money"
+          title="Money & payouts"
+          description="How balances are shown and where withdrawals are sent."
+        >
         {/* Display currency */}
         <Card>
           <CardHeader>
@@ -839,7 +857,13 @@ export default function SettingsPage() {
             </Button>
           </CardContent>
         </Card>
+        </SettingsSection>
 
+        <SettingsSection
+          id="verification"
+          title="Identity verification"
+          description="KYC is required for payouts only — not to register or submit setups."
+        >
         {/* KYC */}
         <Card id="kyc">
           <CardHeader>
@@ -970,7 +994,13 @@ export default function SettingsPage() {
             )}
           </CardContent>
         </Card>
+        </SettingsSection>
 
+        <SettingsSection
+          id="trading"
+          title="Trading & MT5"
+          description="Link MetaAPI / Live Sync for market execution from your setups."
+        >
         {/* Appearance */}
         <Card>
           <CardHeader>
@@ -1046,10 +1076,21 @@ export default function SettingsPage() {
           tradingActive={settings?.user.status === "ACTIVE"}
           linkedAccountId={tradingAccountId || settings?.user.metaApiAccountId}
         />
+        </SettingsSection>
 
-        {/* Referral program */}
-        <ReferralCard />
+        <SettingsSection
+          id="referrals"
+          title="Referrals"
+          description="Invite traders and track referral rewards."
+        >
+          <ReferralCard />
+        </SettingsSection>
 
+        <SettingsSection
+          id="preferences"
+          title="App preferences"
+          description="Theme and session."
+        >
         {/* Account */}
         <Card>
           <CardHeader>
@@ -1059,7 +1100,7 @@ export default function SettingsPage() {
               ) : (
                 <Sun className="h-5 w-5 text-primary" />
               )}
-              <CardTitle>Account</CardTitle>
+              <CardTitle>Appearance & session</CardTitle>
             </div>
             <CardDescription>
               Member since{" "}
@@ -1104,6 +1145,7 @@ export default function SettingsPage() {
             </Button>
           </CardContent>
         </Card>
+        </SettingsSection>
       </div>
     </div>
   );

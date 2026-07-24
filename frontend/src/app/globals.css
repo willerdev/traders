@@ -28,6 +28,8 @@ html.light {
 
 html {
   scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
@@ -36,6 +38,22 @@ body {
   font-family: var(--font-sans), system-ui, sans-serif;
   min-height: 100vh;
   transition: background-color 0.2s ease, color 0.2s ease;
+  overscroll-behavior-y: none;
+}
+
+/* Phones: no pinch-zoom layout stretch; allow vertical pan only */
+@media (max-width: 767px) {
+  html,
+  body {
+    touch-action: pan-x pan-y;
+    -ms-touch-action: pan-x pan-y;
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px; /* avoid iOS focus zoom */
+  }
 }
 
 .glass-card {

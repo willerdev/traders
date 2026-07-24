@@ -296,7 +296,7 @@ export function MainContent({ children }: { children: React.ReactNode }) {
       className={cn(
         "flex-1",
         isAuthenticated &&
-          "pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] md:pb-0",
+          "pb-[calc(5.25rem+env(safe-area-inset-bottom,0px))] md:pb-0",
         isAuthenticated && "md:pl-[4.25rem]",
       )}
     >
