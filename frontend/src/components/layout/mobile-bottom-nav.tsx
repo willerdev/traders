@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -19,22 +19,6 @@ import {
 import { cn } from "@/lib/utils";
 import { mt5NavHref } from "@/lib/copy-access";
 import { useAuthStore, useDashboardStore } from "@/stores/auth";
-
-const moreRoutes = [
-  "/journal",
-  "/tp-claims",
-  "/payouts",
-  "/messages",
-  "/settings",
-] as const;
-
-const moreMenuItems = [
-  { href: "/journal", label: "Journal", hint: "Income & returns", icon: ScrollText },
-  { href: "/tp-claims", label: "TP Claims", hint: "Evidence & rewards", icon: ClipboardCheck },
-  { href: "/payouts", label: "Payouts", hint: "Trader payouts", icon: Wallet },
-  { href: "/messages", label: "Support", hint: "Agent & admin", icon: MessageCircle },
-  { href: "/settings", label: "Settings", hint: "Profile, KYC, MT5", icon: Settings },
-] as const;
 
 function isMt5Path(pathname: string) {
   return pathname === "/mt5" || pathname.startsWith("/mt5/");
@@ -131,15 +115,64 @@ export function MobileBottomNav() {
       dashboardUser?.adminPermissions ?? user?.adminPermissions,
   });
 
+  const moreMenuItems = useMemo(
+    () =>
+      [
+        {
+          href: mt5Href,
+          label: "MT5",
+          hint: "Quotes, charts & trade",
+          icon: LineChart,
+          match: "/mt5",
+        },
+        {
+          href: "/journal",
+          label: "Journal",
+          hint: "Income & returns",
+          icon: ScrollText,
+          match: "/journal",
+        },
+        {
+          href: "/tp-claims",
+          label: "TP Claims",
+          hint: "Evidence & rewards",
+          icon: ClipboardCheck,
+          match: "/tp-claims",
+        },
+        {
+          href: "/payouts",
+          label: "Payouts",
+          hint: "Trader payouts",
+          icon: Wallet,
+          match: "/payouts",
+        },
+        {
+          href: "/messages",
+          label: "Support",
+          hint: "Agent & admin",
+          icon: MessageCircle,
+          match: "/messages",
+        },
+        {
+          href: "/settings",
+          label: "Settings",
+          hint: "Profile, KYC & account",
+          icon: Settings,
+          match: "/settings",
+        },
+      ] as const,
+    [mt5Href],
+  );
+
   const moreOpen = moreAt === pathname;
   const setMoreOpen = (open: boolean) => setMoreAt(open ? pathname : null);
 
   const homeActive = pathname === "/dashboard";
   const investActive = pathActive(pathname, "/invest");
   const walletActive = pathActive(pathname, "/wallet");
-  const mt5Active = isMt5Path(pathname);
   const moreActive =
-    moreOpen || moreRoutes.some((r) => pathActive(pathname, r));
+    moreOpen ||
+    moreMenuItems.some((item) => pathActive(pathname, item.match));
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -181,7 +214,7 @@ export function MobileBottomNav() {
             <div>
               <p className="text-sm font-semibold text-foreground">More</p>
               <p className="text-[11px] text-[var(--nav-dock-inactive)]">
-                Claims, payouts, support & account
+                MT5, claims, payouts, support & account
               </p>
             </div>
             <button
@@ -195,9 +228,9 @@ export function MobileBottomNav() {
           <ul className="grid grid-cols-1 gap-0.5 p-2">
             {moreMenuItems.map((item) => {
               const Icon = item.icon;
-              const active = pathActive(pathname, item.href);
+              const active = pathActive(pathname, item.match);
               return (
-                <li key={item.href}>
+                <li key={item.match}>
                   <Link
                     href={item.href}
                     onClick={() => setMoreOpen(false)}
@@ -252,12 +285,6 @@ export function MobileBottomNav() {
             label="Invest"
             icon={TrendingUp}
             active={investActive}
-          />
-          <NavTab
-            href={mt5Href}
-            label="MT5"
-            icon={LineChart}
-            active={mt5Active}
             emphasize
           />
           <NavTab
