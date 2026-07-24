@@ -13,7 +13,6 @@ import { formatCurrency } from "@/lib/utils";
 import { hasTradingAccess, formatAccessExpiry } from "@/lib/trading-access";
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
 import { WeeklyAccessGate } from "@/components/payments/weekly-access-gate";
-import { ArchivedSetupsCard } from "@/components/dashboard/archived-setups";
 import { HubExecutionsCard } from "@/components/dashboard/hub-executions";
 import { Mt5PositionsPanel } from "@/components/dashboard/open-positions";
 import { UnresolvedSetupsCard } from "@/components/dashboard/unresolved-setups";
@@ -152,7 +151,6 @@ function DashboardBody() {
           >
             <UnresolvedSetupsCard onClaimed={() => fetchDashboard()} />
             <Mt5PositionsPanel />
-            <ArchivedSetupsCard />
             <HubExecutionsCard />
 
             <RecentSignalsCard

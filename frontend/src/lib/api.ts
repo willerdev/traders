@@ -994,7 +994,7 @@ class ApiClient {
         expiresAt: string | null;
         feeUsdt: number;
         walletBalance: number;
-        benefits: { weekendEarnings: boolean; zeroWithdrawalFee: boolean };
+        benefits: { weekendEarnings: boolean; zeroWithdrawalFee: boolean; dailyYieldPercent?: number };
       }>("/investor/vip/status"),
     vipUpgrade: () =>
       this.request<{
@@ -1567,6 +1567,7 @@ export interface InvestorStatus {
     benefits: {
       weekendEarnings: boolean;
       zeroWithdrawalFee: boolean;
+      dailyYieldPercent?: number;
     };
   };
   feeUsdt: number;
@@ -1576,6 +1577,7 @@ export interface InvestorStatus {
   committedInvestmentAmount?: number | null;
   dailyYieldPercent: number;
   platformDailyYieldPercent: number;
+  vipDailyYieldPercent?: number;
   displayCurrency?: DisplayCurrencyInfo;
   mt5Linked: boolean;
   mt5Connected: boolean;

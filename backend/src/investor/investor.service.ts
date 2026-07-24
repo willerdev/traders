@@ -27,10 +27,12 @@ import {
   resolveInvestorSubscriptionFee,
 } from './investor-fee.util';
 import {
+  INVESTOR_VIP_DAILY_YIELD_PERCENT,
   INVESTOR_VIP_FEE_USDT,
   INVESTOR_VIP_REMINDER_DAYS,
   isInvestorVipActive,
   nextVipExpiry,
+  resolveInvestorDailyYieldPercent,
 } from './investor-vip.util';
 import { FxRatesService } from '../fx/fx-rates.service';
 import { resolvePreferredDisplayCurrency } from '../fx/country-currency.util';
@@ -144,13 +146,17 @@ export class InvestorService {
       where: { id: 'default' },
     });
     const platformDailyYield = Number(config?.investorDailyYieldPercent ?? 8);
-    const effectiveDailyYield =
-      user.investorSettings?.dailyYieldPercent != null
-        ? Number(user.investorSettings.dailyYieldPercent)
-        : platformDailyYield;
+    const vipActive = isInvestorVipActive(user);
+    const effectiveDailyYield = resolveInvestorDailyYieldPercent({
+      vipActive,
+      settingsYieldPercent:
+        user.investorSettings?.dailyYieldPercent != null
+          ? Number(user.investorSettings.dailyYieldPercent)
+          : null,
+      platformYieldPercent: platformDailyYield,
+    });
 
     const financials = await this.getInvestorFinancials(userId, user);
-    const vipActive = isInvestorVipActive(user);
     const resolved = resolvePreferredDisplayCurrency({
       preferredCurrency: user.profile?.preferredCurrency,
       country: user.profile?.country,
@@ -167,6 +173,7 @@ export class InvestorService {
         benefits: {
           weekendEarnings: true,
           zeroWithdrawalFee: true,
+          dailyYieldPercent: INVESTOR_VIP_DAILY_YIELD_PERCENT,
         },
       },
       feeUsdt: feeTiers[0]?.fee ?? 10,
@@ -179,6 +186,7 @@ export class InvestorService {
           : null,
       dailyYieldPercent: effectiveDailyYield,
       platformDailyYieldPercent: platformDailyYield,
+      vipDailyYieldPercent: INVESTOR_VIP_DAILY_YIELD_PERCENT,
       displayCurrency,
       mt5Linked: Boolean(user.metaApiAccountId),
       mt5Connected,
@@ -933,6 +941,7 @@ export class InvestorService {
       benefits: {
         weekendEarnings: true,
         zeroWithdrawalFee: true,
+        dailyYieldPercent: INVESTOR_VIP_DAILY_YIELD_PERCENT,
       },
     };
   }
@@ -1127,10 +1136,14 @@ export class InvestorService {
       });
       if (existing) continue;
 
-      const yieldPercent =
-        user.investorSettings?.dailyYieldPercent != null
-          ? Number(user.investorSettings.dailyYieldPercent)
-          : platformYield;
+      const yieldPercent = resolveInvestorDailyYieldPercent({
+        vipActive: isInvestorVipActive(user),
+        settingsYieldPercent:
+          user.investorSettings?.dailyYieldPercent != null
+            ? Number(user.investorSettings.dailyYieldPercent)
+            : null,
+        platformYieldPercent: platformYield,
+      });
 
       const baseBalance = Number(user.platformWallet?.investorBalance ?? 0);
       if (baseBalance <= 0 || yieldPercent <= 0) continue;

@@ -471,6 +471,12 @@ export function InvestHub() {
         investmentBalance={
           status.investmentBalance ?? status.investmentDeposited ?? 0
         }
+        vipActive={Boolean(vip?.active)}
+        vipDailyYieldPercent={
+          vip?.benefits?.dailyYieldPercent ??
+          status.vipDailyYieldPercent ??
+          10
+        }
       />
       <div className="flex justify-end">
         <CurrencySwitcher displayCurrency={display} onChanged={refresh} />
@@ -572,10 +578,17 @@ export function InvestHub() {
             </div>
             <p className="mt-1 text-xs text-gray-400">
               {vip?.active
-                ? `Expires ${vip.expiresAt ? new Date(vip.expiresAt).toLocaleDateString() : "—"} · weekend earnings + $0 withdrawal fee`
-                : `$${vip?.feeUsdt ?? 20}/month from wallet · weekend earnings + $0 withdrawal fee`}
+                ? `Expires ${vip.expiresAt ? new Date(vip.expiresAt).toLocaleDateString() : "—"} · ${vip.benefits?.dailyYieldPercent ?? status.vipDailyYieldPercent ?? 10}% daily + weekends + $0 withdraw fee`
+                : `$${vip?.feeUsdt ?? 20}/month from wallet · ${vip?.benefits?.dailyYieldPercent ?? status.vipDailyYieldPercent ?? 10}% daily + weekends + $0 withdraw fee`}
             </p>
             <ul className="mt-2 space-y-1 text-xs text-gray-400">
+              <li>
+                •{" "}
+                {vip?.benefits?.dailyYieldPercent ??
+                  status.vipDailyYieldPercent ??
+                  10}
+                % daily investment yield (VIP default)
+              </li>
               <li>• Earn daily yield on Saturdays &amp; Sundays</li>
               <li>• Zero commission on wallet withdrawals</li>
             </ul>

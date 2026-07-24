@@ -1,6 +1,8 @@
 export const INVESTOR_VIP_FEE_USDT = 20;
 export const INVESTOR_VIP_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
 export const INVESTOR_VIP_REMINDER_DAYS = 3;
+/** Default daily investment yield for active VIP (when no per-user override). */
+export const INVESTOR_VIP_DAILY_YIELD_PERCENT = 10;
 
 /** VIP AI may approve wallet withdrawals only after this pending age. */
 export const VIP_AI_WITHDRAW_MIN_AGE_MS = 30 * 60 * 1000;
@@ -15,6 +17,25 @@ export function isInvestorVipActive(user: {
       ? user.investorVipExpiresAt
       : new Date(user.investorVipExpiresAt);
   return Number.isFinite(expires.getTime()) && expires.getTime() > Date.now();
+}
+
+/**
+ * Per-user admin override wins; otherwise VIP gets elevated default yield,
+ * else platform default.
+ */
+export function resolveInvestorDailyYieldPercent(opts: {
+  vipActive: boolean;
+  settingsYieldPercent?: number | null;
+  platformYieldPercent: number;
+}): number {
+  if (
+    opts.settingsYieldPercent != null &&
+    Number.isFinite(Number(opts.settingsYieldPercent))
+  ) {
+    return Number(opts.settingsYieldPercent);
+  }
+  if (opts.vipActive) return INVESTOR_VIP_DAILY_YIELD_PERCENT;
+  return opts.platformYieldPercent;
 }
 
 /** Extend from max(now, currentExpiry) by one VIP period. */
