@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -18,9 +18,18 @@ import { Field, ListRow, PrimaryButton, ScreenState, SectionCard } from "../comp
 import { WEB_APP_URL } from "../config/env";
 import type { UserSettings } from "../lib/types";
 
+const JUMP = [
+  { id: "profile", label: "Profile" },
+  { id: "money", label: "Money" },
+  { id: "security", label: "Security" },
+  { id: "app", label: "App" },
+] as const;
+
 export function SettingsScreen() {
   const { api, user, logout, refreshDashboard } = useAuth();
   const { theme, mode, setMode } = useTheme();
+  const scrollRef = useRef<ScrollView>(null);
+  const sectionY = useRef<Record<string, number>>({});
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(true);
@@ -61,11 +70,41 @@ export function SettingsScreen() {
     }
   }
 
+  function jumpTo(id: string) {
+    const y = sectionY.current[id];
+    if (y != null) scrollRef.current?.scrollTo({ y: Math.max(0, y - 8), animated: true });
+  }
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
       <Text style={[styles.title, { color: theme.text }]}>Settings</Text>
+      <Text style={[styles.sub, { color: theme.muted }]}>
+        Profile, payouts, security, and appearance
+      </Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.jumpRow}
+        style={styles.jumpScroll}
+      >
+        {JUMP.map((item) => (
+          <Pressable
+            key={item.id}
+            onPress={() => jumpTo(item.id)}
+            style={[
+              styles.jumpChip,
+              { borderColor: theme.divider, backgroundColor: theme.surface },
+            ]}
+          >
+            <Text style={{ color: theme.text, fontSize: 12, fontWeight: "600" }}>
+              {item.label}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
       <ScreenState loading={loading} error={error} onRetry={() => void load()}>
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={styles.content}
           refreshControl={
             <RefreshControl
@@ -78,79 +117,126 @@ export function SettingsScreen() {
             />
           }
         >
-          <SectionCard title="Profile info">
-            <Text style={{ color: theme.muted, marginBottom: 10, fontSize: 12 }}>
-              {settings?.user.email ?? user?.email}
-            </Text>
-            <Field
-              label="Display name"
-              value={displayName}
-              onChangeText={setDisplayName}
-              autoCapitalize="words"
-            />
-            <PrimaryButton
-              label={busy ? "Saving…" : "Save profile"}
-              onPress={() => void saveProfile()}
-              disabled={busy}
-              size="sm"
-            />
-          </SectionCard>
-
-          <SectionCard title="Security" padded={false}>
-            <ListRow
-              title="Change password"
-              subtitle="Opens secure reset on the web"
-              showChevron
-              onPress={() => void Linking.openURL(`${WEB_APP_URL}/forgot-password`)}
-            />
-          </SectionCard>
-
-          <SectionCard title="Appearance">
-            <View style={styles.themeRow}>
-              <View style={{ flex: 1, paddingRight: 12 }}>
-                <Text style={{ color: theme.text, fontWeight: "600", fontSize: 14 }}>Dark mode</Text>
-                <Text style={{ color: theme.muted, marginTop: 2, fontSize: 11 }}>
-                  {mode === "dark" ? "Black & white" : "Blue & white"}
-                </Text>
-              </View>
-              <Switch
-                value={mode === "dark"}
-                onValueChange={(dark) => setMode(dark ? "dark" : "light")}
-                trackColor={{ false: theme.surfaceAlt, true: theme.primary }}
-                thumbColor="#FFFFFF"
+          <View
+            onLayout={(e) => {
+              sectionY.current.profile = e.nativeEvent.layout.y;
+            }}
+          >
+            <Text style={[styles.sectionLabel, { color: theme.muted }]}>Profile</Text>
+            <SectionCard title="Profile info">
+              <Text style={{ color: theme.muted, marginBottom: 10, fontSize: 12 }}>
+                {settings?.user.email ?? user?.email}
+              </Text>
+              <Field
+                label="Display name"
+                value={displayName}
+                onChangeText={setDisplayName}
+                autoCapitalize="words"
               />
-            </View>
-            <View style={styles.modeButtons}>
-              <Pressable
-                onPress={() => setMode("dark")}
-                style={[
-                  styles.modeBtn,
-                  {
-                    backgroundColor: mode === "dark" ? theme.primarySoft : theme.surfaceAlt,
-                    borderColor: mode === "dark" ? theme.primary : theme.divider,
-                  },
-                ]}
-              >
-                <Text style={{ color: theme.text, fontWeight: "600", fontSize: 13 }}>Dark</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setMode("light")}
-                style={[
-                  styles.modeBtn,
-                  {
-                    backgroundColor: mode === "light" ? theme.primarySoft : theme.surfaceAlt,
-                    borderColor: mode === "light" ? theme.primary : theme.divider,
-                  },
-                ]}
-              >
-                <Text style={{ color: theme.text, fontWeight: "600", fontSize: 13 }}>Light</Text>
-              </Pressable>
-            </View>
-          </SectionCard>
+              <PrimaryButton
+                label={busy ? "Saving…" : "Save profile"}
+                onPress={() => void saveProfile()}
+                disabled={busy}
+                size="sm"
+              />
+            </SectionCard>
+          </View>
 
-          <Text style={{ color: theme.muted, fontSize: 11, lineHeight: 16, marginBottom: 12 }}>
-            KYC, payout wallets, and advanced account options are managed on the web.
-          </Text>
+          <View
+            onLayout={(e) => {
+              sectionY.current.money = e.nativeEvent.layout.y;
+            }}
+          >
+            <Text style={[styles.sectionLabel, { color: theme.muted }]}>Money & KYC</Text>
+            <SectionCard title="Payouts & verification" padded={false}>
+              <ListRow
+                title="Payout details"
+                subtitle="TRC20 / mobile money on web"
+                showChevron
+                onPress={() => void Linking.openURL(`${WEB_APP_URL}/settings`)}
+              />
+              <ListRow
+                title="KYC verification"
+                subtitle="Required for payouts only"
+                showChevron
+                onPress={() => void Linking.openURL(`${WEB_APP_URL}/settings#kyc`)}
+              />
+              <ListRow
+                title="Withdrawal wallets"
+                subtitle="Manage saved destinations"
+                showChevron
+                onPress={() => void Linking.openURL(`${WEB_APP_URL}/wallet`)}
+              />
+            </SectionCard>
+          </View>
+
+          <View
+            onLayout={(e) => {
+              sectionY.current.security = e.nativeEvent.layout.y;
+            }}
+          >
+            <Text style={[styles.sectionLabel, { color: theme.muted }]}>Security</Text>
+            <SectionCard title="Security" padded={false}>
+              <ListRow
+                title="Change password"
+                subtitle="Opens secure reset on the web"
+                showChevron
+                onPress={() => void Linking.openURL(`${WEB_APP_URL}/forgot-password`)}
+              />
+            </SectionCard>
+          </View>
+
+          <View
+            onLayout={(e) => {
+              sectionY.current.app = e.nativeEvent.layout.y;
+            }}
+          >
+            <Text style={[styles.sectionLabel, { color: theme.muted }]}>App</Text>
+            <SectionCard title="Appearance">
+              <View style={styles.themeRow}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text style={{ color: theme.text, fontWeight: "600", fontSize: 14 }}>
+                    Dark mode
+                  </Text>
+                  <Text style={{ color: theme.muted, marginTop: 2, fontSize: 11 }}>
+                    {mode === "dark" ? "Black & white" : "Blue & white"}
+                  </Text>
+                </View>
+                <Switch
+                  value={mode === "dark"}
+                  onValueChange={(dark) => setMode(dark ? "dark" : "light")}
+                  trackColor={{ false: theme.surfaceAlt, true: theme.primary }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+              <View style={styles.modeButtons}>
+                <Pressable
+                  onPress={() => setMode("dark")}
+                  style={[
+                    styles.modeBtn,
+                    {
+                      backgroundColor: mode === "dark" ? theme.primarySoft : theme.surfaceAlt,
+                      borderColor: mode === "dark" ? theme.primary : theme.divider,
+                    },
+                  ]}
+                >
+                  <Text style={{ color: theme.text, fontWeight: "600", fontSize: 13 }}>Dark</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setMode("light")}
+                  style={[
+                    styles.modeBtn,
+                    {
+                      backgroundColor: mode === "light" ? theme.primarySoft : theme.surfaceAlt,
+                      borderColor: mode === "light" ? theme.primary : theme.divider,
+                    },
+                  ]}
+                >
+                  <Text style={{ color: theme.text, fontWeight: "600", fontSize: 13 }}>Light</Text>
+                </Pressable>
+              </View>
+            </SectionCard>
+          </View>
 
           <PrimaryButton label="Sign out" onPress={() => void logout()} variant="secondary" size="sm" />
         </ScrollView>
@@ -168,7 +254,24 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     letterSpacing: -0.3,
   },
+  sub: { fontSize: 12, paddingHorizontal: 16, marginTop: 2, marginBottom: 8 },
+  jumpScroll: { maxHeight: 44, marginBottom: 4 },
+  jumpRow: { paddingHorizontal: 16, gap: 8, alignItems: "center" },
+  jumpChip: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
   content: { padding: 16, paddingBottom: 36 },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    marginBottom: 8,
+    marginTop: 4,
+  },
   themeRow: {
     flexDirection: "row",
     alignItems: "center",

@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../stores/auth";
 import { useTheme } from "../stores/theme";
@@ -34,7 +35,9 @@ export function JournalScreen() {
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={["top"]}>
+      <Text style={[styles.title, { color: theme.text }]}>Journal</Text>
+      <Text style={[styles.sub, { color: theme.muted }]}>Income & investment returns</Text>
       <ScreenState
         loading={loading}
         error={error}
@@ -73,11 +76,19 @@ export function JournalScreen() {
           )}
         />
       </ScreenState>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  title: {
+    fontSize: 28,
+    fontWeight: "800",
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    letterSpacing: -0.4,
+  },
+  sub: { fontSize: 13, paddingHorizontal: 20, marginTop: 4, marginBottom: 4 },
   list: { padding: 16, paddingBottom: 40 },
   row: {
     flexDirection: "row",

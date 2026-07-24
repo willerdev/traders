@@ -5,6 +5,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../stores/auth";
 import { useTheme } from "../stores/theme";
 import { Field, MoneyRow, PrimaryButton, ScreenState, SectionCard } from "../components/ui";
+import { InvestorPolicyBanners } from "../components/InvestorPolicyBanners";
 import { formatUsdt, fmtDate } from "../lib/format";
 import type { InvestorStatus } from "../lib/types";
 
@@ -124,6 +125,15 @@ export function InvestScreen() {
             />
           }
         >
+          <InvestorPolicyBanners
+            investmentBalance={status?.investmentBalance ?? 0}
+            vipActive={Boolean(status?.vip?.active)}
+            vipDailyYieldPercent={
+              status?.vip?.benefits?.dailyYieldPercent ??
+              status?.vipDailyYieldPercent ??
+              10
+            }
+          />
           <SectionCard title="Status">
             <MoneyRow label="Active" value={status?.active ? "Yes" : "No"} />
             <MoneyRow label="Wallet" value={formatUsdt(status?.walletBalance)} />
@@ -131,11 +141,16 @@ export function InvestScreen() {
             <MoneyRow label="Daily yield" value={`${status?.dailyYieldPercent ?? 0}%`} />
             {status?.vip?.active ? (
               <Text style={{ color: theme.primary, marginTop: 8, fontWeight: "700" }}>
-                VIP · expires {status.vip.expiresAt ? fmtDate(status.vip.expiresAt) : "—"}
+                VIP · {status.vip.benefits?.dailyYieldPercent ?? status.vipDailyYieldPercent ?? 10}%
+                daily · expires {status.vip.expiresAt ? fmtDate(status.vip.expiresAt) : "—"}
               </Text>
             ) : (
               <Text style={{ color: theme.muted, marginTop: 8 }}>
-                VIP (~{formatUsdt(vipFee ?? 20)}/mo) · $0 withdrawal fee
+                VIP (~{formatUsdt(vipFee ?? 20)}/mo) ·{" "}
+                {status?.vip?.benefits?.dailyYieldPercent ??
+                  status?.vipDailyYieldPercent ??
+                  10}
+                % daily + $0 withdrawal fee
               </Text>
             )}
             {status?.settings ? (

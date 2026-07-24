@@ -177,6 +177,7 @@ export interface InvestorStatus {
     benefits: {
       weekendEarnings: boolean;
       zeroWithdrawalFee: boolean;
+      dailyYieldPercent?: number;
     };
   };
   feeUsdt: number;
@@ -184,6 +185,7 @@ export interface InvestorStatus {
   investmentMax?: number;
   dailyYieldPercent: number;
   platformDailyYieldPercent: number;
+  vipDailyYieldPercent?: number;
   displayCurrency?: DisplayCurrencyInfo;
   investmentDeposited: number;
   investmentBalance: number;

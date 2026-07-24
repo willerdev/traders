@@ -7,8 +7,11 @@ export type AuthStackParamList = {
 export type HomeStackParamList = {
   HomeMain: undefined;
   RegistrationPayment: undefined;
-  Journal: undefined;
   Payouts: undefined;
+};
+
+export type JournalStackParamList = {
+  JournalMain: undefined;
 };
 
 export type WalletStackParamList = {
@@ -24,20 +27,19 @@ export type InvestStackParamList = {
   InvestMain: undefined;
 };
 
-export type MessagesStackParamList = {
+export type MoreStackParamList = {
+  MoreMain: undefined;
   MessagesMain: undefined;
-};
-
-export type SettingsStackParamList = {
   SettingsMain: undefined;
+  Payouts: undefined;
 };
 
 export type MainTabParamList = {
   Home: undefined;
-  Wallet: undefined | { screen?: keyof WalletStackParamList };
+  Journal: undefined;
   Invest: undefined;
-  Messages: undefined;
-  Settings: undefined;
+  Wallet: undefined | { screen?: keyof WalletStackParamList };
+  More: undefined | { screen?: keyof MoreStackParamList };
 };
 
 export type RootStackParamList = {

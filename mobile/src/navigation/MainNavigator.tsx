@@ -1,6 +1,7 @@
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
+import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../stores/theme";
 import { HomeScreen } from "../screens/HomeScreen";
@@ -12,29 +13,55 @@ import { JournalScreen } from "../screens/JournalScreen";
 import { InvestScreen } from "../screens/InvestScreen";
 import { MessagesScreen } from "../screens/MessagesScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
+import { MoreScreen } from "../screens/MoreScreen";
 import { SavedWalletsScreen } from "../screens/settings/SavedWalletsScreen";
 import { PayoutsScreen } from "../screens/PayoutsScreen";
 import { RegistrationPaymentScreen } from "../screens/RegistrationPaymentScreen";
 import type {
   HomeStackParamList,
   InvestStackParamList,
+  JournalStackParamList,
   MainTabParamList,
-  MessagesStackParamList,
-  SettingsStackParamList,
+  MoreStackParamList,
   WalletStackParamList,
 } from "./types";
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 const HomeStack = createNativeStackNavigator<HomeStackParamList>();
+const JournalStack = createNativeStackNavigator<JournalStackParamList>();
 const WalletStack = createNativeStackNavigator<WalletStackParamList>();
 const InvestStack = createNativeStackNavigator<InvestStackParamList>();
-const MessagesStack = createNativeStackNavigator<MessagesStackParamList>();
-const SettingsStack = createNativeStackNavigator<SettingsStackParamList>();
+const MoreStack = createNativeStackNavigator<MoreStackParamList>();
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
-function tabIcon(name: IconName, color: string) {
-  return <Ionicons name={name} size={22} color={color} />;
+function tabIcon(name: IconName, color: string, size = 22) {
+  return <Ionicons name={name} size={size} color={color} />;
+}
+
+function InvestTabIcon({ focused, color }: { focused: boolean; color: string }) {
+  const { theme } = useTheme();
+  return (
+    <View
+      style={{
+        marginTop: -14,
+        width: 48,
+        height: 48,
+        borderRadius: 16,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: focused ? theme.primary : theme.primary,
+        opacity: focused ? 1 : 0.92,
+        shadowColor: theme.primary,
+        shadowOpacity: 0.35,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: 6,
+      }}
+    >
+      <Ionicons name="trending-up" size={24} color="#FFFFFF" />
+    </View>
+  );
 }
 
 function stackScreenOptions(theme: { bg: string; text: string }) {
@@ -56,9 +83,21 @@ function HomeStackNavigator() {
         component={RegistrationPaymentScreen}
         options={{ title: "Activate account" }}
       />
-      <HomeStack.Screen name="Journal" component={JournalScreen} options={{ title: "Income journal" }} />
       <HomeStack.Screen name="Payouts" component={PayoutsScreen} options={{ title: "Payouts" }} />
     </HomeStack.Navigator>
+  );
+}
+
+function JournalStackNavigator() {
+  const { theme } = useTheme();
+  return (
+    <JournalStack.Navigator screenOptions={stackScreenOptions(theme)}>
+      <JournalStack.Screen
+        name="JournalMain"
+        component={JournalScreen}
+        options={{ headerShown: false }}
+      />
+    </JournalStack.Navigator>
   );
 }
 
@@ -93,33 +132,31 @@ function InvestStackNavigator() {
   );
 }
 
-function MessagesStackNavigator() {
+function MoreStackNavigator() {
   const { theme } = useTheme();
   return (
-    <MessagesStack.Navigator screenOptions={stackScreenOptions(theme)}>
-      <MessagesStack.Screen
+    <MoreStack.Navigator screenOptions={stackScreenOptions(theme)}>
+      <MoreStack.Screen name="MoreMain" component={MoreScreen} options={{ headerShown: false }} />
+      <MoreStack.Screen
         name="MessagesMain"
         component={MessagesScreen}
+        options={{ title: "Support" }}
+      />
+      <MoreStack.Screen
+        name="SettingsMain"
+        component={SettingsScreen}
         options={{ headerShown: false }}
       />
-    </MessagesStack.Navigator>
-  );
-}
-
-function SettingsStackNavigator() {
-  const { theme } = useTheme();
-  return (
-    <SettingsStack.Navigator screenOptions={stackScreenOptions(theme)}>
-      <SettingsStack.Screen name="SettingsMain" component={SettingsScreen} options={{ headerShown: false }} />
-    </SettingsStack.Navigator>
+      <MoreStack.Screen name="Payouts" component={PayoutsScreen} options={{ title: "Payouts" }} />
+    </MoreStack.Navigator>
   );
 }
 
 export function MainNavigator() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const bottomPad = Math.max(insets.bottom, 12);
-  const tabBarHeight = 56 + bottomPad;
+  const bottomPad = Math.max(insets.bottom, 10);
+  const tabBarHeight = 58 + bottomPad;
 
   return (
     <Tab.Navigator
@@ -131,11 +168,11 @@ export function MainNavigator() {
           borderTopWidth: 1,
           height: tabBarHeight,
           paddingBottom: bottomPad,
-          paddingTop: 8,
+          paddingTop: 6,
         },
         tabBarActiveTintColor: theme.primary,
         tabBarInactiveTintColor: theme.muted,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "600", marginTop: 2 },
+        tabBarLabelStyle: { fontSize: 10, fontWeight: "600", marginTop: 2 },
       }}
     >
       <Tab.Screen
@@ -147,6 +184,24 @@ export function MainNavigator() {
         }}
       />
       <Tab.Screen
+        name="Journal"
+        component={JournalStackNavigator}
+        options={{
+          tabBarIcon: ({ color, focused }) =>
+            tabIcon(focused ? "book" : "book-outline", color),
+        }}
+      />
+      <Tab.Screen
+        name="Invest"
+        component={InvestStackNavigator}
+        options={{
+          tabBarLabel: "Invest",
+          tabBarIcon: ({ focused, color }) => (
+            <InvestTabIcon focused={focused} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
         name="Wallet"
         component={WalletStackNavigator}
         options={{
@@ -155,27 +210,11 @@ export function MainNavigator() {
         }}
       />
       <Tab.Screen
-        name="Invest"
-        component={InvestStackNavigator}
+        name="More"
+        component={MoreStackNavigator}
         options={{
           tabBarIcon: ({ color, focused }) =>
-            tabIcon(focused ? "trending-up" : "trending-up-outline", color),
-        }}
-      />
-      <Tab.Screen
-        name="Messages"
-        component={MessagesStackNavigator}
-        options={{
-          tabBarIcon: ({ color, focused }) =>
-            tabIcon(focused ? "chatbubbles" : "chatbubbles-outline", color),
-        }}
-      />
-      <Tab.Screen
-        name="Settings"
-        component={SettingsStackNavigator}
-        options={{
-          tabBarIcon: ({ color, focused }) =>
-            tabIcon(focused ? "settings" : "settings-outline", color),
+            tabIcon(focused ? "menu" : "menu-outline", color),
         }}
       />
     </Tab.Navigator>

@@ -18,24 +18,35 @@ import {
   PrimaryButton,
   SectionCard,
 } from "../components/ui";
+import { InvestorPolicyBanners } from "../components/InvestorPolicyBanners";
 import { formatMoney, formatUsdt } from "../lib/format";
-import type { DisplayCurrencyInfo, WalletSummary } from "../lib/types";
+import type {
+  DisplayCurrencyInfo,
+  InvestorStatus,
+  WalletSummary,
+} from "../lib/types";
 import type { HomeStackParamList } from "../navigation/types";
 
 export function HomeScreen() {
   const { user, dashboard, refreshDashboard, api } = useAuth();
   const { theme } = useTheme();
-  const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const [refreshing, setRefreshing] = useState(false);
   const [wallet, setWallet] = useState<WalletSummary | null>(null);
   const [display, setDisplay] = useState<DisplayCurrencyInfo | null>(null);
+  const [investor, setInvestor] = useState<InvestorStatus | null>(null);
 
   const load = useCallback(async () => {
     await refreshDashboard();
     try {
-      const summary = await api.wallet.summary();
+      const [summary, inv] = await Promise.all([
+        api.wallet.summary(),
+        api.investor.status().catch(() => null),
+      ]);
       setWallet(summary);
       setDisplay(summary.displayCurrency ?? null);
+      setInvestor(inv);
     } catch {
       /* optional */
     }
@@ -63,9 +74,15 @@ export function HomeScreen() {
   const available = wallet?.availableBalance ?? 0;
 
   function goWallet(screen: "Deposit" | "Withdraw") {
-    // Nested tab → stack navigation
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (navigation.getParent() as any)?.navigate("Wallet", { screen });
+  }
+
+  function goTab(tab: "Journal" | "Invest" | "More", screen?: string) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const parent = navigation.getParent() as any;
+    if (screen) parent?.navigate(tab, { screen });
+    else parent?.navigate(tab);
   }
 
   return (
@@ -80,7 +97,7 @@ export function HomeScreen() {
           />
         }
       >
-        <Text style={[styles.brand, { color: theme.primary }]}>TraderRank Pro</Text>
+        <Text style={[styles.brand, { color: theme.primary }]}>Trade Guard</Text>
         <Text style={[styles.hello, { color: theme.text }]}>
           {dashboard?.user.displayName ?? user?.displayName ?? "Trader"}
         </Text>
@@ -91,9 +108,26 @@ export function HomeScreen() {
             : ""}
         </Text>
 
+        <InvestorPolicyBanners
+          investmentBalance={investor?.investmentBalance ?? 0}
+          vipActive={Boolean(investor?.vip?.active)}
+          vipDailyYieldPercent={
+            investor?.vip?.benefits?.dailyYieldPercent ??
+            investor?.vipDailyYieldPercent ??
+            10
+          }
+        />
+
         {needsActivation ? (
           <SectionCard title="Activate account">
-            <Text style={{ color: theme.muted, marginBottom: 10, lineHeight: 18, fontSize: 13 }}>
+            <Text
+              style={{
+                color: theme.muted,
+                marginBottom: 10,
+                lineHeight: 18,
+                fontSize: 13,
+              }}
+            >
               Complete registration payment or apply a promo to unlock trading access.
             </Text>
             <PrimaryButton
@@ -105,8 +139,17 @@ export function HomeScreen() {
         ) : null}
 
         <SectionCard>
-          <Text style={{ color: theme.muted, fontSize: 12, fontWeight: "600" }}>Funding balance</Text>
-          <Text style={{ color: theme.text, fontSize: 28, fontWeight: "800", marginTop: 6 }}>
+          <Text style={{ color: theme.muted, fontSize: 12, fontWeight: "600" }}>
+            Funding balance
+          </Text>
+          <Text
+            style={{
+              color: theme.text,
+              fontSize: 28,
+              fontWeight: "800",
+              marginTop: 6,
+            }}
+          >
             {formatMoney(available, display)}
           </Text>
           {account ? (
@@ -133,12 +176,12 @@ export function HomeScreen() {
             <ActionIconButton
               icon="trending-up-outline"
               label="Invest"
-              onPress={() => navigation.getParent()?.navigate("Invest" as never)}
+              onPress={() => goTab("Invest")}
             />
             <ActionIconButton
               icon="chatbubbles-outline"
               label="Support"
-              onPress={() => navigation.getParent()?.navigate("Messages" as never)}
+              onPress={() => goTab("More", "MessagesMain")}
             />
           </View>
         </SectionCard>
@@ -154,19 +197,20 @@ export function HomeScreen() {
           </SectionCard>
         ) : null}
 
-        <SectionCard title="More" padded={false}>
+        <SectionCard title="Shortcuts" padded={false}>
           <Pressable
-            onPress={() => navigation.navigate("Journal")}
+            onPress={() => goTab("Journal")}
             style={[styles.linkRow, { borderBottomColor: theme.divider }]}
           >
-            <Text style={{ color: theme.text, fontWeight: "600", fontSize: 14 }}>Income journal</Text>
+            <Text style={{ color: theme.text, fontWeight: "600", fontSize: 14 }}>
+              Income journal
+            </Text>
             <Text style={{ color: theme.primary, fontSize: 13 }}>Open</Text>
           </Pressable>
-          <Pressable
-            onPress={() => navigation.navigate("Payouts")}
-            style={styles.linkRow}
-          >
-            <Text style={{ color: theme.text, fontWeight: "600", fontSize: 14 }}>Trader payouts</Text>
+          <Pressable onPress={() => navigation.navigate("Payouts")} style={styles.linkRow}>
+            <Text style={{ color: theme.text, fontWeight: "600", fontSize: 14 }}>
+              Trader payouts
+            </Text>
             <Text style={{ color: theme.primary, fontSize: 13 }}>Open</Text>
           </Pressable>
         </SectionCard>
@@ -178,7 +222,12 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   content: { padding: 16, paddingBottom: 40 },
-  brand: { fontSize: 12, fontWeight: "700", letterSpacing: 0.7, textTransform: "uppercase" },
+  brand: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.7,
+    textTransform: "uppercase",
+  },
   hello: { fontSize: 26, fontWeight: "800", marginTop: 6, letterSpacing: -0.5 },
   meta: { marginTop: 4, marginBottom: 16, fontSize: 12 },
   quickRow: {
