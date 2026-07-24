@@ -126,13 +126,6 @@ export function MobileBottomNav() {
           match: "/mt5",
         },
         {
-          href: "/journal",
-          label: "Journal",
-          hint: "Income & returns",
-          icon: ScrollText,
-          match: "/journal",
-        },
-        {
           href: "/tp-claims",
           label: "TP Claims",
           hint: "Evidence & rewards",
@@ -168,6 +161,7 @@ export function MobileBottomNav() {
   const setMoreOpen = (open: boolean) => setMoreAt(open ? pathname : null);
 
   const homeActive = pathname === "/dashboard";
+  const journalActive = pathActive(pathname, "/journal");
   const investActive = pathActive(pathname, "/invest");
   const walletActive = pathActive(pathname, "/wallet");
   const moreActive =
@@ -279,6 +273,12 @@ export function MobileBottomNav() {
             label="Home"
             icon={Home}
             active={homeActive}
+          />
+          <NavTab
+            href="/journal"
+            label="Journal"
+            icon={ScrollText}
+            active={journalActive}
           />
           <NavTab
             href="/invest"
