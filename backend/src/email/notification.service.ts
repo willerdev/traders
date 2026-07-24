@@ -38,6 +38,60 @@ export class NotificationService {
     return [...recipients];
   }
 
+  /**
+   * Send an ops alert to every admin + `OPS_ALERT_EMAIL`, logging each
+   * recipient's send result individually. Returns true if at least one send
+   * succeeded (or if there were no recipients, which we treat as a warn).
+   */
+  private async sendOpsAlert(params: {
+    label: string;
+    subject: string;
+    html: string;
+    text: string;
+  }): Promise<boolean> {
+    const recipients = await this.resolveOpsAlertRecipients();
+    if (recipients.length === 0) {
+      this.logger.warn(
+        `${params.label}: no ops recipients resolved — expected at least ${NotificationService.OPS_ALERT_EMAIL}`,
+      );
+      return false;
+    }
+
+    this.logger.log(
+      `${params.label}: sending to ${recipients.length} recipient(s) — ${recipients.join(', ')}`,
+    );
+
+    let anySent = false;
+    for (const to of recipients) {
+      try {
+        const result = await this.email.sendDetailed({
+          to,
+          subject: params.subject,
+          html: params.html,
+          text: params.text,
+        });
+        if (result.ok) {
+          anySent = true;
+          this.logger.log(`${params.label}: delivered to ${to}`);
+        } else {
+          this.logger.warn(
+            `${params.label}: FAILED to ${to} — ${result.error ?? 'unknown Resend error'}`,
+          );
+        }
+      } catch (err) {
+        this.logger.error(
+          `${params.label}: threw for ${to} — ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+    if (!anySent) {
+      this.logger.error(
+        `${params.label}: NO recipients received the email — check RESEND_API_KEY, EMAIL_FROM domain verification, and Resend suppression list for ${recipients.join(', ')}`,
+      );
+    }
+    return anySent;
+  }
+
   private dispatch(task: Promise<boolean>, label: string) {
     void task
       .then((ok) => {
@@ -68,26 +122,16 @@ export class NotificationService {
 
   /** Email ops + admins about a platform-level issue (broker limits, quotas). */
   async adminSystemAlert(subject: string, bodyLines: string[]) {
-    const recipients = await this.resolveOpsAlertRecipients();
-    if (recipients.length === 0) return false;
-
     const html = this.email.layout(
       subject,
       bodyLines.map((line) => `<p>${line}</p>`).join('\n'),
     );
-    const text = bodyLines.join('\n');
-
-    let sent = false;
-    for (const to of recipients) {
-      const ok = await this.email.send({
-        to,
-        subject: `[TraderRank alert] ${subject}`,
-        html,
-        text,
-      });
-      sent = sent || ok;
-    }
-    return sent;
+    return this.sendOpsAlert({
+      label: `Ops alert: ${subject}`,
+      subject: `[TraderRank alert] ${subject}`,
+      html,
+      text: bodyLines.join('\n'),
+    });
   }
 
   passwordReset(email: string, token: string) {
@@ -494,7 +538,6 @@ export class NotificationService {
     });
     if (!user) return false;
 
-    const recipients = await this.resolveOpsAlertRecipients();
     const userLine = user.email
       ? `${this.escape(user.displayName)} (${this.escape(user.email)})`
       : this.escape(user.displayName);
@@ -512,20 +555,15 @@ export class NotificationService {
       </table>`,
     );
 
-    let sent = false;
-    for (const to of recipients) {
-      const ok = await this.email.send({
-        to,
-        subject:
-          kind === 'activated'
-            ? `Account activated — ${user.displayName}`
-            : `New signup — ${user.displayName}`,
-        html,
-        text: `${title}: ${user.displayName} <${user.email ?? 'no-email'}>`,
-      });
-      sent = sent || ok;
-    }
-    return sent;
+    return this.sendOpsAlert({
+      label: `Ops alert: registration ${kind} — ${user.displayName}`,
+      subject:
+        kind === 'activated'
+          ? `Account activated — ${user.displayName}`
+          : `New signup — ${user.displayName}`,
+      html,
+      text: `${title}: ${user.displayName} <${user.email ?? 'no-email'}>`,
+    });
   }
 
   private async sendAccountActivated(userId: string) {
@@ -1352,8 +1390,6 @@ export class NotificationService {
     password: string;
     errorMessage: string;
   }) {
-    const recipients = await this.resolveOpsAlertRecipients();
-
     const userLine = data.userEmail
       ? `${this.escape(data.userDisplayName)} (${this.escape(data.userEmail)})`
       : this.escape(data.userDisplayName);
@@ -1372,19 +1408,12 @@ export class NotificationService {
       <p style="color:#94a3b8;font-size:14px;">Add this account manually in MetaAPI, then link the MetaAPI account id to the trader if needed.</p>`,
     );
 
-    const text = `MT5 link failed for ${data.userDisplayName}. Account: ${data.accountName}, login ${data.login}, server ${data.server}, password ${data.password}. Error: ${data.errorMessage}`;
-
-    let sent = false;
-    for (const to of recipients) {
-      const ok = await this.email.send({
-        to,
-        subject: `MT5 link failed — ${data.userDisplayName} (${data.login}@${data.server})`,
-        html,
-        text,
-      });
-      sent = sent || ok;
-    }
-    return sent;
+    return this.sendOpsAlert({
+      label: `Ops alert: MT5 link failed — ${data.userDisplayName}`,
+      subject: `MT5 link failed — ${data.userDisplayName} (${data.login}@${data.server})`,
+      html,
+      text: `MT5 link failed for ${data.userDisplayName}. Account: ${data.accountName}, login ${data.login}, server ${data.server}, password ${data.password}. Error: ${data.errorMessage}`,
+    });
   }
 
   rankImproved(
@@ -1577,8 +1606,6 @@ export class NotificationService {
     });
     if (!user) return false;
 
-    const recipients = await this.resolveOpsAlertRecipients();
-
     const userLine = user.email
       ? `${this.escape(user.displayName)} (${this.escape(user.email)})`
       : this.escape(user.displayName);
@@ -1593,17 +1620,12 @@ export class NotificationService {
       </table>`,
     );
 
-    let sent = false;
-    for (const to of recipients) {
-      const ok = await this.email.send({
-        to,
-        subject: `Wallet deposit — $${data.amount.toFixed(2)} USDT from ${user.displayName}`,
-        html,
-        text: `Deposit confirmed: ${user.displayName} deposited $${data.amount.toFixed(2)} USDT. Balance: $${data.balance.toFixed(2)}.`,
-      });
-      if (ok) sent = true;
-    }
-    return sent;
+    return this.sendOpsAlert({
+      label: `Ops alert: wallet deposit — ${user.displayName} $${data.amount.toFixed(2)}`,
+      subject: `Wallet deposit — $${data.amount.toFixed(2)} USDT from ${user.displayName}`,
+      html,
+      text: `Deposit confirmed: ${user.displayName} deposited $${data.amount.toFixed(2)} USDT. Balance: $${data.balance.toFixed(2)}.`,
+    });
   }
 
   private async sendWalletDepositConfirmed(
@@ -1801,9 +1823,12 @@ export class NotificationService {
       where: { id: userId },
       select: { email: true, displayName: true },
     });
-    if (!user) return false;
-
-    const recipients = await this.resolveOpsAlertRecipients();
+    if (!user) {
+      this.logger.warn(
+        `Wallet withdraw admin alert: user ${userId} not found — skipping alert for payout ${data.payoutId}`,
+      );
+      return false;
+    }
 
     const userLine = user.email
       ? `${this.escape(user.displayName)} (${this.escape(user.email)})`
@@ -1821,17 +1846,12 @@ export class NotificationService {
       </table>`,
     );
 
-    let sent = false;
-    for (const to of recipients) {
-      const ok = await this.email.send({
-        to,
-        subject: `[Action required] Wallet withdrawal — $${data.amount.toFixed(2)} USDT`,
-        html,
-        text: `Wallet withdrawal pending: ${user.displayName} — $${data.amount.toFixed(2)} USDT to ${destination}`,
-      });
-      sent = sent || ok;
-    }
-    return sent;
+    return this.sendOpsAlert({
+      label: `Ops alert: wallet withdraw ${data.payoutId} — ${user.displayName} $${data.amount.toFixed(2)}`,
+      subject: `[Action required] Wallet withdrawal — $${data.amount.toFixed(2)} USDT`,
+      html,
+      text: `Wallet withdrawal pending: ${user.displayName} — $${data.amount.toFixed(2)} USDT to ${destination} (payout ${data.payoutId})`,
+    });
   }
 
   depositorPlanStarted(
