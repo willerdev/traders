@@ -2549,4 +2549,147 @@ export class NotificationService {
         'New rule: deposits and investment allocations earn daily yield only after they have been in place for at least 24 hours. Existing capital older than 24 hours is unaffected. See thetradeguard.com/invest',
     });
   }
+
+  /**
+   * Email investors with investment balance under $500 about the 27 Jul 2026 auto-stop.
+   */
+  async broadcastInvestorAutoStopPolicy(): Promise<{
+    total: number;
+    sent: number;
+    failed: number;
+  }> {
+    const users = await this.prisma.user.findMany({
+      where: {
+        email: { not: null },
+        status: { not: 'BANNED' },
+        platformWallet: {
+          investorBalance: { gt: 0, lt: 500 },
+        },
+      },
+      select: {
+        id: true,
+        platformWallet: { select: { investorBalance: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    let sent = 0;
+    let failed = 0;
+    for (const user of users) {
+      try {
+        const balance = Number(user.platformWallet?.investorBalance ?? 0);
+        const ok = await this.sendInvestorAutoStopPolicy(user.id, balance);
+        if (ok) sent++;
+        else failed++;
+      } catch {
+        failed++;
+      }
+      await new Promise((r) => setTimeout(r, 80));
+    }
+
+    this.logger.log(
+      `Investor auto-stop broadcast: sent=${sent} failed=${failed} total=${users.length}`,
+    );
+    return { total: users.length, sent, failed };
+  }
+
+  private async sendInvestorAutoStopPolicy(userId: string, balance: number) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const bal = Number.isFinite(balance) ? balance.toFixed(2) : '0.00';
+    const html = this.email.layout(
+      'Minimum investment update',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>We are updating Smart Invest to keep the program healthy for everyone.</p>
+      <p><strong>From 27 July 2026, investments below $500 will automatically stop.</strong></p>
+      <p>Your current investment balance is <strong>$${bal} USDT</strong>.</p>
+      <ul style="padding-left:18px;color:#cbd5e1;">
+        <li>Top up so your investment is at least <strong>$500</strong> to keep earning.</li>
+        <li>If your balance stays under $500 after that date, investment will auto-stop.</li>
+        <li>You can manage deposits and allocations anytime from Invest.</li>
+      </ul>
+      <p>Questions? Reply in Support on the platform — Agent or a human admin can help.</p>
+      ${this.email.button(`${this.email.frontendUrl}/invest`, 'Top up on Invest')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Action needed: investments under $500 auto-stop from 27 July 2026',
+      html,
+      text: `From 27 July 2026, investments below $500 will automatically stop. Your current investment is $${bal} USDT. Top up to at least $500 on thetradeguard.com/invest to keep earning.`,
+    });
+  }
+
+  /**
+   * Email investors with investment balance ≥ $1000 about loan eligibility.
+   */
+  async broadcastInvestorLoanEligibilityPolicy(): Promise<{
+    total: number;
+    sent: number;
+    failed: number;
+  }> {
+    const users = await this.prisma.user.findMany({
+      where: {
+        email: { not: null },
+        status: { not: 'BANNED' },
+        platformWallet: {
+          investorBalance: { gte: 1000 },
+        },
+      },
+      select: {
+        id: true,
+        platformWallet: { select: { investorBalance: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    let sent = 0;
+    let failed = 0;
+    for (const user of users) {
+      try {
+        const balance = Number(user.platformWallet?.investorBalance ?? 0);
+        const ok = await this.sendInvestorLoanEligibilityPolicy(user.id, balance);
+        if (ok) sent++;
+        else failed++;
+      } catch {
+        failed++;
+      }
+      await new Promise((r) => setTimeout(r, 80));
+    }
+
+    this.logger.log(
+      `Investor loan eligibility broadcast: sent=${sent} failed=${failed} total=${users.length}`,
+    );
+    return { total: users.length, sent, failed };
+  }
+
+  private async sendInvestorLoanEligibilityPolicy(
+    userId: string,
+    balance: number,
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const bal = Number.isFinite(balance) ? balance.toFixed(2) : '0.00';
+    const borrowMax = Number.isFinite(balance)
+      ? (balance * 0.8).toFixed(2)
+      : '0.00';
+    const html = this.email.layout(
+      'You may be eligible for an investment loan',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Because your Smart Invest balance is <strong>$1,000 or more</strong>, you are eligible for our new investment loan program.</p>
+      <p>Your current investment: <strong>$${bal} USDT</strong> (illustrative borrow capacity up to <strong>$${borrowMax} USDT</strong> — 80%).</p>
+      <ul style="padding-left:18px;color:#cbd5e1;">
+        <li>Reinvest profit from your investment into growing your position.</li>
+        <li>Borrow up to <strong>80%</strong> of your investment balance.</li>
+        <li>Your investment <strong>keeps working and earning</strong> while the loan is active.</li>
+      </ul>
+      <p>This is an eligibility notice — approval and terms are confirmed by our team. Open Support on the platform to ask Agent or an admin about applying.</p>
+      ${this.email.button(`${this.email.frontendUrl}/messages`, 'Message Support')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Eligible: borrow up to 80% of your investment while it keeps earning',
+      html,
+      text: `With $1,000+ invested (yours: $${bal} USDT), you can reinvest profit and borrow up to 80% of your investment while it keeps earning. Message Support on thetradeguard.com/messages to learn more or apply.`,
+    });
+  }
 }

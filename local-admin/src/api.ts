@@ -565,6 +565,31 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ force }),
     }),
+
+  broadcastInvestorAutoStop: (force = false) =>
+    request<{
+      skipped: boolean;
+      announcedAt?: string;
+      total: number;
+      sent: number;
+      failed: number;
+    }>("/admin/notifications/investor-auto-stop", {
+      method: "POST",
+      body: JSON.stringify({ force }),
+    }),
+
+  broadcastInvestorLoanEligibility: (force = false) =>
+    request<{
+      skipped: boolean;
+      announcedAt?: string;
+      total: number;
+      sent: number;
+      failed: number;
+    }>("/admin/notifications/investor-loan-eligibility", {
+      method: "POST",
+      body: JSON.stringify({ force }),
+    }),
+
   listInvestors: (params?: { search?: string; limit?: number; offset?: number }) => {
     const q = new URLSearchParams();
     if (params?.search) q.set("search", params.search);

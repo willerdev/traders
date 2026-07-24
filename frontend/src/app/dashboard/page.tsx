@@ -25,6 +25,7 @@ import {
   DashboardHubTabs,
   useDashboardTab,
 } from "@/components/dashboard/dashboard-hub-tabs";
+import { DashboardInvestorPolicyBanners } from "@/components/dashboard/dashboard-investor-policy-banners";
 
 function DashboardBody() {
   const tab = useDashboardTab();
@@ -88,6 +89,7 @@ function DashboardBody() {
   return (
     <div className="mx-auto max-w-7xl space-y-4 px-4 py-4 sm:px-6 sm:py-5">
       <DashboardHubTabs active={tab} />
+      <DashboardInvestorPolicyBanners />
 
       {tab === "trader" && (
         <>

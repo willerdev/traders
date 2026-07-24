@@ -44,6 +44,9 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
   const [creditNote, setCreditNote] = useState("");
   const [creditSaving, setCreditSaving] = useState(false);
   const [broadcastSaving, setBroadcastSaving] = useState(false);
+  const [broadcastKind, setBroadcastKind] = useState<
+    null | "yield" | "autoStop" | "loan"
+  >(null);
 
   const [enrollEmail, setEnrollEmail] = useState("");
   const [enrollAmount, setEnrollAmount] = useState("100");
@@ -407,6 +410,7 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
                   "Force re-send even if already announced? Click Cancel for one-time send only.",
                 );
                 setBroadcastSaving(true);
+                setBroadcastKind("yield");
                 void api
                   .broadcastYieldHoldPolicy(force)
                   .then((res) => {
@@ -425,14 +429,113 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
                       e instanceof Error ? e.message : "Broadcast failed",
                     ),
                   )
-                  .finally(() => setBroadcastSaving(false));
+                  .finally(() => {
+                    setBroadcastSaving(false);
+                    setBroadcastKind(null);
+                  });
               }}
             >
-              {broadcastSaving
+              {broadcastSaving && broadcastKind === "yield"
                 ? "Emailing users…"
                 : "Email all: 24h yield rule"}
             </button>
+            <button
+              type="button"
+              className="platform-btn"
+              disabled={broadcastSaving}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    "Email investors with investment under $500 about auto-stop from 27 July 2026?",
+                  )
+                ) {
+                  return;
+                }
+                const force = window.confirm(
+                  "Force re-send even if already announced? Click Cancel for one-time send only.",
+                );
+                setBroadcastSaving(true);
+                setBroadcastKind("autoStop");
+                void api
+                  .broadcastInvestorAutoStop(force)
+                  .then((res) => {
+                    if (res.skipped) {
+                      onMessage(
+                        `Auto-stop already announced at ${res.announcedAt ?? "—"}. Use force to re-send.`,
+                      );
+                      return;
+                    }
+                    onMessage(
+                      `Auto-stop emails (<$500): sent ${res.sent}/${res.total} (failed ${res.failed}).`,
+                    );
+                  })
+                  .catch((e) =>
+                    onMessage(
+                      e instanceof Error ? e.message : "Broadcast failed",
+                    ),
+                  )
+                  .finally(() => {
+                    setBroadcastSaving(false);
+                    setBroadcastKind(null);
+                  });
+              }}
+            >
+              {broadcastSaving && broadcastKind === "autoStop"
+                ? "Emailing under $500…"
+                : "Email: under $500 auto-stop"}
+            </button>
+            <button
+              type="button"
+              className="platform-btn"
+              disabled={broadcastSaving}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    "Email investors with $1,000+ investment about loan eligibility (borrow up to 80%)?",
+                  )
+                ) {
+                  return;
+                }
+                const force = window.confirm(
+                  "Force re-send even if already announced? Click Cancel for one-time send only.",
+                );
+                setBroadcastSaving(true);
+                setBroadcastKind("loan");
+                void api
+                  .broadcastInvestorLoanEligibility(force)
+                  .then((res) => {
+                    if (res.skipped) {
+                      onMessage(
+                        `Loan eligibility already announced at ${res.announcedAt ?? "—"}. Use force to re-send.`,
+                      );
+                      return;
+                    }
+                    onMessage(
+                      `Loan eligibility emails ($1000+): sent ${res.sent}/${res.total} (failed ${res.failed}).`,
+                    );
+                  })
+                  .catch((e) =>
+                    onMessage(
+                      e instanceof Error ? e.message : "Broadcast failed",
+                    ),
+                  )
+                  .finally(() => {
+                    setBroadcastSaving(false);
+                    setBroadcastKind(null);
+                  });
+              }}
+            >
+              {broadcastSaving && broadcastKind === "loan"
+                ? "Emailing $1000+…"
+                : "Email: $1000+ loan offer"}
+            </button>
           </div>
+          <p className="muted" style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}>
+            Templates: under-$500 gets the 27 Jul 2026 auto-stop notice; $1,000+
+            gets the loan eligibility notice (reinvest profit + borrow up to 80%
+            while capital keeps earning). Audiences are filtered by investment
+            balance automatically.
+          </p>
         </div>
       )}
 

@@ -882,6 +882,10 @@ model PlatformConfig {
   loginOtpEnabled          Boolean @default(false) @map("login_otp_enabled")
   /// Set after the 24h investment/deposit yield-hold policy email is broadcast once.
   investorYieldHoldAnnouncedAt DateTime?
+  /// Set after the under-$500 auto-stop policy email is broadcast once.
+  investorAutoStopAnnouncedAt DateTime?
+  /// Set after the $1000+ loan eligibility email is broadcast once.
+  investorLoanEligibilityAnnouncedAt DateTime?
 
   @@map("platform_config")
 }

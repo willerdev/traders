@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { api, type InvestorStatus } from "@/lib/api";
 import { Mt5ConnectForm } from "@/components/mt5/mt5-connect-form";
 import { InvestmentReturnsPanel } from "@/components/investor/investment-returns";
+import { InvestorPolicyBanners } from "@/components/investor/investor-policy-banners";
 import { CurrencySwitcher } from "@/components/currency-switcher";
 import {
   PaymentSourceSelector,
@@ -466,6 +467,11 @@ export function InvestHub() {
 
   return (
     <div className="space-y-5">
+      <InvestorPolicyBanners
+        investmentBalance={
+          status.investmentBalance ?? status.investmentDeposited ?? 0
+        }
+      />
       <div className="flex justify-end">
         <CurrencySwitcher displayCurrency={display} onChanged={refresh} />
       </div>

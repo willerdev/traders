@@ -667,6 +667,27 @@ export class AdminController {
     });
   }
 
+  @Post('notifications/investor-auto-stop')
+  broadcastInvestorAutoStop(
+    @Request() req: { user: { id: string } },
+    @Body() body?: { force?: boolean },
+  ) {
+    return this.adminService.broadcastInvestorAutoStopPolicy(req.user.id, {
+      force: Boolean(body?.force),
+    });
+  }
+
+  @Post('notifications/investor-loan-eligibility')
+  broadcastInvestorLoanEligibility(
+    @Request() req: { user: { id: string } },
+    @Body() body?: { force?: boolean },
+  ) {
+    return this.adminService.broadcastInvestorLoanEligibilityPolicy(
+      req.user.id,
+      { force: Boolean(body?.force) },
+    );
+  }
+
   @Post('system-signals')
   publishSystemSignal(
     @Body()

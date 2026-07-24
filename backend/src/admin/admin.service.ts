@@ -2049,6 +2049,71 @@ export class AdminService {
     return { skipped: false as const, announcedAt: announcedAt.toISOString(), ...result };
   }
 
+  async broadcastInvestorAutoStopPolicy(
+    adminId: string,
+    opts?: { force?: boolean },
+  ) {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    if (config?.investorAutoStopAnnouncedAt && !opts?.force) {
+      return {
+        skipped: true as const,
+        announcedAt: config.investorAutoStopAnnouncedAt.toISOString(),
+        total: 0,
+        sent: 0,
+        failed: 0,
+      };
+    }
+
+    const result = await this.notifications.broadcastInvestorAutoStopPolicy();
+    const announcedAt = new Date();
+    await this.prisma.platformConfig.upsert({
+      where: { id: 'default' },
+      create: { id: 'default', investorAutoStopAnnouncedAt: announcedAt },
+      update: { investorAutoStopAnnouncedAt: announcedAt },
+    });
+    await this.logAction(adminId, 'INVESTOR_AUTO_STOP_BROADCAST', undefined, result);
+    return { skipped: false as const, announcedAt: announcedAt.toISOString(), ...result };
+  }
+
+  async broadcastInvestorLoanEligibilityPolicy(
+    adminId: string,
+    opts?: { force?: boolean },
+  ) {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    if (config?.investorLoanEligibilityAnnouncedAt && !opts?.force) {
+      return {
+        skipped: true as const,
+        announcedAt: config.investorLoanEligibilityAnnouncedAt.toISOString(),
+        total: 0,
+        sent: 0,
+        failed: 0,
+      };
+    }
+
+    const result =
+      await this.notifications.broadcastInvestorLoanEligibilityPolicy();
+    const announcedAt = new Date();
+    await this.prisma.platformConfig.upsert({
+      where: { id: 'default' },
+      create: {
+        id: 'default',
+        investorLoanEligibilityAnnouncedAt: announcedAt,
+      },
+      update: { investorLoanEligibilityAnnouncedAt: announcedAt },
+    });
+    await this.logAction(
+      adminId,
+      'INVESTOR_LOAN_ELIGIBILITY_BROADCAST',
+      undefined,
+      result,
+    );
+    return { skipped: false as const, announcedAt: announcedAt.toISOString(), ...result };
+  }
+
   publishSystemSignal(body: {
     symbol: string;
     direction: 'BUY' | 'SELL';
