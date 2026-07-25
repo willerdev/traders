@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Logger, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
 import { PayoutSource, WalletTxType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NowPaymentsService } from '../payments/nowpayments.service';
@@ -33,6 +33,7 @@ export class PayoutService {
     private compliance: ComplianceService,
     private notifications: NotificationService,
     private profitShare: ProfitShareService,
+    @Inject(forwardRef(() => WalletService))
     private walletService: WalletService,
     private flutterwavePayments: FlutterwavePaymentsService,
   ) {}
