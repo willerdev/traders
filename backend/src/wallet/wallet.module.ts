@@ -6,6 +6,7 @@ import { PaymentsModule } from '../payments/payments.module';
 import { EmailModule } from '../email/email.module';
 import { ComplianceModule } from '../compliance/compliance.module';
 import { FlutterwaveModule } from '../flutterwave/flutterwave.module';
+import { PayoutsModule } from '../payouts/payouts.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { FlutterwaveModule } from '../flutterwave/flutterwave.module';
     EmailModule,
     ComplianceModule,
     forwardRef(() => FlutterwaveModule),
+    forwardRef(() => PayoutsModule),
   ],
   controllers: [WalletController],
   providers: [WalletService, SavedWithdrawalWalletService],

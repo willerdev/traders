@@ -1876,6 +1876,91 @@ export class AdminService {
     return this.investorService.setYieldPaused(userId, yieldPaused);
   }
 
+  async listInstantWithdrawUsers() {
+    const users = await this.prisma.user.findMany({
+      where: { instantWithdraw: true },
+      orderBy: { instantWithdrawGrantedAt: 'desc' },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        instantWithdrawGrantedAt: true,
+        instantWithdrawGrantedById: true,
+        platformWallet: {
+          select: { availableBalance: true },
+        },
+      },
+    });
+
+    return {
+      items: users.map((u) => ({
+        id: u.id,
+        email: u.email,
+        displayName: u.displayName,
+        walletBalance: Number(u.platformWallet?.availableBalance ?? 0),
+        grantedAt: u.instantWithdrawGrantedAt?.toISOString() ?? null,
+        grantedById: u.instantWithdrawGrantedById,
+      })),
+      count: users.length,
+    };
+  }
+
+  async setInstantWithdraw(
+    adminId: string,
+    input: { userId?: string; email?: string; enabled: boolean },
+  ) {
+    const email = input.email?.trim().toLowerCase();
+    const user = input.userId
+      ? await this.prisma.user.findUnique({ where: { id: input.userId } })
+      : email
+        ? await this.prisma.user.findFirst({
+            where: { email: { equals: email, mode: 'insensitive' } },
+          })
+        : null;
+
+    if (!user) {
+      throw new NotFoundException(
+        'User not found — provide a valid userId or email',
+      );
+    }
+
+    const enabled = Boolean(input.enabled);
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        instantWithdraw: enabled,
+        instantWithdrawGrantedAt: enabled ? new Date() : null,
+        instantWithdrawGrantedById: enabled ? adminId : null,
+      },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        instantWithdraw: true,
+        instantWithdrawGrantedAt: true,
+        instantWithdrawGrantedById: true,
+        platformWallet: { select: { availableBalance: true } },
+      },
+    });
+
+    await this.logAction(
+      adminId,
+      enabled ? 'INSTANT_WITHDRAW_GRANTED' : 'INSTANT_WITHDRAW_REVOKED',
+      user.id,
+      { email: user.email },
+    );
+
+    return {
+      id: updated.id,
+      email: updated.email,
+      displayName: updated.displayName,
+      instantWithdraw: updated.instantWithdraw,
+      grantedAt: updated.instantWithdrawGrantedAt?.toISOString() ?? null,
+      grantedById: updated.instantWithdrawGrantedById,
+      walletBalance: Number(updated.platformWallet?.availableBalance ?? 0),
+    };
+  }
+
   async transferInvestorFunds(
     userId: string,
     adminId: string,

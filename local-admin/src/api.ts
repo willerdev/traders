@@ -653,6 +653,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  instantWithdrawList: () =>
+    request<InstantWithdrawListResult>("/admin/withdraw-whitelist"),
+  addInstantWithdraw: (data: { userId?: string; email?: string }) =>
+    request<InstantWithdrawUser>("/admin/withdraw-whitelist", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  removeInstantWithdraw: (data: { userId?: string; email?: string }) =>
+    request<InstantWithdrawUser>("/admin/withdraw-whitelist/remove", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
   incomeJournal: (params?: {
     limit?: number;
     offset?: number;
@@ -830,6 +843,30 @@ export type InvestorListResult = {
   count: number;
   limit: number;
   offset: number;
+};
+
+export type InstantWithdrawRow = {
+  id: string;
+  email: string | null;
+  displayName: string;
+  walletBalance: number;
+  grantedAt: string | null;
+  grantedById: string | null;
+};
+
+export type InstantWithdrawListResult = {
+  items: InstantWithdrawRow[];
+  count: number;
+};
+
+export type InstantWithdrawUser = {
+  id: string;
+  email: string | null;
+  displayName: string;
+  instantWithdraw: boolean;
+  grantedAt: string | null;
+  grantedById: string | null;
+  walletBalance: number;
 };
 
 export type IncomeJournalEntry = {

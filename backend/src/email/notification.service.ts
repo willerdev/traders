@@ -1663,6 +1663,28 @@ export class NotificationService {
     );
   }
 
+  walletWithdrawInstantExecuted(
+    userId: string,
+    data: {
+      amount: number;
+      netPayout: number;
+      fee: number;
+      payoutId: string;
+      destination: string;
+      walletLabel?: string;
+      gatewayPayoutId?: string;
+    },
+  ) {
+    this.dispatch(
+      this.sendWalletWithdrawInstantUser(userId, data),
+      'Instant withdraw user email',
+    );
+    this.dispatch(
+      this.sendWalletWithdrawInstantAdmin(userId, data),
+      'Instant withdraw admin alert',
+    );
+  }
+
   walletAdminCredit(
     userId: string,
     data: { amount: number; balance: number; note?: string },
@@ -1851,6 +1873,101 @@ export class NotificationService {
       subject: `[Action required] Wallet withdrawal — $${data.amount.toFixed(2)} USDT`,
       html,
       text: `Wallet withdrawal pending: ${user.displayName} — $${data.amount.toFixed(2)} USDT to ${destination} (payout ${data.payoutId})`,
+    });
+  }
+
+  private async sendWalletWithdrawInstantUser(
+    userId: string,
+    data: {
+      amount: number;
+      netPayout: number;
+      fee: number;
+      payoutId: string;
+      destination: string;
+      walletLabel?: string;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const walletLine = data.walletLabel
+      ? `<p style="color:#94a3b8;font-size:14px;">Sent to <strong>${this.escape(data.walletLabel)}</strong>.</p>`
+      : '';
+    const feeLine =
+      data.fee > 0
+        ? `<p style="color:#94a3b8;font-size:14px;">Processing fee: $${data.fee.toFixed(2)} USDT · Net sent: <strong>$${data.netPayout.toFixed(2)} USDT</strong></p>`
+        : `<p style="color:#94a3b8;font-size:14px;">VIP fee waiver — full <strong>$${data.netPayout.toFixed(2)} USDT</strong> sent.</p>`;
+    const html = this.email.layout(
+      'Withdrawal sent',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your withdrawal of <strong>$${data.amount.toFixed(2)} USDT</strong> is on its way — no admin approval required for your account.</p>
+      ${feeLine}
+      ${walletLine}
+      <p style="color:#94a3b8;font-size:14px;">It typically arrives within a few minutes once the network confirms.</p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Withdrawal sent — $${data.netPayout.toFixed(2)} USDT`,
+      html,
+      text: `Your $${data.amount.toFixed(2)} USDT withdrawal is being sent (net $${data.netPayout.toFixed(2)} USDT).`,
+    });
+  }
+
+  private async sendWalletWithdrawInstantAdmin(
+    userId: string,
+    data: {
+      amount: number;
+      netPayout: number;
+      fee: number;
+      payoutId: string;
+      destination: string;
+      walletLabel?: string;
+      gatewayPayoutId?: string;
+    },
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, displayName: true },
+    });
+    if (!user) {
+      this.logger.warn(
+        `Instant withdraw admin alert: user ${userId} not found — skipping alert for payout ${data.payoutId}`,
+      );
+      return false;
+    }
+
+    const userLine = user.email
+      ? `${this.escape(user.displayName)} (${this.escape(user.email)})`
+      : this.escape(user.displayName);
+    const destination = data.destination?.trim() || 'Not set';
+    const walletLine = data.walletLabel
+      ? `<tr><td style="padding:6px 0;color:#94a3b8;">Saved wallet</td><td style="padding:6px 0;"><strong>${this.escape(data.walletLabel)}</strong></td></tr>`
+      : '';
+    const gatewayLine = data.gatewayPayoutId
+      ? `<tr><td style="padding:6px 0;color:#94a3b8;">Gateway ref</td><td style="padding:6px 0;"><code style="color:#93c5fd;">${this.escape(data.gatewayPayoutId)}</code></td></tr>`
+      : '';
+
+    const html = this.email.layout(
+      'Instant withdrawal executed',
+      `<p>An investor on the instant-withdraw whitelist just processed a wallet withdrawal automatically. No approval was required.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">User</td><td style="padding:6px 0;"><strong>${userLine}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Gross</td><td style="padding:6px 0;"><strong>$${data.amount.toFixed(2)} USDT</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Fee</td><td style="padding:6px 0;">$${data.fee.toFixed(2)} USDT</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Net sent</td><td style="padding:6px 0;"><strong>$${data.netPayout.toFixed(2)} USDT</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Destination</td><td style="padding:6px 0;"><code style="color:#93c5fd;">${this.escape(destination)}</code></td></tr>
+        ${walletLine}
+        <tr><td style="padding:6px 0;color:#94a3b8;">Payout ID</td><td style="padding:6px 0;"><code style="color:#93c5fd;">${this.escape(data.payoutId)}</code></td></tr>
+        ${gatewayLine}
+      </table>
+      <p style="color:#94a3b8;font-size:13px;">Remove the user from the instant-withdraw list in the admin hub if this shouldn't have executed.</p>`,
+    );
+
+    return this.sendOpsAlert({
+      label: `Ops alert: instant withdraw ${data.payoutId} — ${user.displayName} $${data.amount.toFixed(2)}`,
+      subject: `[FYI] Instant withdrawal executed — $${data.amount.toFixed(2)} USDT`,
+      html,
+      text: `Instant withdraw executed: ${user.displayName} — $${data.amount.toFixed(2)} USDT (net $${data.netPayout.toFixed(2)}) to ${destination} (payout ${data.payoutId})`,
     });
   }
 

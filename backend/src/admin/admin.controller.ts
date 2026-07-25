@@ -628,6 +628,38 @@ export class AdminController {
     );
   }
 
+  @Get('withdraw-whitelist')
+  @RequireAdminPermission('payout')
+  listInstantWithdrawUsers() {
+    return this.adminService.listInstantWithdrawUsers();
+  }
+
+  @Post('withdraw-whitelist')
+  @RequireAdminPermission('payout')
+  addInstantWithdrawUser(
+    @Request() req: { user: { id: string } },
+    @Body() body: { userId?: string; email?: string },
+  ) {
+    return this.adminService.setInstantWithdraw(req.user.id, {
+      userId: body.userId,
+      email: body.email,
+      enabled: true,
+    });
+  }
+
+  @Post('withdraw-whitelist/remove')
+  @RequireAdminPermission('payout')
+  removeInstantWithdrawUser(
+    @Request() req: { user: { id: string } },
+    @Body() body: { userId?: string; email?: string },
+  ) {
+    return this.adminService.setInstantWithdraw(req.user.id, {
+      userId: body.userId,
+      email: body.email,
+      enabled: false,
+    });
+  }
+
   @Get('income-journal')
   getIncomeJournal(
     @Query('limit') limit?: string,

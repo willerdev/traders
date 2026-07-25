@@ -30,6 +30,7 @@ import { FlutterwavePaymentsService } from '../flutterwave/flutterwave-payments.
 import { FxRatesService } from '../fx/fx-rates.service';
 import { resolvePreferredDisplayCurrency } from '../fx/country-currency.util';
 import { isInvestorVipActive } from '../investor/investor-vip.util';
+import { PayoutService } from '../payouts/payout.service';
 
 const PLAN_DAYS = 5;
 const DEPOSIT_MIN_FALLBACK_USDT = 10;
@@ -50,6 +51,8 @@ export class WalletService {
     @Inject(forwardRef(() => FlutterwavePaymentsService))
     private flutterwavePayments: FlutterwavePaymentsService,
     private fxRates: FxRatesService,
+    @Inject(forwardRef(() => PayoutService))
+    private payouts: PayoutService,
   ) {}
 
   private ipnUrl() {
@@ -888,8 +891,13 @@ export class WalletService {
     const grossAmount = Math.round(amount * 100) / 100;
     const vipUser = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { investorVipActive: true, investorVipExpiresAt: true },
+      select: {
+        investorVipActive: true,
+        investorVipExpiresAt: true,
+        instantWithdraw: true,
+      },
     });
+    const instantWithdraw = Boolean(vipUser?.instantWithdraw);
     const fee = isInvestorVipActive(vipUser ?? {})
       ? 0
       : WALLET_WITHDRAWAL_FEE_USD;
@@ -968,6 +976,61 @@ export class WalletService {
       });
     });
 
+    if (instantWithdraw) {
+      try {
+        const result = await this.payouts.approveAndSendPayout(
+          payout.id,
+          `instant_${userId}`,
+        );
+        const gatewayPayoutId =
+          'gatewayPayoutId' in result ? result.gatewayPayoutId : undefined;
+        this.notifications.walletWithdrawInstantExecuted(userId, {
+          amount: grossAmount,
+          netPayout,
+          fee,
+          payoutId: payout.id,
+          destination,
+          walletLabel,
+          gatewayPayoutId,
+        });
+        return {
+          status: 'instant' as const,
+          payoutId: payout.id,
+          amount: grossAmount,
+          fee,
+          netPayout,
+          balance: newBalance,
+          payoutStatus: result.payout?.status ?? 'APPROVED',
+          gatewayPayoutId: gatewayPayoutId ?? null,
+          message:
+            'message' in result && typeof result.message === 'string'
+              ? result.message
+              : 'Withdrawal is being sent to your saved wallet.',
+        };
+      } catch (err) {
+        this.logger.error(
+          `Instant withdraw failed for user ${userId} payout ${payout.id}: ${err instanceof Error ? err.message : err}`,
+        );
+        // Fall back to the normal pending-approval flow — funds are already
+        // debited to the payout so admin can still approve/refund by hand.
+        this.notifications.walletWithdrawRequested(userId, {
+          amount: grossAmount,
+          payoutId: payout.id,
+          destination,
+        });
+        return {
+          status: 'requested' as const,
+          payoutId: payout.id,
+          amount: grossAmount,
+          fee,
+          netPayout,
+          balance: newBalance,
+          instantFailure:
+            err instanceof Error ? err.message : 'Instant payout failed',
+        };
+      }
+    }
+
     this.notifications.walletWithdrawRequested(userId, {
       amount: grossAmount,
       payoutId: payout.id,
@@ -975,7 +1038,7 @@ export class WalletService {
     });
 
     return {
-      status: 'requested',
+      status: 'requested' as const,
       payoutId: payout.id,
       amount: grossAmount,
       fee,
