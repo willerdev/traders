@@ -77,14 +77,14 @@ function visibleNavItems(
 
 function PublicHeader() {
   return (
-    <header className="sticky top-0 z-50 border-b border-[var(--color-border)] bg-[var(--color-surface)] backdrop-blur-xl">
+    <header className="sticky top-0 z-50 border-b border-[var(--color-border)] bg-[var(--color-surface)]/90 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
         <Link href="/" className="flex items-center">
           <Logo className="text-lg" />
         </Link>
         <div className="flex gap-2">
           <Link href="/invest">
-            <Button variant="ghost" size="sm">
+            <Button size="sm" className="gap-1">
               Invest
             </Button>
           </Link>

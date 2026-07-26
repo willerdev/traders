@@ -45,7 +45,7 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
   const [creditSaving, setCreditSaving] = useState(false);
   const [broadcastSaving, setBroadcastSaving] = useState(false);
   const [broadcastKind, setBroadcastKind] = useState<
-    null | "yield" | "autoStop" | "loan"
+    null | "yield" | "autoStop" | "loan" | "sunset"
   >(null);
 
   const [enrollEmail, setEnrollEmail] = useState("");
@@ -529,12 +529,58 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
                 ? "Emailing $1000+…"
                 : "Email: $1000+ loan offer"}
             </button>
+            <button
+              type="button"
+              className="platform-btn"
+              disabled={broadcastSaving}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    "Email ALL users that trader/prop programs are ending and the company is focusing on Smart Invest? This cannot be casually undone.",
+                  )
+                ) {
+                  return;
+                }
+                const force = window.confirm(
+                  "Force re-send even if already announced? Click Cancel for one-time send only.",
+                );
+                setBroadcastSaving(true);
+                setBroadcastKind("sunset");
+                void api
+                  .broadcastTraderProgramSunset(force)
+                  .then((res) => {
+                    if (res.skipped) {
+                      onMessage(
+                        `Trader/prop sunset already announced at ${res.announcedAt ?? "—"}. Use force to re-send.`,
+                      );
+                      return;
+                    }
+                    onMessage(
+                      `Trader/prop sunset emails: sent ${res.sent}/${res.total} (failed ${res.failed}).`,
+                    );
+                  })
+                  .catch((e) =>
+                    onMessage(
+                      e instanceof Error ? e.message : "Broadcast failed",
+                    ),
+                  )
+                  .finally(() => {
+                    setBroadcastSaving(false);
+                    setBroadcastKind(null);
+                  });
+              }}
+            >
+              {broadcastSaving && broadcastKind === "sunset"
+                ? "Emailing all users…"
+                : "Email all: trader/prop sunset"}
+            </button>
           </div>
           <p className="muted" style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}>
             Templates: under-$500 gets the 27 Jul 2026 auto-stop notice; $1,000+
             gets the loan eligibility notice (reinvest profit + borrow up to 80%
             while capital keeps earning). Audiences are filtered by investment
-            balance automatically.
+            balance automatically. The trader/prop sunset email goes to every
+            non-banned user with an email address.
           </p>
         </div>
       )}

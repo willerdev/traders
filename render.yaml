@@ -84,7 +84,7 @@ services:
       - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM
-        value: TraderRank Pro <notifications@thetradeguard.com>
+        value: Tradeguard <info@thetradeguard.com>
       - key: S3_ENDPOINT
         sync: false
       - key: S3_BUCKET

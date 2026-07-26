@@ -17,6 +17,8 @@ type Props = {
   dailyYieldPercent: number;
   walletEarnings: number;
   yieldPaused?: boolean;
+  autoReinvest?: boolean;
+  autoReinvestFeePercent?: number;
   compact?: boolean;
   displayCurrency?: DisplayCurrency | null;
 };
@@ -47,6 +49,8 @@ export function InvestmentReturnsPanel({
   dailyYieldPercent,
   walletEarnings,
   yieldPaused,
+  autoReinvest,
+  autoReinvestFeePercent = 10,
   compact,
   displayCurrency,
 }: Props) {
@@ -136,7 +140,11 @@ export function InvestmentReturnsPanel({
             <p className="mt-1 text-sm text-gray-400">
               {dailyYieldPercent}% daily on{" "}
               {money(investmentBalance)}
-              {yieldPaused ? " · yield paused" : " · credited ~16:00 Kampala"}
+              {yieldPaused
+                ? " · yield paused"
+                : autoReinvest
+                  ? ` · auto-reinvest (${autoReinvestFeePercent}% fee, 90% compounds)`
+                  : " · credited ~16:00 Kampala"}
             </p>
           </div>
           <TrendingUp className="h-5 w-5 shrink-0 text-emerald-400" />

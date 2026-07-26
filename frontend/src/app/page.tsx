@@ -3,21 +3,10 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import {
-  ArrowRight,
-  BarChart3,
-  Shield,
-  Trophy,
-  Zap,
-  TrendingUp,
-  Users,
-  Tag,
-  Wallet,
-  LineChart,
-} from "lucide-react";
+import { ArrowRight, Tag, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { RecentPayoutsShowcase } from "@/components/marketing/recent-payouts-showcase";
+import { InvestmentRules } from "@/components/marketing/investment-rules";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
 
@@ -28,189 +17,198 @@ type FeaturedPromo = {
   finalAmount: number;
 };
 
-const paths = [
+const FLOW = [
   {
-    icon: Trophy,
-    title: "Trader",
-    description:
-      "Submit setups, climb the leaderboard, and get funded on a virtual account with weekly payouts.",
-    href: "/register?intent=trader",
-    cta: "Compete & Get Funded",
-    accent: "border-rank-gold/30 bg-rank-gold/5",
+    step: "01",
+    title: "Deposit",
+    body: "Fund your wallet with USDT. Capital stays under your account until you allocate.",
   },
   {
-    icon: LineChart,
-    title: "Investor",
-    description:
-      "Choose your investment size, pay a tiered subscription fee, and earn daily yield on your balance — trade on platform MT5 or auto-copy.",
-    href: "/register?intent=investor",
-    cta: "Start Investing",
-    accent: "border-cyan-500/30 bg-cyan-500/5",
-  },
-];
-
-const features = [
-  {
-    icon: Zap,
-    title: "Setup acquisition",
-    description:
-      "Submit immutable trade setups with screenshots. Compete weekly and earn TP rewards when price hits target.",
+    step: "02",
+    title: "Invest",
+    body: "Move funds into Smart Invest, pay the tiered enrollment fee, and set your size.",
   },
   {
-    icon: TrendingUp,
-    title: "Smart investing",
-    description:
-      "Tiered subscription fees by capital size. Daily yield credited to wallet with a clear returns journal.",
+    step: "03",
+    title: "Earn daily",
+    body: "Eligible balance earns daily yield after the 24-hour hold — credited around 16:00.",
   },
   {
-    icon: Shield,
-    title: "Anti-Cheat Engine",
-    description:
-      "Duplicate signal detection, screenshot hashing, IP monitoring, and risk flags keep competition fair.",
+    step: "04",
+    title: "Withdraw or compound",
+    body: "Cash out to a saved wallet after KYC, or turn on auto-reinvest to compound.",
   },
-  {
-    icon: Trophy,
-    title: "Rank & Scale System",
-    description:
-      "Bronze → Elite tiers with real-time leaderboard. Win rate, drawdown, and consistency all factor in.",
-  },
-  {
-    icon: BarChart3,
-    title: "Weekly Payouts",
-    description:
-      "Earn 40% of virtual profits. Payouts funded by subscriptions, premium memberships, and marketplace fees.",
-  },
-  {
-    icon: Users,
-    title: "Talent Discovery",
-    description:
-      "Prove your edge without broker complications. Top performers get visibility and scaling opportunities.",
-  },
-];
-
-const tiers = [
-  { name: "Bronze", balance: "$1,000", color: "text-amber-700" },
-  { name: "Silver", balance: "$2,500", color: "text-gray-300" },
-  { name: "Gold", balance: "$5,000", color: "text-rank-gold" },
-  { name: "Diamond", balance: "$10,000", color: "text-cyan-400" },
-  { name: "Elite", balance: "$25,000", color: "text-purple-400" },
-];
+] as const;
 
 export default function HomePage() {
-  const [fee, setFee] = useState(5);
   const [promo, setPromo] = useState<FeaturedPromo | null>(null);
   const isLoggedIn = Boolean(useAuthStore((s) => s.token));
 
-  const pathLinks = paths.map((path) => {
-    if (path.title === "Investor" && isLoggedIn) {
-      return { ...path, href: "/invest", cta: "Open Invest" };
-    }
-    if (path.title === "Trader" && isLoggedIn) {
-      return { ...path, href: "/dashboard", cta: "Open Dashboard" };
-    }
-    if (!isLoggedIn) {
-      return {
-        ...path,
-        href: "/register",
-        cta: "Invite only",
-      };
-    }
-    return path;
-  });
+  const primaryHref = isLoggedIn ? "/invest" : "/register";
+  const primaryLabel = isLoggedIn ? "Open Invest" : "Start with an invite";
 
   useEffect(() => {
     api.payments
       .featuredPromo()
-      .then((res) => {
-        setFee(res.registrationFeeUsdt);
-        setPromo(res.promo);
-      })
+      .then((res) => setPromo(res.promo))
       .catch(() => setPromo(null));
   }, []);
 
   return (
     <div className="relative overflow-hidden">
-      <div className="gradient-orb -top-40 -left-40 h-96 w-96 bg-primary/20 animate-pulse-glow" />
-      <div className="gradient-orb top-20 -right-40 h-80 w-80 bg-rank-gold/10 animate-pulse-glow" />
-
-      {/* Hero */}
-      <section className="relative mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-32">
+      {/* Full-bleed atmospheric plane */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10"
+      >
         <motion.div
-          initial={{ opacity: 0, y: 30 }}
+          className="gradient-orb absolute -top-32 left-1/2 h-[28rem] w-[28rem] -translate-x-1/2 bg-primary/25 sm:h-[36rem] sm:w-[36rem]"
+          animate={{ opacity: [0.45, 0.7, 0.45], scale: [1, 1.06, 1] }}
+          transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <motion.div
+          className="gradient-orb absolute top-[40%] -right-24 h-72 w-72 bg-cyan-500/10"
+          animate={{ opacity: [0.25, 0.45, 0.25], x: [0, -12, 0] }}
+          transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,transparent_0%,var(--background)_70%)]" />
+      </div>
+
+      {/* Hero — brand, one headline, one line, one CTA group */}
+      <section className="relative mx-auto flex min-h-[min(92vh,900px)] max-w-7xl flex-col justify-center px-4 pb-16 pt-20 sm:px-6 sm:pb-24 sm:pt-28">
+        <motion.div
+          initial={{ opacity: 0, y: 28 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="text-center"
+          transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+          className="max-w-3xl"
         >
           {promo && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.4 }}
-              className="mb-6 flex justify-center"
-            >
-              <div className="inline-flex flex-wrap items-center justify-center gap-2 rounded-full border border-rank-gold/40 bg-rank-gold/10 px-4 py-2 text-sm">
-                <Tag className="h-4 w-4 shrink-0 text-rank-gold" />
-                <span className="font-semibold text-rank-gold">
-                  Limited offer: {promo.discountPercent}% OFF
-                </span>
-                <span className="text-gray-300">
-                  — use code{" "}
-                  <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono font-bold uppercase text-white">
-                    {promo.code}
-                  </code>{" "}
-                  at checkout and pay {promo.finalAmount} USDT instead of{" "}
-                  {promo.originalAmount}
-                </span>
-              </div>
-            </motion.div>
+            <p className="mb-6 inline-flex flex-wrap items-center gap-2 text-sm text-gray-400">
+              <Tag className="h-3.5 w-3.5 text-rank-gold" />
+              <span className="text-rank-gold">
+                {promo.discountPercent}% off
+              </span>
+              <span>
+                with code{" "}
+                <code className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-xs uppercase text-white">
+                  {promo.code}
+                </code>
+              </span>
+            </p>
           )}
-          <Badge variant="gold" className="mb-6">
-            Trade · Invest · Earn
-          </Badge>
-          <h1 className="text-4xl font-extrabold tracking-tight sm:text-6xl lg:text-7xl">
-            <span className="text-white">Your path.</span>
-            <br />
-            <span className="text-gradient">Your edge.</span>
-          </h1>
-          <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-400">
-            Choose how you want to participate — automated MT5 investing,
-            stable daily earnings, or trader competition with funded accounts.
-            One account can use all three.
+
+          <p className="text-2xl font-bold tracking-tight text-white sm:text-3xl lg:text-4xl">
+            Trader<span className="text-primary">Rank</span> Pro
+          </p>
+          <p className="mt-1 text-sm font-medium uppercase tracking-[0.22em] text-gray-500">
+            Trade Guard · Smart Invest
           </p>
 
-          <div className="mx-auto mt-12 grid max-w-6xl gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {pathLinks.map((path, i) => {
-              const Icon = path.icon;
-              return (
-                <motion.div
-                  key={path.title}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.15 + i * 0.08 }}
-                  className={`glass-card flex flex-col rounded-2xl border p-6 text-left ${path.accent}`}
-                >
-                  <div className="mb-4 inline-flex rounded-xl bg-white/5 p-3 text-primary">
-                    <Icon className="h-6 w-6" />
-                  </div>
-                  <h2 className="text-xl font-bold text-white">{path.title}</h2>
-                  <p className="mt-2 flex-1 text-sm text-gray-400">
-                    {path.description}
-                  </p>
-                  <Link href={path.href} className="mt-5">
-                    <Button variant="secondary" className="w-full gap-2">
-                      {path.cta}
-                      <ArrowRight className="h-4 w-4" />
-                    </Button>
-                  </Link>
-                </motion.div>
-              );
-            })}
+          <h1 className="mt-8 text-4xl font-extrabold leading-[1.08] tracking-tight text-white sm:text-5xl lg:text-6xl">
+            Put capital to work.
+            <span className="mt-1 block text-gradient">Earn daily yield.</span>
+          </h1>
+
+          <p className="mt-6 max-w-xl text-lg leading-relaxed text-gray-400">
+            Smart Invest credits eligible USDT daily to your wallet — clear fees,
+            a 24-hour hold on new capital, and withdrawals after KYC.
+          </p>
+
+          <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <Link href={primaryHref}>
+              <Button size="lg" className="w-full gap-2 sm:w-auto">
+                {primaryLabel}
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
+            {!isLoggedIn && (
+              <Link href="/login">
+                <Button size="lg" variant="secondary" className="w-full sm:w-auto">
+                  Sign in
+                </Button>
+              </Link>
+            )}
+            {isLoggedIn && (
+              <Link href="/wallet">
+                <Button size="lg" variant="secondary" className="w-full sm:w-auto">
+                  Wallet
+                </Button>
+              </Link>
+            )}
           </div>
 
-          <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-            <Link href="/leaderboard">
-              <Button variant="ghost" size="lg">
-                View Leaderboard
+          <p className="mt-6 flex items-center gap-1.5 text-sm text-gray-500">
+            <Wallet className="h-4 w-4 shrink-0" />
+            USDT deposits &amp; withdrawals via NOWPayments
+          </p>
+        </motion.div>
+      </section>
+
+      {/* How returns work */}
+      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-20">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.5 }}
+        >
+          <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
+            How returns work
+          </h2>
+          <p className="mt-3 max-w-xl text-gray-400">
+            Four steps from deposit to daily credit — no competition ladder.
+          </p>
+        </motion.div>
+
+        <ol className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+          {FLOW.map((item, i) => (
+            <motion.li
+              key={item.step}
+              initial={{ opacity: 0, y: 18 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.08 * i, duration: 0.45 }}
+              className="relative"
+            >
+              <span className="font-mono text-xs font-semibold tracking-widest text-primary/80">
+                {item.step}
+              </span>
+              <h3 className="mt-2 text-lg font-semibold text-white">
+                {item.title}
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-gray-400">
+                {item.body}
+              </p>
+            </motion.li>
+          ))}
+        </ol>
+      </section>
+
+      <InvestmentRules />
+
+      <RecentPayoutsShowcase />
+
+      {/* Closed invite CTA */}
+      <section className="mx-auto max-w-7xl px-4 pb-24 pt-8 sm:px-6">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5 }}
+          className="relative overflow-hidden rounded-3xl border border-primary/25 bg-gradient-to-br from-primary/15 via-transparent to-cyan-500/5 px-8 py-14 text-center sm:px-12"
+        >
+          <h2 className="text-3xl font-bold text-white sm:text-4xl">
+            Start investing with an invite
+          </h2>
+          <p className="mx-auto mt-4 max-w-lg text-gray-400">
+            Registrations are referral-only. Ask a current member for their invite
+            link, then enroll in Smart Invest from your account.
+          </p>
+          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Link href="/register">
+              <Button size="lg" className="gap-2">
+                How to join
+                <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
             <Link href="/login">
@@ -219,129 +217,10 @@ export default function HomePage() {
               </Button>
             </Link>
           </div>
-          <p className="mt-4 flex items-center justify-center gap-1.5 text-sm text-gray-500">
-            <Wallet className="h-4 w-4" />
-            Pay with crypto (USDT) — deposits & withdrawals via NOWPayments
-          </p>
-        </motion.div>
-
-        {/* Stats bar — trader path highlight */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.5 }}
-          className="mt-16 grid grid-cols-2 gap-4 sm:grid-cols-4"
-        >
-          {[
-            { label: "Starting Balance", value: "$1,000" },
-            { label: "Risk Per Trade", value: "5%" },
-            { label: "Trader Payout", value: "40%" },
-            { label: "Max Account", value: "$25,000" },
-          ].map((stat) => (
-            <div
-              key={stat.label}
-              className="glass-card rounded-xl border border-white/10 p-4 text-center"
-            >
-              <p className="text-2xl font-bold text-white">{stat.value}</p>
-              <p className="mt-1 text-xs text-gray-500">{stat.label}</p>
-            </div>
-          ))}
-        </motion.div>
-      </section>
-
-      <RecentPayoutsShowcase />
-
-      {/* Features */}
-      <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
-        <div className="text-center">
-          <h2 className="text-3xl font-bold text-white">
-            Built for Serious Traders
-          </h2>
-          <p className="mt-3 text-gray-400">
-            Enterprise-grade architecture. Prop-firm style experience.
-          </p>
-        </div>
-        <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {features.map((feature, i) => {
-            const Icon = feature.icon;
-            return (
-              <motion.div
-                key={feature.title}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-                className="glass-card rounded-2xl border border-white/10 p-6"
-              >
-                <div className="mb-4 inline-flex rounded-xl bg-primary/10 p-3 text-primary">
-                  <Icon className="h-5 w-5" />
-                </div>
-                <h3 className="text-lg font-semibold text-white">
-                  {feature.title}
-                </h3>
-                <p className="mt-2 text-sm text-gray-400">
-                  {feature.description}
-                </p>
-              </motion.div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Tiers */}
-      <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
-        <div className="text-center">
-          <h2 className="text-3xl font-bold text-white">Account Scaling</h2>
-          <p className="mt-3 text-gray-400">
-            Automatic scaling as your score and performance improve
-          </p>
-        </div>
-        <div className="mt-12 flex flex-wrap justify-center gap-4">
-          {tiers.map((tier, i) => (
-            <motion.div
-              key={tier.name}
-              initial={{ opacity: 0, scale: 0.9 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              viewport={{ once: true }}
-              transition={{ delay: i * 0.08 }}
-              className="glass-card w-36 rounded-2xl border border-white/10 p-5 text-center"
-            >
-              <p className={`text-sm font-bold ${tier.color}`}>{tier.name}</p>
-              <p className="mt-2 text-xl font-extrabold text-white">
-                {tier.balance}
-              </p>
-            </motion.div>
-          ))}
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6">
-        <div className="glass-card rounded-3xl border border-primary/20 bg-primary/5 p-10 text-center">
-          <h2 className="text-3xl font-bold text-white">
-            Closed community
-          </h2>
-          <p className="mx-auto mt-3 max-w-lg text-gray-400">
-            Registrations are done through referrals only. Ask a current member
-            for their invite link to join TraderRank Pro.
-          </p>
-          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Link href="/register">
-              <Button size="lg" variant="secondary" className="gap-2">
-                How to join
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
-            <Link href="/login">
-              <Button size="lg" variant="gold">
-                Sign in
-              </Button>
-            </Link>
-          </div>
           <p className="mt-4 text-xs text-gray-500">
             Direct public registration is disabled
           </p>
-        </div>
+        </motion.div>
       </section>
     </div>
   );

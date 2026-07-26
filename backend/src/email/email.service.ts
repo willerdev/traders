@@ -43,7 +43,18 @@ export class EmailService {
     const raw = normalizeEnv(
       this.config.get<string>("EMAIL_FROM") || process.env.EMAIL_FROM,
     );
-    if (raw) return raw;
+    if (raw) {
+      // Bare address like info@… shows as "info" in inboxes — prefer Tradeguard.
+      if (!raw.includes("<") && raw.includes("@")) {
+        return `Tradeguard <${raw}>`;
+      }
+      // Rewrite legacy "info <info@…>" / "Info <…>" display names.
+      const rewritten = raw.replace(
+        /^(info|Info|INFO)\s*(<[^>]+>)$/,
+        "Tradeguard $2",
+      );
+      return rewritten;
+    }
 
     const address = normalizeEnv(
       this.config.get<string>("EMAIL_FROM_ADDRESS") ||
@@ -52,11 +63,11 @@ export class EmailService {
     const name = normalizeEnv(
       this.config.get<string>("EMAIL_FROM_NAME") ||
         process.env.EMAIL_FROM_NAME ||
-        "TraderRank Pro",
+        "Tradeguard",
     );
     if (address) return `${name} <${address}>`;
 
-    return "TraderRank Pro <notifications@thetradeguard.com>";
+    return "Tradeguard <info@thetradeguard.com>";
   }
 
   get isConfigured(): boolean {
@@ -86,7 +97,7 @@ export class EmailService {
         <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#111827;border:1px solid #1e2936;border-radius:12px;overflow:hidden;">
           <tr>
             <td style="padding:24px 28px 8px;border-bottom:1px solid #1e2936;">
-              <p style="margin:0;font-size:13px;color:#5b9cf5;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;">TraderRank Pro</p>
+              <p style="margin:0;font-size:13px;color:#5b9cf5;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;">Tradeguard</p>
               <h1 style="margin:8px 0 0;font-size:22px;font-weight:700;color:#ffffff;">${title}</h1>
             </td>
           </tr>

@@ -131,6 +131,7 @@ export function InvestHub() {
   const [copied, setCopied] = useState(false);
   const [transferAmount, setTransferAmount] = useState("");
   const [transferLoading, setTransferLoading] = useState(false);
+  const [reinvestLoading, setReinvestLoading] = useState(false);
   const [investmentAmount, setInvestmentAmount] = useState("100");
   const [vipLoading, setVipLoading] = useState(false);
 
@@ -522,6 +523,11 @@ export function InvestHub() {
                   Yield paused
                 </span>
               )}
+              {status.settings?.autoReinvestEarnings && (
+                <span className="ml-2 rounded bg-emerald-500/20 px-1.5 py-0.5 text-xs text-emerald-200">
+                  Auto-reinvest
+                </span>
+              )}
             </p>
           </div>
           <Button
@@ -541,7 +547,11 @@ export function InvestHub() {
         <StatCard
           label="Investment balance"
           value={formatMoney(status.investmentBalance ?? 0, display)}
-          sub={`${status.dailyYieldPercent}% daily · credited to wallet at 16:00`}
+          sub={
+            status.settings?.autoReinvestEarnings
+              ? `${status.dailyYieldPercent}% daily · auto-reinvest on (${status.autoReinvestFeePercent ?? 10}% fee)`
+              : `${status.dailyYieldPercent}% daily · credited to wallet at 16:00`
+          }
           accent="invest"
           compactValue={localCurrency}
           delay={0.05}
@@ -677,6 +687,51 @@ export function InvestHub() {
           </Button>
         </div>
         {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+        <div className="mt-4 border-t border-white/10 pt-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-medium text-white">
+                Auto-reinvest (compounding)
+              </h4>
+              <p className="mt-1 text-xs text-gray-500">
+                {status.settings?.autoReinvestEarnings
+                  ? `On — ${status.autoReinvestFeePercent ?? 10}% of each daily earning is charged as a fee; the remaining 90% compounds into your investment.`
+                  : `Off — daily earnings go to your wallet. Enable to compound: ${status.autoReinvestFeePercent ?? 10}% fee on the full daily return, 90% added to investment.`}
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant={
+                status.settings?.autoReinvestEarnings ? "secondary" : "default"
+              }
+              disabled={reinvestLoading}
+              onClick={() => {
+                const next = !status.settings?.autoReinvestEarnings;
+                setReinvestLoading(true);
+                setError("");
+                void api.investor
+                  .setAutoReinvest(next)
+                  .then(() => refresh())
+                  .catch((e) =>
+                    setError(
+                      e instanceof Error
+                        ? e.message
+                        : "Failed to update auto-reinvest",
+                    ),
+                  )
+                  .finally(() => setReinvestLoading(false));
+              }}
+            >
+              {reinvestLoading && (
+                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+              )}
+              {status.settings?.autoReinvestEarnings
+                ? "Turn off"
+                : "Enable compounding"}
+            </Button>
+          </div>
+        </div>
       </motion.div>
 
       <motion.div
@@ -689,6 +744,8 @@ export function InvestHub() {
           dailyYieldPercent={status.dailyYieldPercent}
           walletEarnings={status.walletEarnings}
           yieldPaused={status.settings?.yieldPaused}
+          autoReinvest={status.settings?.autoReinvestEarnings}
+          autoReinvestFeePercent={status.autoReinvestFeePercent}
           displayCurrency={display}
         />
       </motion.div>

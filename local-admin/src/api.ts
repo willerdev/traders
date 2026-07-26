@@ -515,6 +515,24 @@ export const api = {
       },
     ),
 
+  smsStatus: () => request<SmsStatus>("/admin/sms/status"),
+  smsNumbers: () =>
+    request<{ items: SmsNumberRow[]; defaultFrom: string | null; count: number }>(
+      "/admin/sms/numbers",
+    ),
+  smsTest: (data: {
+    to: string;
+    body?: string;
+    from?: string;
+    channel?: "sms" | "whatsapp";
+    contentSid?: string;
+    contentVariables?: Record<string, string>;
+  }) =>
+    request<SmsTestResult>("/admin/sms/test", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
   referralSettings: () =>
     request<ReferralSettings>("/admin/referrals/settings"),
   updateReferralSettings: (data: {
@@ -586,6 +604,18 @@ export const api = {
       sent: number;
       failed: number;
     }>("/admin/notifications/investor-loan-eligibility", {
+      method: "POST",
+      body: JSON.stringify({ force }),
+    }),
+
+  broadcastTraderProgramSunset: (force = false) =>
+    request<{
+      skipped: boolean;
+      announcedAt?: string;
+      total: number;
+      sent: number;
+      failed: number;
+    }>("/admin/notifications/trader-program-sunset", {
       method: "POST",
       body: JSON.stringify({ force }),
     }),
@@ -1578,6 +1608,39 @@ export type MarketingRunSummary = {
     string,
     { targeted: number; sent: number; skipped: number; failed: number }
   >;
+};
+
+export type SmsStatus = {
+  configured: boolean;
+  accountSidMasked: string | null;
+  apiKeySidMasked: string | null;
+  hasAuthToken?: boolean;
+  fromNumber: string | null;
+  whatsappFrom?: string | null;
+  contentSid?: string | null;
+  testTo?: string | null;
+  hasFromNumber: boolean;
+  note: string;
+};
+
+export type SmsNumberRow = {
+  sid: string;
+  phoneNumber: string;
+  friendlyName: string;
+  sms: boolean;
+};
+
+export type SmsTestResult = {
+  ok: boolean;
+  channel?: string;
+  sid: string | null;
+  status: string | null;
+  to: string;
+  from: string;
+  body: string | null;
+  errorCode: number | null;
+  errorMessage: string | null;
+  message: string;
 };
 
 export type ReferralSettings = {

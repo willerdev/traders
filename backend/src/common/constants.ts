@@ -26,6 +26,8 @@ export const MAX_RISK_PER_TRADE = 50;
 export const REGISTRATION_FEE_USDT = 5;
 /** Deducted from every platform wallet withdrawal before on-chain payout. */
 export const WALLET_WITHDRAWAL_FEE_USD = 3;
+/** Platform fee on auto-reinvested investor daily earnings (percent of full daily return). */
+export const INVESTOR_AUTO_REINVEST_FEE_PERCENT = 10;
 export const TP_REWARD_USD = 5;
 export const PROFIT_SHARE_FEE_USDT = 50;
 export const PROFIT_SHARE_PERCENT = 50;

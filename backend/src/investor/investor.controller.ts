@@ -72,6 +72,18 @@ export class InvestorController {
     return this.investor.setPaused(req.user.id, false);
   }
 
+  @Post('auto-reinvest')
+  @UseGuards(JwtAuthGuard)
+  setAutoReinvest(
+    @Request() req: { user: { id: string } },
+    @Body() body: { enabled: boolean },
+  ) {
+    return this.investor.setAutoReinvestEarnings(
+      req.user.id,
+      Boolean(body.enabled),
+    );
+  }
+
   @Post('allocate')
   @UseGuards(JwtAuthGuard)
   allocate(

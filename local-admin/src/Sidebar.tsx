@@ -14,6 +14,7 @@ export type Tab =
   | "tpClaims"
   | "promos"
   | "marketing"
+  | "sms"
   | "referrals"
   | "platform"
   | "mt5Copy"
@@ -36,6 +37,7 @@ export const ADMIN_TABS: Tab[] = [
   "tpClaims",
   "promos",
   "marketing",
+  "sms",
   "referrals",
   "platform",
   "mt5Copy",
@@ -107,6 +109,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "tpClaims", label: "TP Claims", icon: "tpClaims" },
   { id: "promos", label: "Promo codes", icon: "promos" },
   { id: "marketing", label: "Email marketing", icon: "marketing" },
+  { id: "sms", label: "SMS test", icon: "sms" },
   { id: "referrals", label: "Referrals", icon: "referrals" },
   { id: "platform", label: "Investor & depositor", icon: "forecast" },
   { id: "mt5Copy", label: "MT5 Copy", icon: "mt5Copy" },
@@ -192,6 +195,13 @@ const icons = {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
       <path d="M3 8l9 6 9-6" strokeLinecap="round" strokeLinejoin="round" />
       <rect x="3" y="5" width="18" height="14" rx="2" />
+    </svg>
+  ),
+  sms: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <rect x="5" y="2" width="14" height="20" rx="2" />
+      <path d="M9 18h6" strokeLinecap="round" />
+      <path d="M8 8h8M8 12h5" strokeLinecap="round" />
     </svg>
   ),
   referrals: (

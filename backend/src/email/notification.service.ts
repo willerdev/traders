@@ -2031,6 +2031,10 @@ export class NotificationService {
       balance: number;
       investmentBalance?: number;
       baseBalance?: number;
+      autoReinvested?: boolean;
+      reinvestAmount?: number;
+      feeAmount?: number;
+      feePercent?: number;
     },
   ) {
     this.dispatch(
@@ -2067,6 +2071,10 @@ export class NotificationService {
       balance: number;
       investmentBalance?: number;
       baseBalance?: number;
+      autoReinvested?: boolean;
+      reinvestAmount?: number;
+      feeAmount?: number;
+      feePercent?: number;
     },
   ) {
     const user = await this.userContact(userId);
@@ -2079,21 +2087,37 @@ export class NotificationService {
       data.baseBalance != null
         ? `<p>Earned on investment principal: <strong>$${data.baseBalance.toFixed(2)} USDT</strong></p>`
         : '';
+    const compoundBlock =
+      data.autoReinvested &&
+      data.reinvestAmount != null &&
+      data.feeAmount != null
+        ? `<p>Auto-reinvest: <strong>$${data.reinvestAmount.toFixed(2)} USDT</strong> compounded into investment after a <strong>${data.feePercent ?? 10}%</strong> fee ($${data.feeAmount.toFixed(2)} USDT).</p>`
+        : '';
+    const footerNote = data.autoReinvested
+      ? `<p style="color:#94a3b8;font-size:14px;">Auto-reinvest is on. Turn it off anytime on Invest if you want earnings in your wallet instead.</p>`
+      : `<p style="color:#94a3b8;font-size:14px;">Earnings are credited to your wallet. You can move funds into investment anytime from Invest, or enable auto-reinvest for compounding.</p>`;
     const html = this.email.layout(
-      'Investor daily earning credited',
+      data.autoReinvested
+        ? 'Investor daily earning auto-reinvested'
+        : 'Investor daily earning credited',
       `<p>Hi ${this.escape(user.name)},</p>
       <p>Your investor daily earning at <strong>${data.yieldPercent}%</strong>: <strong>$${data.amount.toFixed(2)} USDT</strong></p>
       ${baseBlock}
+      ${compoundBlock}
       ${investmentBlock}
       <p>Wallet balance (available): <strong>$${data.balance.toFixed(2)} USDT</strong></p>
-      <p style="color:#94a3b8;font-size:14px;">Earnings are credited to your wallet. You can move funds into investment anytime from Invest.</p>
+      ${footerNote}
       ${this.email.button(`${this.email.frontendUrl}/invest`, 'View investment')}`,
     );
     return this.email.send({
       to: user.email,
-      subject: `Investor earning — $${data.amount.toFixed(2)} USDT (${data.yieldPercent}%)`,
+      subject: data.autoReinvested
+        ? `Investor earning auto-reinvested — $${(data.reinvestAmount ?? data.amount).toFixed(2)} USDT (${data.yieldPercent}%)`
+        : `Investor earning — $${data.amount.toFixed(2)} USDT (${data.yieldPercent}%)`,
       html,
-      text: `Investor daily earning: $${data.amount.toFixed(2)} USDT at ${data.yieldPercent}%. Wallet: $${data.balance.toFixed(2)}.`,
+      text: data.autoReinvested
+        ? `Investor daily earning: $${data.amount.toFixed(2)} USDT at ${data.yieldPercent}%. Auto-reinvested $${(data.reinvestAmount ?? 0).toFixed(2)} after $${(data.feeAmount ?? 0).toFixed(2)} fee. Investment: $${(data.investmentBalance ?? 0).toFixed(2)}.`
+        : `Investor daily earning: $${data.amount.toFixed(2)} USDT at ${data.yieldPercent}%. Wallet: $${data.balance.toFixed(2)}.`,
     });
   }
 
@@ -2827,6 +2851,72 @@ export class NotificationService {
       subject: 'Eligible: borrow up to 80% of your investment while it keeps earning',
       html,
       text: `With $1,000+ invested (yours: $${bal} USDT), you can reinvest profit and borrow up to 80% of your investment while it keeps earning. Message Support on thetradeguard.com/messages to learn more or apply.`,
+    });
+  }
+
+  /**
+   * Email every user with an address: trader/prop program sunset → investment focus.
+   */
+  async broadcastTraderProgramSunset(): Promise<{
+    total: number;
+    sent: number;
+    failed: number;
+  }> {
+    const users = await this.prisma.user.findMany({
+      where: {
+        email: { not: null },
+        status: { not: 'BANNED' },
+      },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    let sent = 0;
+    let failed = 0;
+    for (const user of users) {
+      try {
+        const ok = await this.sendTraderProgramSunset(user.id);
+        if (ok) sent++;
+        else failed++;
+      } catch {
+        failed++;
+      }
+      await new Promise((r) => setTimeout(r, 80));
+    }
+
+    this.logger.log(
+      `Trader program sunset broadcast: sent=${sent} failed=${failed} total=${users.length}`,
+    );
+    return { total: users.length, sent, failed };
+  }
+
+  private async sendTraderProgramSunset(userId: string) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'An important update from TraderRank Pro',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>We are writing with a difficult but necessary update about the future of TraderRank Pro (Trade Guard).</p>
+      <p>Over the past months our community and product have grown most strongly around <strong>Smart Invest</strong> — daily yield, transparent fees, and a clearer path for capital. After careful review, we have decided to <strong>conclude the trader competition and prop-style funding programs</strong> as part of our core offering.</p>
+      <p>This was not an easy decision. We are genuinely sorry to see the competitive trading chapter close, and we are grateful for every setup submitted, every claim reviewed, and every trader who trusted us with their craft. Your participation helped shape who we are.</p>
+      <p><strong>What this means</strong></p>
+      <ul style="padding-left:18px;color:#cbd5e1;">
+        <li>New focus of the platform is <strong>investment</strong>: Smart Invest, wallet deposits, daily earnings, and withdrawals after KYC.</li>
+        <li>Trader leaderboard competition, virtual funded accounts, and prop-style evaluation pathways are being wound down as product priorities.</li>
+        <li>If you hold wallet or investment balances, those remain yours — continue to manage them from Invest and Wallet.</li>
+        <li>Support remains available in Messages if you have questions about balances, KYC, or withdrawals.</li>
+      </ul>
+      <p>We regret any disappointment this causes, especially for members who joined primarily to compete and get funded. We believe concentrating on investment services will let us serve you more clearly and reliably going forward.</p>
+      <p>Thank you for being part of TraderRank Pro. We hope you will stay with us on the investment path.</p>
+      <p style="color:#94a3b8;font-size:14px;">— The TraderRank Pro team</p>
+      ${this.email.button(`${this.email.frontendUrl}/invest`, 'Open Smart Invest')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject:
+        'TraderRank Pro update: closing trader & prop programs — focusing on Smart Invest',
+      html,
+      text: `Hi ${user.name}, We are concluding TraderRank Pro’s trader competition and prop-style funding programs and focusing the platform on Smart Invest. We regret seeing that chapter end and thank you for your participation. Wallet and investment balances remain yours. Open ${this.email.frontendUrl}/invest or message Support with questions. — The TraderRank Pro team`,
     });
   }
 }

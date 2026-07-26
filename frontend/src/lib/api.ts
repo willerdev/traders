@@ -1022,6 +1022,15 @@ class ApiClient {
           body: JSON.stringify({ riskPercent }),
         },
       ),
+    setAutoReinvest: (enabled: boolean) =>
+      this.request<{
+        autoReinvestEarnings: boolean;
+        feePercent: number;
+        note: string;
+      }>("/investor/auto-reinvest", {
+        method: "POST",
+        body: JSON.stringify({ enabled }),
+      }),
     pause: () =>
       this.request<{ paused: boolean }>("/investor/pause", { method: "POST" }),
     resume: () =>
@@ -1598,7 +1607,9 @@ export interface InvestorStatus {
     useTwoToOneRr: boolean;
     paused: boolean;
     yieldPaused?: boolean;
+    autoReinvestEarnings?: boolean;
   } | null;
+  autoReinvestFeePercent?: number;
   recentTrades: Array<{
     id: string;
     signalId: string;

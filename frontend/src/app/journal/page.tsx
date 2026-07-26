@@ -33,7 +33,7 @@ export default function JournalPage() {
         <div>
           <h1 className="text-2xl font-bold">Returns journal</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Daily investment yield, projections, and wallet P/L calendar.
+            Daily income first, then yield projections and history.
           </p>
         </div>
         <Button
@@ -45,6 +45,13 @@ export default function JournalPage() {
           <TrendingUp className="h-3.5 w-3.5" />
           Open Invest
         </Button>
+      </div>
+
+      <div>
+        <h2 className="mb-3 text-base font-semibold text-white">
+          Daily income journal
+        </h2>
+        <DailyIncomeJournal />
       </div>
 
       {investor?.active ? (
@@ -63,13 +70,6 @@ export default function JournalPage() {
           </Link>
         </div>
       )}
-
-      <div>
-        <h2 className="mb-3 text-base font-semibold text-white">
-          Wallet calendar
-        </h2>
-        <DailyIncomeJournal />
-      </div>
     </div>
   );
 }

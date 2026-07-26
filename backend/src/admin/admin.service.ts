@@ -2199,6 +2199,46 @@ export class AdminService {
     return { skipped: false as const, announcedAt: announcedAt.toISOString(), ...result };
   }
 
+  async broadcastTraderProgramSunset(
+    adminId: string,
+    opts?: { force?: boolean },
+  ) {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    if (config?.traderProgramSunsetAnnouncedAt && !opts?.force) {
+      return {
+        skipped: true as const,
+        announcedAt: config.traderProgramSunsetAnnouncedAt.toISOString(),
+        total: 0,
+        sent: 0,
+        failed: 0,
+      };
+    }
+
+    const result = await this.notifications.broadcastTraderProgramSunset();
+    const announcedAt = new Date();
+    await this.prisma.platformConfig.upsert({
+      where: { id: 'default' },
+      create: {
+        id: 'default',
+        traderProgramSunsetAnnouncedAt: announcedAt,
+      },
+      update: { traderProgramSunsetAnnouncedAt: announcedAt },
+    });
+    await this.logAction(
+      adminId,
+      'TRADER_PROGRAM_SUNSET_BROADCAST',
+      undefined,
+      result,
+    );
+    return {
+      skipped: false as const,
+      announcedAt: announcedAt.toISOString(),
+      ...result,
+    };
+  }
+
   publishSystemSignal(body: {
     symbol: string;
     direction: 'BUY' | 'SELL';

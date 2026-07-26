@@ -36,6 +36,7 @@ import {
 } from './investor-vip.util';
 import { FxRatesService } from '../fx/fx-rates.service';
 import { resolvePreferredDisplayCurrency } from '../fx/country-currency.util';
+import { INVESTOR_AUTO_REINVEST_FEE_PERCENT } from '../common/constants';
 
 @Injectable()
 export class InvestorService {
@@ -198,8 +199,10 @@ export class InvestorService {
             useTwoToOneRr: user.investorSettings.useTwoToOneRr,
             paused: user.investorSettings.paused,
             yieldPaused: user.investorSettings.yieldPaused,
+            autoReinvestEarnings: user.investorSettings.autoReinvestEarnings,
           }
         : null,
+      autoReinvestFeePercent: INVESTOR_AUTO_REINVEST_FEE_PERCENT,
       recentTrades: user.investorTrades.map((t) => ({
         id: t.id,
         signalId: t.signal.signalId,
@@ -788,6 +791,27 @@ export class InvestorService {
     return { yieldPaused: settings.yieldPaused };
   }
 
+  async setAutoReinvestEarnings(userId: string, autoReinvestEarnings: boolean) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user?.investorActive) {
+      throw new BadRequestException('Enroll in the investor program first');
+    }
+
+    const settings = await this.prisma.investorSettings.upsert({
+      where: { userId },
+      create: { userId, autoReinvestEarnings: Boolean(autoReinvestEarnings) },
+      update: { autoReinvestEarnings: Boolean(autoReinvestEarnings) },
+    });
+
+    return {
+      autoReinvestEarnings: settings.autoReinvestEarnings,
+      feePercent: INVESTOR_AUTO_REINVEST_FEE_PERCENT,
+      note: settings.autoReinvestEarnings
+        ? `Daily earnings compound into investment after a ${INVESTOR_AUTO_REINVEST_FEE_PERCENT}% fee on the full daily return`
+        : 'Daily earnings credit to available wallet balance',
+    };
+  }
+
   /**
    * Move funds between liquid wallet and investment balance.
    * direction: to_investment = wallet → investment, to_wallet = investment → wallet
@@ -1170,13 +1194,78 @@ export class InvestorService {
       if (earningAmount <= 0) continue;
 
       const wallet = await this.walletService.getOrCreateWallet(user.id);
-      const newWalletBalance = Number(wallet.availableBalance) + earningAmount;
+      const availableBalance = Number(wallet.availableBalance);
       const investmentBalance = Number(wallet.investorBalance ?? 0);
+      const autoReinvest = Boolean(user.investorSettings?.autoReinvestEarnings);
 
       const holdNote =
         recentAllocated > 0
           ? ` (eligible $${eligibleBalance.toFixed(2)} of $${baseBalance.toFixed(2)}; $${recentAllocated.toFixed(2)} under 24h hold)`
           : '';
+
+      if (autoReinvest) {
+        const feeAmount =
+          Math.round(
+            ((earningAmount * INVESTOR_AUTO_REINVEST_FEE_PERCENT) / 100) * 100,
+          ) / 100;
+        const reinvestAmount =
+          Math.round((earningAmount - feeAmount) * 100) / 100;
+        if (reinvestAmount <= 0) continue;
+
+        const newInvestmentBalance = investmentBalance + reinvestAmount;
+
+        await this.prisma.$transaction([
+          this.prisma.investorDailyCredit.create({
+            data: {
+              userId: user.id,
+              amount: earningAmount,
+              yieldPercent,
+              baseBalance: eligibleBalance,
+              creditDate: today,
+            },
+          }),
+          this.prisma.platformWallet.update({
+            where: { userId: user.id },
+            data: { investorBalance: newInvestmentBalance },
+          }),
+          this.prisma.walletTransaction.create({
+            data: {
+              userId: user.id,
+              amount: earningAmount,
+              type: 'INVESTOR_EARNING',
+              referenceId: user.id,
+              description: `Investor daily earning ${yieldPercent}% on $${eligibleBalance.toFixed(2)} — $${earningAmount.toFixed(2)} USDT auto-reinvested ($${feeAmount.toFixed(2)} ${INVESTOR_AUTO_REINVEST_FEE_PERCENT}% fee, $${reinvestAmount.toFixed(2)} compounded)${isWeekend ? ' (VIP weekend)' : ''}${holdNote}`,
+              balanceAfter: availableBalance,
+            },
+          }),
+          this.prisma.walletTransaction.create({
+            data: {
+              userId: user.id,
+              amount: -feeAmount,
+              type: 'INVESTOR_REINVEST_FEE',
+              referenceId: user.id,
+              description: `Auto-reinvest fee ${INVESTOR_AUTO_REINVEST_FEE_PERCENT}% of $${earningAmount.toFixed(2)} daily return — $${feeAmount.toFixed(2)} USDT`,
+              balanceAfter: availableBalance,
+            },
+          }),
+        ]);
+
+        this.notifications.investorDailyEarning(user.id, {
+          amount: earningAmount,
+          yieldPercent,
+          balance: availableBalance,
+          investmentBalance: newInvestmentBalance,
+          baseBalance: eligibleBalance,
+          autoReinvested: true,
+          reinvestAmount,
+          feeAmount,
+          feePercent: INVESTOR_AUTO_REINVEST_FEE_PERCENT,
+        });
+        credited++;
+        continue;
+      }
+
+      const newWalletBalance = availableBalance + earningAmount;
 
       await this.prisma.$transaction([
         this.prisma.investorDailyCredit.create({

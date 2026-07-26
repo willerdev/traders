@@ -107,6 +107,7 @@ enum WalletTxType {
   INVESTOR_EARNING
   INVESTOR_ALLOCATE
   INVESTOR_REDEEM
+  INVESTOR_REINVEST_FEE
   SUBSCRIPTION
 }
 
@@ -889,6 +890,8 @@ model PlatformConfig {
   investorAutoStopAnnouncedAt DateTime?
   /// Set after the $1000+ loan eligibility email is broadcast once.
   investorLoanEligibilityAnnouncedAt DateTime?
+  /// Set after the trader/prop-program sunset → investment-focus email is broadcast once.
+  traderProgramSunsetAnnouncedAt DateTime?
 
   @@map("platform_config")
 }
@@ -949,6 +952,8 @@ model InvestorSettings {
   useTwoToOneRr             Boolean  @default(true)
   paused                    Boolean  @default(false)
   yieldPaused               Boolean  @default(false)
+  /// When true, daily yield is compounded into investment (90%) after a 10% platform fee.
+  autoReinvestEarnings      Boolean  @default(false)
   lastHealthAt              DateTime?
   lastHealthReady           Boolean  @default(false)
   lastHealthMessage         String?

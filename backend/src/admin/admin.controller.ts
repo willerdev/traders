@@ -720,6 +720,16 @@ export class AdminController {
     );
   }
 
+  @Post('notifications/trader-program-sunset')
+  broadcastTraderProgramSunset(
+    @Request() req: { user: { id: string } },
+    @Body() body?: { force?: boolean },
+  ) {
+    return this.adminService.broadcastTraderProgramSunset(req.user.id, {
+      force: Boolean(body?.force),
+    });
+  }
+
   @Post('system-signals')
   publishSystemSignal(
     @Body()
