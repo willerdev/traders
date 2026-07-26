@@ -40,6 +40,7 @@ import { InvestorDepositorPlatform } from "./InvestorDepositorPlatform";
 import { TransactionsPanel } from "./TransactionsPanel";
 import { AccountTransfersPanel } from "./AccountTransfersPanel";
 import { SmsPanel } from "./SmsPanel";
+import { ProductAgentPanel } from "./ProductAgentPanel";
 
 function badgeClass(status: string) {
   return `badge ${status.toLowerCase()}`;
@@ -4213,6 +4214,8 @@ export default function App() {
         )}
 
         {tab === "sms" && <SmsPanel onMessage={setMessage} />}
+
+        {tab === "productAgent" && <ProductAgentPanel />}
 
         {tab === "referrals" && (
           <>

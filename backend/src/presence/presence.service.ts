@@ -41,7 +41,22 @@ export class PresenceService {
         presencePath: safePath,
       },
     });
+    // Throttled page trail for the product-agent usage profile.
+    await this.maybeLogPageEvent(userId, safePath);
     return { ok: true };
+  }
+
+  private async maybeLogPageEvent(userId: string, path: string) {
+    const throttleMs = 2 * 60_000;
+    const since = new Date(Date.now() - throttleMs);
+    const recent = await this.prisma.userPageEvent.findFirst({
+      where: { userId, path, seenAt: { gte: since } },
+      select: { id: true },
+    });
+    if (recent) return;
+    await this.prisma.userPageEvent.create({
+      data: { userId, path },
+    });
   }
 
   async getLiveSnapshot() {

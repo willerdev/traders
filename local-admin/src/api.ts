@@ -515,6 +515,66 @@ export const api = {
       },
     ),
 
+  productAgentOverview: () =>
+    request<ProductAgentOverview>("/admin/marketing/product-agent/overview"),
+  productAgentProducts: () =>
+    request<{ items: ReturnProductRow[] }>(
+      "/admin/marketing/product-agent/products",
+    ),
+  productAgentCreateProduct: (data: {
+    slug: string;
+    name: string;
+    description: string;
+    cadence?: string;
+    yieldLabel?: string;
+    ctaPath?: string;
+    detectKey?: string;
+  }) =>
+    request<ReturnProductRow>("/admin/marketing/product-agent/products", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  productAgentPlans: (status = "PLANNED", limit = 100, offset = 0) =>
+    request<{ items: ProductAgentPlanRow[]; count: number }>(
+      `/admin/marketing/product-agent/plans?status=${encodeURIComponent(status)}&limit=${limit}&offset=${offset}`,
+    ),
+  productAgentProfiles: (limit = 50, offset = 0) =>
+    request<{ items: ProductAgentProfileRow[]; count: number }>(
+      `/admin/marketing/product-agent/profiles?limit=${limit}&offset=${offset}`,
+    ),
+  productAgentRebuildProfiles: (limit?: number) =>
+    request<{ ok: boolean; rebuilt?: number; message?: string }>(
+      "/admin/marketing/product-agent/rebuild-profiles",
+      {
+        method: "POST",
+        body: JSON.stringify({ limit }),
+      },
+    ),
+  productAgentSyncEnrollments: () =>
+    request<{ synced: number }>(
+      "/admin/marketing/product-agent/sync-enrollments",
+      { method: "POST", body: "{}" },
+    ),
+  productAgentPlanWeek: (force = false) =>
+    request<ProductAgentPlanWeekResult>(
+      "/admin/marketing/product-agent/plan-week",
+      {
+        method: "POST",
+        body: JSON.stringify({ force, skipSync: true }),
+      },
+    ),
+  productAgentSendDue: () =>
+    request<{
+      ok: boolean;
+      sent?: number;
+      skipped?: number;
+      failed?: number;
+      message?: string;
+    }>("/admin/marketing/product-agent/send-due", {
+      method: "POST",
+      body: "{}",
+    }),
+
   smsStatus: () => request<SmsStatus>("/admin/sms/status"),
   smsNumbers: () =>
     request<{ items: SmsNumberRow[]; defaultFrom: string | null; count: number }>(
@@ -1608,6 +1668,127 @@ export type MarketingRunSummary = {
     string,
     { targeted: number; sent: number; skipped: number; failed: number }
   >;
+};
+
+export type ProductAgentOverview = {
+  emailConfigured: boolean;
+  emailFrom?: string;
+  weekStart: string;
+  cadence: string;
+  stats: {
+    activeProducts: number;
+    profiles: number;
+    plannedThisWeek: number;
+    sentThisWeek: number;
+    dueWithin24h: number;
+    pageEventsLast7d: number;
+  };
+};
+
+export type ReturnProductRow = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  cadence: string;
+  yieldLabel: string | null;
+  ctaPath: string;
+  detectKey: string;
+  active: boolean;
+  launchedAt: string;
+  sortOrder: number;
+  _count: { enrollments: number; plans: number };
+};
+
+export type ProductAgentPlanRow = {
+  id: string;
+  status: string;
+  weekStart: string;
+  plannedAt: string;
+  sentAt: string | null;
+  sendsPerWeek: number;
+  subject: string;
+  copyAngle: string;
+  previewText: string;
+  detail: string | null;
+  user: {
+    id: string;
+    displayName: string;
+    email: string | null;
+    status: string;
+  };
+  product: {
+    id: string;
+    slug: string;
+    name: string;
+    cadence: string;
+    yieldLabel: string | null;
+  };
+};
+
+export type BehaviorProfileDoc = {
+  userId: string;
+  displayName: string;
+  email: string | null;
+  rebuiltAt: string;
+  presence: {
+    lastSeenAt: string | null;
+    lastPath: string | null;
+    activeHoursUtc: number[];
+    topPaths: { path: string; count: number }[];
+    sessionsApprox: number;
+  };
+  investing: {
+    investorActive: boolean;
+    depositorActive: boolean;
+    investorVipActive: boolean;
+    autoReinvest: boolean;
+    investorBalance: number;
+    availableBalance: number;
+    dailyYieldPercent: number | null;
+    activeDepositorPlans: number;
+    prefersDailyYield: boolean;
+    prefersDepositorPlans: boolean;
+    onlineMostlyEvenings: boolean;
+  };
+  products: Record<
+    string,
+    { enrolled: boolean; name: string; cadence: string }
+  >;
+  unusedProductSlugs: string[];
+  styleHints: string[];
+};
+
+export type ProductAgentProfileRow = {
+  id: string;
+  userId: string;
+  rebuiltAt: string;
+  user: {
+    id: string;
+    displayName: string;
+    email: string | null;
+    status: string;
+    investorActive: boolean;
+    depositorActive: boolean;
+  };
+  profile: BehaviorProfileDoc;
+};
+
+export type ProductAgentPlanWeekResult = {
+  ok: boolean;
+  weekStart: string;
+  created: number;
+  trigger?: string;
+  message?: string;
+  existing?: number;
+  samples?: Array<{
+    userId: string;
+    email: string;
+    product: string;
+    plannedAt: string;
+    sendsPerWeek: number;
+    subject: string;
+  }>;
 };
 
 export type SmsStatus = {

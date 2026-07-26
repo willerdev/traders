@@ -290,6 +290,10 @@ model User {
   referralSettlements ReferralSettlement[]
   accountTransfersFrom AccountTransfer[] @relation("AccountTransferFrom")
   accountTransfersTo   AccountTransfer[] @relation("AccountTransferTo")
+  pageEvents         UserPageEvent[]
+  behaviorProfile    UserBehaviorProfile?
+  productEnrollments UserProductEnrollment[]
+  productAgentPlans  ProductAgentPlan[]
 
   @@index([status])
   @@index([role])
@@ -1207,4 +1211,101 @@ model CopyTrade {
   @@index([copyAccountId])
   @@index([status])
   @@map("copy_trades")
+}
+
+/// Catalog of daily/weekly return products the product agent can pitch.
+model ReturnProduct {
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  name             String
+  description      String
+  cadence          String   @default("daily") // daily | weekly
+  yieldLabel       String?
+  ctaPath          String   @default("/invest")
+  /// How we detect enrollment: investor | depositor | investor_vip | auto_reinvest | manual
+  detectKey        String
+  active           Boolean  @default(true)
+  launchedAt       DateTime @default(now())
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  enrollments UserProductEnrollment[]
+  plans       ProductAgentPlan[]
+
+  @@index([active, launchedAt])
+  @@map("return_products")
+}
+
+model UserProductEnrollment {
+  id         String   @id @default(cuid())
+  userId     String
+  productId  String
+  source     String   @default("auto") // auto | manual
+  enrolledAt DateTime @default(now())
+  active     Boolean  @default(true)
+  updatedAt  DateTime @updatedAt
+
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product ReturnProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([productId, active])
+  @@map("user_product_enrollments")
+}
+
+/// Path visits for building usage profiles (from presence heartbeats).
+model UserPageEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  path      String
+  seenAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, seenAt])
+  @@index([seenAt])
+  @@map("user_page_events")
+}
+
+/// Living usage profile used by the product agent to personalize copy.
+model UserBehaviorProfile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  profile   Json
+  rebuiltAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([rebuiltAt])
+  @@map("user_behavior_profiles")
+}
+
+/// Planned product-adoption emails (random 1/3/5 per week).
+model ProductAgentPlan {
+  id            String    @id @default(cuid())
+  userId        String
+  productId     String
+  weekStart     DateTime
+  plannedAt     DateTime
+  sendsPerWeek  Int
+  subject       String
+  previewHtml   String
+  previewText   String
+  copyAngle     String
+  status        String    @default("PLANNED") // PLANNED | SENT | SKIPPED | CANCELLED | FAILED
+  detail        String?
+  sentAt        DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product ReturnProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([status, plannedAt])
+  @@index([userId, weekStart])
+  @@index([weekStart])
+  @@map("product_agent_plans")
 }
