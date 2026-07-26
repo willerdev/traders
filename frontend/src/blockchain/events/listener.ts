@@ -1,26 +1,31 @@
 "use client";
 
-import { Contract, formatEther, type InterfaceAbi, type Log } from "ethers";
-import DemoVaultAbi from "../abi/DemoVault.json";
-import { explorerTx, getContractAddress, isContractConfigured } from "../config/contract";
+import { Contract, formatEther, type InterfaceAbi } from "ethers";
+import DemoVaultV2Abi from "../abi/DemoVaultV2.json";
+import {
+  explorerTx,
+  getContractAddress,
+  isContractConfigured,
+} from "../config/contract";
 import { contractService } from "../services/contract";
 
 export type ChainEventName =
-  | "Deposit"
-  | "Withdraw"
-  | "Claim"
-  | "Compound"
-  | "OwnershipTransferred"
+  | "Deposited"
+  | "Withdrawn"
+  | "RewardClaimed"
+  | "RewardAdded"
+  | "ContractFunded"
   | "Paused"
-  | "Unpaused";
+  | "Unpaused"
+  | "OwnershipTransferred";
 
 export type ParsedChainEvent = {
-  name: ChainEventName;
+  name: ChainEventName | string;
   type:
     | "deposit"
     | "withdrawal"
     | "claim"
-    | "compound"
+    | "referral_bonus"
     | "ownership_transfer"
     | "paused"
     | "unpaused";
@@ -34,19 +39,19 @@ export type ParsedChainEvent = {
 
 export type ChainEventHandler = (event: ParsedChainEvent) => void;
 
-const NAME_TO_TYPE: Record<ChainEventName, ParsedChainEvent["type"]> = {
-  Deposit: "deposit",
-  Withdraw: "withdrawal",
-  Claim: "claim",
-  Compound: "compound",
+const NAME_TO_TYPE: Record<string, ParsedChainEvent["type"]> = {
+  Deposited: "deposit",
+  Withdrawn: "withdrawal",
+  RewardClaimed: "claim",
+  RewardAdded: "referral_bonus",
+  ContractFunded: "deposit",
   OwnershipTransferred: "ownership_transfer",
   Paused: "paused",
   Unpaused: "unpaused",
 };
 
 /**
- * Live DemoVault event listener.
- * Flow: Receive Event → optional DB ingest → dashboard refresh → notification.
+ * Live DemoVaultV2 event listener on Polygon Amoy.
  */
 class EventListener {
   private handlers = new Set<ChainEventHandler>();
@@ -65,15 +70,16 @@ class EventListener {
     const provider = contractService.getReadProvider();
     this.contract = new Contract(
       getContractAddress(),
-      DemoVaultAbi as InterfaceAbi,
+      DemoVaultV2Abi as InterfaceAbi,
       provider,
     );
 
     const names: ChainEventName[] = [
-      "Deposit",
-      "Withdraw",
-      "Claim",
-      "Compound",
+      "Deposited",
+      "Withdrawn",
+      "RewardClaimed",
+      "RewardAdded",
+      "ContractFunded",
       "OwnershipTransferred",
       "Paused",
       "Unpaused",
@@ -97,7 +103,7 @@ class EventListener {
   private async handleRaw(name: ChainEventName, args: unknown[]) {
     try {
       const eventLog = args[args.length - 1] as {
-        log?: Log;
+        log?: { transactionHash?: string; blockNumber?: number };
         transactionHash?: string;
         blockNumber?: number;
         getBlock?: () => Promise<{ timestamp: number }>;
@@ -110,28 +116,31 @@ class EventListener {
         wallet = String(args[1] ?? wallet);
       } else if (name === "Paused" || name === "Unpaused") {
         wallet = String(args[0] ?? wallet);
+      } else if (name === "ContractFunded") {
+        try {
+          amount = Number(formatEther(args[0] as bigint));
+        } catch {
+          amount = undefined;
+        }
       } else {
         wallet = String(args[0] ?? wallet);
-        const rawAmount = args[1];
-        if (rawAmount != null) {
-          try {
-            amount = Number(formatEther(rawAmount as bigint));
-          } catch {
-            amount = undefined;
-          }
+        try {
+          amount = Number(formatEther(args[1] as bigint));
+        } catch {
+          amount = undefined;
         }
       }
 
       const hash =
-        eventLog?.log?.transactionHash ||
-        eventLog?.transactionHash ||
-        "";
+        eventLog?.log?.transactionHash || eventLog?.transactionHash || "";
       const blockNumber =
         eventLog?.log?.blockNumber || eventLog?.blockNumber || 0;
 
       let timestamp = new Date().toISOString();
       try {
-        if (eventLog?.getBlock) {
+        if (typeof args[2] === "bigint" || typeof args[2] === "number") {
+          timestamp = new Date(Number(args[2]) * 1000).toISOString();
+        } else if (eventLog?.getBlock) {
           const block = await eventLog.getBlock();
           timestamp = new Date(Number(block.timestamp) * 1000).toISOString();
         }
@@ -141,7 +150,7 @@ class EventListener {
 
       const parsed: ParsedChainEvent = {
         name,
-        type: NAME_TO_TYPE[name],
+        type: NAME_TO_TYPE[name] ?? "deposit",
         transactionHash: hash,
         blockNumber: Number(blockNumber),
         wallet,
@@ -151,8 +160,6 @@ class EventListener {
       };
 
       this.handlers.forEach((fn) => fn(parsed));
-
-      // Persist via backend ingest (best-effort)
       void ingestEvent(parsed);
     } catch (e) {
       console.error("[EventListener]", e);
@@ -166,7 +173,8 @@ async function ingestEvent(event: ParsedChainEvent) {
       try {
         const raw = localStorage.getItem("trp-auth");
         if (!raw) return null;
-        return (JSON.parse(raw) as { state?: { token?: string } }).state?.token ?? null;
+        return (JSON.parse(raw) as { state?: { token?: string } }).state
+          ?.token ?? null;
       } catch {
         return null;
       }
@@ -181,7 +189,7 @@ async function ingestEvent(event: ParsedChainEvent) {
       body: JSON.stringify(event),
     });
   } catch {
-    /* offline / not signed in — ignore */
+    /* ignore */
   }
 }
 

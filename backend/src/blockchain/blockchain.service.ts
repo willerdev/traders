@@ -74,29 +74,35 @@ export class BlockchainService {
   /** Runtime config for the frontend (address is not baked into Next builds). */
   getPublicContractConfig() {
     const address = (
+      process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
       process.env.DEMO_VAULT_ADDRESS ||
       process.env.CONTRACT_ADDRESS ||
-      process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
       ''
     ).trim();
-    const chainId = Number(process.env.BNB_CHAIN_ID || process.env.NEXT_PUBLIC_CHAIN_ID || 97);
+    const chainId = Number(
+      process.env.POLYGON_AMOY_CHAIN_ID ||
+        process.env.BNB_CHAIN_ID ||
+        process.env.NEXT_PUBLIC_CHAIN_ID ||
+        80002,
+    );
     const rpc =
+      process.env.POLYGON_AMOY_RPC ||
       process.env.BNB_TESTNET_RPC ||
       process.env.BLOCKCHAIN_RPC_URL ||
       process.env.NEXT_PUBLIC_RPC_URL ||
-      'https://data-seed-prebsc-1-s1.binance.org:8545/';
+      'https://rpc-amoy.polygon.technology/';
     const explorer =
+      process.env.POLYGON_AMOY_EXPLORER ||
       process.env.BNB_EXPLORER_URL ||
       process.env.NEXT_PUBLIC_EXPLORER_URL ||
-      'https://testnet.bscscan.com';
+      'https://amoy.polygonscan.com';
     const configured = Boolean(address && address.startsWith('0x') && address.length >= 42);
     const base = getMockContractStatus();
     return {
       ...base,
-      connection: configured ? base.connection : base.connection,
       networkMode: 'testnet' as const,
-      network: 'bnb' as const,
-      networkLabel: 'BNB Smart Chain',
+      network: 'polygon' as const,
+      networkLabel: 'Polygon Amoy',
       contractAddress: configured
         ? address
         : '0x0000000000000000000000000000000000000000',
@@ -104,7 +110,7 @@ export class BlockchainService {
       chainId,
       rpc,
       configured,
-      version: base.version,
+      version: '2.0.0',
     };
   }
 

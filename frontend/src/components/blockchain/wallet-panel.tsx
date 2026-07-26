@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { RefreshCw } from "lucide-react";
+import { NATIVE_SYMBOL } from "@/blockchain/config/contract";
 import { Button } from "@/components/ui/button";
 import { useBlockchain } from "@/hooks/use-blockchain";
 import type { WalletState } from "@/lib/blockchain/types";
@@ -37,6 +38,7 @@ export function WalletPanel({
   } = useBlockchain();
   const [amount, setAmount] = useState("1");
   const contractReady = contractConfigured;
+  const sym = NATIVE_SYMBOL;
 
   if (loading || !wallet) {
     return <Skeleton className="h-80" />;
@@ -66,7 +68,7 @@ export function WalletPanel({
           label="Wallet Balance"
           value={
             <>
-              <AnimatedCounter value={wallet.balance} /> BNB
+              <AnimatedCounter value={wallet.balance} /> {sym}
             </>
           }
         />
@@ -74,7 +76,7 @@ export function WalletPanel({
           label="Investment Balance"
           value={
             <>
-              <AnimatedCounter value={wallet.investmentBalance} /> BNB
+              <AnimatedCounter value={wallet.investmentBalance} /> {sym}
             </>
           }
         />
@@ -82,7 +84,7 @@ export function WalletPanel({
           label="Pending Rewards"
           value={
             <>
-              <AnimatedCounter value={wallet.pendingRewards} /> BNB
+              <AnimatedCounter value={wallet.pendingRewards} /> {sym}
             </>
           }
         />
@@ -90,7 +92,7 @@ export function WalletPanel({
           label="Claimable Rewards"
           value={
             <>
-              <AnimatedCounter value={wallet.claimableRewards} /> BNB
+              <AnimatedCounter value={wallet.claimableRewards} /> {sym}
             </>
           }
         />
@@ -103,7 +105,7 @@ export function WalletPanel({
           label="Referral Earnings"
           value={
             <>
-              <AnimatedCounter value={wallet.referralEarnings} /> BNB
+              <AnimatedCounter value={wallet.referralEarnings} /> {sym}
             </>
           }
         />
@@ -111,7 +113,7 @@ export function WalletPanel({
           label="Total Deposited"
           value={
             <>
-              <AnimatedCounter value={wallet.totalDeposited} /> BNB
+              <AnimatedCounter value={wallet.totalDeposited} /> {sym}
             </>
           }
         />
@@ -119,7 +121,7 @@ export function WalletPanel({
           label="Total Withdrawn"
           value={
             <>
-              <AnimatedCounter value={wallet.totalWithdrawn} /> BNB
+              <AnimatedCounter value={wallet.totalWithdrawn} /> {sym}
             </>
           }
         />
@@ -127,7 +129,7 @@ export function WalletPanel({
           label="Total Profit"
           value={
             <>
-              <AnimatedCounter value={wallet.totalProfit} /> BNB
+              <AnimatedCounter value={wallet.totalProfit} /> {sym}
             </>
           }
         />
@@ -194,13 +196,13 @@ export function WalletPanel({
         </p>
       )}
 
+      {/* DemoVault address hint */}
       {!contractReady && (
         <p className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-          DemoVault address not loaded yet. On Render, set{" "}
-          <code className="text-amber-100">DEMO_VAULT_ADDRESS</code> on the{" "}
-          <strong>API</strong> service (traders-api), not only on the web
-          service — <code className="text-amber-100">NEXT_PUBLIC_*</code> values
-          require a frontend rebuild. Soft-refresh after the API env is saved.
+          Contract address not loaded. On Render set{" "}
+          <code className="text-amber-100">NEXT_PUBLIC_CONTRACT_ADDRESS</code> on{" "}
+          <strong>traders-web</strong> and redeploy the frontend (Next inlines
+          this at build time). Network: Polygon Amoy (80002).
         </p>
       )}
 

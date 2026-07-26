@@ -1,17 +1,22 @@
 "use client";
 
 import {
-  claimRewards,
+  claimReward,
   compound,
   connectWallet,
   contractService,
   deposit,
   disconnectWallet,
+  getActivity,
+  getContractEvents,
   getContractInfo,
+  getInvestors,
+  getTransactions,
   getWallet,
   isContractConfigured,
   applyRuntimeContractConfig,
   withdraw,
+  NATIVE_SYMBOL,
 } from "@/blockchain/services/blockchain";
 import type { ProgressCallback } from "@/blockchain/services/contract";
 import {
@@ -22,12 +27,11 @@ import type {
   ContractStats,
   DashboardPayload,
   TxActionResult,
-  WalletState,
 } from "./types";
 
 /**
- * Hybrid provider: MetaMask + DemoVault (ethers) for wallet/tx/reads,
- * REST mocks/cache for tables, charts, and admin until indexer fills DB.
+ * Live Polygon Amoy provider — DemoVaultV2 via ethers.
+ * Charts/admin extras still merge API cache when useful; core cards/tables are on-chain.
  */
 export class HybridBlockchainService implements IBlockchainService {
   private api = new ApiBlockchainService();
@@ -67,12 +71,13 @@ export class HybridBlockchainService implements IBlockchainService {
     if (isContractConfigured()) {
       try {
         const balance = await contractService.contractBalance();
-        return { balance, balanceUsd: balance * 600, symbol: "BNB" };
+        return { balance, balanceUsd: 0, symbol: NATIVE_SYMBOL };
       } catch {
         /* fall through */
       }
     }
-    return this.api.getContractBalance();
+    const b = await this.api.getContractBalance();
+    return { ...b, symbol: NATIVE_SYMBOL };
   }
 
   async getUserBalance() {
@@ -94,33 +99,64 @@ export class HybridBlockchainService implements IBlockchainService {
 
   deposit(amount: number) {
     if (!isContractConfigured()) {
-      return this.api.deposit(amount);
+      return Promise.reject(
+        new Error("Contract address not set (NEXT_PUBLIC_CONTRACT_ADDRESS)"),
+      );
     }
     return deposit(amount, this.progress);
   }
 
   withdraw(amount: number) {
     if (!isContractConfigured()) {
-      return this.api.withdraw(amount);
+      return Promise.reject(
+        new Error("Contract address not set (NEXT_PUBLIC_CONTRACT_ADDRESS)"),
+      );
     }
     return withdraw(amount, this.progress);
   }
 
   claim() {
     if (!isContractConfigured()) {
-      return this.api.claim();
+      return Promise.reject(
+        new Error("Contract address not set (NEXT_PUBLIC_CONTRACT_ADDRESS)"),
+      );
     }
-    return claimRewards(this.progress);
+    return claimReward(this.progress);
   }
 
   compound() {
-    if (!isContractConfigured()) {
-      return this.api.compound();
-    }
-    return compound(this.progress);
+    return compound();
   }
 
-  getTransactions(params?: Parameters<IBlockchainService["getTransactions"]>[0]) {
+  async getTransactions(params?: Parameters<IBlockchainService["getTransactions"]>[0]) {
+    if (isContractConfigured()) {
+      try {
+        const live = await getTransactions();
+        let items = live.items;
+        if (params?.type) items = items.filter((r) => r.type === params.type);
+        if (params?.status)
+          items = items.filter((r) => r.status === params.status);
+        if (params?.q) {
+          const q = params.q.toLowerCase();
+          items = items.filter(
+            (r) =>
+              r.wallet.toLowerCase().includes(q) ||
+              r.hash.toLowerCase().includes(q),
+          );
+        }
+        const page = params?.page ?? 1;
+        const pageSize = params?.pageSize ?? 20;
+        const start = (page - 1) * pageSize;
+        return {
+          items: items.slice(start, start + pageSize),
+          total: items.length,
+          page,
+          pageSize,
+        };
+      } catch {
+        /* fall through */
+      }
+    }
     return this.api.getTransactions(params);
   }
 
@@ -128,15 +164,50 @@ export class HybridBlockchainService implements IBlockchainService {
     return this.api.getStatistics();
   }
 
-  getEvents() {
+  async getEvents() {
+    if (isContractConfigured()) {
+      try {
+        return await getContractEvents();
+      } catch {
+        /* fall through */
+      }
+    }
     return this.api.getEvents();
   }
 
-  getActivity() {
+  async getActivity() {
+    if (isContractConfigured()) {
+      try {
+        return await getActivity();
+      } catch {
+        /* fall through */
+      }
+    }
     return this.api.getActivity();
   }
 
-  getInvestors(params?: Parameters<IBlockchainService["getInvestors"]>[0]) {
+  async getInvestors(params?: Parameters<IBlockchainService["getInvestors"]>[0]) {
+    if (isContractConfigured()) {
+      try {
+        const live = await getInvestors();
+        let items = live.items;
+        if (params?.q) {
+          const q = params.q.toLowerCase();
+          items = items.filter((r) => r.wallet.toLowerCase().includes(q));
+        }
+        const page = params?.page ?? 1;
+        const pageSize = params?.pageSize ?? 20;
+        const start = (page - 1) * pageSize;
+        return {
+          items: items.slice(start, start + pageSize),
+          total: items.length,
+          page,
+          pageSize,
+        };
+      } catch {
+        /* fall through */
+      }
+    }
     return this.api.getInvestors(params);
   }
 
@@ -147,24 +218,33 @@ export class HybridBlockchainService implements IBlockchainService {
   async getDashboard(): Promise<DashboardPayload> {
     const base = await this.api.getDashboard();
     try {
+      // Prefer NEXT_PUBLIC_CONTRACT_ADDRESS; API config is optional supplement
       applyRuntimeContractConfig({
-        contractAddress: base.contract.contractAddress,
+        contractAddress:
+          process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
+          base.contract.contractAddress,
         explorerUrl: base.contract.explorerBaseUrl,
       });
+
       const wallet = await getWallet();
       const contract = await getContractInfo();
-      let stats = base.stats;
+      let stats = { ...base.stats, symbol: NATIVE_SYMBOL };
+      let activity = base.activity;
+      let transactions = base.transactions;
+      let events = base.events;
+      let investors = base.investors;
 
       if (isContractConfigured()) {
         const snap = await contractService.getOnChainSnapshot(wallet.address);
         if (snap) {
           stats = {
             ...stats,
+            symbol: NATIVE_SYMBOL,
             contractBalance: snap.contractBalance,
-            contractBalanceUsd: snap.contractBalance * 600,
+            contractBalanceUsd: 0,
             tvl: snap.contractBalance,
-            totalDeposits: Math.round(snap.totalDeposited),
-            totalWithdrawals: Math.round(snap.totalWithdrawn),
+            totalDeposits: snap.totalDeposited,
+            totalWithdrawals: snap.totalWithdrawn,
             activeInvestors: snap.totalUsers,
             totalRewardsDistributed: snap.totalRewardsPaid,
           };
@@ -175,9 +255,19 @@ export class HybridBlockchainService implements IBlockchainService {
               currentNetwork: snap.network,
               ownerAddress: snap.owner,
               contractVersion: snap.version,
-              totalFeesCollected: base.admin.totalFeesCollected,
             };
           }
+        }
+
+        try {
+          const liveTx = await getTransactions();
+          transactions = liveTx.items;
+          activity = await getActivity();
+          events = await getContractEvents();
+          const inv = await getInvestors();
+          investors = inv.items;
+        } catch {
+          /* keep mock tables if RPC event query fails */
         }
       }
 
@@ -186,9 +276,13 @@ export class HybridBlockchainService implements IBlockchainService {
         wallet,
         contract,
         stats,
+        activity,
+        transactions,
+        events,
+        investors,
       };
     } catch {
-      return base;
+      return { ...base, stats: { ...base.stats, symbol: NATIVE_SYMBOL } };
     }
   }
 
@@ -209,11 +303,35 @@ export class HybridBlockchainService implements IBlockchainService {
     return this.api.sync();
   }
 
-  pauseContract() {
+  async pauseContract() {
+    if (isContractConfigured()) {
+      try {
+        await contractService.pause(this.progress);
+        return { ok: true, paused: true, message: "Contract paused on-chain" };
+      } catch (e) {
+        return {
+          ok: false,
+          paused: false,
+          message: e instanceof Error ? e.message : "Pause failed",
+        };
+      }
+    }
     return this.api.pauseContract();
   }
 
-  unpauseContract() {
+  async unpauseContract() {
+    if (isContractConfigured()) {
+      try {
+        await contractService.unpause(this.progress);
+        return { ok: true, paused: false, message: "Contract unpaused on-chain" };
+      } catch (e) {
+        return {
+          ok: false,
+          paused: true,
+          message: e instanceof Error ? e.message : "Unpause failed",
+        };
+      }
+    }
     return this.api.unpauseContract();
   }
 
@@ -238,6 +356,7 @@ export class HybridBlockchainService implements IBlockchainService {
   }
 
   reconnectRpc() {
+    contractService.resetProvider();
     return this.api.reconnectRpc();
   }
 }

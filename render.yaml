@@ -101,17 +101,25 @@ services:
         value: "false"
       - key: ABUSE_HUNTER_ENABLED
         value: "true"
-      # DemoVault (BNB Testnet) — runtime; frontend loads via /blockchain/contract/config
+      # DemoVaultV2 (Polygon Amoy) — also set NEXT_PUBLIC_CONTRACT_ADDRESS on traders-web + redeploy
       - key: DEMO_VAULT_ADDRESS
         sync: false
       - key: CONTRACT_ADDRESS
         sync: false
+      - key: NEXT_PUBLIC_CONTRACT_ADDRESS
+        sync: false
+      - key: POLYGON_AMOY_RPC
+        value: https://rpc-amoy.polygon.technology/
+      - key: POLYGON_AMOY_CHAIN_ID
+        value: "80002"
+      - key: POLYGON_AMOY_EXPLORER
+        value: https://amoy.polygonscan.com
       - key: BNB_TESTNET_RPC
-        value: https://data-seed-prebsc-1-s1.binance.org:8545/
+        value: https://rpc-amoy.polygon.technology/
       - key: BNB_CHAIN_ID
-        value: "97"
+        value: "80002"
       - key: BNB_EXPLORER_URL
-        value: https://testnet.bscscan.com
+        value: https://amoy.polygonscan.com
 
   - type: web
     name: traders-web
@@ -126,6 +134,16 @@ services:
         value: https://traders-c53s.onrender.com
       - key: NEXT_PUBLIC_API_URL
         value: https://traders-c53s.onrender.com/api/v1
+      - key: NEXT_PUBLIC_CONTRACT_ADDRESS
+        sync: false
+      - key: NEXT_PUBLIC_CHAIN_ID
+        value: "80002"
+      - key: NEXT_PUBLIC_RPC_URL
+        value: https://rpc-amoy.polygon.technology/
+      - key: NEXT_PUBLIC_EXPLORER_URL
+        value: https://amoy.polygonscan.com
+      - key: NEXT_PUBLIC_BLOCKCHAIN_PROVIDER
+        value: hybrid
       - key: NEXT_PUBLIC_MOMO_ENABLED
         value: "true"
       - key: NEXT_PUBLIC_MOMO_CURRENCY

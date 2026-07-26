@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import {
-  claimRewards,
+  claimReward,
   compound,
   contractBalance,
   deposit,
@@ -15,9 +15,6 @@ import {
 import type { TxProgress } from "@/blockchain/types/tx-lifecycle";
 import type { TxActionResult } from "@/lib/blockchain/types";
 
-/**
- * Contract interaction hook — all calls go through blockchain.ts → contractService.
- */
 export function useContract() {
   const [progress, setProgress] = useState<TxProgress>({ stage: "idle" });
   const [busy, setBusy] = useState(false);
@@ -27,8 +24,7 @@ export function useContract() {
       setBusy(true);
       setProgress({ stage: "preparing" });
       try {
-        const result = await fn(setProgress);
-        return result;
+        return await fn(setProgress);
       } catch (e) {
         const message = e instanceof Error ? e.message : "Transaction failed";
         setProgress({ stage: "failed", error: message, message });
@@ -47,8 +43,8 @@ export function useContract() {
     resetProgress: () => setProgress({ stage: "idle" }),
     deposit: (amount: number) => run((onP) => deposit(amount, onP)),
     withdraw: (amount: number) => run((onP) => withdraw(amount, onP)),
-    claim: () => run((onP) => claimRewards(onP)),
-    compound: () => run((onP) => compound(onP)),
+    claim: () => run((onP) => claimReward(onP)),
+    compound: () => compound(),
     reads: {
       contractBalance,
       pendingRewards,

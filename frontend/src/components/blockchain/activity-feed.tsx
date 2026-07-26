@@ -32,7 +32,7 @@ export function ActivityFeed({
                 {row.type.replace(/_/g, " ")}
               </p>
               <p className="font-mono text-xs text-muted">
-                {shortAddr(row.wallet, 4)} · {row.amount} BNB
+                {shortAddr(row.wallet, 4)} · {row.amount} POL
               </p>
             </div>
             <div className="flex items-center gap-2 text-right">

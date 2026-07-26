@@ -1,55 +1,89 @@
 "use client";
 
 /**
- * App-facing blockchain façade.
- * UI → this file → walletManager / contractService / eventListener.
- * Never call ethers Contract from pages.
+ * App-facing blockchain façade (UI → this → ethers → DemoVaultV2 / Polygon Amoy).
  */
 
 import type {
+  ActivityItem,
+  BlockchainTransaction,
+  ContractEvent,
   ContractStatus,
+  InvestorRow,
   TxActionResult,
   WalletState,
 } from "@/lib/blockchain/types";
 import {
-  applyRuntimeContractConfig,
   CONTRACT_VERSION,
-  getContractAddress,
-  getExplorerUrl,
-  isContractConfigured,
-  NETWORK,
   NETWORK_LABEL,
   NATIVE_SYMBOL,
   explorerAddress,
+  getContractAddress,
+  getExplorerUrl,
+  isContractConfigured,
+  applyRuntimeContractConfig,
+  NETWORK,
 } from "../config/contract";
 import { eventListener, type ChainEventHandler } from "../events/listener";
 import { contractService, type ProgressCallback } from "./contract";
 import { walletManager } from "./wallet";
 
 export async function connectWallet(): Promise<WalletState> {
+  if (!walletManager.isAvailable()) {
+    throw new Error("MetaMask (or compatible wallet) is not installed.");
+  }
   const { address, balanceEth } = await walletManager.connect();
   eventListener.start();
+  return buildWalletState(address, Number(balanceEth));
+}
 
+export async function disconnectWallet(): Promise<WalletState> {
+  await walletManager.disconnect();
+  eventListener.stop();
+  return emptyWallet();
+}
+
+export async function getCurrentWallet(): Promise<WalletState> {
+  return getWallet();
+}
+
+export async function getWallet(): Promise<WalletState> {
+  const address = walletManager.getAddress();
+  if (!address) return emptyWallet();
+  const balanceEth = await walletManager.getBalance(address);
+  return buildWalletState(address, Number(balanceEth));
+}
+
+async function buildWalletState(
+  address: string,
+  nativeBalance: number,
+): Promise<WalletState> {
   let investmentBalance = 0;
   let pendingRewards = 0;
   if (isContractConfigured()) {
     try {
-      investmentBalance = await contractService.balanceOf(address);
-      pendingRewards = await contractService.pendingRewards(address);
+      [investmentBalance, pendingRewards] = await Promise.all([
+        contractService.getUserBalance(address),
+        contractService.getReward(address),
+      ]);
     } catch {
-      /* contract not deployed yet */
+      /* contract / RPC */
     }
   }
-
   return {
     connected: true,
     address,
-    balance: Number(balanceEth),
+    balance: nativeBalance,
     investmentBalance,
     pendingRewards,
     claimableRewards: pendingRewards,
     nextRewardAt: new Date(Date.now() + 3_600_000).toISOString(),
-    tier: investmentBalance >= 100 ? "Gold" : investmentBalance > 0 ? "Silver" : "Bronze",
+    tier:
+      investmentBalance >= 100
+        ? "Gold"
+        : investmentBalance > 0
+          ? "Silver"
+          : "Bronze",
     referralEarnings: 0,
     totalDeposited: investmentBalance,
     totalWithdrawn: 0,
@@ -58,8 +92,7 @@ export async function connectWallet(): Promise<WalletState> {
   };
 }
 
-export async function disconnectWallet(): Promise<WalletState> {
-  await walletManager.disconnect();
+function emptyWallet(): WalletState {
   return {
     connected: false,
     address: null,
@@ -77,66 +110,37 @@ export async function disconnectWallet(): Promise<WalletState> {
   };
 }
 
-export async function getWallet(): Promise<WalletState> {
-  const address = walletManager.getAddress();
-  if (!address) {
-    return disconnectWallet();
-  }
-  const balanceEth = await walletManager.getBalance(address);
-  let investmentBalance = 0;
-  let pendingRewards = 0;
-  if (isContractConfigured()) {
-    try {
-      investmentBalance = await contractService.balanceOf(address);
-      pendingRewards = await contractService.pendingRewards(address);
-    } catch {
-      /* ignore */
-    }
-  }
-  return {
-    connected: true,
-    address,
-    balance: Number(balanceEth),
-    investmentBalance,
-    pendingRewards,
-    claimableRewards: pendingRewards,
-    nextRewardAt: new Date(Date.now() + 3_600_000).toISOString(),
-    tier: investmentBalance >= 100 ? "Gold" : investmentBalance > 0 ? "Silver" : "Bronze",
-    referralEarnings: 0,
-    totalDeposited: investmentBalance,
-    totalWithdrawn: 0,
-    totalProfit: 0,
-    provider: "metamask",
-  };
-}
-
 export async function getContractInfo(): Promise<ContractStatus> {
   const configured = isContractConfigured();
   let paused = false;
   let owner = "0x0000000000000000000000000000000000000000";
-  let version = CONTRACT_VERSION;
   if (configured) {
     try {
-      [paused, owner, version] = await Promise.all([
+      [paused, owner] = await Promise.all([
         contractService.paused(),
         contractService.owner(),
-        contractService.version(),
       ]);
     } catch {
-      /* RPC / undeployed */
+      /* RPC */
     }
   }
   return {
     connection: walletManager.getAddress() ? "connected" : "not_connected",
     networkMode: "testnet",
-    network: "bnb",
+    network: "polygon",
     networkLabel: NETWORK_LABEL,
-    contractAddress: getContractAddress() || "0x0000000000000000000000000000000000000000",
+    contractAddress:
+      getContractAddress() || "0x0000000000000000000000000000000000000000",
     explorerBaseUrl: getExplorerUrl(),
     paused,
     owner,
-    version,
+    version: CONTRACT_VERSION,
   };
+}
+
+export async function getContractBalance() {
+  const balance = await contractService.contractBalance();
+  return { balance, balanceUsd: 0, symbol: NATIVE_SYMBOL };
 }
 
 function toTxResult(
@@ -158,20 +162,30 @@ export async function withdraw(amount: number, onProgress?: ProgressCallback) {
   return toTxResult(await contractService.withdraw(amount, onProgress));
 }
 
-export async function claimRewards(onProgress?: ProgressCallback) {
-  return toTxResult(await contractService.claimRewards(onProgress));
+export async function claimReward(onProgress?: ProgressCallback) {
+  return toTxResult(await contractService.claimReward(onProgress));
 }
 
-export async function compound(onProgress?: ProgressCallback) {
-  return toTxResult(await contractService.compound(onProgress));
+export async function claimRewards(onProgress?: ProgressCallback) {
+  return claimReward(onProgress);
+}
+
+/** DemoVaultV2 has no compound — keep UI button working with a clear result */
+export async function compound(): Promise<TxActionResult> {
+  return {
+    status: "failed",
+    hash: "",
+    message: "Compound is not available on DemoVaultV2",
+    explorerUrl: "",
+  };
 }
 
 export async function balanceOf(address: string) {
-  return contractService.balanceOf(address);
+  return contractService.getUserBalance(address);
 }
 
 export async function pendingRewards(address: string) {
-  return contractService.pendingRewards(address);
+  return contractService.getReward(address);
 }
 
 export async function contractBalance() {
@@ -183,7 +197,80 @@ export async function totalDeposited() {
 }
 
 export async function totalUsers() {
-  return contractService.totalUsers();
+  return contractService.userCount();
+}
+
+export async function getEvents() {
+  return contractService.getEvents();
+}
+
+export async function getActivity(): Promise<ActivityItem[]> {
+  const events = await contractService.getEvents();
+  return events.map((e) => ({
+    id: e.id,
+    type: e.type,
+    wallet: e.wallet,
+    amount: e.amount,
+    hash: e.hash,
+    timestamp: e.timestamp,
+    status: e.status,
+    explorerUrl: e.explorerUrl,
+  }));
+}
+
+export async function getTransactions(): Promise<{
+  items: BlockchainTransaction[];
+  total: number;
+  page: number;
+  pageSize: number;
+}> {
+  const events = await contractService.getEvents();
+  const items: BlockchainTransaction[] = events.map((e) => ({
+    id: e.id,
+    wallet: e.wallet,
+    type: e.type,
+    amount: e.amount,
+    networkFee: e.networkFee,
+    block: e.block,
+    hash: e.hash,
+    status: e.status,
+    date: e.timestamp,
+    explorerUrl: e.explorerUrl,
+  }));
+  return { items, total: items.length, page: 1, pageSize: items.length || 20 };
+}
+
+export async function getContractEvents(): Promise<ContractEvent[]> {
+  const events = await contractService.getEvents();
+  return events.map((e) => ({
+    id: e.id,
+    name: e.name,
+    type: e.type,
+    transactionHash: e.hash,
+    blockNumber: e.block,
+    timestamp: e.timestamp,
+    wallet: e.wallet,
+    explorerUrl: e.explorerUrl,
+  }));
+}
+
+export async function getInvestors(): Promise<{
+  items: InvestorRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}> {
+  const list = await contractService.listInvestors();
+  const items: InvestorRow[] = list.map((r) => ({
+    wallet: r.wallet,
+    joinedAt: new Date().toISOString(),
+    investment: r.investment,
+    rewards: r.rewards,
+    status: r.investment > 0 ? "active" : "inactive",
+    country: "—",
+    lastActivity: new Date().toISOString(),
+  }));
+  return { items, total: items.length, page: 1, pageSize: items.length || 20 };
 }
 
 export function subscribeEvents(handler: ChainEventHandler) {
@@ -194,6 +281,34 @@ export function subscribeEvents(handler: ChainEventHandler) {
 export function getExplorerAddressUrl(address: string) {
   return explorerAddress(address);
 }
+
+/** Named service object for UI: blockchainService.getContractBalance() */
+export const blockchainService = {
+  connectWallet,
+  disconnectWallet,
+  getCurrentWallet,
+  getWallet,
+  getContractInfo,
+  getContractBalance,
+  deposit,
+  withdraw,
+  claimReward,
+  claimRewards,
+  compound,
+  getEvents,
+  getActivity,
+  getTransactions,
+  getContractEvents,
+  getInvestors,
+  contractBalance,
+  totalDeposited,
+  totalUsers,
+  balanceOf,
+  pendingRewards,
+  subscribeEvents,
+  isContractConfigured,
+  getContractAddress,
+};
 
 export {
   contractService,

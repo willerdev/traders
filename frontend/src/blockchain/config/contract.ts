@@ -1,9 +1,8 @@
 /**
- * DemoVault deployment config — BNB Smart Chain Testnet first.
+ * DemoVaultV2 — Polygon Amoy Testnet
  *
- * NEXT_PUBLIC_* is baked in at Next.js build time. On Render, prefer setting
- * DEMO_VAULT_ADDRESS / CONTRACT_ADDRESS on the API; the dashboard loads it at
- * runtime via applyRuntimeContractConfig().
+ * Contract address from NEXT_PUBLIC_CONTRACT_ADDRESS (inlined at Next build;
+ * set on Render traders-web and redeploy after changing).
  */
 
 const ZERO = "0x0000000000000000000000000000000000000000";
@@ -17,15 +16,16 @@ type RuntimeOverride = {
 
 let runtime: RuntimeOverride = {};
 
+export const POLYGON_AMOY_CHAIN_ID = 80002;
+
 export function applyRuntimeContractConfig(partial: RuntimeOverride) {
   const next = { ...runtime };
   if (partial.contractAddress !== undefined) {
     const addr = partial.contractAddress.trim();
-    // Never wipe a real address with the zero placeholder
     if (
       addr.startsWith("0x") &&
       addr.length >= 42 &&
-      addr.toLowerCase() !== "0x0000000000000000000000000000000000000000"
+      addr.toLowerCase() !== ZERO.toLowerCase()
     ) {
       next.contractAddress = addr;
     }
@@ -46,74 +46,67 @@ export function getContractAddress(): string {
   return "";
 }
 
-/** @deprecated Use getContractAddress() — kept for import compatibility */
-export const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS?.trim() || "";
+/** Primary export — prefers env, then runtime override via getter helpers */
+export const CONTRACT_ADDRESS =
+  process.env.NEXT_PUBLIC_CONTRACT_ADDRESS?.trim() || "";
 
 export function getChainId(): number {
-  return (
-    runtime.chainId ||
-    Number(process.env.NEXT_PUBLIC_CHAIN_ID || 97)
-  );
+  return runtime.chainId || POLYGON_AMOY_CHAIN_ID;
 }
 
-export const CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 97);
+export const CHAIN_ID = POLYGON_AMOY_CHAIN_ID;
 
-export const NETWORK = "BNB Testnet";
+export const NETWORK = "Polygon Amoy";
 
 export function getRpcUrl(): string {
   return (
     runtime.rpc ||
     process.env.NEXT_PUBLIC_RPC_URL?.trim() ||
-    "https://data-seed-prebsc-1-s1.binance.org:8545/"
+    "https://rpc-amoy.polygon.technology/"
   );
 }
 
 export const RPC =
   process.env.NEXT_PUBLIC_RPC_URL?.trim() ||
-  "https://data-seed-prebsc-1-s1.binance.org:8545/";
+  "https://rpc-amoy.polygon.technology/";
 
 export function getExplorerUrl(): string {
   return (
     runtime.explorerUrl ||
     process.env.NEXT_PUBLIC_EXPLORER_URL?.trim() ||
-    "https://testnet.bscscan.com"
+    "https://amoy.polygonscan.com"
   );
 }
 
 export const EXPLORER_URL =
   process.env.NEXT_PUBLIC_EXPLORER_URL?.trim() ||
-  "https://testnet.bscscan.com";
+  "https://amoy.polygonscan.com";
 
-export const NETWORK_LABEL = "BNB Smart Chain";
+export const NETWORK_LABEL = "Polygon Amoy";
 
-export const NATIVE_SYMBOL = "BNB";
+export const NATIVE_SYMBOL = "POL";
 
-export const CONTRACT_VERSION = "1.0.0";
+export const CONTRACT_VERSION = "2.0.0";
 
 export function getChainIdHex(): string {
   return `0x${getChainId().toString(16)}`;
 }
 
-/** Hex chain id for wallet_switchEthereumChain */
-export const CHAIN_ID_HEX = `0x${CHAIN_ID.toString(16)}`;
+export const CHAIN_ID_HEX = `0x${POLYGON_AMOY_CHAIN_ID.toString(16)}`;
 
-export function getBscTestnetParams() {
+export function getAmoyChainParams() {
   return {
     chainId: getChainIdHex(),
-    chainName: "BNB Smart Chain Testnet",
-    nativeCurrency: { name: "BNB", symbol: "tBNB", decimals: 18 },
+    chainName: "Polygon Amoy Testnet",
+    nativeCurrency: { name: "POL", symbol: "POL", decimals: 18 },
     rpcUrls: [getRpcUrl()],
     blockExplorerUrls: [getExplorerUrl()],
   } as const;
 }
 
-export const BSC_TESTNET_PARAMS = {
-  chainId: CHAIN_ID_HEX,
-  chainName: "BNB Smart Chain Testnet",
-  nativeCurrency: { name: "BNB", symbol: "tBNB", decimals: 18 },
-  rpcUrls: [RPC],
-  blockExplorerUrls: [EXPLORER_URL],
-} as const;
+/** @deprecated use getAmoyChainParams */
+export const BSC_TESTNET_PARAMS = getAmoyChainParams();
+export const getBscTestnetParams = getAmoyChainParams;
 
 export function isContractConfigured(): boolean {
   const addr = getContractAddress();

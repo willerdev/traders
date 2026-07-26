@@ -30,7 +30,7 @@ export function AdminDashboardPanel({
       label: "Current Contract Balance",
       value: (
         <>
-          <AnimatedCounter value={admin.contractBalance} /> BNB
+          <AnimatedCounter value={admin.contractBalance} /> POL
         </>
       ),
     },
@@ -38,7 +38,7 @@ export function AdminDashboardPanel({
       label: "Pending Withdrawals",
       value: (
         <>
-          <AnimatedCounter value={admin.pendingWithdrawals} /> BNB
+          <AnimatedCounter value={admin.pendingWithdrawals} /> POL
         </>
       ),
     },
@@ -46,7 +46,7 @@ export function AdminDashboardPanel({
       label: "Pending Deposits",
       value: (
         <>
-          <AnimatedCounter value={admin.pendingDeposits} /> BNB
+          <AnimatedCounter value={admin.pendingDeposits} /> POL
         </>
       ),
     },
@@ -58,7 +58,7 @@ export function AdminDashboardPanel({
       label: "Daily Revenue",
       value: (
         <>
-          <AnimatedCounter value={admin.dailyRevenue} /> BNB
+          <AnimatedCounter value={admin.dailyRevenue} /> POL
         </>
       ),
     },
@@ -66,7 +66,7 @@ export function AdminDashboardPanel({
       label: "Weekly Revenue",
       value: (
         <>
-          <AnimatedCounter value={admin.weeklyRevenue} /> BNB
+          <AnimatedCounter value={admin.weeklyRevenue} /> POL
         </>
       ),
     },
@@ -74,7 +74,7 @@ export function AdminDashboardPanel({
       label: "Monthly Revenue",
       value: (
         <>
-          <AnimatedCounter value={admin.monthlyRevenue} /> BNB
+          <AnimatedCounter value={admin.monthlyRevenue} /> POL
         </>
       ),
     },
@@ -82,7 +82,7 @@ export function AdminDashboardPanel({
       label: "Total Fees Collected",
       value: (
         <>
-          <AnimatedCounter value={admin.totalFeesCollected} /> BNB
+          <AnimatedCounter value={admin.totalFeesCollected} /> POL
         </>
       ),
     },
@@ -238,10 +238,10 @@ export function AdminDashboardPanel({
               label="Avg Claim Time"
               value={`${health.averageClaimTimeHours}h`}
             />
-            <Stat label="Avg Deposit" value={`${health.averageDeposit} BNB`} />
+            <Stat label="Avg Deposit" value={`${health.averageDeposit} POL`} />
             <Stat
               label="Avg Withdrawal"
-              value={`${health.averageWithdrawal} BNB`}
+              value={`${health.averageWithdrawal} POL`}
             />
             <Stat label="RPC Latency" value={`${health.rpcLatencyMs} ms`} />
             <Stat label="Block Delay" value={String(health.blockDelay)} />

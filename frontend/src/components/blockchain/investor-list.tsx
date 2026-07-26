@@ -116,8 +116,8 @@ export function InvestorList({
                 <td className="py-2.5 pr-3 text-xs text-muted">
                   {formatWhen(r.joinedAt)}
                 </td>
-                <td className="py-2.5 pr-3">{r.investment} BNB</td>
-                <td className="py-2.5 pr-3">{r.rewards} BNB</td>
+                <td className="py-2.5 pr-3">{r.investment} POL</td>
+                <td className="py-2.5 pr-3">{r.rewards} POL</td>
                 <td className="py-2.5 pr-3">
                   <TxStatusBadge
                     status={
