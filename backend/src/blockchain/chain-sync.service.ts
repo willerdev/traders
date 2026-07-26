@@ -6,7 +6,7 @@ import {
   ChainTxStatus,
 } from '@prisma/client';
 import { createHash } from 'crypto';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import {
   Contract,
@@ -16,12 +16,22 @@ import {
 } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 
-const DemoVaultAbi = JSON.parse(
-  readFileSync(
+function loadDemoVaultAbi(): InterfaceAbi {
+  const candidates = [
     join(process.cwd(), 'src', 'blockchain', 'abi', 'DemoVault.json'),
-    'utf8',
-  ),
-) as InterfaceAbi;
+    join(process.cwd(), 'dist', 'src', 'blockchain', 'abi', 'DemoVault.json'),
+    join(__dirname, 'abi', 'DemoVault.json'),
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) {
+      return JSON.parse(readFileSync(p, 'utf8')) as InterfaceAbi;
+    }
+  }
+  // Empty ABI — sync will no-op until file is present; don't crash boot.
+  return [];
+}
+
+const DemoVaultAbi = loadDemoVaultAbi();
 
 type IngestEventDto = {
   name: string;

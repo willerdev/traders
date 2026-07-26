@@ -9,6 +9,10 @@
     {
       "include": "ai/knowledge/**/*",
       "outDir": "dist/src"
+    },
+    {
+      "include": "blockchain/abi/**/*",
+      "outDir": "dist/src"
     }
   ]
 }
