@@ -12,6 +12,7 @@ import {
   LineChart,
   ScrollText,
   TrendingUp,
+  Blocks,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore, useDashboardStore } from "@/stores/auth";
@@ -29,6 +30,7 @@ import {
 const navItems = [
   { href: "/dashboard", label: "Dashboard", shortLabel: "Home", icon: LayoutDashboard },
   { href: "/invest", label: "Invest", shortLabel: "Invest", icon: TrendingUp },
+  { href: "/blockchain", label: "Chain", shortLabel: "Chain", icon: Blocks },
   { href: "/journal", label: "Journal", shortLabel: "Journal", icon: ScrollText },
   { href: "/wallet", label: "Wallet", shortLabel: "Wallet", icon: Wallet },
   {
@@ -115,7 +117,8 @@ function SidebarNav({
     <nav className={cn("flex flex-col gap-1 p-2", className)}>
       {items.map((item) => {
         const Icon = item.icon;
-        const active = pathname === item.href;
+        const active =
+          pathname === item.href || pathname.startsWith(`${item.href}/`);
         return (
           <Link
             key={item.href}

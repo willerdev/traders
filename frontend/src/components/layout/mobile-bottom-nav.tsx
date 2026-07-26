@@ -10,6 +10,7 @@ import {
   MessageCircle,
   MoreHorizontal,
   PiggyBank,
+  Blocks,
   ScrollText,
   Settings,
   TrendingUp,
@@ -124,6 +125,13 @@ export function MobileBottomNav() {
           hint: "Quotes, charts & trade",
           icon: LineChart,
           match: "/mt5",
+        },
+        {
+          href: "/blockchain",
+          label: "Blockchain",
+          hint: "On-chain invest dashboard",
+          icon: Blocks,
+          match: "/blockchain",
         },
         {
           href: "/tp-claims",

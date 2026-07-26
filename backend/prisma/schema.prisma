@@ -294,6 +294,13 @@ model User {
   behaviorProfile    UserBehaviorProfile?
   productEnrollments UserProductEnrollment[]
   productAgentPlans  ProductAgentPlan[]
+  chainWallets       ChainWallet[]
+  chainDeposits      ChainDeposit[]
+  chainWithdrawals   ChainWithdrawal[]
+  chainRewards       ChainReward[]
+  chainNotifications ChainNotification[]
+  chainReferralsAsReferrer ChainReferral[] @relation("ChainReferralReferrer")
+  chainReferralsAsReferee  ChainReferral[] @relation("ChainReferralReferee")
 
   @@index([status])
   @@index([role])
@@ -1308,4 +1315,229 @@ model ProductAgentPlan {
   @@index([userId, weekStart])
   @@index([weekStart])
   @@map("product_agent_plans")
+}
+
+/// Prepared models for on-chain investment contract indexing.
+/// Mock API does not write these yet — swap BlockchainService to persist when live.
+
+enum ChainNetworkKind {
+  ETHEREUM
+  BNB
+  BASE
+  POLYGON
+}
+
+enum ChainTxStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum ChainActivityType {
+  DEPOSIT
+  WITHDRAWAL
+  CLAIM
+  COMPOUND
+  REFERRAL_BONUS
+  OWNERSHIP_TRANSFER
+  PAUSED
+  UNPAUSED
+  EMERGENCY_WITHDRAWAL
+  WALLET_CONNECTED
+  WALLET_DISCONNECTED
+}
+
+model ChainNetwork {
+  id          String           @id @default(cuid())
+  kind        ChainNetworkKind @unique
+  label       String
+  chainId     Int
+  rpcUrl      String?
+  explorerUrl String
+  isTestnet   Boolean          @default(true)
+  active      Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  contracts   ChainContract[]
+
+  @@map("chain_networks")
+}
+
+model ChainContract {
+  id              String   @id @default(cuid())
+  networkId       String
+  address         String
+  version         String   @default("1.0.0")
+  ownerAddress    String?
+  treasuryWallet  String?
+  reserveWallet   String?
+  emergencyWallet String?
+  paused          Boolean  @default(false)
+  symbol          String   @default("BNB")
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  network      ChainNetwork       @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  transactions ChainTransaction[]
+  deposits     ChainDeposit[]
+  withdrawals  ChainWithdrawal[]
+  rewards      ChainReward[]
+  events       ChainEvent[]
+  settings     ChainSetting[]
+
+  @@unique([networkId, address])
+  @@index([active])
+  @@map("chain_contracts")
+}
+
+model ChainWallet {
+  id        String   @id @default(cuid())
+  userId    String?
+  address   String   @unique
+  provider  String?
+  label     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("chain_wallets")
+}
+
+model ChainTransaction {
+  id          String            @id @default(cuid())
+  contractId  String?
+  wallet      String
+  type        ChainActivityType
+  amount      Decimal           @db.Decimal(24, 8)
+  networkFee  Decimal           @default(0) @db.Decimal(24, 8)
+  blockNumber Int?
+  hash        String            @unique
+  status      ChainTxStatus     @default(PENDING)
+  occurredAt  DateTime          @default(now())
+  createdAt   DateTime          @default(now())
+
+  contract ChainContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+
+  @@index([wallet, occurredAt])
+  @@index([type, status])
+  @@map("chain_transactions")
+}
+
+model ChainDeposit {
+  id         String        @id @default(cuid())
+  userId     String?
+  contractId String?
+  wallet     String
+  amount     Decimal       @db.Decimal(24, 8)
+  hash       String?       @unique
+  status     ChainTxStatus @default(PENDING)
+  createdAt  DateTime      @default(now())
+
+  user     User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  contract ChainContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@map("chain_deposits")
+}
+
+model ChainWithdrawal {
+  id         String        @id @default(cuid())
+  userId     String?
+  contractId String?
+  wallet     String
+  amount     Decimal       @db.Decimal(24, 8)
+  hash       String?       @unique
+  status     ChainTxStatus @default(PENDING)
+  createdAt  DateTime      @default(now())
+
+  user     User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  contract ChainContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@map("chain_withdrawals")
+}
+
+model ChainReward {
+  id         String        @id @default(cuid())
+  userId     String?
+  contractId String?
+  wallet     String
+  amount     Decimal       @db.Decimal(24, 8)
+  hash       String?       @unique
+  claimed    Boolean       @default(false)
+  status     ChainTxStatus @default(PENDING)
+  createdAt  DateTime      @default(now())
+
+  user     User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  contract ChainContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+
+  @@index([userId, claimed])
+  @@map("chain_rewards")
+}
+
+model ChainEvent {
+  id              String            @id @default(cuid())
+  contractId      String?
+  name            String
+  type            ChainActivityType
+  transactionHash String
+  blockNumber     Int?
+  wallet          String?
+  payload         Json?
+  occurredAt      DateTime          @default(now())
+  createdAt       DateTime          @default(now())
+
+  contract ChainContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+
+  @@index([occurredAt])
+  @@index([type])
+  @@map("chain_events")
+}
+
+model ChainSetting {
+  id         String   @id @default(cuid())
+  contractId String?
+  key        String
+  value      String
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  contract ChainContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+
+  @@unique([contractId, key])
+  @@map("chain_settings")
+}
+
+model ChainNotification {
+  id        String   @id @default(cuid())
+  userId    String?
+  type      String
+  title     String
+  message   String
+  severity  String   @default("info")
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, read, createdAt])
+  @@map("chain_notifications")
+}
+
+model ChainReferral {
+  id         String   @id @default(cuid())
+  referrerId String?
+  refereeId  String?
+  amount     Decimal  @default(0) @db.Decimal(24, 8)
+  hash       String?
+  createdAt  DateTime @default(now())
+
+  referrer User? @relation("ChainReferralReferrer", fields: [referrerId], references: [id], onDelete: SetNull)
+  referee  User? @relation("ChainReferralReferee", fields: [refereeId], references: [id], onDelete: SetNull)
+
+  @@index([referrerId])
+  @@map("chain_referrals")
 }

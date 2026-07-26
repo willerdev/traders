@@ -33,6 +33,7 @@ import { FlutterwaveModule } from './flutterwave/flutterwave.module';
 import { FxModule } from './fx/fx.module';
 import { AccountTransferModule } from './account-transfer/account-transfer.module';
 import { SmsModule } from './sms/sms.module';
+import { BlockchainModule } from './blockchain/blockchain.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { SmsModule } from './sms/sms.module';
     FlutterwaveModule,
     AccountTransferModule,
     SmsModule,
+    BlockchainModule,
   ],
 })
 export class AppModule {}
