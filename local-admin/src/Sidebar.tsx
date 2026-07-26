@@ -14,6 +14,7 @@ export type Tab =
   | "tpClaims"
   | "promos"
   | "marketing"
+  | "composeEmail"
   | "productAgent"
   | "sms"
   | "referrals"
@@ -38,6 +39,7 @@ export const ADMIN_TABS: Tab[] = [
   "tpClaims",
   "promos",
   "marketing",
+  "composeEmail",
   "productAgent",
   "sms",
   "referrals",
@@ -111,6 +113,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "tpClaims", label: "TP Claims", icon: "tpClaims" },
   { id: "promos", label: "Promo codes", icon: "promos" },
   { id: "marketing", label: "Email marketing", icon: "marketing" },
+  { id: "composeEmail", label: "Compose email", icon: "marketing" },
   { id: "productAgent", label: "Product agent", icon: "marketing" },
   { id: "sms", label: "SMS test", icon: "sms" },
   { id: "referrals", label: "Referrals", icon: "referrals" },

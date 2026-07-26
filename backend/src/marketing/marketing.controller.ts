@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { MarketingService } from './marketing.service';
 import { ProductAgentService } from './product-agent.service';
+import { ComposeEmailService } from './compose-email.service';
 import { JwtAuthGuard, RolesGuard } from '../auth/guards';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { MarketingTestEmailDto } from '../common/dto';
@@ -20,6 +21,7 @@ export class MarketingController {
   constructor(
     private marketingService: MarketingService,
     private productAgent: ProductAgentService,
+    private composeEmail: ComposeEmailService,
   ) {}
 
   @Get('schedule')
@@ -45,6 +47,32 @@ export class MarketingController {
     return this.marketingService.sendTestEmail(
       dto.email?.trim() || 'willeratmit12@gmail.com',
     );
+  }
+
+  // ─── Compose email (search users / polish / send) ─────────────────────
+
+  @Get('compose/status')
+  composeStatus() {
+    return this.composeEmail.status();
+  }
+
+  @Post('compose/polish')
+  composePolish(@Body() body: { subject?: string; body: string }) {
+    return this.composeEmail.polish(body);
+  }
+
+  @Post('compose/send')
+  composeSend(
+    @Body()
+    body: {
+      subject: string;
+      body: string;
+      userIds?: string[];
+      allUsers?: boolean;
+      confirmAll?: boolean;
+    },
+  ) {
+    return this.composeEmail.send(body);
   }
 
   // ─── Product adoption agent ────────────────────────────────────────────

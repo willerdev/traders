@@ -41,6 +41,7 @@ import { TransactionsPanel } from "./TransactionsPanel";
 import { AccountTransfersPanel } from "./AccountTransfersPanel";
 import { SmsPanel } from "./SmsPanel";
 import { ProductAgentPanel } from "./ProductAgentPanel";
+import { ComposeEmailPanel } from "./ComposeEmailPanel";
 
 function badgeClass(status: string) {
   return `badge ${status.toLowerCase()}`;
@@ -4214,6 +4215,8 @@ export default function App() {
         )}
 
         {tab === "sms" && <SmsPanel onMessage={setMessage} />}
+
+        {tab === "composeEmail" && <ComposeEmailPanel onMessage={setMessage} />}
 
         {tab === "productAgent" && <ProductAgentPanel />}
 

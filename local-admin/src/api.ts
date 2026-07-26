@@ -575,6 +575,40 @@ export const api = {
       body: "{}",
     }),
 
+  composeEmailStatus: () =>
+    request<{
+      emailConfigured: boolean;
+      emailFrom?: string;
+      aiConfigured: boolean;
+    }>("/admin/marketing/compose/status"),
+  composeEmailPolish: (data: { subject?: string; body: string }) =>
+    request<{ subject: string; body: string }>(
+      "/admin/marketing/compose/polish",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+    ),
+  composeEmailSend: (data: {
+    subject: string;
+    body: string;
+    userIds?: string[];
+    allUsers?: boolean;
+    confirmAll?: boolean;
+  }) =>
+    request<{
+      ok: boolean;
+      audience: string;
+      targeted: number;
+      sent: number;
+      failed: number;
+      skipped: number;
+      subject: string;
+    }>("/admin/marketing/compose/send", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
   smsStatus: () => request<SmsStatus>("/admin/sms/status"),
   smsNumbers: () =>
     request<{ items: SmsNumberRow[]; defaultFrom: string | null; count: number }>(
