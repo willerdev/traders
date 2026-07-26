@@ -4,8 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
-  Send,
-  Trophy,
   Wallet,
   Settings,
   LogOut,
@@ -30,7 +28,6 @@ import {
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", shortLabel: "Home", icon: LayoutDashboard },
-  { href: "/submit", label: "Submit Setup", shortLabel: "Submit", icon: Send },
   { href: "/invest", label: "Invest", shortLabel: "Invest", icon: TrendingUp },
   { href: "/journal", label: "Journal", shortLabel: "Journal", icon: ScrollText },
   { href: "/wallet", label: "Wallet", shortLabel: "Wallet", icon: Wallet },
@@ -40,7 +37,6 @@ const navItems = [
     shortLabel: "MT5",
     icon: LineChart,
   },
-  { href: "/leaderboard", label: "Leaderboard", shortLabel: "Ranks", icon: Trophy },
   { href: "/tp-claims", label: "TP Claims", shortLabel: "Claims", icon: ClipboardCheck },
   { href: "/messages", label: "Messages", shortLabel: "Chat", icon: MessageCircle },
   { href: "/payouts", label: "Payouts", shortLabel: "Payouts", icon: Wallet },

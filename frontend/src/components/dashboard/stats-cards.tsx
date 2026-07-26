@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { Send, TrendingDown, TrendingUp } from "lucide-react";
+import { TrendingDown, TrendingUp } from "lucide-react";
 import { cn, formatCurrency, formatPercent, TIER_BG } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -82,10 +82,10 @@ export function DashboardStats({
     >
       <div className="mb-3 flex items-center justify-between gap-2 border-b border-white/10 pb-3">
         <p className="text-xs text-gray-400">Performance snapshot</p>
-        <Link href="/submit">
+        <Link href="/invest">
           <Button size="sm" className="h-8 gap-1.5 px-3 text-xs">
-            <Send className="h-3.5 w-3.5" />
-            Submit
+            <TrendingUp className="h-3.5 w-3.5" />
+            Invest
           </Button>
         </Link>
       </div>

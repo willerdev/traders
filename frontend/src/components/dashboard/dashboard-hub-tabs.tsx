@@ -9,9 +9,9 @@ const tabs: Array<{
   label: string;
   href?: string;
 }> = [
-  { id: "trader", label: "Setups" },
   { id: "investor", label: "Invest", href: "/invest" },
   { id: "wallet", label: "Wallet", href: "/wallet" },
+  { id: "trader", label: "Account" },
 ];
 
 export type DashboardTab = "trader" | "investor" | "wallet";
@@ -61,6 +61,7 @@ export function useDashboardTab(): DashboardTab {
   if (tab === "investor" || tab === "wallet") {
     return tab;
   }
-  // Legacy depositor links fall back to setups
+  if (tab === "depositor") return "wallet";
+  // Account overview (legacy trader dashboard) when no tab / tab=trader
   return "trader";
 }

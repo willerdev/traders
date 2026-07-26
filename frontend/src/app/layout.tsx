@@ -17,10 +17,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TraderRank Pro — Trader Talent Discovery Platform",
+  title: "Tradeguard — Smart Invest",
   description:
-    "Compete by submitting trading setups, earn rankings, payouts, and account scaling based on performance.",
-  keywords: ["trading", "prop firm", "signals", "leaderboard", "funded account"],
+    "Put capital to work with Smart Invest: daily yield, clear fees, and USDT wallet withdrawals after KYC.",
+  keywords: ["investing", "smart invest", "daily yield", "USDT", "tradeguard"],
 };
 
 /** Lock zoom/pinch-resize on phones so the trading UI stays fixed. */

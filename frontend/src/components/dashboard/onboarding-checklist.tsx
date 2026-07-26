@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { RegistrationCheckout } from "@/components/payments/registration-checkout";
 import type { OnboardingStatus } from "@/lib/api";
 
-const TRADING_STEPS = [
+const INVEST_STEPS = [
   {
     key: "registrationPaid" as const,
     label: "Pay registration fee (5 USDT)",
@@ -15,10 +15,10 @@ const TRADING_STEPS = [
     action: "Pay now",
   },
   {
-    key: "hasSubmittedSignal" as const,
-    label: "Submit your first setup",
-    href: "/submit",
-    action: "Submit setup",
+    key: "accountActive" as const,
+    label: "Open Smart Invest and allocate capital",
+    href: "/invest",
+    action: "Open Invest",
   },
 ];
 
@@ -39,27 +39,28 @@ export function OnboardingChecklist({
   onComplete?: () => void;
 }) {
   const state = normalizeOnboarding(onboarding);
-  const completed = TRADING_STEPS.filter((s) => state[s.key]).length;
+  const completed = INVEST_STEPS.filter((s) => state[s.key]).length;
 
-  if (completed === TRADING_STEPS.length) return null;
+  if (completed === INVEST_STEPS.length) return null;
 
   return (
     <Card className="mb-6 border-primary/20">
       <CardHeader className="pb-3">
-        <CardTitle className="text-lg">Start trading</CardTitle>
+        <CardTitle className="text-lg">Start investing</CardTitle>
         <CardDescription>
-          Pay registration to unlock setup submission. Identity verification is only
-          required when you request a payout ({completed}/{TRADING_STEPS.length}).
+          Pay registration to activate your account, then allocate capital on
+          Smart Invest. KYC is only required before withdrawals (
+          {completed}/{INVEST_STEPS.length}).
         </CardDescription>
         <div className="mt-3 h-2 overflow-hidden rounded-full bg-foreground/10">
           <div
             className="h-full rounded-full bg-primary transition-all"
-            style={{ width: `${(completed / TRADING_STEPS.length) * 100}%` }}
+            style={{ width: `${(completed / INVEST_STEPS.length) * 100}%` }}
           />
         </div>
       </CardHeader>
       <CardContent className="space-y-2">
-        {TRADING_STEPS.map((step) => {
+        {INVEST_STEPS.map((step) => {
           const done = state[step.key];
           const isRegistration = step.key === "registrationPaid";
 
@@ -96,7 +97,7 @@ export function OnboardingChecklist({
 
         {!state.emailVerified && (
           <p className="pt-1 text-xs text-muted">
-            Email verification is optional for trading.
+            Email verification is optional to start investing.
           </p>
         )}
       </CardContent>
