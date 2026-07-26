@@ -45,45 +45,45 @@ const RULES = [
 
 export function InvestmentRules() {
   return (
-    <section className="relative mx-auto max-w-7xl px-4 py-20 sm:px-6">
+    <section className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6">
       <motion.div
-        initial={{ opacity: 0, y: 24 }}
+        initial={{ opacity: 0, y: 28 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-80px" }}
-        transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
         className="max-w-2xl"
       >
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
-          Smart Invest rules
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary">
+          The rules
         </p>
-        <h2 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-          Clear terms before you put capital to work
+        <h2 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-5xl">
+          Clear before you commit capital
         </h2>
-        <p className="mt-3 text-base text-gray-400">
-          No prop-firm ladder. These are the live rules for daily yield, fees, and
-          withdrawals on TraderRank Pro.
+        <p className="mt-4 text-lg text-gray-400">
+          Live Smart Invest terms — fees, hold period, VIP, and withdrawals.
         </p>
       </motion.div>
 
-      <div className="mt-12 grid gap-x-10 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mt-14 grid gap-x-12 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
         {RULES.map((rule, i) => {
           const Icon = rule.icon;
           return (
             <motion.div
               key={rule.title}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 24 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-40px" }}
               transition={{
-                delay: 0.06 * i,
-                duration: 0.45,
+                delay: 0.05 * i,
+                duration: 0.5,
                 ease: [0.22, 1, 0.36, 1],
               }}
+              className="group border-t border-white/10 pt-6"
             >
-              <div className="mb-3 inline-flex text-primary">
+              <div className="mb-4 inline-flex text-primary transition-transform duration-300 group-hover:translate-x-0.5">
                 <Icon className="h-5 w-5" strokeWidth={1.75} />
               </div>
-              <h3 className="text-base font-semibold text-white">{rule.title}</h3>
+              <h3 className="text-lg font-semibold text-white">{rule.title}</h3>
               <p className="mt-2 text-sm leading-relaxed text-gray-400">
                 {rule.body}
               </p>
@@ -93,27 +93,30 @@ export function InvestmentRules() {
       </div>
 
       <motion.div
-        initial={{ opacity: 0, y: 16 }}
+        initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
-        transition={{ duration: 0.45, delay: 0.15 }}
-        className="mt-14 border-t border-white/10 pt-10"
+        transition={{ duration: 0.5, delay: 0.1 }}
+        className="mt-16"
       >
-        <h3 className="text-sm font-semibold text-white">Enrollment fee by size</h3>
-        <p className="mt-1 text-sm text-gray-500">
-          One-time fee deducted when you start Smart Invest
-        </p>
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {FEE_TIERS.map((tier) => (
-            <div
+        <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-gray-500">
+          Enrollment fee by size
+        </h3>
+        <div className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 sm:grid-cols-4">
+          {FEE_TIERS.map((tier, i) => (
+            <motion.div
               key={tier.range}
-              className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3"
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.05 * i }}
+              className="bg-[#121a2e] px-5 py-5"
             >
               <p className="text-xs text-gray-500">{tier.range}</p>
-              <p className="mt-1 text-lg font-semibold tabular-nums text-white">
+              <p className="mt-2 text-2xl font-bold tabular-nums text-white">
                 {tier.fee}
               </p>
-            </div>
+            </motion.div>
           ))}
         </div>
       </motion.div>
