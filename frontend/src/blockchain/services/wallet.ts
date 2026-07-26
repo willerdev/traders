@@ -2,12 +2,12 @@
 
 import { BrowserProvider, formatEther, type Eip1193Provider } from "ethers";
 import {
-  BSC_TESTNET_PARAMS,
-  CHAIN_ID,
-  CHAIN_ID_HEX,
-  EXPLORER_URL,
+  getBscTestnetParams,
+  getChainId,
+  getChainIdHex,
+  getExplorerUrl,
+  getRpcUrl,
   NETWORK,
-  RPC,
 } from "../config/contract";
 
 export type WalletAccountChangeHandler = (address: string | null) => void;
@@ -71,7 +71,7 @@ class WalletManager {
     const network = await this.provider.getNetwork();
     this.chainId = Number(network.chainId);
 
-    if (this.chainId !== CHAIN_ID) {
+    if (this.chainId !== getChainId()) {
       await this.ensureCorrectNetwork();
     }
 
@@ -93,14 +93,14 @@ class WalletManager {
     try {
       await window.ethereum.request({
         method: "wallet_switchEthereumChain",
-        params: [{ chainId: CHAIN_ID_HEX }],
+        params: [{ chainId: getChainIdHex() }],
       });
     } catch (err) {
       const code = (err as { code?: number })?.code;
       if (code === 4902) {
         await window.ethereum.request({
           method: "wallet_addEthereumChain",
-          params: [BSC_TESTNET_PARAMS],
+          params: [getBscTestnetParams()],
         });
       } else {
         throw err;
@@ -150,9 +150,9 @@ class WalletManager {
       network: "bnb" as const,
       networkLabel: NETWORK,
       networkMode: "testnet" as const,
-      explorerBaseUrl: EXPLORER_URL,
-      rpc: RPC,
-      chainId: CHAIN_ID,
+      explorerBaseUrl: getExplorerUrl(),
+      rpc: getRpcUrl(),
+      chainId: getChainId(),
     };
   }
 

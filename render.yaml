@@ -101,6 +101,17 @@ services:
         value: "false"
       - key: ABUSE_HUNTER_ENABLED
         value: "true"
+      # DemoVault (BNB Testnet) — runtime; frontend loads via /blockchain/contract/config
+      - key: DEMO_VAULT_ADDRESS
+        sync: false
+      - key: CONTRACT_ADDRESS
+        sync: false
+      - key: BNB_TESTNET_RPC
+        value: https://data-seed-prebsc-1-s1.binance.org:8545/
+      - key: BNB_CHAIN_ID
+        value: "97"
+      - key: BNB_EXPLORER_URL
+        value: https://testnet.bscscan.com
 
   - type: web
     name: traders-web

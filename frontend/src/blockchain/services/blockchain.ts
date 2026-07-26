@@ -12,14 +12,15 @@ import type {
   WalletState,
 } from "@/lib/blockchain/types";
 import {
-  CONTRACT_ADDRESS,
+  applyRuntimeContractConfig,
   CONTRACT_VERSION,
-  EXPLORER_URL,
+  getContractAddress,
+  getExplorerUrl,
+  isContractConfigured,
   NETWORK,
   NETWORK_LABEL,
   NATIVE_SYMBOL,
   explorerAddress,
-  isContractConfigured,
 } from "../config/contract";
 import { eventListener, type ChainEventHandler } from "../events/listener";
 import { contractService, type ProgressCallback } from "./contract";
@@ -130,8 +131,8 @@ export async function getContractInfo(): Promise<ContractStatus> {
     networkMode: "testnet",
     network: "bnb",
     networkLabel: NETWORK_LABEL,
-    contractAddress: CONTRACT_ADDRESS || "0x0000000000000000000000000000000000000000",
-    explorerBaseUrl: EXPLORER_URL,
+    contractAddress: getContractAddress() || "0x0000000000000000000000000000000000000000",
+    explorerBaseUrl: getExplorerUrl(),
     paused,
     owner,
     version,
@@ -199,7 +200,8 @@ export {
   walletManager,
   eventListener,
   isContractConfigured,
+  applyRuntimeContractConfig,
   NETWORK,
   NATIVE_SYMBOL,
-  CONTRACT_ADDRESS,
+  getContractAddress,
 };

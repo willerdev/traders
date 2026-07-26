@@ -10,6 +10,7 @@ import {
   getContractInfo,
   getWallet,
   isContractConfigured,
+  applyRuntimeContractConfig,
   withdraw,
 } from "@/blockchain/services/blockchain";
 import type { ProgressCallback } from "@/blockchain/services/contract";
@@ -146,6 +147,10 @@ export class HybridBlockchainService implements IBlockchainService {
   async getDashboard(): Promise<DashboardPayload> {
     const base = await this.api.getDashboard();
     try {
+      applyRuntimeContractConfig({
+        contractAddress: base.contract.contractAddress,
+        explorerUrl: base.contract.explorerBaseUrl,
+      });
       const wallet = await getWallet();
       const contract = await getContractInfo();
       let stats = base.stats;

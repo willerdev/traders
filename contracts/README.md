@@ -8,20 +8,21 @@
 5. Copy the deployed address
 
 ## 2. Wire the apps
-Frontend `frontend/.env.local`:
-```
-NEXT_PUBLIC_BLOCKCHAIN_PROVIDER=hybrid
-NEXT_PUBLIC_CONTRACT_ADDRESS=0xYourAddress
-NEXT_PUBLIC_CHAIN_ID=97
-NEXT_PUBLIC_RPC_URL=https://data-seed-prebsc-1-s1.binance.org:8545/
-NEXT_PUBLIC_EXPLORER_URL=https://testnet.bscscan.com
-```
 
-Backend `backend/.env`:
+**Important:** `NEXT_PUBLIC_*` is baked into the Next.js build. On Render, set the address on the **API** service so the UI can load it at runtime (no frontend rebuild required).
+
+Render → **traders-api** env:
 ```
 DEMO_VAULT_ADDRESS=0xYourAddress
 BNB_TESTNET_RPC=https://data-seed-prebsc-1-s1.binance.org:8545/
 BNB_CHAIN_ID=97
+```
+
+Optional local frontend `.env.local` (requires `npm run build` / redeploy of web to take effect):
+```
+NEXT_PUBLIC_BLOCKCHAIN_PROVIDER=hybrid
+NEXT_PUBLIC_CONTRACT_ADDRESS=0xYourAddress
+NEXT_PUBLIC_CHAIN_ID=97
 ```
 
 ## 3. Verify

@@ -2,7 +2,7 @@
 
 import { Contract, formatEther, type InterfaceAbi, type Log } from "ethers";
 import DemoVaultAbi from "../abi/DemoVault.json";
-import { CONTRACT_ADDRESS, explorerTx, isContractConfigured } from "../config/contract";
+import { explorerTx, getContractAddress, isContractConfigured } from "../config/contract";
 import { contractService } from "../services/contract";
 
 export type ChainEventName =
@@ -64,7 +64,7 @@ class EventListener {
 
     const provider = contractService.getReadProvider();
     this.contract = new Contract(
-      CONTRACT_ADDRESS,
+      getContractAddress(),
       DemoVaultAbi as InterfaceAbi,
       provider,
     );

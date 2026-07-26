@@ -68,7 +68,44 @@ export class BlockchainService {
 
   async getContractInfo() {
     await delay(80);
-    return getMockContractStatus();
+    return this.getPublicContractConfig();
+  }
+
+  /** Runtime config for the frontend (address is not baked into Next builds). */
+  getPublicContractConfig() {
+    const address = (
+      process.env.DEMO_VAULT_ADDRESS ||
+      process.env.CONTRACT_ADDRESS ||
+      process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
+      ''
+    ).trim();
+    const chainId = Number(process.env.BNB_CHAIN_ID || process.env.NEXT_PUBLIC_CHAIN_ID || 97);
+    const rpc =
+      process.env.BNB_TESTNET_RPC ||
+      process.env.BLOCKCHAIN_RPC_URL ||
+      process.env.NEXT_PUBLIC_RPC_URL ||
+      'https://data-seed-prebsc-1-s1.binance.org:8545/';
+    const explorer =
+      process.env.BNB_EXPLORER_URL ||
+      process.env.NEXT_PUBLIC_EXPLORER_URL ||
+      'https://testnet.bscscan.com';
+    const configured = Boolean(address && address.startsWith('0x') && address.length >= 42);
+    const base = getMockContractStatus();
+    return {
+      ...base,
+      connection: configured ? base.connection : base.connection,
+      networkMode: 'testnet' as const,
+      network: 'bnb' as const,
+      networkLabel: 'BNB Smart Chain',
+      contractAddress: configured
+        ? address
+        : '0x0000000000000000000000000000000000000000',
+      explorerBaseUrl: explorer,
+      chainId,
+      rpc,
+      configured,
+      version: base.version,
+    };
   }
 
   async getContractBalance() {
@@ -211,7 +248,20 @@ export class BlockchainService {
 
   async getDashboard(isAdmin: boolean): Promise<DashboardPayload> {
     await delay(120);
-    return getMockDashboard(isAdmin);
+    const dash = getMockDashboard(isAdmin);
+    const cfg = this.getPublicContractConfig();
+    return {
+      ...dash,
+      contract: {
+        ...dash.contract,
+        contractAddress: cfg.contractAddress,
+        explorerBaseUrl: cfg.explorerBaseUrl,
+        networkLabel: cfg.networkLabel,
+        networkMode: cfg.networkMode,
+        network: cfg.network,
+        version: cfg.version,
+      },
+    };
   }
 
   async sync() {

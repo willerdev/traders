@@ -34,6 +34,11 @@ export class BlockchainController {
     return this.blockchain.getContractInfo();
   }
 
+  @Get('contract/config')
+  contractConfig() {
+    return this.blockchain.getPublicContractConfig();
+  }
+
   @Get('contract/stats')
   contractStats() {
     return this.blockchain.getContractStats();

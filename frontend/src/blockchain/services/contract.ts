@@ -10,12 +10,12 @@ import {
 } from "ethers";
 import DemoVaultAbi from "../abi/DemoVault.json";
 import {
-  CONTRACT_ADDRESS,
   CONTRACT_VERSION,
-  EXPLORER_URL,
   NETWORK,
-  RPC,
   explorerTx,
+  getContractAddress,
+  getExplorerUrl,
+  getRpcUrl,
   isContractConfigured,
 } from "../config/contract";
 import type { TxLifecycleStage, TxProgress } from "../types/tx-lifecycle";
@@ -28,37 +28,47 @@ export type ProgressCallback = (progress: TxProgress) => void;
  * Pages / hooks must call this — never Contract directly.
  */
 class ContractService {
-  private readProvider = new JsonRpcProvider(RPC);
+  private readProvider: JsonRpcProvider | null = null;
+
+  private provider() {
+    const rpc = getRpcUrl();
+    if (!this.readProvider) {
+      this.readProvider = new JsonRpcProvider(rpc);
+    }
+    return this.readProvider;
+  }
 
   isReady(): boolean {
     return isContractConfigured();
   }
 
   getAddress(): string {
-    return CONTRACT_ADDRESS || "0x0000000000000000000000000000000000000000";
+    return getContractAddress() || "0x0000000000000000000000000000000000000000";
   }
 
   private readContract() {
-    if (!this.isReady()) {
+    const address = getContractAddress();
+    if (!this.isReady() || !address) {
       throw new Error(
-        "CONTRACT_ADDRESS is empty. Deploy DemoVault on BNB Testnet and set NEXT_PUBLIC_CONTRACT_ADDRESS.",
+        "CONTRACT_ADDRESS is empty. Set DEMO_VAULT_ADDRESS on the API (or NEXT_PUBLIC_CONTRACT_ADDRESS and rebuild the frontend).",
       );
     }
     return new Contract(
-      CONTRACT_ADDRESS,
+      address,
       DemoVaultAbi as InterfaceAbi,
-      this.readProvider,
+      this.provider(),
     );
   }
 
   private async writeContract() {
-    if (!this.isReady()) {
+    const address = getContractAddress();
+    if (!this.isReady() || !address) {
       throw new Error(
-        "CONTRACT_ADDRESS is empty. Deploy DemoVault on BNB Testnet and set NEXT_PUBLIC_CONTRACT_ADDRESS.",
+        "CONTRACT_ADDRESS is empty. Set DEMO_VAULT_ADDRESS on the API (or NEXT_PUBLIC_CONTRACT_ADDRESS and rebuild the frontend).",
       );
     }
     const signer = await walletManager.getSigner();
-    return new Contract(CONTRACT_ADDRESS, DemoVaultAbi as InterfaceAbi, signer);
+    return new Contract(address, DemoVaultAbi as InterfaceAbi, signer);
   }
 
   private async runTx(
@@ -274,13 +284,13 @@ class ContractService {
       investmentBalance,
       pendingRewards: pending,
       network: NETWORK,
-      explorerBaseUrl: EXPLORER_URL,
+      explorerBaseUrl: getExplorerUrl(),
       contractAddress: this.getAddress(),
     };
   }
 
   getReadProvider() {
-    return this.readProvider;
+    return this.provider();
   }
 
   getAbi() {

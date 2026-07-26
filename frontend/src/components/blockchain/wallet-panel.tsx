@@ -15,7 +15,6 @@ import {
   StatusDot,
   TxStatusBadge,
 } from "./ui-kit";
-import { isContractConfigured } from "@/blockchain/config/contract";
 
 export function WalletPanel({
   wallet,
@@ -34,9 +33,10 @@ export function WalletPanel({
     refresh,
     action,
     txProgress,
+    contractConfigured,
   } = useBlockchain();
   const [amount, setAmount] = useState("1");
-  const contractReady = isContractConfigured();
+  const contractReady = contractConfigured;
 
   if (loading || !wallet) {
     return <Skeleton className="h-80" />;
@@ -196,11 +196,11 @@ export function WalletPanel({
 
       {!contractReady && (
         <p className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-          DemoVault address not set. Deploy{" "}
-          <code className="text-amber-100">contracts/DemoVault.sol</code> on BNB
-          Testnet, then set{" "}
-          <code className="text-amber-100">NEXT_PUBLIC_CONTRACT_ADDRESS</code>.
-          Wallet connect still works; on-chain txs need the address.
+          DemoVault address not loaded yet. On Render, set{" "}
+          <code className="text-amber-100">DEMO_VAULT_ADDRESS</code> on the{" "}
+          <strong>API</strong> service (traders-api), not only on the web
+          service — <code className="text-amber-100">NEXT_PUBLIC_*</code> values
+          require a frontend rebuild. Soft-refresh after the API env is saved.
         </p>
       )}
 
