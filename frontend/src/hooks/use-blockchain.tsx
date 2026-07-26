@@ -10,8 +10,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { subscribeEvents } from "@/blockchain/services/blockchain";
+import type { TxProgress } from "@/blockchain/types/tx-lifecycle";
 import {
   getBlockchainService,
+  isHybridService,
   type IBlockchainService,
 } from "@/lib/blockchain";
 import type {
@@ -32,6 +35,7 @@ type BlockchainContextValue = {
   loading: boolean;
   error: string | null;
   action: ActionState;
+  txProgress: TxProgress;
   refresh: () => Promise<void>;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
@@ -52,6 +56,14 @@ export function BlockchainProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [action, setAction] = useState<ActionState>({ status: "idle" });
+  const [txProgress, setTxProgress] = useState<TxProgress>({ stage: "idle" });
+
+  useEffect(() => {
+    if (isHybridService(service)) {
+      service.setProgressHandler(setTxProgress);
+      return () => service.setProgressHandler(undefined);
+    }
+  }, [service]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -72,9 +84,24 @@ export function BlockchainProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(id);
   }, [refresh]);
 
+  useEffect(() => {
+    const off = subscribeEvents((ev) => {
+      setAction({
+        status: "success",
+        message: `${ev.name} detected`,
+        hash: ev.transactionHash,
+      });
+      void refresh();
+    });
+    return () => {
+      off();
+    };
+  }, [refresh]);
+
   const runTx = useCallback(
     async (fn: () => Promise<TxActionResult>) => {
       setAction({ status: "loading" });
+      setTxProgress({ stage: "preparing" });
       try {
         const result = await fn();
         setAction({
@@ -87,6 +114,7 @@ export function BlockchainProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         const message = e instanceof Error ? e.message : "Transaction failed";
         setAction({ status: "failed", message });
+        setTxProgress({ stage: "failed", error: message, message });
         return null;
       }
     },
@@ -96,7 +124,7 @@ export function BlockchainProvider({ children }: { children: ReactNode }) {
   const connect = useCallback(async () => {
     setAction({ status: "loading", message: "Connecting wallet…" });
     try {
-      await service.connectWallet("mock");
+      await service.connectWallet("metamask");
       setAction({ status: "success", message: "Wallet Connected" });
       await refresh();
     } catch (e) {
@@ -150,6 +178,7 @@ export function BlockchainProvider({ children }: { children: ReactNode }) {
     loading,
     error,
     action,
+    txProgress,
     refresh,
     connect,
     disconnect,

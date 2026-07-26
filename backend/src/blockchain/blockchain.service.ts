@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
 import {
   getMockActivity,
   getMockAdmin,
@@ -20,18 +21,25 @@ import {
   mockWithdraw,
 } from './mock-data';
 import type {
+  ContractEvent,
   DashboardPayload,
   TxActionResult,
   WalletState,
 } from './blockchain.types';
+import { ChainSyncService } from './chain-sync.service';
 
 /**
- * Nest façade over mock chain data.
- * Later: inject a provider that calls the Solidity contract via ethers/viem
- * while keeping the same method signatures for controllers and the frontend.
+ * Nest façade — mock wallet UX + ChainSyncService for BNB Testnet indexing.
+ * Frontend HybridBlockchainService talks to DemoVault via ethers; this API
+ * caches events/stats for dashboards.
  */
 @Injectable()
 export class BlockchainService {
+  constructor(
+    private chainSync: ChainSyncService,
+    private prisma: PrismaService,
+  ) {}
+
   async connectWallet(): Promise<WalletState> {
     await delay();
     return mockConnectWallet();
@@ -122,9 +130,23 @@ export class BlockchainService {
     return getMockStatistics();
   }
 
-  async getEvents() {
+  async getEvents(): Promise<ContractEvent[]> {
     await delay(100);
-    return getMockEvents();
+    const rows = await this.prisma.chainEvent.findMany({
+      orderBy: { occurredAt: 'desc' },
+      take: 50,
+    });
+    if (!rows.length) return getMockEvents();
+    return rows.map((e) => ({
+      id: e.id,
+      name: e.name,
+      type: mapDbType(e.type),
+      transactionHash: e.transactionHash,
+      blockNumber: e.blockNumber ?? 0,
+      timestamp: e.occurredAt.toISOString(),
+      wallet: e.wallet ?? '0x0000000000000000000000000000000000000000',
+      explorerUrl: `https://testnet.bscscan.com/tx/${e.transactionHash}`,
+    }));
   }
 
   async getActivity() {
@@ -144,12 +166,42 @@ export class BlockchainService {
 
   async getAdminDashboard() {
     await delay(100);
-    return getMockAdmin();
+    const base = getMockAdmin();
+    const stats = await this.prisma.chainContractStats.findFirst({
+      orderBy: { updatedAt: 'desc' },
+    });
+    const net = await this.prisma.chainNetworkStatus.findFirst({
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (!stats && !net) return base;
+    return {
+      ...base,
+      contractBalance: stats ? Number(stats.contractBalance) : base.contractBalance,
+      ownerAddress: stats?.ownerAddress ?? base.ownerAddress,
+      contractVersion: stats?.version ?? base.contractVersion,
+      currentNetwork: net?.label ?? base.currentNetwork,
+    };
   }
 
   async getHealth() {
     await delay(100);
-    return getMockHealth();
+    const health = getMockHealth();
+    const net = await this.prisma.chainNetworkStatus.findFirst({
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (!net) return health;
+    return {
+      ...health,
+      rpcLatencyMs: 0,
+      blockDelay: 0,
+      lastSynchronization: net.lastCheckedAt.toISOString(),
+      blockchainStatus:
+        net.rpcStatus === 'healthy'
+          ? ('healthy' as const)
+          : net.rpcStatus === 'down'
+            ? ('down' as const)
+            : ('degraded' as const),
+    };
   }
 
   async getContractStats() {
@@ -163,12 +215,19 @@ export class BlockchainService {
   }
 
   async sync() {
-    await delay(300);
-    return {
-      ok: true,
-      lastSynchronization: new Date().toISOString(),
-      message: 'Mock sync complete. Wire RPC + indexer when the contract is live.',
-    };
+    return this.chainSync.syncFromChain();
+  }
+
+  async ingestEvent(body: {
+    name: string;
+    type: string;
+    transactionHash: string;
+    blockNumber: number;
+    wallet: string;
+    amount?: number;
+    timestamp?: string;
+  }) {
+    return this.chainSync.ingestEvent(body);
   }
 
   async pauseContract() {
@@ -202,16 +261,59 @@ export class BlockchainService {
   }
 
   async reindexTransactions() {
-    await delay(250);
-    return { ok: true, indexed: getMockTransactions().length };
+    const result = await this.chainSync.syncFromChain(20_000);
+    return { ok: result.ok, indexed: result.eventsIndexed };
   }
 
   async reconnectRpc() {
-    await delay(200);
-    return { ok: true, latencyMs: 84 };
+    const result = await this.chainSync.syncFromChain(100);
+    return { ok: result.ok, latencyMs: result.latencyMs ?? 0 };
+  }
+
+  async subscribeLaunch(email: string, userId?: string) {
+    const normalized = email.trim().toLowerCase();
+    if (!normalized || !normalized.includes('@')) {
+      throw new BadRequestException('A valid email is required');
+    }
+    const existing = await this.prisma.chainLaunchSubscription.findUnique({
+      where: { email: normalized },
+    });
+    if (existing) {
+      return {
+        ok: true,
+        alreadySubscribed: true,
+        message: "You're already on the launch list. We'll email you when enrollment opens.",
+      };
+    }
+    await this.prisma.chainLaunchSubscription.create({
+      data: {
+        email: normalized,
+        userId: userId ?? null,
+        source: 'blockchain_banner',
+      },
+    });
+    return {
+      ok: true,
+      alreadySubscribed: false,
+      message:
+        "You're on the list — we'll notify you when the contract is live so you can enroll (15% / day, $2,000+).",
+    };
   }
 }
 
 function delay(ms = 120) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function mapDbType(type: string): ContractEvent['type'] {
+  const map: Record<string, ContractEvent['type']> = {
+    DEPOSIT: 'deposit',
+    WITHDRAWAL: 'withdrawal',
+    CLAIM: 'claim',
+    COMPOUND: 'compound',
+    OWNERSHIP_TRANSFER: 'ownership_transfer',
+    PAUSED: 'paused',
+    UNPAUSED: 'unpaused',
+  };
+  return map[type] ?? 'deposit';
 }

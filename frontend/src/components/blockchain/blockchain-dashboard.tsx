@@ -13,6 +13,7 @@ import { InvestorList } from "./investor-list";
 import { NotificationsPanel } from "./notifications-panel";
 import { TransactionHistory } from "./transaction-history";
 import { WalletPanel } from "./wallet-panel";
+import { LaunchSubscribeBanner } from "./launch-subscribe-banner";
 
 export function BlockchainDashboard() {
   const { data, loading, error, refresh } = useBlockchain();
@@ -20,6 +21,8 @@ export function BlockchainDashboard() {
   return (
     <BlockchainErrorBoundary>
       <div className="space-y-8">
+        <LaunchSubscribeBanner />
+
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -35,10 +38,8 @@ export function BlockchainDashboard() {
               Blockchain Dashboard
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-muted">
-              Modular contract layer with mock data today — swap{" "}
-              <code className="text-sky-300">BlockchainService</code> to
-              ethers.js / viem when the Solidity contract is live. UI stays the
-              same.
+              Preview the vault dashboard while we finish launch. Subscribe above
+              to enroll when contracts go live — 15% daily ROI, $2,000 minimum.
             </p>
           </div>
           <button

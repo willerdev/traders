@@ -5,6 +5,7 @@ import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useBlockchain } from "@/hooks/use-blockchain";
 import type { WalletState } from "@/lib/blockchain/types";
+import { TxLifecycleProgress } from "./tx-lifecycle-progress";
 import {
   AnimatedCounter,
   Countdown,
@@ -14,6 +15,7 @@ import {
   StatusDot,
   TxStatusBadge,
 } from "./ui-kit";
+import { isContractConfigured } from "@/blockchain/config/contract";
 
 export function WalletPanel({
   wallet,
@@ -31,8 +33,10 @@ export function WalletPanel({
     compound,
     refresh,
     action,
+    txProgress,
   } = useBlockchain();
   const [amount, setAmount] = useState("1");
+  const contractReady = isContractConfigured();
 
   if (loading || !wallet) {
     return <Skeleton className="h-80" />;
@@ -189,6 +193,20 @@ export function WalletPanel({
           {action.hash ? ` · ${shortAddr(action.hash, 8)}` : ""}
         </p>
       )}
+
+      {!contractReady && (
+        <p className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          DemoVault address not set. Deploy{" "}
+          <code className="text-amber-100">contracts/DemoVault.sol</code> on BNB
+          Testnet, then set{" "}
+          <code className="text-amber-100">NEXT_PUBLIC_CONTRACT_ADDRESS</code>.
+          Wallet connect still works; on-chain txs need the address.
+        </p>
+      )}
+
+      <div className="mt-4">
+        <TxLifecycleProgress progress={txProgress} />
+      </div>
     </GlassCard>
   );
 }

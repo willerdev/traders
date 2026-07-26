@@ -91,6 +91,30 @@ export class BlockchainController {
     return this.blockchain.getEvents();
   }
 
+  @Post('events/ingest')
+  ingestEvent(
+    @Body()
+    body: {
+      name: string;
+      type: string;
+      transactionHash: string;
+      blockNumber: number;
+      wallet: string;
+      amount?: number;
+      timestamp?: string;
+    },
+  ) {
+    return this.blockchain.ingestEvent(body);
+  }
+
+  @Post('launch/subscribe')
+  subscribeLaunch(
+    @Request() req: AuthedRequest,
+    @Body() body: { email?: string },
+  ) {
+    return this.blockchain.subscribeLaunch(body.email ?? '', req.user.id);
+  }
+
   @Get('activity')
   activity() {
     return this.blockchain.getActivity();

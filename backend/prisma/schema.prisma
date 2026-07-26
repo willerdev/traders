@@ -1541,3 +1541,57 @@ model ChainReferral {
   @@index([referrerId])
   @@map("chain_referrals")
 }
+
+/// Cached aggregate metrics (blockchain is source of truth).
+model ChainContractStats {
+  id                   String   @id @default(cuid())
+  contractAddress      String   @unique
+  contractBalance      Decimal  @default(0) @db.Decimal(24, 8)
+  tvl                  Decimal  @default(0) @db.Decimal(24, 8)
+  totalDeposited       Decimal  @default(0) @db.Decimal(24, 8)
+  totalWithdrawn       Decimal  @default(0) @db.Decimal(24, 8)
+  totalUsers           Int      @default(0)
+  totalRewardsPaid     Decimal  @default(0) @db.Decimal(24, 8)
+  depositsToday        Decimal  @default(0) @db.Decimal(24, 8)
+  withdrawalsToday     Decimal  @default(0) @db.Decimal(24, 8)
+  ownerAddress         String?
+  paused               Boolean  @default(false)
+  version              String?
+  lastSyncedAt         DateTime @default(now())
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@map("chain_contract_stats")
+}
+
+/// RPC / network health cache for admin dashboard.
+model ChainNetworkStatus {
+  id                      String   @id @default(cuid())
+  chainId                 Int      @unique
+  label                   String
+  currentBlock            Int      @default(0)
+  gasPriceGwei            Decimal  @default(0) @db.Decimal(18, 8)
+  rpcStatus               String   @default("unknown") // healthy | degraded | down | unknown
+  avgConfirmationSeconds  Decimal  @default(0) @db.Decimal(10, 2)
+  latestEventName         String?
+  latestEventAt           DateTime?
+  lastCheckedAt           DateTime @default(now())
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@map("chain_network_status")
+}
+
+/// Waitlist for on-chain vault launch notifications.
+model ChainLaunchSubscription {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  userId    String?
+  source    String   @default("blockchain_banner")
+  notified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([notified, createdAt])
+  @@map("chain_launch_subscriptions")
+}

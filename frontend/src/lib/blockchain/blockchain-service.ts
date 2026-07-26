@@ -17,11 +17,8 @@ import type {
 /**
  * Abstraction over the investment smart contract.
  *
- * Today: REST → Nest mock BlockchainService.
- * Later: set NEXT_PUBLIC_BLOCKCHAIN_PROVIDER=ethers and implement
- * EthersBlockchainService with ethers.js / viem — UI stays unchanged.
- *
- * Wallet providers prepared: MetaMask, WalletConnect, Coinbase Wallet.
+ * Default provider: HybridBlockchainService (MetaMask + ethers DemoVault + API cache).
+ * Set NEXT_PUBLIC_BLOCKCHAIN_PROVIDER=api for mocks only.
  */
 export interface IBlockchainService {
   connectWallet(provider?: "metamask" | "walletconnect" | "coinbase" | "mock"): Promise<WalletState>;
@@ -301,66 +298,4 @@ export class ApiBlockchainService implements IBlockchainService {
       { method: "POST", body: "{}" },
     );
   }
-}
-
-/** Stub for future ethers.js / viem contract calls — same interface, no UI changes. */
-export class EthersBlockchainService implements IBlockchainService {
-  constructor(_opts?: { rpcUrl?: string; contractAddress?: string }) {}
-
-  private notReady(): never {
-    throw new Error(
-      "EthersBlockchainService is a stub. Deploy the Solidity contract and implement calls with ethers.js or viem.",
-    );
-  }
-
-  connectWallet = () => Promise.reject(this.notReady()) as Promise<WalletState>;
-  disconnectWallet = () => Promise.reject(this.notReady()) as Promise<WalletState>;
-  getWallet = () => Promise.reject(this.notReady()) as Promise<WalletState>;
-  getNetwork = () => Promise.reject(this.notReady()) as never;
-  getContractInfo = () => Promise.reject(this.notReady()) as Promise<ContractStatus>;
-  getContractBalance = () => Promise.reject(this.notReady()) as never;
-  getUserBalance = () => Promise.reject(this.notReady()) as never;
-  getRewards = () => Promise.reject(this.notReady()) as never;
-  deposit = () => Promise.reject(this.notReady()) as Promise<TxActionResult>;
-  withdraw = () => Promise.reject(this.notReady()) as Promise<TxActionResult>;
-  claim = () => Promise.reject(this.notReady()) as Promise<TxActionResult>;
-  compound = () => Promise.reject(this.notReady()) as Promise<TxActionResult>;
-  getTransactions = () => Promise.reject(this.notReady()) as never;
-  getStatistics = () => Promise.reject(this.notReady()) as Promise<InvestmentStatistics>;
-  getEvents = () => Promise.reject(this.notReady()) as Promise<ContractEvent[]>;
-  getActivity = () => Promise.reject(this.notReady()) as Promise<ActivityItem[]>;
-  getInvestors = () => Promise.reject(this.notReady()) as never;
-  getNotifications = () =>
-    Promise.reject(this.notReady()) as Promise<BlockchainNotification[]>;
-  getDashboard = () => Promise.reject(this.notReady()) as Promise<DashboardPayload>;
-  getContractStats = () => Promise.reject(this.notReady()) as Promise<ContractStats>;
-  getAdmin = () => Promise.reject(this.notReady()) as Promise<AdminDashboard>;
-  getHealth = () => Promise.reject(this.notReady()) as Promise<ContractHealth>;
-  sync = () => Promise.reject(this.notReady()) as never;
-  pauseContract = () => Promise.reject(this.notReady()) as never;
-  unpauseContract = () => Promise.reject(this.notReady()) as never;
-  updateRewardRate = () => Promise.reject(this.notReady()) as never;
-  updateTreasuryWallet = () => Promise.reject(this.notReady()) as never;
-  updateFee = () => Promise.reject(this.notReady()) as never;
-  emergencyWithdraw = () => Promise.reject(this.notReady()) as Promise<TxActionResult>;
-  reindexTransactions = () => Promise.reject(this.notReady()) as never;
-  reconnectRpc = () => Promise.reject(this.notReady()) as never;
-}
-
-let singleton: IBlockchainService | null = null;
-
-export function createBlockchainService(): IBlockchainService {
-  const mode = process.env.NEXT_PUBLIC_BLOCKCHAIN_PROVIDER ?? "api";
-  if (mode === "ethers") {
-    return new EthersBlockchainService({
-      rpcUrl: process.env.NEXT_PUBLIC_RPC_URL,
-      contractAddress: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS,
-    });
-  }
-  return new ApiBlockchainService();
-}
-
-export function getBlockchainService(): IBlockchainService {
-  if (!singleton) singleton = createBlockchainService();
-  return singleton;
 }
