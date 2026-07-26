@@ -162,7 +162,9 @@ export function ComposeEmailPanel({ onMessage }: Props) {
           <span>
             AI polish:{" "}
             <strong style={{ color: status.aiConfigured ? "#34d399" : "#fbbf24" }}>
-              {status.aiConfigured ? "ready" : "OPENAI_API_KEY missing"}
+              {status.aiConfigured
+                ? `DeepSeek ready`
+                : "DEEPSEEK_API_KEY missing"}
             </strong>
           </span>
         </div>

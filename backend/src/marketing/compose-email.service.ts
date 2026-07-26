@@ -50,15 +50,16 @@ export class ComposeEmailService {
     private config: ConfigService,
   ) {}
 
-  private openAiKey(): string {
-    return (this.config.get<string>('OPENAI_API_KEY') || '').trim();
+  private deepseekKey(): string {
+    return (this.config.get<string>('DEEPSEEK_API_KEY') || '').trim();
   }
 
   status() {
     return {
       emailConfigured: this.email.isConfigured,
       emailFrom: this.email.from,
-      aiConfigured: this.openAiKey().length > 0,
+      aiConfigured: this.deepseekKey().length > 0,
+      aiProvider: 'deepseek',
     };
   }
 
@@ -71,19 +72,18 @@ export class ComposeEmailService {
     if (draft.length < 8) {
       throw new BadRequestException('Write a bit more text before polishing.');
     }
-    const key = this.openAiKey();
+    const key = this.deepseekKey();
     if (!key) {
       throw new ServiceUnavailableException(
-        'OPENAI_API_KEY is not configured on this API.',
+        'DEEPSEEK_API_KEY is not configured on this API.',
       );
     }
 
     const model =
-      this.config.get<string>('OPENAI_COMPOSE_MODEL') ||
-      this.config.get<string>('OPENAI_VISION_MODEL') ||
-      'gpt-4o-mini';
+      this.config.get<string>('DEEPSEEK_MODEL') || 'deepseek-chat';
     const baseUrl =
-      this.config.get<string>('OPENAI_API_URL') || 'https://api.openai.com/v1';
+      this.config.get<string>('DEEPSEEK_API_URL') ||
+      'https://api.deepseek.com/v1';
 
     const subjectHint = (input.subject || '').trim();
 
@@ -96,12 +96,11 @@ export class ComposeEmailService {
       body: JSON.stringify({
         model,
         temperature: 0.4,
-        response_format: { type: 'json_object' },
         messages: [
           {
             role: 'system',
             content: `You rewrite admin emails for Tradeguard (investment / yield platform).
-Return ONLY JSON: {"subject":"...","body":"..."}.
+Return ONLY valid JSON (no markdown): {"subject":"...","body":"..."}.
 Rules:
 - Keep the admin's intent and facts. Do not invent yields, fees, dates, or promises.
 - Make tone clear, professional, warm, concise.
@@ -122,14 +121,23 @@ ${draft}`,
 
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
-      this.logger.error(`OpenAI polish failed: ${response.status} ${errText.slice(0, 200)}`);
-      throw new ServiceUnavailableException('AI polish failed — try again shortly.');
+      this.logger.error(
+        `DeepSeek polish failed: ${response.status} ${errText.slice(0, 200)}`,
+      );
+      throw new ServiceUnavailableException(
+        'AI polish failed — try again shortly.',
+      );
     }
 
     const data = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
-    const raw = data.choices?.[0]?.message?.content?.trim() || '{}';
+    let raw = data.choices?.[0]?.message?.content?.trim() || '{}';
+    // Strip accidental markdown fences from DeepSeek.
+    raw = raw
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
     let parsed: { subject?: string; body?: string };
     try {
       parsed = JSON.parse(raw) as { subject?: string; body?: string };
@@ -137,7 +145,11 @@ ${draft}`,
       throw new ServiceUnavailableException('AI returned unreadable copy.');
     }
 
-    const subject = (parsed.subject || subjectHint || 'Message from Tradeguard').trim();
+    const subject = (
+      parsed.subject ||
+      subjectHint ||
+      'Message from Tradeguard'
+    ).trim();
     const body = (parsed.body || draft).trim();
     if (!body) {
       throw new BadRequestException('AI returned an empty body.');
