@@ -580,6 +580,7 @@ export const api = {
       emailConfigured: boolean;
       emailFrom?: string;
       aiConfigured: boolean;
+      aiProvider?: string;
     }>("/admin/marketing/compose/status"),
   composeEmailPolish: (data: { subject?: string; body: string }) =>
     request<{ subject: string; body: string }>(
