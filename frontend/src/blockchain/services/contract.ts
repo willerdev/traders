@@ -187,18 +187,55 @@ class ContractService {
     );
   }
 
+  async enroll(onProgress?: ProgressCallback) {
+    const c = await this.writeContract();
+    return this.runTx("Enroll", () => c.enroll(), onProgress);
+  }
+
   async withdraw(amountEth: number, onProgress?: ProgressCallback) {
     const c = await this.writeContract();
     return this.runTx(
       "Withdraw",
-      () => c.withdraw(parseEther(String(amountEth))),
+      () => c.requestWithdraw(parseEther(String(amountEth))),
       onProgress,
     );
+  }
+
+  async cancelWithdraw(requestId: number, onProgress?: ProgressCallback) {
+    const c = await this.writeContract();
+    return this.runTx(
+      "Cancel Withdraw",
+      () => c.cancelWithdraw(requestId),
+      onProgress,
+    );
+  }
+
+  async processWithdraw(requestId: number, onProgress?: ProgressCallback) {
+    const c = await this.writeContract();
+    return this.runTx(
+      "Process Withdraw",
+      () => c.processWithdraw(requestId),
+      onProgress,
+    );
+  }
+
+  async settleSelf(onProgress?: ProgressCallback) {
+    const c = await this.writeContract();
+    return this.runTx("Settle", () => c.settleSelf(), onProgress);
   }
 
   async claimReward(onProgress?: ProgressCallback) {
     const c = await this.writeContract();
     return this.runTx("Claim", () => c.claimReward(), onProgress);
+  }
+
+  async fundTreasury(amountEth: number, onProgress?: ProgressCallback) {
+    const c = await this.writeContract();
+    return this.runTx(
+      "Fund Treasury",
+      () => c.fundTreasury({ value: parseEther(String(amountEth)) }),
+      onProgress,
+    );
   }
 
   /** @deprecated V2 uses claimReward */
@@ -256,6 +293,26 @@ class ContractService {
     return Number(formatEther(await c.getReward(address)));
   }
 
+  async treasuryPool(): Promise<number> {
+    const c = this.readContract();
+    return Number(formatEther(await c.treasuryPool()));
+  }
+
+  async principalPool(): Promise<number> {
+    const c = this.readContract();
+    return Number(formatEther(await c.principalPool()));
+  }
+
+  async withdrawQueueLength(): Promise<number> {
+    const c = this.readContract();
+    return Number(await c.withdrawQueueLength());
+  }
+
+  async isEnrolled(address: string): Promise<boolean> {
+    const c = this.readContract();
+    return Boolean(await c.isEnrolled(address));
+  }
+
   async balanceOf(address: string): Promise<number> {
     return this.getUserBalance(address);
   }
@@ -290,6 +347,8 @@ class ContractService {
         users,
         owner,
         paused,
+        treasury,
+        principal,
       ] = await Promise.all([
         this.contractBalance(),
         this.totalDeposited(),
@@ -298,6 +357,8 @@ class ContractService {
         this.userCount(),
         this.owner(),
         this.paused(),
+        this.treasuryPool().catch(() => 0),
+        this.principalPool().catch(() => 0),
       ]);
 
       let investmentBalance = 0;
@@ -315,6 +376,8 @@ class ContractService {
         totalWithdrawn: withdrawn,
         totalUsers: users,
         totalRewardsPaid: rewardsPaid,
+        treasuryPool: treasury,
+        principalPool: principal,
         owner,
         paused,
         version: CONTRACT_VERSION,
@@ -329,8 +392,8 @@ class ContractService {
       const msg = e instanceof Error ? e.message : String(e);
       if (/CALL_EXCEPTION|require\(false\)|no data present/i.test(msg)) {
         throw new Error(
-          `Address ${this.getAddress()} does not respond as DemoVaultV2 (wrong address or ABI). ` +
-            "Set NEXT_PUBLIC_CONTRACT_ADDRESS to the Remix Deploy receipt address (not At Address).",
+          `Address ${this.getAddress()} does not respond as Vault v3 (wrong address or ABI). ` +
+            "Deploy contracts/Vault.sol and set NEXT_PUBLIC_CONTRACT_ADDRESS to the Deploy receipt address.",
         );
       }
       throw e instanceof Error ? e : new Error(msg);
@@ -359,9 +422,13 @@ class ContractService {
       label: string;
     }[] = [
       { name: "Deposited", type: "deposit", label: "Deposit" },
-      { name: "Withdrawn", type: "withdrawal", label: "Withdrawal" },
+      { name: "Enrolled", type: "deposit", label: "Enrolled" },
+      { name: "WithdrawRequested", type: "withdrawal", label: "Withdraw Queued" },
+      { name: "Withdrawn", type: "withdrawal", label: "Withdrawal Paid" },
       { name: "RewardClaimed", type: "claim", label: "Claim" },
+      { name: "RewardSettled", type: "claim", label: "Daily Settlement" },
       { name: "RewardAdded", type: "referral_bonus", label: "Reward Added" },
+      { name: "TreasuryFunded", type: "deposit", label: "Treasury Funded" },
       { name: "ContractFunded", type: "deposit", label: "Contract Funded" },
     ];
 
@@ -386,9 +453,20 @@ class ContractService {
         let amount = 0;
         let ts = Date.now();
 
-        if (spec.name === "ContractFunded") {
+        if (spec.name === "ContractFunded" || spec.name === "TreasuryFunded") {
           amount = Number(formatEther(parsed.args[0] as bigint));
           ts = Number(parsed.args[1]) * 1000;
+        } else if (spec.name === "Enrolled") {
+          wallet = String(parsed.args[0] ?? wallet);
+          ts = Number(parsed.args[1]) * 1000;
+        } else if (spec.name === "WithdrawRequested") {
+          wallet = String(parsed.args[0] ?? wallet);
+          amount = Number(formatEther(parsed.args[2] as bigint));
+          ts = Number(parsed.args[3]) * 1000;
+        } else if (spec.name === "RewardSettled") {
+          wallet = String(parsed.args[0] ?? wallet);
+          amount = Number(formatEther(parsed.args[1] as bigint));
+          ts = Number(parsed.args[3]) * 1000;
         } else {
           wallet = String(parsed.args[0] ?? wallet);
           amount = Number(formatEther(parsed.args[1] as bigint));

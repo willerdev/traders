@@ -91,7 +91,7 @@ export const NETWORK_LABEL = "Polygon Amoy";
 
 export const NATIVE_SYMBOL = "POL";
 
-export const CONTRACT_VERSION = "2.0.0";
+export const CONTRACT_VERSION = "3.0.0";
 
 export function getChainIdHex(): string {
   return `0x${getChainId().toString(16)}`;

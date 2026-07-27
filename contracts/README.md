@@ -1,36 +1,58 @@
-# DemoVault v1 — deploy on BNB Smart Chain Testnet (chainId 97)
+# Vault v3 — Polygon Amoy (chainId 80002)
 
-## 1. Remix
+Architecture:
+
+```
+Vault Contract
+├── Enroll & Deposits
+├── User balances
+├── Reward calculation engine
+├── Daily settlement
+├── Withdrawal queue
+└── Treasury
+        └── Pays rewards
+```
+
+Source: `contracts/Vault.sol`  
+ABI: `contracts/Vault.abi.json` (synced to frontend/backend `DemoVaultV2.json` for the live dashboard)
+
+## Defaults
+| Param | Default | Notes |
+|---|---|---|
+| `minDeposit` | 0.01 POL | Raise toward ~2000e18 for mainnet $2k policy |
+| `dailyRewardBps` | 1500 | 15%/day (product copy) — tune before mainnet |
+
+## Remix deploy
 1. Open https://remix.ethereum.org
-2. Paste `DemoVault.sol`
-3. Compile with Solidity 0.8.20+
-4. Deploy with Injected Provider → MetaMask on **BNB Testnet**
-5. Copy the deployed address
+2. Paste `Vault.sol`
+3. Compile Solidity **0.8.20+**
+4. Deploy with Injected Provider → MetaMask on **Polygon Amoy**
+5. Copy the address from the **Deploy transaction receipt** (not Remix “At Address”)
+6. Owner: `fundTreasury{value: …}()` so claims can pay
 
-## 2. Wire the apps
-
-**Important:** `NEXT_PUBLIC_*` is baked into the Next.js build. On Render, set the address on the **API** service so the UI can load it at runtime (no frontend rebuild required).
-
-Render → **traders-api** env:
+## Wire apps (Render)
+**traders-web** (rebuild after change):
 ```
-DEMO_VAULT_ADDRESS=0xYourAddress
-BNB_TESTNET_RPC=https://data-seed-prebsc-1-s1.binance.org:8545/
-BNB_CHAIN_ID=97
-```
-
-Optional local frontend `.env.local` (requires `npm run build` / redeploy of web to take effect):
-```
-NEXT_PUBLIC_BLOCKCHAIN_PROVIDER=hybrid
-NEXT_PUBLIC_CONTRACT_ADDRESS=0xYourAddress
-NEXT_PUBLIC_CHAIN_ID=97
+NEXT_PUBLIC_CONTRACT_ADDRESS=0xYourVault
+NEXT_PUBLIC_CHAIN_ID=80002
+NEXT_PUBLIC_RPC_URL=https://polygon-amoy-bor-rpc.publicnode.com
+NEXT_PUBLIC_EXPLORER_URL=https://amoy.polygonscan.com
 ```
 
-## 3. Verify
-- Connect MetaMask on `/blockchain`
-- Deposit a small amount of tBNB
-- Confirm lifecycle UI: Preparing → Wallet Confirmation → … → Completed
-- Admin → Sync Blockchain to index events into Postgres
+**traders-api**:
+```
+DEMO_VAULT_ADDRESS=0xYourVault
+POLYGON_AMOY_RPC=https://polygon-amoy-bor-rpc.publicnode.com
+```
 
-## 4. Later
-- Verify contract on https://testnet.bscscan.com
-- Security review before mainnet
+## User flow
+1. `enroll()` (or first `deposit()` auto-enrolls)
+2. `deposit()` ≥ minDeposit → principal pool
+3. Rewards accrue daily (`dailyRewardBps`); `settleUser` / `settleDaily` locks them
+4. `claimReward()` pays from **treasury**
+5. `requestWithdraw` / `withdraw` queues principal; owner `processWithdraw` pays
+
+## Verify
+- `/blockchain` dashboard loads live stats
+- Deposit small Amoy POL
+- Fund treasury before claiming

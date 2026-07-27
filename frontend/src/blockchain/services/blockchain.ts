@@ -158,6 +158,10 @@ export async function deposit(amount: number, onProgress?: ProgressCallback) {
   return toTxResult(await contractService.deposit(amount, onProgress));
 }
 
+export async function enroll(onProgress?: ProgressCallback) {
+  return toTxResult(await contractService.enroll(onProgress));
+}
+
 export async function withdraw(amount: number, onProgress?: ProgressCallback) {
   return toTxResult(await contractService.withdraw(amount, onProgress));
 }
@@ -170,12 +174,12 @@ export async function claimRewards(onProgress?: ProgressCallback) {
   return claimReward(onProgress);
 }
 
-/** DemoVaultV2 has no compound — keep UI button working with a clear result */
+/** Vault accrues via daily settlement — no on-chain compound */
 export async function compound(): Promise<TxActionResult> {
   return {
     status: "failed",
     hash: "",
-    message: "Compound is not available on DemoVaultV2",
+    message: "Compound is not available — rewards accrue via daily settlement",
     explorerUrl: "",
   };
 }
@@ -291,6 +295,7 @@ export const blockchainService = {
   getContractInfo,
   getContractBalance,
   deposit,
+  enroll,
   withdraw,
   claimReward,
   claimRewards,

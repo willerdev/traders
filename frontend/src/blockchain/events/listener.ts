@@ -41,17 +41,21 @@ export type ChainEventHandler = (event: ParsedChainEvent) => void;
 
 const NAME_TO_TYPE: Record<string, ParsedChainEvent["type"]> = {
   Deposited: "deposit",
+  Enrolled: "deposit",
   Withdrawn: "withdrawal",
+  WithdrawRequested: "withdrawal",
   RewardClaimed: "claim",
+  RewardSettled: "claim",
   RewardAdded: "referral_bonus",
   ContractFunded: "deposit",
+  TreasuryFunded: "deposit",
   OwnershipTransferred: "ownership_transfer",
   Paused: "paused",
   Unpaused: "unpaused",
 };
 
 /**
- * Live DemoVaultV2 event listener on Polygon Amoy.
+ * Live Vault v3 event listener on Polygon Amoy.
  */
 class EventListener {
   private handlers = new Set<ChainEventHandler>();
@@ -74,16 +78,20 @@ class EventListener {
       provider,
     );
 
-    const names: ChainEventName[] = [
+    const names = [
       "Deposited",
+      "Enrolled",
       "Withdrawn",
+      "WithdrawRequested",
       "RewardClaimed",
+      "RewardSettled",
       "RewardAdded",
       "ContractFunded",
+      "TreasuryFunded",
       "OwnershipTransferred",
       "Paused",
       "Unpaused",
-    ];
+    ] as const;
 
     for (const name of names) {
       void this.contract.on(name, (...args: unknown[]) => {
@@ -100,7 +108,7 @@ class EventListener {
     this.started = false;
   }
 
-  private async handleRaw(name: ChainEventName, args: unknown[]) {
+  private async handleRaw(name: string, args: unknown[]) {
     try {
       const eventLog = args[args.length - 1] as {
         log?: { transactionHash?: string; blockNumber?: number };
