@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { JwtAuthGuard, RolesGuard } from '../auth/guards';
 import { BlockchainService } from './blockchain.service';
 
@@ -34,6 +35,7 @@ export class BlockchainController {
     return this.blockchain.getContractInfo();
   }
 
+  @Public()
   @Get('contract/config')
   contractConfig() {
     return this.blockchain.getPublicContractConfig();

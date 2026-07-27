@@ -281,49 +281,60 @@ class ContractService {
   async getOnChainSnapshot(userAddress?: string | null) {
     if (!this.isReady()) return null;
 
-    const [
-      contractBal,
-      deposited,
-      withdrawn,
-      rewardsPaid,
-      users,
-      owner,
-      paused,
-    ] = await Promise.all([
-      this.contractBalance(),
-      this.totalDeposited(),
-      this.totalWithdrawn(),
-      this.totalRewardsPaid(),
-      this.userCount(),
-      this.owner(),
-      this.paused(),
-    ]);
-
-    let investmentBalance = 0;
-    let pending = 0;
-    if (userAddress) {
-      [investmentBalance, pending] = await Promise.all([
-        this.getUserBalance(userAddress),
-        this.getReward(userAddress),
+    try {
+      const [
+        contractBal,
+        deposited,
+        withdrawn,
+        rewardsPaid,
+        users,
+        owner,
+        paused,
+      ] = await Promise.all([
+        this.contractBalance(),
+        this.totalDeposited(),
+        this.totalWithdrawn(),
+        this.totalRewardsPaid(),
+        this.userCount(),
+        this.owner(),
+        this.paused(),
       ]);
-    }
 
-    return {
-      contractBalance: contractBal,
-      totalDeposited: deposited,
-      totalWithdrawn: withdrawn,
-      totalUsers: users,
-      totalRewardsPaid: rewardsPaid,
-      owner,
-      paused,
-      version: CONTRACT_VERSION,
-      investmentBalance,
-      pendingRewards: pending,
-      network: NETWORK,
-      symbol: NATIVE_SYMBOL,
-      explorerBaseUrl: getExplorerUrl(),
-      contractAddress: this.getAddress(),
-    };
+      let investmentBalance = 0;
+      let pending = 0;
+      if (userAddress) {
+        [investmentBalance, pending] = await Promise.all([
+          this.getUserBalance(userAddress),
+          this.getReward(userAddress),
+        ]);
+      }
+
+      return {
+        contractBalance: contractBal,
+        totalDeposited: deposited,
+        totalWithdrawn: withdrawn,
+        totalUsers: users,
+        totalRewardsPaid: rewardsPaid,
+        owner,
+        paused,
+        version: CONTRACT_VERSION,
+        investmentBalance,
+        pendingRewards: pending,
+        network: NETWORK,
+        symbol: NATIVE_SYMBOL,
+        explorerBaseUrl: getExplorerUrl(),
+        contractAddress: this.getAddress(),
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/CALL_EXCEPTION|require\(false\)|no data present/i.test(msg)) {
+        throw new Error(
+          `Address ${this.getAddress()} does not respond as DemoVaultV2 (wrong address or ABI). ` +
+            "Set NEXT_PUBLIC_CONTRACT_ADDRESS to the Remix Deploy receipt address (not At Address).",
+        );
+      }
+      throw e instanceof Error ? e : new Error(msg);
+    }
   }
 
   /**
