@@ -1,7 +1,7 @@
 "use client";
 
-import { Contract, JsonRpcProvider, type InterfaceAbi } from "ethers";
-import DemoVaultV2Abi from "../abi/DemoVaultV2.json";
+import { Contract, JsonRpcProvider, id, type InterfaceAbi } from "ethers";
+import contractABI from "../abi/contractABI.json";
 import {
   getChainId,
   getContractAddress,
@@ -221,7 +221,7 @@ export async function runVaultPreflight(opts?: {
   emit(checks);
   const contract = new Contract(
     address,
-    DemoVaultV2Abi as InterfaceAbi,
+    contractABI as InterfaceAbi,
     provider,
   );
   try {
@@ -239,12 +239,26 @@ export async function runVaultPreflight(opts?: {
     emit(checks);
     void bal;
   } catch {
-    checks = set(
-      checks,
-      "vault",
-      "fail",
-      "Wrong contract / ABI — deploy this vault and set the Deploy receipt address",
-    );
+    // Diagnose: bytecode present but vault selectors missing
+    let detail =
+      "This address is not your investment vault (missing dailyRate / deposit / getUserInfo).";
+    try {
+      const code = await provider.getCode(address);
+      const lower = code.slice(2).toLowerCase();
+      const has = (sig: string) =>
+        lower.includes(id(sig).slice(2, 10).toLowerCase());
+      const missing = (
+        ["dailyRate()", "deposit()", "getUserInfo(address)", "contractBalance()"] as const
+      ).filter((s) => !has(s));
+      if (missing.length) {
+        detail =
+          `Wrong contract at this address — missing ${missing.join(", ")}. ` +
+          "In Remix, Deploy the vault, copy the NEW address from the green success / tx receipt (not an old At Address), set it on Render web+API, redeploy traders-web.";
+      }
+    } catch {
+      /* keep default */
+    }
+    checks = set(checks, "vault", "fail", detail);
     checks = checks.map((c) =>
       c.status === "pending" ? { ...c, status: "fail", detail: "Skipped" } : c,
     );

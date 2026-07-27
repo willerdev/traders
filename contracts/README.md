@@ -1,25 +1,10 @@
-# Investment Vault — Polygon Amoy (chainId 80002)
+# Investment Vault — Polygon Amoy
 
-Current live ABI matches the Remix contract with:
+Canonical ABI: `contracts/exports/contractABI.json`
 
-- `deposit` / `withdraw` (full) / `claimReward`
-- `fundVault` (owner funds reward pool)
-- `getUserInfo` / `calculateReward` / `dailyRate`
-- `userCount` / `userList`
+Also synced to:
+- `frontend/src/blockchain/abi/contractABI.json` (app imports this)
+- `backend/src/blockchain/abi/contractABI.json`
+- `contracts/exports/abi.js` / `vaultAbi.ts`
 
-Synced to `frontend/src/blockchain/abi/DemoVaultV2.json` and backend ABI.
-
-## Wire apps (Render)
-
-**traders-web** (rebuild after change):
-```
-NEXT_PUBLIC_CONTRACT_ADDRESS=0xYourVault
-NEXT_PUBLIC_CHAIN_ID=80002
-```
-
-**traders-api**:
-```
-DEMO_VAULT_ADDRESS=0xYourVault
-```
-
-Same address on both. Use the Deploy receipt address, then call `fundVault` so claims can pay.
+App imports: `import contractABI from "@/blockchain/abi/contractABI.json"`

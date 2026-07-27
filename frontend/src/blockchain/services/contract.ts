@@ -9,7 +9,7 @@ import {
   type InterfaceAbi,
   type Log,
 } from "ethers";
-import DemoVaultV2Abi from "../abi/DemoVaultV2.json";
+import contractABI from "../abi/contractABI.json";
 import {
   CONTRACT_VERSION,
   NETWORK,
@@ -81,7 +81,7 @@ class ContractService {
         "NEXT_PUBLIC_CONTRACT_ADDRESS is empty. Set it on Render (traders-web) and redeploy.",
       );
     }
-    return new Contract(address, DemoVaultV2Abi as InterfaceAbi, this.provider());
+    return new Contract(address, contractABI as InterfaceAbi, this.provider());
   }
 
   private async writeContract() {
@@ -95,7 +95,7 @@ class ContractService {
       throw new Error("Wallet disconnected. Connect MetaMask first.");
     }
     const signer = await walletManager.getSigner();
-    return new Contract(address, DemoVaultV2Abi as InterfaceAbi, signer);
+    return new Contract(address, contractABI as InterfaceAbi, signer);
   }
 
   private async runTx(
@@ -511,7 +511,7 @@ class ContractService {
   }
 
   getAbi() {
-    return DemoVaultV2Abi as InterfaceAbi;
+    return contractABI as InterfaceAbi;
   }
 }
 

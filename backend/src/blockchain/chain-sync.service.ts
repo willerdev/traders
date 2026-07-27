@@ -18,9 +18,11 @@ import { PrismaService } from '../prisma/prisma.service';
 
 function loadDemoVaultAbi(): InterfaceAbi {
   const candidates = [
-    join(process.cwd(), 'src', 'blockchain', 'abi', 'DemoVault.json'),
-    join(process.cwd(), 'dist', 'src', 'blockchain', 'abi', 'DemoVault.json'),
-    join(__dirname, 'abi', 'DemoVault.json'),
+    join(process.cwd(), 'src', 'blockchain', 'abi', 'contractABI.json'),
+    join(process.cwd(), 'src', 'blockchain', 'abi', 'DemoVaultV2.json'),
+    join(process.cwd(), 'dist', 'src', 'blockchain', 'abi', 'contractABI.json'),
+    join(__dirname, 'abi', 'contractABI.json'),
+    join(__dirname, 'abi', 'DemoVaultV2.json'),
   ];
   for (const p of candidates) {
     if (existsSync(p)) {

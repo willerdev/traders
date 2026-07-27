@@ -1,7 +1,7 @@
 "use client";
 
 import { Contract, formatEther, type InterfaceAbi } from "ethers";
-import DemoVaultV2Abi from "../abi/DemoVaultV2.json";
+import contractABI from "../abi/contractABI.json";
 import {
   explorerTx,
   getContractAddress,
@@ -70,7 +70,7 @@ class EventListener {
     const provider = contractService.getReadProvider();
     this.contract = new Contract(
       getContractAddress(),
-      DemoVaultV2Abi as InterfaceAbi,
+      contractABI as InterfaceAbi,
       provider,
     );
 
