@@ -14,9 +14,36 @@ import { NotificationsPanel } from "./notifications-panel";
 import { TransactionHistory } from "./transaction-history";
 import { WalletPanel } from "./wallet-panel";
 import { LaunchSubscribeBanner } from "./launch-subscribe-banner";
+import { VaultPreflightScreen } from "./vault-preflight-screen";
 
 export function BlockchainDashboard() {
-  const { data, loading, error, refresh } = useBlockchain();
+  const {
+    data,
+    loading,
+    error,
+    refresh,
+    vaultReady,
+    preflightChecks,
+    preflightAddress,
+    preflightRunning,
+    runPreflight,
+  } = useBlockchain();
+
+  if (!vaultReady) {
+    return (
+      <BlockchainErrorBoundary>
+        <div className="space-y-6">
+          <LaunchSubscribeBanner />
+          <VaultPreflightScreen
+            checks={preflightChecks}
+            address={preflightAddress}
+            running={preflightRunning}
+            onRetry={() => void runPreflight()}
+          />
+        </div>
+      </BlockchainErrorBoundary>
+    );
+  }
 
   return (
     <BlockchainErrorBoundary>
@@ -38,8 +65,8 @@ export function BlockchainDashboard() {
               Blockchain Dashboard
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-muted">
-              Preview the vault dashboard while we finish launch. Subscribe above
-              to enroll when contracts go live — 15% daily ROI, $2,000 minimum.
+              Live Polygon Amoy vault — enroll, deposit, settle rewards, and
+              claim from treasury.
             </p>
           </div>
           <button

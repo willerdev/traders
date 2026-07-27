@@ -10,7 +10,15 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { subscribeEvents, applyRuntimeContractConfig, isContractConfigured } from "@/blockchain/services/blockchain";
+import {
+  subscribeEvents,
+  applyRuntimeContractConfig,
+  isContractConfigured,
+} from "@/blockchain/services/blockchain";
+import {
+  runVaultPreflight,
+  type PreflightCheck,
+} from "@/blockchain/services/preflight";
 import type { TxProgress } from "@/blockchain/types/tx-lifecycle";
 import {
   getBlockchainService,
@@ -37,6 +45,12 @@ type BlockchainContextValue = {
   action: ActionState;
   txProgress: TxProgress;
   contractConfigured: boolean;
+  /** True only after every vault preflight check passes */
+  vaultReady: boolean;
+  preflightChecks: PreflightCheck[];
+  preflightAddress: string;
+  preflightRunning: boolean;
+  runPreflight: () => Promise<boolean>;
   refresh: () => Promise<void>;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
@@ -68,6 +82,10 @@ export function BlockchainProvider({ children }: { children: ReactNode }) {
   const [contractConfigured, setContractConfigured] = useState(
     () => isContractConfigured(),
   );
+  const [vaultReady, setVaultReady] = useState(false);
+  const [preflightChecks, setPreflightChecks] = useState<PreflightCheck[]>([]);
+  const [preflightAddress, setPreflightAddress] = useState("");
+  const [preflightRunning, setPreflightRunning] = useState(true);
 
   useEffect(() => {
     if (isHybridService(service)) {
@@ -76,88 +94,95 @@ export function BlockchainProvider({ children }: { children: ReactNode }) {
     }
   }, [service]);
 
-  const refresh = useCallback(async () => {
+  const loadDashboard = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      applyRuntimeContractConfig({
-        contractAddress: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS,
-        chainId: Number(process.env.NEXT_PUBLIC_CHAIN_ID || 80002),
-        rpc: process.env.NEXT_PUBLIC_RPC_URL,
-        explorerUrl: process.env.NEXT_PUBLIC_EXPLORER_URL,
-      });
-      setContractConfigured(isContractConfigured());
-
-      // Optional: merge API config if present (same address)
-      try {
-        const token = (() => {
-          try {
-            const raw = localStorage.getItem("trp-auth");
-            if (!raw) return null;
-            return (
-              (JSON.parse(raw) as { state?: { token?: string } }).state?.token ??
-              null
-            );
-          } catch {
-            return null;
-          }
-        })();
-        const res = await fetch("/api/v1/blockchain/contract/config", {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (res.ok) {
-          const cfg = (await res.json()) as {
-            contractAddress?: string;
-            explorerBaseUrl?: string;
-            rpc?: string;
-            chainId?: number;
-            configured?: boolean;
-          };
-          if (cfg.configured && cfg.contractAddress) {
-            applyRuntimeContractConfig({
-              contractAddress: cfg.contractAddress,
-              explorerUrl: cfg.explorerBaseUrl,
-              rpc: cfg.rpc,
-              chainId: cfg.chainId,
-            });
-          }
-          setContractConfigured(isContractConfigured());
-        }
-      } catch {
-        /* live path does not require API config */
-      }
-
       const dash = await service.getDashboard();
       applyConfigFromPayload(dash);
       setContractConfigured(isContractConfigured());
       setData(dash);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load blockchain data");
+      const message =
+        e instanceof Error ? e.message : "Failed to load blockchain data";
+      setError(null);
       setData(null);
+      setVaultReady(false);
+      setPreflightChecks((prev) =>
+        prev.map((c) =>
+          c.id === "snapshot"
+            ? { ...c, status: "fail" as const, detail: message }
+            : c,
+        ),
+      );
     } finally {
       setLoading(false);
     }
   }, [service]);
 
-  useEffect(() => {
-    void refresh();
-    const id = setInterval(() => void refresh(), 30_000);
-    return () => clearInterval(id);
-  }, [refresh]);
+  const runPreflight = useCallback(async () => {
+    setPreflightRunning(true);
+    setError(null);
+    setData(null);
+    setVaultReady(false);
+    setLoading(true);
+    try {
+      const result = await runVaultPreflight({
+        onUpdate: setPreflightChecks,
+      });
+      setPreflightChecks(result.checks);
+      setPreflightAddress(result.address);
+      setContractConfigured(isContractConfigured());
+      if (!result.ok) {
+        setVaultReady(false);
+        setLoading(false);
+        return false;
+      }
+      setVaultReady(true);
+      await loadDashboard();
+      return true;
+    } catch (e) {
+      setVaultReady(false);
+      setError(e instanceof Error ? e.message : "Preflight failed");
+      setLoading(false);
+      return false;
+    } finally {
+      setPreflightRunning(false);
+    }
+  }, [loadDashboard]);
+
+  const refresh = useCallback(async () => {
+    if (!vaultReady) {
+      await runPreflight();
+      return;
+    }
+    await loadDashboard();
+  }, [vaultReady, runPreflight, loadDashboard]);
 
   useEffect(() => {
+    void runPreflight();
+  }, [runPreflight]);
+
+  useEffect(() => {
+    if (!vaultReady) return;
+    const id = setInterval(() => void loadDashboard(), 30_000);
+    return () => clearInterval(id);
+  }, [vaultReady, loadDashboard]);
+
+  useEffect(() => {
+    if (!vaultReady) return;
     const off = subscribeEvents((ev) => {
       setAction({
         status: "success",
         message: `${ev.name} detected`,
         hash: ev.transactionHash,
       });
-      void refresh();
+      void loadDashboard();
     });
     return () => {
       off();
     };
-  }, [refresh]);
+  }, [vaultReady, loadDashboard]);
 
   const runTx = useCallback(
     async (fn: () => Promise<TxActionResult>) => {
@@ -170,7 +195,7 @@ export function BlockchainProvider({ children }: { children: ReactNode }) {
           message: result.message,
           hash: result.hash,
         });
-        await refresh();
+        await loadDashboard();
         return result;
       } catch (e) {
         const message = e instanceof Error ? e.message : "Transaction failed";
@@ -179,7 +204,7 @@ export function BlockchainProvider({ children }: { children: ReactNode }) {
         return null;
       }
     },
-    [refresh],
+    [loadDashboard],
   );
 
   const connect = useCallback(async () => {
@@ -187,20 +212,20 @@ export function BlockchainProvider({ children }: { children: ReactNode }) {
     try {
       await service.connectWallet("metamask");
       setAction({ status: "success", message: "Wallet Connected" });
-      await refresh();
+      await loadDashboard();
     } catch (e) {
       setAction({
         status: "failed",
         message: e instanceof Error ? e.message : "Wallet connection failed",
       });
     }
-  }, [service, refresh]);
+  }, [service, loadDashboard]);
 
   const disconnect = useCallback(async () => {
     await service.disconnectWallet();
     setAction({ status: "success", message: "Wallet Disconnected" });
-    await refresh();
-  }, [service, refresh]);
+    await loadDashboard();
+  }, [service, loadDashboard]);
 
   const deposit = useCallback(
     (amount: number) => runTx(() => service.deposit(amount)),
@@ -222,7 +247,7 @@ export function BlockchainProvider({ children }: { children: ReactNode }) {
       try {
         await fn(service);
         setAction({ status: "success", message: "Admin action completed" });
-        await refresh();
+        await loadDashboard();
       } catch (e) {
         setAction({
           status: "failed",
@@ -230,7 +255,7 @@ export function BlockchainProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [service, refresh],
+    [service, loadDashboard],
   );
 
   const value: BlockchainContextValue = {
@@ -241,6 +266,11 @@ export function BlockchainProvider({ children }: { children: ReactNode }) {
     action,
     txProgress,
     contractConfigured,
+    vaultReady,
+    preflightChecks,
+    preflightAddress,
+    preflightRunning,
+    runPreflight,
     refresh,
     connect,
     disconnect,
