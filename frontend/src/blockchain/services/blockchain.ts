@@ -174,12 +174,12 @@ export async function claimRewards(onProgress?: ProgressCallback) {
   return claimReward(onProgress);
 }
 
-/** Vault accrues via daily settlement — no on-chain compound */
+/** Rewards accrue via dailyRate — no on-chain compound */
 export async function compound(): Promise<TxActionResult> {
   return {
     status: "failed",
     hash: "",
-    message: "Compound is not available — rewards accrue via daily settlement",
+    message: "Compound is not available — rewards accrue from dailyRate",
     explorerUrl: "",
   };
 }

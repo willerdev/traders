@@ -13,8 +13,8 @@ export type ChainEventName =
   | "Deposited"
   | "Withdrawn"
   | "RewardClaimed"
-  | "RewardAdded"
-  | "ContractFunded"
+  | "Funded"
+  | "RateChanged"
   | "Paused"
   | "Unpaused"
   | "OwnershipTransferred";
@@ -41,21 +41,17 @@ export type ChainEventHandler = (event: ParsedChainEvent) => void;
 
 const NAME_TO_TYPE: Record<string, ParsedChainEvent["type"]> = {
   Deposited: "deposit",
-  Enrolled: "deposit",
   Withdrawn: "withdrawal",
-  WithdrawRequested: "withdrawal",
   RewardClaimed: "claim",
-  RewardSettled: "claim",
-  RewardAdded: "referral_bonus",
-  ContractFunded: "deposit",
-  TreasuryFunded: "deposit",
+  Funded: "deposit",
+  RateChanged: "referral_bonus",
   OwnershipTransferred: "ownership_transfer",
   Paused: "paused",
   Unpaused: "unpaused",
 };
 
 /**
- * Live Vault v3 event listener on Polygon Amoy.
+ * Live vault event listener on Polygon Amoy.
  */
 class EventListener {
   private handlers = new Set<ChainEventHandler>();
@@ -80,14 +76,10 @@ class EventListener {
 
     const names = [
       "Deposited",
-      "Enrolled",
       "Withdrawn",
-      "WithdrawRequested",
       "RewardClaimed",
-      "RewardSettled",
-      "RewardAdded",
-      "ContractFunded",
-      "TreasuryFunded",
+      "Funded",
+      "RateChanged",
       "OwnershipTransferred",
       "Paused",
       "Unpaused",
@@ -124,9 +116,12 @@ class EventListener {
         wallet = String(args[1] ?? wallet);
       } else if (name === "Paused" || name === "Unpaused") {
         wallet = String(args[0] ?? wallet);
-      } else if (name === "ContractFunded") {
+      } else if (name === "Funded" || name === "RateChanged") {
         try {
-          amount = Number(formatEther(args[0] as bigint));
+          amount =
+            name === "Funded"
+              ? Number(formatEther(args[0] as bigint))
+              : Number(args[0]);
         } catch {
           amount = undefined;
         }
@@ -139,65 +134,38 @@ class EventListener {
         }
       }
 
-      const hash =
-        eventLog?.log?.transactionHash || eventLog?.transactionHash || "";
+      const transactionHash =
+        eventLog?.log?.transactionHash ||
+        eventLog?.transactionHash ||
+        "";
       const blockNumber =
         eventLog?.log?.blockNumber || eventLog?.blockNumber || 0;
 
       let timestamp = new Date().toISOString();
       try {
-        if (typeof args[2] === "bigint" || typeof args[2] === "number") {
-          timestamp = new Date(Number(args[2]) * 1000).toISOString();
-        } else if (eventLog?.getBlock) {
+        if (eventLog?.getBlock) {
           const block = await eventLog.getBlock();
-          timestamp = new Date(Number(block.timestamp) * 1000).toISOString();
+          timestamp = new Date(block.timestamp * 1000).toISOString();
         }
       } catch {
-        /* ignore */
+        /* keep now */
       }
 
       const parsed: ParsedChainEvent = {
         name,
-        type: NAME_TO_TYPE[name] ?? "deposit",
-        transactionHash: hash,
-        blockNumber: Number(blockNumber),
+        type: NAME_TO_TYPE[name] || "deposit",
+        transactionHash,
+        blockNumber,
         wallet,
         amount,
-        explorerUrl: hash ? explorerTx(hash) : "",
+        explorerUrl: transactionHash ? explorerTx(transactionHash) : "",
         timestamp,
       };
 
-      this.handlers.forEach((fn) => fn(parsed));
-      void ingestEvent(parsed);
+      for (const h of this.handlers) h(parsed);
     } catch (e) {
-      console.error("[EventListener]", e);
+      console.warn("[EventListener]", name, e);
     }
-  }
-}
-
-async function ingestEvent(event: ParsedChainEvent) {
-  try {
-    const token = (() => {
-      try {
-        const raw = localStorage.getItem("trp-auth");
-        if (!raw) return null;
-        return (JSON.parse(raw) as { state?: { token?: string } }).state
-          ?.token ?? null;
-      } catch {
-        return null;
-      }
-    })();
-
-    await fetch("/api/v1/blockchain/events/ingest", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify(event),
-    });
-  } catch {
-    /* ignore */
   }
 }
 

@@ -47,16 +47,12 @@ function baseChecks(): PreflightCheck[] {
       label: "Contract bytecode at address",
       status: "pending",
     },
-    {
-      id: "vault",
-      label: "Responds as Vault v3",
-      status: "pending",
-    },
-    {
-      id: "snapshot",
-      label: "On-chain stats readable",
-      status: "pending",
-    },
+      { id: "vault", label: "Responds as investment vault", status: "pending" },
+      {
+        id: "snapshot",
+        label: "On-chain stats readable",
+        status: "pending",
+      },
   ];
 }
 
@@ -220,7 +216,7 @@ export async function runVaultPreflight(opts?: {
     return { ok: false, checks, address };
   }
 
-  // 5 — Vault v3 ABI
+  // 5 — vault ABI (getUserInfo + dailyRate + contractBalance)
   checks = set(checks, "vault", "running");
   emit(checks);
   const contract = new Contract(
@@ -229,35 +225,26 @@ export async function runVaultPreflight(opts?: {
     provider,
   );
   try {
-    const version = String(await contract.VERSION());
-    const minDeposit = await contract.minDeposit();
+    const [owner, rate, bal] = await Promise.all([
+      contract.owner(),
+      contract.dailyRate(),
+      contract.contractBalance(),
+    ]);
     checks = set(
       checks,
       "vault",
       "pass",
-      `VERSION ${version} · minDeposit ok`,
+      `owner ${String(owner).slice(0, 6)}… · dailyRate ${rate}`,
     );
     emit(checks);
-    void minDeposit;
+    void bal;
   } catch {
-    // Fallback probe for older V2 without VERSION
-    try {
-      await contract.contractBalance();
-      await contract.owner();
-      checks = set(
-        checks,
-        "vault",
-        "fail",
-        "Contract responds but is not Vault v3 — deploy contracts/Vault.sol and update the address",
-      );
-    } catch {
-      checks = set(
-        checks,
-        "vault",
-        "fail",
-        "Wrong contract / ABI — use the Vault.sol Deploy receipt address",
-      );
-    }
+    checks = set(
+      checks,
+      "vault",
+      "fail",
+      "Wrong contract / ABI — deploy this vault and set the Deploy receipt address",
+    );
     checks = checks.map((c) =>
       c.status === "pending" ? { ...c, status: "fail", detail: "Skipped" } : c,
     );
@@ -269,22 +256,22 @@ export async function runVaultPreflight(opts?: {
   checks = set(checks, "snapshot", "running");
   emit(checks);
   try {
-    const [bal, deposited, users, treasury] = await Promise.all([
-      contract.contractBalance(),
+    const [deposited, users, withdrawn, rewardsPaid] = await Promise.all([
       contract.totalDeposited(),
       contract.userCount(),
-      contract.treasuryPool(),
+      contract.totalWithdrawn(),
+      contract.totalRewardsPaid(),
     ]);
     checks = set(
       checks,
       "snapshot",
       "pass",
-      `users ${users} · treasury readable`,
+      `users ${users} · deposited readable`,
     );
     emit(checks);
-    void bal;
     void deposited;
-    void treasury;
+    void withdrawn;
+    void rewardsPaid;
   } catch (e) {
     checks = set(
       checks,

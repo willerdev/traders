@@ -41,7 +41,7 @@ export type ChainEventRow = {
 };
 
 /**
- * Sole module that talks to DemoVaultV2 via ethers.js.
+ * Sole module that talks to the live vault via ethers.js.
  */
 class ContractService {
   private readProvider: JsonRpcProvider | null = null;
@@ -187,41 +187,20 @@ class ContractService {
     );
   }
 
-  async enroll(onProgress?: ProgressCallback) {
-    const c = await this.writeContract();
-    return this.runTx("Enroll", () => c.enroll(), onProgress);
+  /** New vault has no separate enroll — first deposit registers the user. */
+  async enroll(_onProgress?: ProgressCallback) {
+    return {
+      hash: "",
+      status: "success" as const,
+      explorerUrl: "",
+      message: "Enrollment happens automatically on first deposit",
+    };
   }
 
-  async withdraw(amountEth: number, onProgress?: ProgressCallback) {
+  /** Full principal withdraw (contract has no amount arg). */
+  async withdraw(_amountEth: number, onProgress?: ProgressCallback) {
     const c = await this.writeContract();
-    return this.runTx(
-      "Withdraw",
-      () => c.requestWithdraw(parseEther(String(amountEth))),
-      onProgress,
-    );
-  }
-
-  async cancelWithdraw(requestId: number, onProgress?: ProgressCallback) {
-    const c = await this.writeContract();
-    return this.runTx(
-      "Cancel Withdraw",
-      () => c.cancelWithdraw(requestId),
-      onProgress,
-    );
-  }
-
-  async processWithdraw(requestId: number, onProgress?: ProgressCallback) {
-    const c = await this.writeContract();
-    return this.runTx(
-      "Process Withdraw",
-      () => c.processWithdraw(requestId),
-      onProgress,
-    );
-  }
-
-  async settleSelf(onProgress?: ProgressCallback) {
-    const c = await this.writeContract();
-    return this.runTx("Settle", () => c.settleSelf(), onProgress);
+    return this.runTx("Withdraw", () => c.withdraw(), onProgress);
   }
 
   async claimReward(onProgress?: ProgressCallback) {
@@ -229,16 +208,26 @@ class ContractService {
     return this.runTx("Claim", () => c.claimReward(), onProgress);
   }
 
-  async fundTreasury(amountEth: number, onProgress?: ProgressCallback) {
+  async fundVault(amountEth: number, onProgress?: ProgressCallback) {
     const c = await this.writeContract();
     return this.runTx(
-      "Fund Treasury",
-      () => c.fundTreasury({ value: parseEther(String(amountEth)) }),
+      "Fund Vault",
+      () => c.fundVault({ value: parseEther(String(amountEth)) }),
       onProgress,
     );
   }
 
-  /** @deprecated V2 uses claimReward */
+  /** @deprecated use fundVault */
+  async fundTreasury(amountEth: number, onProgress?: ProgressCallback) {
+    return this.fundVault(amountEth, onProgress);
+  }
+
+  async setDailyRate(rate: number, onProgress?: ProgressCallback) {
+    const c = await this.writeContract();
+    return this.runTx("Set Daily Rate", () => c.setDailyRate(rate), onProgress);
+  }
+
+  /** @deprecated */
   async claimRewards(onProgress?: ProgressCallback) {
     return this.claimReward(onProgress);
   }
@@ -278,39 +267,37 @@ class ContractService {
     return Number(await c.userCount());
   }
 
-  /** Alias for older callers */
   async totalUsers(): Promise<number> {
     return this.userCount();
   }
 
-  async getUserBalance(address: string): Promise<number> {
+  async dailyRate(): Promise<number> {
     const c = this.readContract();
-    return Number(formatEther(await c.getUserBalance(address)));
+    return Number(await c.dailyRate());
+  }
+
+  async getUserInfo(address: string): Promise<{
+    depositAmount: number;
+    reward: number;
+    depositTime: number;
+  }> {
+    const c = this.readContract();
+    const info = await c.getUserInfo(address);
+    return {
+      depositAmount: Number(formatEther(info.depositAmount ?? info[0])),
+      reward: Number(formatEther(info.reward ?? info[1])),
+      depositTime: Number(info.depositTime ?? info[2]),
+    };
+  }
+
+  async getUserBalance(address: string): Promise<number> {
+    const info = await this.getUserInfo(address);
+    return info.depositAmount;
   }
 
   async getReward(address: string): Promise<number> {
     const c = this.readContract();
-    return Number(formatEther(await c.getReward(address)));
-  }
-
-  async treasuryPool(): Promise<number> {
-    const c = this.readContract();
-    return Number(formatEther(await c.treasuryPool()));
-  }
-
-  async principalPool(): Promise<number> {
-    const c = this.readContract();
-    return Number(formatEther(await c.principalPool()));
-  }
-
-  async withdrawQueueLength(): Promise<number> {
-    const c = this.readContract();
-    return Number(await c.withdrawQueueLength());
-  }
-
-  async isEnrolled(address: string): Promise<boolean> {
-    const c = this.readContract();
-    return Boolean(await c.isEnrolled(address));
+    return Number(formatEther(await c.calculateReward(address)));
   }
 
   async balanceOf(address: string): Promise<number> {
@@ -347,8 +334,7 @@ class ContractService {
         users,
         owner,
         paused,
-        treasury,
-        principal,
+        rate,
       ] = await Promise.all([
         this.contractBalance(),
         this.totalDeposited(),
@@ -357,17 +343,15 @@ class ContractService {
         this.userCount(),
         this.owner(),
         this.paused(),
-        this.treasuryPool().catch(() => 0),
-        this.principalPool().catch(() => 0),
+        this.dailyRate().catch(() => 0),
       ]);
 
       let investmentBalance = 0;
       let pending = 0;
       if (userAddress) {
-        [investmentBalance, pending] = await Promise.all([
-          this.getUserBalance(userAddress),
-          this.getReward(userAddress),
-        ]);
+        const info = await this.getUserInfo(userAddress);
+        investmentBalance = info.depositAmount;
+        pending = info.reward;
       }
 
       return {
@@ -376,8 +360,9 @@ class ContractService {
         totalWithdrawn: withdrawn,
         totalUsers: users,
         totalRewardsPaid: rewardsPaid,
-        treasuryPool: treasury,
-        principalPool: principal,
+        treasuryPool: contractBal,
+        principalPool: deposited,
+        dailyRate: rate,
         owner,
         paused,
         version: CONTRACT_VERSION,
@@ -392,8 +377,8 @@ class ContractService {
       const msg = e instanceof Error ? e.message : String(e);
       if (/CALL_EXCEPTION|require\(false\)|no data present/i.test(msg)) {
         throw new Error(
-          `Address ${this.getAddress()} does not respond as Vault v3 (wrong address or ABI). ` +
-            "Deploy contracts/Vault.sol and set NEXT_PUBLIC_CONTRACT_ADDRESS to the Deploy receipt address.",
+          `Address ${this.getAddress()} does not match the vault ABI. ` +
+            "Set NEXT_PUBLIC_CONTRACT_ADDRESS to this contract’s Deploy receipt address.",
         );
       }
       throw e instanceof Error ? e : new Error(msg);
@@ -422,17 +407,14 @@ class ContractService {
       label: string;
     }[] = [
       { name: "Deposited", type: "deposit", label: "Deposit" },
-      { name: "Enrolled", type: "deposit", label: "Enrolled" },
-      { name: "WithdrawRequested", type: "withdrawal", label: "Withdraw Queued" },
-      { name: "Withdrawn", type: "withdrawal", label: "Withdrawal Paid" },
+      { name: "Withdrawn", type: "withdrawal", label: "Withdrawal" },
       { name: "RewardClaimed", type: "claim", label: "Claim" },
-      { name: "RewardSettled", type: "claim", label: "Daily Settlement" },
-      { name: "RewardAdded", type: "referral_bonus", label: "Reward Added" },
-      { name: "TreasuryFunded", type: "deposit", label: "Treasury Funded" },
-      { name: "ContractFunded", type: "deposit", label: "Contract Funded" },
+      { name: "Funded", type: "deposit", label: "Vault Funded" },
+      { name: "RateChanged", type: "referral_bonus", label: "Rate Changed" },
     ];
 
     const rows: ChainEventRow[] = [];
+    const blockTs = new Map<number, number>();
 
     for (const spec of specs) {
       let logs: Log[] = [];
@@ -451,26 +433,26 @@ class ContractService {
 
         let wallet = "0x0000000000000000000000000000000000000000";
         let amount = 0;
-        let ts = Date.now();
 
-        if (spec.name === "ContractFunded" || spec.name === "TreasuryFunded") {
-          amount = Number(formatEther(parsed.args[0] as bigint));
-          ts = Number(parsed.args[1]) * 1000;
-        } else if (spec.name === "Enrolled") {
-          wallet = String(parsed.args[0] ?? wallet);
-          ts = Number(parsed.args[1]) * 1000;
-        } else if (spec.name === "WithdrawRequested") {
-          wallet = String(parsed.args[0] ?? wallet);
-          amount = Number(formatEther(parsed.args[2] as bigint));
-          ts = Number(parsed.args[3]) * 1000;
-        } else if (spec.name === "RewardSettled") {
-          wallet = String(parsed.args[0] ?? wallet);
-          amount = Number(formatEther(parsed.args[1] as bigint));
-          ts = Number(parsed.args[3]) * 1000;
+        if (spec.name === "Funded" || spec.name === "RateChanged") {
+          amount =
+            spec.name === "Funded"
+              ? Number(formatEther(parsed.args[0] as bigint))
+              : Number(parsed.args[0]);
         } else {
           wallet = String(parsed.args[0] ?? wallet);
           amount = Number(formatEther(parsed.args[1] as bigint));
-          ts = Number(parsed.args[2]) * 1000;
+        }
+
+        let ts = Date.now();
+        try {
+          if (!blockTs.has(log.blockNumber)) {
+            const block = await provider.getBlock(log.blockNumber);
+            blockTs.set(log.blockNumber, (block?.timestamp ?? 0) * 1000);
+          }
+          ts = blockTs.get(log.blockNumber) || Date.now();
+        } catch {
+          /* keep Date.now */
         }
 
         const hash = log.transactionHash;
@@ -480,7 +462,7 @@ class ContractService {
           name: spec.label,
           wallet,
           amount,
-          timestamp: new Date(ts || Date.now()).toISOString(),
+          timestamp: new Date(ts).toISOString(),
           hash,
           block: log.blockNumber,
           status: "success",
@@ -510,12 +492,13 @@ class ContractService {
 
     for (let i = 0; i < n; i++) {
       try {
-        const wallet = String(await c.users(i));
-        const [investment, rewards] = await Promise.all([
-          this.getUserBalance(wallet),
-          this.getReward(wallet),
-        ]);
-        out.push({ wallet, investment, rewards });
+        const wallet = String(await c.userList(i));
+        const info = await this.getUserInfo(wallet);
+        out.push({
+          wallet,
+          investment: info.depositAmount,
+          rewards: info.reward,
+        });
       } catch {
         /* skip */
       }

@@ -160,10 +160,11 @@ export function WalletPanel({
         </Button>
         <Button
           variant="secondary"
-          disabled={!wallet.connected || amt <= 0 || action.status === "loading"}
+          disabled={!wallet.connected || action.status === "loading"}
           onClick={() => void withdraw(amt)}
+          title="Withdraws full principal from the vault"
         >
-          Withdrawal
+          Withdraw all
         </Button>
         <Button
           variant="success"
