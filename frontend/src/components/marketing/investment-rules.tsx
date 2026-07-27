@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Clock, Crown, Lock, Percent, RefreshCw, ShieldCheck } from "lucide-react";
+import { DailyCreditTimeText } from "@/components/daily-credit-time-text";
 
 const FEE_TIERS = [
   { range: "$100 – $200", fee: "$10" },
@@ -19,7 +20,7 @@ const RULES = [
   {
     icon: Clock,
     title: "24-hour yield hold",
-    body: "New allocations only earn after funds have been invested for at least 24 hours. Daily credits post around 16:00 Africa/Kampala.",
+    body: "yield-hold",
   },
   {
     icon: Crown,
@@ -85,7 +86,15 @@ export function InvestmentRules() {
               </div>
               <h3 className="text-lg font-semibold text-white">{rule.title}</h3>
               <p className="mt-2 text-sm leading-relaxed text-gray-400">
-                {rule.body}
+                {rule.body === "yield-hold" ? (
+                  <>
+                    New allocations only earn after funds have been invested for
+                    at least 24 hours. Daily credits post{" "}
+                    <DailyCreditTimeText variant="around" />.
+                  </>
+                ) : (
+                  rule.body
+                )}
               </p>
             </motion.div>
           );

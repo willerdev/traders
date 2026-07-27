@@ -15,16 +15,9 @@ import { ArrowRight, ArrowDown, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RecentPayoutsShowcase } from "@/components/marketing/recent-payouts-showcase";
 import { InvestmentRules } from "@/components/marketing/investment-rules";
-import { api } from "@/lib/api";
+import { DailyCreditTimeText } from "@/components/daily-credit-time-text";
 import { useAuthStore } from "@/stores/auth";
 import { cn } from "@/lib/utils";
-
-type FeaturedPromo = {
-  code: string;
-  discountPercent: number;
-  originalAmount: number;
-  finalAmount: number;
-};
 
 const FLOW = [
   {
@@ -40,7 +33,7 @@ const FLOW = [
   {
     step: "03",
     title: "Earn daily",
-    body: "After the 24-hour hold, eligible balance earns yield ~16:00 Kampala.",
+    body: "earn-daily",
   },
   {
     step: "04",
@@ -143,7 +136,6 @@ function YieldCurveVisual() {
 }
 
 export default function HomePage() {
-  const [promo, setPromo] = useState<FeaturedPromo | null>(null);
   const isLoggedIn = Boolean(useAuthStore((s) => s.token));
   const heroRef = useRef<HTMLElement>(null);
   const mouseX = useMotionValue(0.5);
@@ -163,13 +155,6 @@ export default function HomePage() {
 
   const primaryHref = isLoggedIn ? "/invest" : "/register";
   const primaryLabel = isLoggedIn ? "Open Invest" : "Request an invite";
-
-  useEffect(() => {
-    api.payments
-      .featuredPromo()
-      .then((res) => setPromo(res.promo))
-      .catch(() => setPromo(null));
-  }, []);
 
   return (
     <div className="relative overflow-hidden">
@@ -254,20 +239,6 @@ export default function HomePage() {
                 Daily USDT yield on eligible Smart Invest balance — transparent
                 fees, a 24-hour hold on new capital, withdrawals after KYC.
               </motion.p>
-
-              {promo && (
-                <motion.p
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.4 }}
-                  className="mt-4 text-sm text-rank-gold/90"
-                >
-                  Limited: {promo.discountPercent}% off with code{" "}
-                  <span className="font-mono font-semibold uppercase">
-                    {promo.code}
-                  </span>
-                </motion.p>
-              )}
 
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
@@ -431,7 +402,14 @@ export default function HomePage() {
                 </motion.span>
                 <h3 className="text-xl font-semibold text-white">{item.title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-gray-400">
-                  {item.body}
+                  {item.body === "earn-daily" ? (
+                    <>
+                      After the 24-hour hold, eligible balance earns yield{" "}
+                      <DailyCreditTimeText variant="short" />.
+                    </>
+                  ) : (
+                    item.body
+                  )}
                 </p>
               </motion.li>
             ))}

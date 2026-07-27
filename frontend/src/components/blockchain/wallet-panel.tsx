@@ -20,9 +20,11 @@ import {
 export function WalletPanel({
   wallet,
   loading,
+  withdrawFeePercent = 5,
 }: {
   wallet: WalletState | null;
   loading: boolean;
+  withdrawFeePercent?: number;
 }) {
   const {
     connect,
@@ -61,6 +63,12 @@ export function WalletPanel({
           {wallet.provider ? `via ${wallet.provider}` : "MetaMask · WalletConnect · Coinbase ready"}
         </span>
       </div>
+
+      <p className="mb-4 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-gray-400">
+        Contract withdrawals deduct a{" "}
+        <strong className="text-gray-200">{withdrawFeePercent}%</strong> fee from
+        the withdrawn amount.
+      </p>
 
       <dl className="grid gap-3 sm:grid-cols-2">
         <Field label="Wallet Address" value={shortAddr(wallet.address, 6)} mono />
@@ -162,7 +170,7 @@ export function WalletPanel({
           variant="secondary"
           disabled={!wallet.connected || action.status === "loading"}
           onClick={() => void withdraw(amt)}
-          title="Withdraws full principal from the vault"
+          title={`Withdraws principal; ${withdrawFeePercent}% fee applies`}
         >
           Withdraw all
         </Button>

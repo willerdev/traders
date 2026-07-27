@@ -1,0 +1,710 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Check,
+  FileText,
+  Loader2,
+  ScanLine,
+  ShieldCheck,
+  Upload,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  api,
+  type ChainContractEnrollment,
+} from "@/lib/api";
+import { cn } from "@/lib/utils";
+import {
+  LivenessScanner,
+  uploadLivenessDataUrl,
+} from "@/components/blockchain/liveness-scanner";
+import { AuthenticatedImage } from "@/components/ui/authenticated-image";
+
+const COUNTRIES = [
+  "Rwanda",
+  "Uganda",
+  "Kenya",
+  "Tanzania",
+  "Burundi",
+  "Nigeria",
+  "Ghana",
+  "South Africa",
+  "United States",
+  "United Kingdom",
+  "Other",
+];
+
+type DocType = "PASSPORT" | "NATIONAL_ID" | "DRIVERS_LICENSE";
+
+type Props = {
+  enrollment: ChainContractEnrollment;
+  onUpdated: (next: ChainContractEnrollment) => void;
+};
+
+async function uploadKycFile(file: File) {
+  return api.uploads.kyc(file);
+}
+
+function PhasePills({ phase }: { phase: number }) {
+  const items = [
+    { n: 1, label: "Terms" },
+    { n: 2, label: "Verify" },
+    { n: 3, label: "Dashboard" },
+  ];
+  return (
+    <ol className="flex flex-wrap gap-2">
+      {items.map((item) => (
+        <li
+          key={item.n}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium",
+            phase === item.n
+              ? "border-primary/40 bg-primary/15 text-sky-200"
+              : phase > item.n
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                : "border-white/10 text-gray-500",
+          )}
+        >
+          {phase > item.n ? (
+            <Check className="h-3 w-3" />
+          ) : (
+            <span className="font-mono">{item.n}</span>
+          )}
+          {item.label}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function DocGuide({ type }: { type: DocType }) {
+  const tips =
+    type === "PASSPORT"
+      ? [
+          "Place the passport data page flat on a dark surface",
+          "Capture the full page — all corners visible",
+          "No glare, fingers, or filters covering MRZ or photo",
+          "Passport needs front (data page) only",
+        ]
+      : [
+          "Lay the card flat; capture the full rectangle",
+          "Front: photo + name must be sharp and readable",
+          type === "NATIONAL_ID"
+            ? "Back: barcode / chip side required"
+            : "Back of license required",
+          "Avoid glare, shadows, and cropped edges",
+        ];
+  return (
+    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+      <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-100">
+        <ScanLine className="h-4 w-4" />
+        How to scan a valid {type === "PASSPORT" ? "passport" : "ID"}
+      </div>
+      <ul className="space-y-1.5 text-xs leading-relaxed text-amber-100/80">
+        {tips.map((t) => (
+          <li key={t} className="flex gap-2">
+            <span className="text-amber-400">•</span>
+            <span>{t}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function UploadSlot({
+  label,
+  url,
+  onUploaded,
+  onClear,
+}: {
+  label: string;
+  url: string;
+  onUploaded: (url: string) => void;
+  onClear: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function onFile(file: File | null) {
+    if (!file) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const res = await uploadKycFile(file);
+      onUploaded(res.url);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      {url ? (
+        <div className="relative overflow-hidden rounded-xl border border-white/10">
+          <AuthenticatedImage
+            src={url}
+            alt={label}
+            className="h-40 w-full object-cover"
+          />
+          <button
+            type="button"
+            onClick={onClear}
+            className="absolute right-2 top-2 rounded-md bg-black/70 px-2 py-1 text-xs text-white"
+          >
+            Remove
+          </button>
+        </div>
+      ) : (
+        <label className="flex h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 bg-white/[0.02] text-sm text-muted hover:border-primary/40">
+          {busy ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <Upload className="h-5 w-5" />
+          )}
+          {busy ? "Uploading…" : "Tap to upload"}
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            disabled={busy}
+            onChange={(e) => void onFile(e.target.files?.[0] ?? null)}
+          />
+        </label>
+      )}
+      {err && <p className="text-xs text-danger">{err}</p>}
+    </div>
+  );
+}
+
+function PhaseTerms({
+  enrollment,
+  onAccepted,
+}: {
+  enrollment: ChainContractEnrollment;
+  onAccepted: (e: ChainContractEnrollment) => void;
+}) {
+  const [agreed, setAgreed] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const t = enrollment.terms;
+
+  async function submit() {
+    if (!agreed) return;
+    setLoading(true);
+    setError("");
+    try {
+      onAccepted(await api.chainEnrollment.acceptTerms());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not accept terms");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-6"
+    >
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+          On-chain vault contract
+        </h1>
+        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-400">
+          Enroll once, complete identity + liveness, then deposit after approval.
+          The contract only launches when your KYC is approved and you fund the
+          vault — until then your dashboard stays empty.
+        </p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        {[
+          {
+            title: "How it works",
+            body: "Agree → verify ID & liveness → wait for approval → deposit USDT → vault activates at your tier yield.",
+          },
+          {
+            title: `$${t.minDepositUsd.toLocaleString()}–$${t.midTierMaxUsd.toLocaleString()}`,
+            body: `${t.midTierYieldPercent}% contract yield on eligible balance in this band.`,
+          },
+          {
+            title: `Above $${t.midTierMaxUsd.toLocaleString()}`,
+            body: `${t.highTierYieldPercent}% contract yield. Withdrawals deduct a ${t.withdrawFeePercent}% fee.`,
+          },
+        ].map((card) => (
+          <div
+            key={card.title}
+            className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+          >
+            <p className="text-sm font-semibold text-white">{card.title}</p>
+            <p className="mt-2 text-xs leading-relaxed text-gray-400">
+              {card.body}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-black/30 p-5 text-sm leading-relaxed text-gray-300">
+        <p className="mb-3 flex items-center gap-2 font-semibold text-white">
+          <FileText className="h-4 w-4 text-primary" />
+          Brief contract terms
+        </p>
+        <ul className="list-disc space-y-2 pl-5 text-gray-400">
+          <li>
+            Minimum deposit{" "}
+            <strong className="text-gray-200">
+              ${t.minDepositUsd.toLocaleString()} USDT
+            </strong>
+            .
+          </li>
+          <li>
+            Yield tiers:{" "}
+            <strong className="text-gray-200">
+              {t.midTierYieldPercent}%
+            </strong>{" "}
+            for ${t.minDepositUsd.toLocaleString()}–$
+            {t.midTierMaxUsd.toLocaleString()};{" "}
+            <strong className="text-gray-200">
+              {t.highTierYieldPercent}%
+            </strong>{" "}
+            above ${t.midTierMaxUsd.toLocaleString()}.
+          </li>
+          <li>
+            Every withdrawal deducts{" "}
+            <strong className="text-gray-200">
+              {t.withdrawFeePercent}%
+            </strong>{" "}
+            of the withdrawn amount.
+          </li>
+          <li>
+            Contract does not start until KYC is approved and your first deposit
+            is confirmed.
+          </li>
+          <li>
+            You also agree to the platform{" "}
+            <Link href="/terms" className="text-primary hover:underline">
+              Terms &amp; Conditions
+            </Link>
+            .
+          </li>
+        </ul>
+      </div>
+
+      <label className="flex items-start gap-3 text-sm text-gray-300">
+        <input
+          type="checkbox"
+          checked={agreed}
+          onChange={(e) => setAgreed(e.target.checked)}
+          className="mt-1 rounded border-white/20"
+        />
+        <span>
+          I have read and agree to the on-chain vault contract terms, yield
+          tiers, {t.withdrawFeePercent}% withdrawal fee, and the platform Terms
+          &amp; Conditions.
+        </span>
+      </label>
+
+      {error && <p className="text-sm text-danger">{error}</p>}
+
+      <Button
+        size="lg"
+        disabled={!agreed || loading}
+        onClick={() => void submit()}
+        className="gap-2"
+      >
+        {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+        Agree &amp; continue to verification
+      </Button>
+    </motion.div>
+  );
+}
+
+function PhaseKyc({
+  enrollment,
+  onSubmitted,
+}: {
+  enrollment: ChainContractEnrollment;
+  onSubmitted: (e: ChainContractEnrollment) => void;
+}) {
+  const [step, setStep] = useState<"docs" | "liveness">("docs");
+  const [country, setCountry] = useState(enrollment.country ?? "");
+  const [customCountry, setCustomCountry] = useState("");
+  const [documentType, setDocumentType] = useState<DocType>(
+    enrollment.documentType ?? "NATIONAL_ID",
+  );
+  const [documentNumber, setDocumentNumber] = useState(
+    enrollment.documentNumber ?? "",
+  );
+  const [frontUrl, setFrontUrl] = useState(enrollment.documentFrontUrl ?? "");
+  const [backUrl, setBackUrl] = useState(enrollment.documentBackUrl ?? "");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const needsBack = documentType !== "PASSPORT";
+  const resolvedCountry =
+    country === "Other" ? customCountry.trim() : country.trim();
+
+  const docsReady = useMemo(() => {
+    if (!resolvedCountry || !documentNumber.trim() || !frontUrl) return false;
+    if (needsBack && !backUrl) return false;
+    return true;
+  }, [resolvedCountry, documentNumber, frontUrl, backUrl, needsBack]);
+
+  async function onLivenessComplete(dataUrl: string) {
+    setLoading(true);
+    setError("");
+    try {
+      const livenessUrl = await uploadLivenessDataUrl(dataUrl, uploadKycFile);
+      const next = await api.chainEnrollment.submitKyc({
+        country: resolvedCountry,
+        documentType,
+        documentNumber: documentNumber.trim(),
+        documentFrontUrl: frontUrl,
+        documentBackUrl: needsBack ? backUrl : undefined,
+        livenessSelfieUrl: livenessUrl,
+      });
+      onSubmitted(next);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Submission failed");
+      setStep("docs");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-6"
+    >
+      <div>
+        <h1 className="text-2xl font-bold text-white">Identity verification</h1>
+        <p className="mt-2 text-sm text-gray-400">
+          Phase 2 — choose your country, upload a valid document, then complete
+          head-turn liveness.
+        </p>
+        {enrollment.status === "KYC_REJECTED" && enrollment.rejectionReason && (
+          <p className="mt-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+            Previous submission rejected: {enrollment.rejectionReason}. Please
+            resubmit.
+          </p>
+        )}
+      </div>
+
+      <AnimatePresence mode="wait">
+        {step === "docs" ? (
+          <motion.div
+            key="docs"
+            initial={{ opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 8 }}
+            className="space-y-5"
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Country</Label>
+                <select
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  className="w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                >
+                  <option value="">Select country</option>
+                  {COUNTRIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                {country === "Other" && (
+                  <Input
+                    placeholder="Type your country"
+                    value={customCountry}
+                    onChange={(e) => setCustomCountry(e.target.value)}
+                  />
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label>Document number</Label>
+                <Input
+                  value={documentNumber}
+                  onChange={(e) => setDocumentNumber(e.target.value)}
+                  placeholder="ID / passport number"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Document to verify</Label>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ["NATIONAL_ID", "National ID"],
+                    ["PASSPORT", "Passport"],
+                    ["DRIVERS_LICENSE", "Driver’s license"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <Button
+                    key={value}
+                    type="button"
+                    size="sm"
+                    variant={documentType === value ? "default" : "secondary"}
+                    onClick={() => {
+                      setDocumentType(value);
+                      if (value === "PASSPORT") setBackUrl("");
+                    }}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <DocGuide type={documentType} />
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <UploadSlot
+                label={
+                  documentType === "PASSPORT"
+                    ? "Passport data page (front)"
+                    : "ID front"
+                }
+                url={frontUrl}
+                onUploaded={setFrontUrl}
+                onClear={() => setFrontUrl("")}
+              />
+              {needsBack && (
+                <UploadSlot
+                  label="ID back"
+                  url={backUrl}
+                  onUploaded={setBackUrl}
+                  onClear={() => setBackUrl("")}
+                />
+              )}
+            </div>
+
+            {error && <p className="text-sm text-danger">{error}</p>}
+
+            <Button
+              size="lg"
+              disabled={!docsReady}
+              onClick={() => setStep("liveness")}
+              className="gap-2"
+            >
+              <ShieldCheck className="h-4 w-4" />
+              Continue to liveness
+            </Button>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="liveness"
+            initial={{ opacity: 0, x: 8 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -8 }}
+            className="space-y-4"
+          >
+            <p className="text-center text-sm text-gray-400">
+              Follow the prompts — rotate your head slowly. The ring fills as
+              each pose completes, then turns green.
+            </p>
+            {loading ? (
+              <div className="flex flex-col items-center gap-3 py-16">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm text-muted">Submitting for review…</p>
+              </div>
+            ) : (
+              <LivenessScanner
+                onComplete={(url) => void onLivenessComplete(url)}
+                onCancel={() => setStep("docs")}
+              />
+            )}
+            {error && (
+              <p className="text-center text-sm text-danger">{error}</p>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+export function ContractNullDashboard({
+  enrollment,
+  onActivated,
+}: {
+  enrollment: ChainContractEnrollment;
+  onActivated?: (e: ChainContractEnrollment) => void;
+}) {
+  const [deposit, setDeposit] = useState("2000");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const t = enrollment.terms;
+  const amount = Number(deposit);
+  const previewYield =
+    Number.isFinite(amount) && amount >= t.minDepositUsd
+      ? amount <= t.midTierMaxUsd
+        ? t.midTierYieldPercent
+        : t.highTierYieldPercent
+      : null;
+
+  async function activate() {
+    setLoading(true);
+    setError("");
+    try {
+      const next = await api.chainEnrollment.activate(amount);
+      onActivated?.(next);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not activate");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.04] to-transparent p-6">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
+          Contract dashboard
+        </p>
+        <h1 className="mt-2 text-2xl font-bold text-white">
+          {enrollment.status === "KYC_PENDING"
+            ? "Under review"
+            : enrollment.status === "APPROVED"
+              ? "Approved — deposit to launch"
+              : enrollment.status === "KYC_REJECTED"
+                ? "Verification rejected"
+                : "Awaiting activation"}
+        </h1>
+        <p className="mt-2 max-w-xl text-sm text-gray-400">
+          {enrollment.status === "KYC_PENDING"
+            ? "Your documents and liveness are with the team. Balances, yield, and activity stay empty until approval."
+            : enrollment.status === "APPROVED"
+              ? "KYC passed. Deposit at least $2,000 USDT to launch your vault contract. Live stats appear after activation."
+              : "Complete verification to continue."}
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-4">
+        {[
+          { label: "Vault balance", value: "—" },
+          { label: "Yield rate", value: "—" },
+          { label: "Rewards", value: "—" },
+          { label: "Withdrawals", value: "—" },
+        ].map((card) => (
+          <div
+            key={card.label}
+            className="rounded-xl border border-dashed border-white/10 bg-black/20 px-4 py-5"
+          >
+            <p className="text-xs text-gray-500">{card.label}</p>
+            <p className="mt-2 text-2xl font-semibold tabular-nums text-gray-600">
+              {card.value}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {enrollment.status === "APPROVED" && (
+        <div className="rounded-2xl border border-primary/25 bg-primary/5 p-5 space-y-4">
+          <p className="text-sm font-semibold text-white">Launch deposit</p>
+          <p className="text-xs text-gray-400">
+            ${t.minDepositUsd.toLocaleString()}–$
+            {t.midTierMaxUsd.toLocaleString()} → {t.midTierYieldPercent}% · above
+            ${t.midTierMaxUsd.toLocaleString()} → {t.highTierYieldPercent}% ·
+            withdrawals: {t.withdrawFeePercent}% fee
+          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="flex-1 space-y-2">
+              <Label>Deposit amount (USDT)</Label>
+              <Input
+                type="number"
+                min={t.minDepositUsd}
+                step={100}
+                value={deposit}
+                onChange={(e) => setDeposit(e.target.value)}
+              />
+            </div>
+            <Button
+              disabled={
+                loading ||
+                !Number.isFinite(amount) ||
+                amount < t.minDepositUsd
+              }
+              onClick={() => void activate()}
+              className="gap-2"
+            >
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              Launch contract
+              {previewYield != null ? ` · ${previewYield}%` : ""}
+            </Button>
+          </div>
+          {error && <p className="text-sm text-danger">{error}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ContractEnrollFlow({ enrollment, onUpdated }: Props) {
+  const phase =
+    enrollment.status === "NOT_STARTED"
+      ? 1
+      : enrollment.status === "TERMS_ACCEPTED" ||
+          enrollment.status === "KYC_REJECTED"
+        ? 2
+        : 3;
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-6">
+      <PhasePills phase={phase} />
+      {phase === 1 && (
+        <PhaseTerms enrollment={enrollment} onAccepted={onUpdated} />
+      )}
+      {phase === 2 && (
+        <PhaseKyc enrollment={enrollment} onSubmitted={onUpdated} />
+      )}
+      {phase === 3 && (
+        <ContractNullDashboard
+          enrollment={enrollment}
+          onActivated={onUpdated}
+        />
+      )}
+    </div>
+  );
+}
+
+export function useChainEnrollment() {
+  const [enrollment, setEnrollment] = useState<ChainContractEnrollment | null>(
+    null,
+  );
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setEnrollment(await api.chainEnrollment.get());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load enrollment");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  return { enrollment, setEnrollment, loading, error, refresh };
+}

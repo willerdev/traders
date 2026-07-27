@@ -64,6 +64,11 @@ export default function TermsPage() {
               7. Changes
             </a>
           </li>
+          <li>
+            <a href="#onchain" className="text-primary hover:underline">
+              8. On-chain vault contract
+            </a>
+          </li>
         </ul>
       </nav>
 
@@ -252,6 +257,25 @@ export default function TermsPage() {
           <p className="mt-3">
             Questions: use <strong className="text-gray-200">Messages → Speak
             to admin</strong> on the platform.
+          </p>
+        </section>
+
+        <section id="onchain">
+          <h2 className="text-lg font-semibold text-white">
+            8. On-chain vault contract
+          </h2>
+          <p className="mt-3">
+            The Chain / vault product is a separate enrollment. You must accept
+            contract terms, complete document + liveness KYC, and wait for
+            approval before depositing. Minimum deposit is{" "}
+            <strong className="text-gray-200">$2,000 USDT</strong>. Accounts from
+            $2,000–$5,000 earn{" "}
+            <strong className="text-gray-200">15%</strong> contract yield; above
+            $5,000 earn <strong className="text-gray-200">20%</strong>. Every
+            withdrawal deducts a{" "}
+            <strong className="text-gray-200">5%</strong> fee. The live dashboard
+            stays empty until approval; the contract launches only after an
+            approved deposit.
           </p>
         </section>
       </div>

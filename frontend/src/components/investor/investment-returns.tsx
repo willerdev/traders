@@ -11,6 +11,7 @@ import {
   isLocalCurrencyDisplay,
   type DisplayCurrency,
 } from "@/lib/utils";
+import { DailyCreditTimeText } from "@/components/daily-credit-time-text";
 
 type Props = {
   investmentBalance: number;
@@ -144,7 +145,15 @@ export function InvestmentReturnsPanel({
                 ? " · yield paused"
                 : autoReinvest
                   ? ` · auto-reinvest (${autoReinvestFeePercent}% fee, 90% compounds)`
-                  : " · credited ~16:00 Kampala"}
+                  : (
+                      <>
+                        {" · credited "}
+                        <DailyCreditTimeText
+                          country={displayCurrency?.derivedFromCountry}
+                          variant="short"
+                        />
+                      </>
+                    )}
             </p>
           </div>
           <TrendingUp className="h-5 w-5 shrink-0 text-emerald-400" />

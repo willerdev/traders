@@ -296,6 +296,29 @@ class ApiClient {
       this.request<KycRecord>("/users/kyc/retry", { method: "POST" }),
   };
 
+  chainEnrollment = {
+    get: () =>
+      this.request<ChainContractEnrollment>("/blockchain/enrollment"),
+    acceptTerms: () =>
+      this.request<ChainContractEnrollment>(
+        "/blockchain/enrollment/accept-terms",
+        { method: "POST" },
+      ),
+    submitKyc: (data: ChainContractKycInput) =>
+      this.request<ChainContractEnrollment>("/blockchain/enrollment/kyc", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    activate: (depositUsd: number) =>
+      this.request<ChainContractEnrollment>(
+        "/blockchain/enrollment/activate",
+        {
+          method: "POST",
+          body: JSON.stringify({ depositUsd }),
+        },
+      ),
+  };
+
   signals = {
     submit: (data: SignalInput) =>
       this.request<
@@ -1847,6 +1870,52 @@ export interface SubmitKycInput {
   documentFrontUrl: string;
   documentBackUrl?: string;
   selfieUrl: string;
+}
+
+export interface ChainContractKycInput {
+  country: string;
+  documentType: "PASSPORT" | "NATIONAL_ID" | "DRIVERS_LICENSE";
+  documentNumber: string;
+  documentFrontUrl: string;
+  documentBackUrl?: string;
+  livenessSelfieUrl: string;
+}
+
+export interface ChainContractEnrollment {
+  id: string | null;
+  userId: string;
+  status:
+    | "NOT_STARTED"
+    | "TERMS_ACCEPTED"
+    | "KYC_PENDING"
+    | "KYC_REJECTED"
+    | "APPROVED"
+    | "ACTIVE";
+  phase: 1 | 2 | 3;
+  termsAcceptedAt: string | null;
+  country: string | null;
+  documentType: "PASSPORT" | "NATIONAL_ID" | "DRIVERS_LICENSE" | null;
+  documentNumber: string | null;
+  documentFrontUrl: string | null;
+  documentBackUrl: string | null;
+  livenessSelfieUrl: string | null;
+  livenessPassedAt: string | null;
+  rejectionReason: string | null;
+  kycSubmittedAt: string | null;
+  approvedAt: string | null;
+  activatedAt: string | null;
+  yieldPercent: number | null;
+  withdrawFeePercent: number;
+  canAccessLiveDashboard: boolean;
+  showNullDashboard: boolean;
+  canDeposit: boolean;
+  terms: {
+    minDepositUsd: number;
+    midTierMaxUsd: number;
+    midTierYieldPercent: number;
+    highTierYieldPercent: number;
+    withdrawFeePercent: number;
+  };
 }
 
 export interface LeaderboardEntry {

@@ -351,7 +351,8 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
                 </span>
               </label>
               <p className="muted" style={{ marginTop: "0.5rem", fontSize: 12 }}>
-                Credits run daily at 16:00 Africa/Kampala on each investor&apos;s
+                Credits run daily at the platform yield window (shown to users in
+                their local country time) on each investor&apos;s
                 investment balance. Earnings land in their wallet.
               </p>
             </section>

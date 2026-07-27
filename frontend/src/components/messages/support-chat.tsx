@@ -283,8 +283,7 @@ export function SupportChat() {
             </div>
             <p className="font-medium text-gray-300">Hi — I&apos;m Agent</p>
             <p className="mt-2 max-w-xs text-sm">
-              Ask about setups, KYC, payouts, TP claims, or how TraderRank Pro
-              works. Tap <strong className="text-gray-300">Speak to admin</strong>{" "}
+              Ask about setups, KYC, payouts, or how TraderRank Pro works. Tap <strong className="text-gray-300">Speak to admin</strong>{" "}
               for a human anytime.
             </p>
           </div>

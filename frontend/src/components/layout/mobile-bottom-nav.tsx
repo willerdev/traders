@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  ClipboardCheck,
   Home,
   LineChart,
   MessageCircle,
@@ -132,13 +131,6 @@ export function MobileBottomNav() {
           hint: "On-chain invest dashboard",
           icon: Blocks,
           match: "/blockchain",
-        },
-        {
-          href: "/tp-claims",
-          label: "TP Claims",
-          hint: "Evidence & rewards",
-          icon: ClipboardCheck,
-          match: "/tp-claims",
         },
         {
           href: "/payouts",

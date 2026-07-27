@@ -1,7 +1,9 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
+  Param,
   Post,
   Query,
   Request,
@@ -12,6 +14,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { JwtAuthGuard, RolesGuard } from '../auth/guards';
 import { BlockchainService } from './blockchain.service';
+import { ChainEnrollmentService } from './chain-enrollment.service';
 
 type AuthedRequest = { user: { id: string; role: UserRole } };
 
@@ -24,11 +27,95 @@ type AuthedRequest = { user: { id: string; role: UserRole } };
  *   GET  /wallet | /transactions | /events | /dashboard | /investors | /notifications | /health | /admin
  *   POST /deposit | /withdraw | /claim | /compound
  *   POST /wallet/connect | /wallet/disconnect | /sync | admin actions
+ *   GET/POST /enrollment/*
  */
 @Controller('blockchain')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class BlockchainController {
-  constructor(private readonly blockchain: BlockchainService) {}
+  constructor(
+    private readonly blockchain: BlockchainService,
+    private readonly enrollment: ChainEnrollmentService,
+  ) {}
+
+  @Get('enrollment')
+  getEnrollment(@Request() req: AuthedRequest) {
+    return this.enrollment.getEnrollment(req.user.id);
+  }
+
+  @Post('enrollment/accept-terms')
+  acceptTerms(@Request() req: AuthedRequest) {
+    return this.enrollment.acceptTerms(req.user.id);
+  }
+
+  @Post('enrollment/kyc')
+  submitEnrollmentKyc(
+    @Request() req: AuthedRequest,
+    @Body()
+    body: {
+      country?: string;
+      documentType?: 'PASSPORT' | 'NATIONAL_ID' | 'DRIVERS_LICENSE';
+      documentNumber?: string;
+      documentFrontUrl?: string;
+      documentBackUrl?: string;
+      livenessSelfieUrl?: string;
+    },
+  ) {
+    if (!body.country?.trim()) {
+      throw new BadRequestException('Country is required');
+    }
+    if (!body.documentType) {
+      throw new BadRequestException('Document type is required');
+    }
+    if (!body.documentNumber?.trim()) {
+      throw new BadRequestException('Document number is required');
+    }
+    if (!body.documentFrontUrl?.trim()) {
+      throw new BadRequestException('Document front image is required');
+    }
+    if (!body.livenessSelfieUrl?.trim()) {
+      throw new BadRequestException('Liveness capture is required');
+    }
+    return this.enrollment.submitKyc(req.user.id, {
+      country: body.country,
+      documentType: body.documentType,
+      documentNumber: body.documentNumber,
+      documentFrontUrl: body.documentFrontUrl,
+      documentBackUrl: body.documentBackUrl,
+      livenessSelfieUrl: body.livenessSelfieUrl,
+    });
+  }
+
+  @Post('enrollment/activate')
+  activateEnrollment(
+    @Request() req: AuthedRequest,
+    @Body() body: { depositUsd?: number },
+  ) {
+    return this.enrollment.markActivated(
+      req.user.id,
+      Number(body.depositUsd) || 0,
+    );
+  }
+
+  @Get('enrollment/pending')
+  @Roles(UserRole.ADMIN)
+  pendingEnrollments(@Query('limit') limit?: string) {
+    return this.enrollment.listPending(Number(limit) || 50);
+  }
+
+  @Post('enrollment/:userId/approve')
+  @Roles(UserRole.ADMIN)
+  approveEnrollment(@Param('userId') userId: string) {
+    return this.enrollment.approve(userId);
+  }
+
+  @Post('enrollment/:userId/reject')
+  @Roles(UserRole.ADMIN)
+  rejectEnrollment(
+    @Param('userId') userId: string,
+    @Body() body: { reason?: string },
+  ) {
+    return this.enrollment.reject(userId, body.reason ?? 'Rejected');
+  }
 
   @Get('contract/status')
   contractStatus() {

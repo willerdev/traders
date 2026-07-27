@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -32,6 +32,7 @@ import {
   formatMoney,
   isLocalCurrencyDisplay,
 } from "@/lib/utils";
+import { DailyCreditTimeText } from "@/components/daily-credit-time-text";
 
 const NETWORKS = ["TRC20", "BEP20", "ERC20"] as const;
 
@@ -67,7 +68,7 @@ function StatCard({
 }: {
   label: string;
   value: string;
-  sub?: string;
+  sub?: ReactNode;
   accent?: "invest" | "risk" | "profit" | "neutral";
   compactValue?: boolean;
   delay?: number;
@@ -278,8 +279,12 @@ export function InvestHub() {
             <p className="mt-2 max-w-lg text-sm text-gray-400">
               Choose your investment size, pay the matching one-time subscription
               fee, then earn {status?.dailyYieldPercent ?? 8}% daily on investment —
-              credited to wallet at 16:00. Trade on platform MT5 or link your own
-              for auto-copy.
+              credited to wallet{" "}
+              <DailyCreditTimeText
+                country={status?.displayCurrency?.derivedFromCountry}
+                variant="short"
+              />
+              . Trade on platform MT5 or link your own for auto-copy.
             </p>
             <ul className="mt-5 grid gap-3 sm:grid-cols-3">
               {[
@@ -550,7 +555,15 @@ export function InvestHub() {
           sub={
             status.settings?.autoReinvestEarnings
               ? `${status.dailyYieldPercent}% daily · auto-reinvest on (${status.autoReinvestFeePercent ?? 10}% fee)`
-              : `${status.dailyYieldPercent}% daily · credited to wallet at 16:00`
+              : (
+                  <>
+                    {status.dailyYieldPercent}% daily · credited to wallet{" "}
+                    <DailyCreditTimeText
+                      country={display?.derivedFromCountry}
+                      variant="short"
+                    />
+                  </>
+                )
           }
           accent="invest"
           compactValue={localCurrency}

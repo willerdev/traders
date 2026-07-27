@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Blocks } from "lucide-react";
+import type { ChainContractEnrollment } from "@/lib/api";
 import { useBlockchain } from "@/hooks/use-blockchain";
 import { ActivityFeed } from "./activity-feed";
 import { AdminDashboardPanel } from "./admin-dashboard";
@@ -16,7 +17,11 @@ import { WalletPanel } from "./wallet-panel";
 import { LaunchSubscribeBanner } from "./launch-subscribe-banner";
 import { VaultPreflightScreen } from "./vault-preflight-screen";
 
-export function BlockchainDashboard() {
+export function BlockchainDashboard({
+  enrollment,
+}: {
+  enrollment: ChainContractEnrollment;
+}) {
   const {
     data,
     loading,
@@ -65,8 +70,11 @@ export function BlockchainDashboard() {
               Blockchain Dashboard
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-muted">
-              Live Polygon Amoy vault — enroll, deposit, settle rewards, and
-              claim from treasury.
+              Live vault
+              {enrollment.yieldPercent != null
+                ? ` · ${enrollment.yieldPercent}% contract yield`
+                : ""}
+              . Withdrawals deduct {enrollment.withdrawFeePercent}% fee.
             </p>
           </div>
           <button
@@ -106,6 +114,7 @@ export function BlockchainDashboard() {
             <WalletPanel
               wallet={data?.wallet ?? null}
               loading={loading && !data}
+              withdrawFeePercent={enrollment.withdrawFeePercent}
             />
           </motion.div>
           <motion.div
