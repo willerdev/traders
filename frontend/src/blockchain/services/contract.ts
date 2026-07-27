@@ -15,6 +15,7 @@ import {
   NETWORK,
   NATIVE_SYMBOL,
   explorerTx,
+  getChainId,
   getContractAddress,
   getExplorerUrl,
   getRpcUrl,
@@ -46,15 +47,23 @@ class ContractService {
   private readProvider: JsonRpcProvider | null = null;
 
   private provider() {
-    if (!this.readProvider) {
-      this.readProvider = new JsonRpcProvider(getRpcUrl());
+    const rpc = getRpcUrl();
+    // Recreate if RPC target changed (e.g. after hydration to proxy URL)
+    if (!this.readProvider || this.lastRpc !== rpc) {
+      this.readProvider = new JsonRpcProvider(rpc, getChainId(), {
+        staticNetwork: true,
+      });
+      this.lastRpc = rpc;
     }
     return this.readProvider;
   }
 
-  /** Reset provider if RPC URL changes at runtime */
+  private lastRpc: string | null = null;
+
+  /** Reset provider if RPC URL / address changes at runtime */
   resetProvider() {
     this.readProvider = null;
+    this.lastRpc = null;
   }
 
   isReady(): boolean {

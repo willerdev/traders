@@ -23,7 +23,6 @@ import {
   CONTRACT_VERSION,
   NETWORK_LABEL,
   getExplorerUrl,
-  getRpcUrl,
 } from "@/blockchain/config/contract";
 import type { ProgressCallback } from "@/blockchain/services/contract";
 import type { IBlockchainService } from "./blockchain-service";
@@ -285,10 +284,25 @@ export class HybridBlockchainService implements IBlockchainService {
     applyRuntimeContractConfig({
       contractAddress: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS,
       chainId: Number(process.env.NEXT_PUBLIC_CHAIN_ID || 80002),
-      rpc: process.env.NEXT_PUBLIC_RPC_URL || getRpcUrl(),
+      // Keep a public RPC for MetaMask; browser reads use /api/blockchain/rpc
+      rpc: process.env.NEXT_PUBLIC_RPC_URL,
       explorerUrl: process.env.NEXT_PUBLIC_EXPLORER_URL || getExplorerUrl(),
     });
 
+    try {
+      return await this.buildLiveDashboard();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/failed to fetch|network|cors|load failed/i.test(msg)) {
+        throw new Error(
+          "Could not reach Polygon Amoy RPC. Retry in a moment — reads go through /api/blockchain/rpc.",
+        );
+      }
+      throw e instanceof Error ? e : new Error(msg);
+    }
+  }
+
+  private async buildLiveDashboard(): Promise<DashboardPayload> {
     const wallet = await getWallet().catch(() => emptyWallet());
     const contract = await getContractInfo();
     const snap = await contractService.getOnChainSnapshot(wallet.address);

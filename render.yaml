@@ -109,13 +109,13 @@ services:
       - key: NEXT_PUBLIC_CONTRACT_ADDRESS
         sync: false
       - key: POLYGON_AMOY_RPC
-        value: https://rpc-amoy.polygon.technology/
+        value: https://polygon-amoy-bor-rpc.publicnode.com
       - key: POLYGON_AMOY_CHAIN_ID
         value: "80002"
       - key: POLYGON_AMOY_EXPLORER
         value: https://amoy.polygonscan.com
       - key: BNB_TESTNET_RPC
-        value: https://rpc-amoy.polygon.technology/
+        value: https://polygon-amoy-bor-rpc.publicnode.com
       - key: BNB_CHAIN_ID
         value: "80002"
       - key: BNB_EXPLORER_URL
@@ -139,7 +139,7 @@ services:
       - key: NEXT_PUBLIC_CHAIN_ID
         value: "80002"
       - key: NEXT_PUBLIC_RPC_URL
-        value: https://rpc-amoy.polygon.technology/
+        value: https://polygon-amoy-bor-rpc.publicnode.com
       - key: NEXT_PUBLIC_EXPLORER_URL
         value: https://amoy.polygonscan.com
       - key: NEXT_PUBLIC_BLOCKCHAIN_PROVIDER

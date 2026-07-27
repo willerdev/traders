@@ -59,16 +59,21 @@ export const CHAIN_ID = POLYGON_AMOY_CHAIN_ID;
 export const NETWORK = "Polygon Amoy";
 
 export function getRpcUrl(): string {
+  // Browser: same-origin proxy (avoids CORS / dead public RPC hosts)
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/api/blockchain/rpc`;
+  }
   return (
     runtime.rpc ||
     process.env.NEXT_PUBLIC_RPC_URL?.trim() ||
-    "https://rpc-amoy.polygon.technology/"
+    process.env.POLYGON_AMOY_RPC?.trim() ||
+    "https://polygon-amoy-bor-rpc.publicnode.com"
   );
 }
 
 export const RPC =
   process.env.NEXT_PUBLIC_RPC_URL?.trim() ||
-  "https://rpc-amoy.polygon.technology/";
+  "https://polygon-amoy-bor-rpc.publicnode.com";
 
 export function getExplorerUrl(): string {
   return (
@@ -94,12 +99,21 @@ export function getChainIdHex(): string {
 
 export const CHAIN_ID_HEX = `0x${POLYGON_AMOY_CHAIN_ID.toString(16)}`;
 
+/** Public RPC for MetaMask / wallet_addEthereumChain (not the browser proxy). */
+export function getPublicRpcUrl(): string {
+  return (
+    runtime.rpc ||
+    process.env.NEXT_PUBLIC_RPC_URL?.trim() ||
+    "https://polygon-amoy-bor-rpc.publicnode.com"
+  );
+}
+
 export function getAmoyChainParams() {
   return {
     chainId: getChainIdHex(),
     chainName: "Polygon Amoy Testnet",
     nativeCurrency: { name: "POL", symbol: "POL", decimals: 18 },
-    rpcUrls: [getRpcUrl()],
+    rpcUrls: [getPublicRpcUrl()],
     blockExplorerUrls: [getExplorerUrl()],
   } as const;
 }

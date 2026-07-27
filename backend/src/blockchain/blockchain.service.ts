@@ -90,7 +90,7 @@ export class BlockchainService {
       process.env.BNB_TESTNET_RPC ||
       process.env.BLOCKCHAIN_RPC_URL ||
       process.env.NEXT_PUBLIC_RPC_URL ||
-      'https://rpc-amoy.polygon.technology/';
+      'https://polygon-amoy-bor-rpc.publicnode.com';
     const explorer =
       process.env.POLYGON_AMOY_EXPLORER ||
       process.env.BNB_EXPLORER_URL ||
