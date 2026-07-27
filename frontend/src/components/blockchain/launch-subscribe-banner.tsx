@@ -66,14 +66,14 @@ export function LaunchSubscribeBanner() {
         <div className="max-w-2xl space-y-2">
           <div className="inline-flex items-center gap-2 rounded-full border border-amber-400/40 bg-amber-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-200">
             <Rocket className="h-3.5 w-3.5" />
-            Still launching
+            Still launching · mainnet soon
           </div>
           <h2 className="text-xl font-bold tracking-tight sm:text-2xl">
-            On-chain returns are almost ready
+            On-chain returns are live on Polygon Amoy
           </h2>
           <p className="text-sm leading-relaxed text-muted">
-            We&apos;re finishing the smart contract on BNB. Subscribe to get
-            notified the moment enrollment opens —{" "}
+            We&apos;re live on Polygon Amoy. Subscribe for enrollment alerts when
+            mainnet opens —{" "}
             <span className="font-semibold text-emerald-300">
               15% per day ROI
             </span>

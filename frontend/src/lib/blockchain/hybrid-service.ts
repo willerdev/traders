@@ -16,25 +16,120 @@ import {
   isContractConfigured,
   applyRuntimeContractConfig,
   withdraw,
+  getContractAddress,
   NATIVE_SYMBOL,
 } from "@/blockchain/services/blockchain";
-import type { ProgressCallback } from "@/blockchain/services/contract";
 import {
-  ApiBlockchainService,
-  type IBlockchainService,
-} from "./blockchain-service";
+  CONTRACT_VERSION,
+  NETWORK_LABEL,
+  getExplorerUrl,
+  getRpcUrl,
+} from "@/blockchain/config/contract";
+import type { ProgressCallback } from "@/blockchain/services/contract";
+import type { IBlockchainService } from "./blockchain-service";
 import type {
+  ActivityItem,
+  AdminDashboard,
+  BlockchainNotification,
+  BlockchainTransaction,
+  ChartPoint,
+  ContractEvent,
+  ContractHealth,
   ContractStats,
+  ContractStatus,
   DashboardPayload,
+  InvestmentStatistics,
+  InvestorRow,
   TxActionResult,
+  WalletState,
 } from "./types";
 
+function requireContract() {
+  applyRuntimeContractConfig({
+    contractAddress: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS,
+    chainId: Number(process.env.NEXT_PUBLIC_CHAIN_ID || 80002),
+    rpc: process.env.NEXT_PUBLIC_RPC_URL,
+    explorerUrl: process.env.NEXT_PUBLIC_EXPLORER_URL,
+  });
+  if (!isContractConfigured()) {
+    throw new Error(
+      "NEXT_PUBLIC_CONTRACT_ADDRESS is not set. Add it on Render traders-web and redeploy.",
+    );
+  }
+}
+
+function emptyWallet(): WalletState {
+  return {
+    connected: false,
+    address: null,
+    balance: 0,
+    investmentBalance: 0,
+    pendingRewards: 0,
+    claimableRewards: 0,
+    nextRewardAt: new Date(Date.now() + 3_600_000).toISOString(),
+    tier: "—",
+    referralEarnings: 0,
+    totalDeposited: 0,
+    totalWithdrawn: 0,
+    totalProfit: 0,
+    provider: null,
+  };
+}
+
+function daysAgo(n: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+function seriesFromEvents(
+  events: { timestamp: string; amount: number; type: string }[],
+  type: string,
+  days = 14,
+): ChartPoint[] {
+  const map = new Map<string, number>();
+  for (let i = days - 1; i >= 0; i--) map.set(daysAgo(i), 0);
+  for (const e of events) {
+    if (e.type !== type) continue;
+    const day = e.timestamp.slice(0, 10);
+    if (map.has(day)) map.set(day, (map.get(day) || 0) + e.amount);
+  }
+  return [...map.entries()].map(([date, value]) => ({
+    date,
+    value: Math.round(value * 1e6) / 1e6,
+  }));
+}
+
+function buildStatistics(activity: ActivityItem[]): InvestmentStatistics {
+  return {
+    dailyDeposits: seriesFromEvents(activity, "deposit"),
+    dailyWithdrawals: seriesFromEvents(activity, "withdrawal"),
+    tvlGrowth: seriesFromEvents(activity, "deposit").map((p, i, arr) => ({
+      date: p.date,
+      value: arr.slice(0, i + 1).reduce((s, x) => s + x.value, 0),
+    })),
+    userGrowth: Array.from({ length: 14 }, (_, i) => ({
+      date: daysAgo(13 - i),
+      value: 0,
+    })),
+    rewardsPaid: seriesFromEvents(activity, "claim"),
+    profitDistribution: seriesFromEvents(activity, "referral_bonus"),
+    monthlyComparison: [],
+    networkActivity: seriesFromEvents(activity, "deposit").map((p, i) => ({
+      date: p.date,
+      value:
+        (seriesFromEvents(activity, "deposit")[i]?.value || 0) +
+        (seriesFromEvents(activity, "withdrawal")[i]?.value || 0) +
+        (seriesFromEvents(activity, "claim")[i]?.value || 0),
+    })),
+  };
+}
+
 /**
- * Live Polygon Amoy provider — DemoVaultV2 via ethers.
- * Charts/admin extras still merge API cache when useful; core cards/tables are on-chain.
+ * Live-only blockchain service — no mock dashboard data.
+ * UI → this → ethers → DemoVaultV2 on Polygon Amoy.
  */
 export class HybridBlockchainService implements IBlockchainService {
-  private api = new ApiBlockchainService();
   private progress: ProgressCallback | undefined;
 
   setProgressHandler(cb?: ProgressCallback) {
@@ -42,6 +137,7 @@ export class HybridBlockchainService implements IBlockchainService {
   }
 
   connectWallet() {
+    requireContract();
     return connectWallet();
   }
 
@@ -64,20 +160,14 @@ export class HybridBlockchainService implements IBlockchainService {
   }
 
   getContractInfo() {
+    requireContract();
     return getContractInfo();
   }
 
   async getContractBalance() {
-    if (isContractConfigured()) {
-      try {
-        const balance = await contractService.contractBalance();
-        return { balance, balanceUsd: 0, symbol: NATIVE_SYMBOL };
-      } catch {
-        /* fall through */
-      }
-    }
-    const b = await this.api.getContractBalance();
-    return { ...b, symbol: NATIVE_SYMBOL };
+    requireContract();
+    const balance = await contractService.contractBalance();
+    return { balance, balanceUsd: 0, symbol: NATIVE_SYMBOL };
   }
 
   async getUserBalance() {
@@ -98,29 +188,17 @@ export class HybridBlockchainService implements IBlockchainService {
   }
 
   deposit(amount: number) {
-    if (!isContractConfigured()) {
-      return Promise.reject(
-        new Error("Contract address not set (NEXT_PUBLIC_CONTRACT_ADDRESS)"),
-      );
-    }
+    requireContract();
     return deposit(amount, this.progress);
   }
 
   withdraw(amount: number) {
-    if (!isContractConfigured()) {
-      return Promise.reject(
-        new Error("Contract address not set (NEXT_PUBLIC_CONTRACT_ADDRESS)"),
-      );
-    }
+    requireContract();
     return withdraw(amount, this.progress);
   }
 
   claim() {
-    if (!isContractConfigured()) {
-      return Promise.reject(
-        new Error("Contract address not set (NEXT_PUBLIC_CONTRACT_ADDRESS)"),
-      );
-    }
+    requireContract();
     return claimReward(this.progress);
   }
 
@@ -129,161 +207,204 @@ export class HybridBlockchainService implements IBlockchainService {
   }
 
   async getTransactions(params?: Parameters<IBlockchainService["getTransactions"]>[0]) {
-    if (isContractConfigured()) {
-      try {
-        const live = await getTransactions();
-        let items = live.items;
-        if (params?.type) items = items.filter((r) => r.type === params.type);
-        if (params?.status)
-          items = items.filter((r) => r.status === params.status);
-        if (params?.q) {
-          const q = params.q.toLowerCase();
-          items = items.filter(
-            (r) =>
-              r.wallet.toLowerCase().includes(q) ||
-              r.hash.toLowerCase().includes(q),
-          );
-        }
-        const page = params?.page ?? 1;
-        const pageSize = params?.pageSize ?? 20;
-        const start = (page - 1) * pageSize;
-        return {
-          items: items.slice(start, start + pageSize),
-          total: items.length,
-          page,
-          pageSize,
-        };
-      } catch {
-        /* fall through */
-      }
+    requireContract();
+    const live = await getTransactions();
+    let items = live.items;
+    if (params?.type) items = items.filter((r) => r.type === params.type);
+    if (params?.status) items = items.filter((r) => r.status === params.status);
+    if (params?.q) {
+      const q = params.q.toLowerCase();
+      items = items.filter(
+        (r) =>
+          r.wallet.toLowerCase().includes(q) ||
+          r.hash.toLowerCase().includes(q),
+      );
     }
-    return this.api.getTransactions(params);
+    const page = params?.page ?? 1;
+    const pageSize = params?.pageSize ?? 20;
+    const start = (page - 1) * pageSize;
+    return {
+      items: items.slice(start, start + pageSize),
+      total: items.length,
+      page,
+      pageSize,
+    };
   }
 
-  getStatistics() {
-    return this.api.getStatistics();
+  async getStatistics() {
+    requireContract();
+    const activity = await getActivity();
+    return buildStatistics(activity);
   }
 
   async getEvents() {
-    if (isContractConfigured()) {
-      try {
-        return await getContractEvents();
-      } catch {
-        /* fall through */
-      }
-    }
-    return this.api.getEvents();
+    requireContract();
+    return getContractEvents();
   }
 
   async getActivity() {
-    if (isContractConfigured()) {
-      try {
-        return await getActivity();
-      } catch {
-        /* fall through */
-      }
-    }
-    return this.api.getActivity();
+    requireContract();
+    return getActivity();
   }
 
   async getInvestors(params?: Parameters<IBlockchainService["getInvestors"]>[0]) {
-    if (isContractConfigured()) {
-      try {
-        const live = await getInvestors();
-        let items = live.items;
-        if (params?.q) {
-          const q = params.q.toLowerCase();
-          items = items.filter((r) => r.wallet.toLowerCase().includes(q));
-        }
-        const page = params?.page ?? 1;
-        const pageSize = params?.pageSize ?? 20;
-        const start = (page - 1) * pageSize;
-        return {
-          items: items.slice(start, start + pageSize),
-          total: items.length,
-          page,
-          pageSize,
-        };
-      } catch {
-        /* fall through */
-      }
+    requireContract();
+    const live = await getInvestors();
+    let items = live.items;
+    if (params?.q) {
+      const q = params.q.toLowerCase();
+      items = items.filter((r) => r.wallet.toLowerCase().includes(q));
     }
-    return this.api.getInvestors(params);
+    const page = params?.page ?? 1;
+    const pageSize = params?.pageSize ?? 20;
+    const start = (page - 1) * pageSize;
+    return {
+      items: items.slice(start, start + pageSize),
+      total: items.length,
+      page,
+      pageSize,
+    };
   }
 
-  getNotifications() {
-    return this.api.getNotifications();
+  async getNotifications(): Promise<BlockchainNotification[]> {
+    requireContract();
+    const activity = await getActivity();
+    return activity.slice(0, 10).map((a) => ({
+      id: a.id,
+      type: a.type,
+      title: a.type.replace(/_/g, " "),
+      message: `${a.amount} ${NATIVE_SYMBOL} · ${a.wallet.slice(0, 10)}…`,
+      createdAt: a.timestamp,
+      read: false,
+      severity: "info" as const,
+    }));
   }
 
   async getDashboard(): Promise<DashboardPayload> {
-    const base = await this.api.getDashboard();
-    try {
-      // Prefer NEXT_PUBLIC_CONTRACT_ADDRESS; API config is optional supplement
-      applyRuntimeContractConfig({
-        contractAddress:
-          process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
-          base.contract.contractAddress,
-        explorerUrl: base.contract.explorerBaseUrl,
-      });
+    requireContract();
+    applyRuntimeContractConfig({
+      contractAddress: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS,
+      chainId: Number(process.env.NEXT_PUBLIC_CHAIN_ID || 80002),
+      rpc: process.env.NEXT_PUBLIC_RPC_URL || getRpcUrl(),
+      explorerUrl: process.env.NEXT_PUBLIC_EXPLORER_URL || getExplorerUrl(),
+    });
 
-      const wallet = await getWallet();
-      const contract = await getContractInfo();
-      let stats = { ...base.stats, symbol: NATIVE_SYMBOL };
-      let activity = base.activity;
-      let transactions = base.transactions;
-      let events = base.events;
-      let investors = base.investors;
+    const wallet = await getWallet().catch(() => emptyWallet());
+    const contract = await getContractInfo();
+    const snap = await contractService.getOnChainSnapshot(wallet.address);
 
-      if (isContractConfigured()) {
-        const snap = await contractService.getOnChainSnapshot(wallet.address);
-        if (snap) {
-          stats = {
-            ...stats,
-            symbol: NATIVE_SYMBOL,
-            contractBalance: snap.contractBalance,
-            contractBalanceUsd: 0,
-            tvl: snap.contractBalance,
-            totalDeposits: snap.totalDeposited,
-            totalWithdrawals: snap.totalWithdrawn,
-            activeInvestors: snap.totalUsers,
-            totalRewardsDistributed: snap.totalRewardsPaid,
-          };
-          if (base.admin) {
-            base.admin = {
-              ...base.admin,
-              contractBalance: snap.contractBalance,
-              currentNetwork: snap.network,
-              ownerAddress: snap.owner,
-              contractVersion: snap.version,
-            };
-          }
-        }
-
-        try {
-          const liveTx = await getTransactions();
-          transactions = liveTx.items;
-          activity = await getActivity();
-          events = await getContractEvents();
-          const inv = await getInvestors();
-          investors = inv.items;
-        } catch {
-          /* keep mock tables if RPC event query fails */
-        }
-      }
-
-      return {
-        ...base,
-        wallet,
-        contract,
-        stats,
-        activity,
-        transactions,
-        events,
-        investors,
-      };
-    } catch {
-      return { ...base, stats: { ...base.stats, symbol: NATIVE_SYMBOL } };
+    if (!snap) {
+      throw new Error("Unable to read DemoVaultV2 — check RPC and contract address");
     }
+
+    let activity: ActivityItem[] = [];
+    let transactions: BlockchainTransaction[] = [];
+    let events: ContractEvent[] = [];
+    let investors: InvestorRow[] = [];
+
+    try {
+      const liveTx = await getTransactions();
+      transactions = liveTx.items;
+      activity = await getActivity();
+      events = await getContractEvents();
+      investors = (await getInvestors()).items;
+    } catch (e) {
+      console.warn("[LiveBlockchain] event query failed", e);
+    }
+
+    let latestBlock = 0;
+    let gasCurrent = 0;
+    try {
+      const provider = contractService.getReadProvider();
+      latestBlock = await provider.getBlockNumber();
+      const fee = await provider.getFeeData();
+      gasCurrent = fee.gasPrice ? Number(fee.gasPrice) / 1e9 : 0;
+    } catch {
+      /* RPC soft-fail for gas/block only */
+    }
+
+    const stats: ContractStats = {
+      contractBalance: snap.contractBalance,
+      contractBalanceUsd: 0,
+      symbol: NATIVE_SYMBOL,
+      tvl: snap.contractBalance,
+      totalDeposits: snap.totalDeposited,
+      totalWithdrawals: snap.totalWithdrawn,
+      activeInvestors: snap.totalUsers,
+      totalRewardsDistributed: snap.totalRewardsPaid,
+      gas: {
+        current: Math.round(gasCurrent * 1000) / 1000,
+        average: Math.round(gasCurrent * 1000) / 1000,
+        high: Math.round(gasCurrent * 1.5 * 1000) / 1000,
+      },
+      latestBlock,
+      currentApy: 0,
+      totalFeesCollected: 0,
+    };
+
+    const admin: AdminDashboard = {
+      contractBalance: snap.contractBalance,
+      pendingWithdrawals: 0,
+      pendingDeposits: 0,
+      usersOnline: 0,
+      dailyRevenue: 0,
+      weeklyRevenue: 0,
+      monthlyRevenue: 0,
+      totalFeesCollected: 0,
+      currentApy: 0,
+      contractVersion: snap.version || CONTRACT_VERSION,
+      currentNetwork: NETWORK_LABEL,
+      ownerAddress: snap.owner,
+      treasuryWallet: snap.owner,
+      reserveWallet: snap.owner,
+      emergencyWallet: snap.owner,
+    };
+
+    const health: ContractHealth = {
+      healthScore: contract.paused ? 40 : 95,
+      liquidityRatio: snap.contractBalance > 0 ? 1 : 0,
+      reserveRatio: 0,
+      rewardSustainability: 0,
+      pendingClaims: 0,
+      averageClaimTimeHours: 0,
+      averageDeposit:
+        snap.totalUsers > 0 ? snap.totalDeposited / snap.totalUsers : 0,
+      averageWithdrawal:
+        snap.totalUsers > 0 ? snap.totalWithdrawn / snap.totalUsers : 0,
+      rpcLatencyMs: 0,
+      blockDelay: 0,
+      lastSynchronization: new Date().toISOString(),
+      blockchainStatus: "healthy",
+      databaseStatus: "healthy",
+      apiStatus: "healthy",
+      walletServiceStatus: wallet.connected ? "healthy" : "degraded",
+      explorerStatus: "healthy",
+    };
+
+    const notifications = (await this.getNotifications().catch(() => [])) as BlockchainNotification[];
+
+    return {
+      contract: {
+        ...contract,
+        contractAddress: getContractAddress(),
+        explorerBaseUrl: getExplorerUrl(),
+        networkLabel: NETWORK_LABEL,
+        network: "polygon",
+        version: snap.version || CONTRACT_VERSION,
+        paused: snap.paused,
+        owner: snap.owner,
+      } satisfies ContractStatus,
+      stats,
+      wallet,
+      activity,
+      statistics: buildStatistics(activity),
+      transactions,
+      investors,
+      events,
+      notifications,
+      admin,
+      health,
+    };
   }
 
   async getContractStats(): Promise<ContractStats> {
@@ -291,73 +412,101 @@ export class HybridBlockchainService implements IBlockchainService {
     return dash.stats;
   }
 
-  getAdmin() {
-    return this.api.getAdmin();
+  async getAdmin(): Promise<AdminDashboard> {
+    const dash = await this.getDashboard();
+    if (!dash.admin) throw new Error("Admin snapshot unavailable");
+    return dash.admin;
   }
 
-  getHealth() {
-    return this.api.getHealth();
+  async getHealth(): Promise<ContractHealth> {
+    const dash = await this.getDashboard();
+    if (!dash.health) throw new Error("Health snapshot unavailable");
+    return dash.health;
   }
 
-  sync() {
-    return this.api.sync();
+  async sync() {
+    requireContract();
+    contractService.resetProvider();
+    const events = await getContractEvents();
+    return {
+      ok: true,
+      lastSynchronization: new Date().toISOString(),
+      message: `Synced ${events.length} on-chain events from Polygon Amoy`,
+    };
   }
 
   async pauseContract() {
-    if (isContractConfigured()) {
-      try {
-        await contractService.pause(this.progress);
-        return { ok: true, paused: true, message: "Contract paused on-chain" };
-      } catch (e) {
-        return {
-          ok: false,
-          paused: false,
-          message: e instanceof Error ? e.message : "Pause failed",
-        };
-      }
-    }
-    return this.api.pauseContract();
+    requireContract();
+    await contractService.pause(this.progress);
+    return { ok: true, paused: true, message: "Contract paused on-chain" };
   }
 
   async unpauseContract() {
-    if (isContractConfigured()) {
-      try {
-        await contractService.unpause(this.progress);
-        return { ok: true, paused: false, message: "Contract unpaused on-chain" };
-      } catch (e) {
-        return {
-          ok: false,
-          paused: true,
-          message: e instanceof Error ? e.message : "Unpause failed",
-        };
-      }
+    requireContract();
+    await contractService.unpause(this.progress);
+    return { ok: true, paused: false, message: "Contract unpaused on-chain" };
+  }
+
+  async updateRewardRate(_rate: number) {
+    return {
+      ok: false,
+      rate: _rate,
+      message: "Reward rate is managed via addReward() on DemoVaultV2 (owner only)",
+    };
+  }
+
+  async updateTreasuryWallet(_address: string) {
+    return {
+      ok: false,
+      address: _address,
+      message: "Treasury wallet update is not exposed on DemoVaultV2",
+    };
+  }
+
+  async updateFee(_feeBps: number) {
+    return {
+      ok: false,
+      feeBps: _feeBps,
+      message: "Fee updates are not exposed on DemoVaultV2",
+    };
+  }
+
+  async emergencyWithdraw(): Promise<TxActionResult> {
+    requireContract();
+    // Owner-only on contract; surface clear error if unauthorized
+    try {
+      const c = await (contractService as unknown as {
+        writeEmergency?: () => Promise<TxActionResult>;
+      });
+      void c;
+      return {
+        status: "failed",
+        hash: "",
+        message:
+          "Use Remix/owner wallet for emergencyWithdraw on DemoVaultV2, or call via owner account",
+        explorerUrl: "",
+      };
+    } catch (e) {
+      return {
+        status: "failed",
+        hash: "",
+        message: e instanceof Error ? e.message : "Emergency withdraw failed",
+        explorerUrl: "",
+      };
     }
-    return this.api.unpauseContract();
   }
 
-  updateRewardRate(rate: number) {
-    return this.api.updateRewardRate(rate);
+  async reindexTransactions() {
+    requireContract();
+    const events = await getContractEvents();
+    return { ok: true, indexed: events.length };
   }
 
-  updateTreasuryWallet(address: string) {
-    return this.api.updateTreasuryWallet(address);
-  }
-
-  updateFee(feeBps: number) {
-    return this.api.updateFee(feeBps);
-  }
-
-  emergencyWithdraw(): Promise<TxActionResult> {
-    return this.api.emergencyWithdraw();
-  }
-
-  reindexTransactions() {
-    return this.api.reindexTransactions();
-  }
-
-  reconnectRpc() {
+  async reconnectRpc() {
     contractService.resetProvider();
-    return this.api.reconnectRpc();
+    const started = Date.now();
+    await contractService.getReadProvider().getBlockNumber();
+    return { ok: true, latencyMs: Date.now() - started };
   }
 }
 

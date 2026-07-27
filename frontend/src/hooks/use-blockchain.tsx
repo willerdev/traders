@@ -80,7 +80,15 @@ export function BlockchainProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      // Prefer dedicated runtime config (API env), then dashboard merge
+      applyRuntimeContractConfig({
+        contractAddress: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS,
+        chainId: Number(process.env.NEXT_PUBLIC_CHAIN_ID || 80002),
+        rpc: process.env.NEXT_PUBLIC_RPC_URL,
+        explorerUrl: process.env.NEXT_PUBLIC_EXPLORER_URL,
+      });
+      setContractConfigured(isContractConfigured());
+
+      // Optional: merge API config if present (same address)
       try {
         const token = (() => {
           try {
@@ -105,18 +113,18 @@ export function BlockchainProvider({ children }: { children: ReactNode }) {
             chainId?: number;
             configured?: boolean;
           };
-          applyRuntimeContractConfig({
-            contractAddress: cfg.contractAddress,
-            explorerUrl: cfg.explorerBaseUrl,
-            rpc: cfg.rpc,
-            chainId: cfg.chainId,
-          });
-          setContractConfigured(
-            Boolean(cfg.configured) || isContractConfigured(),
-          );
+          if (cfg.configured && cfg.contractAddress) {
+            applyRuntimeContractConfig({
+              contractAddress: cfg.contractAddress,
+              explorerUrl: cfg.explorerBaseUrl,
+              rpc: cfg.rpc,
+              chainId: cfg.chainId,
+            });
+          }
+          setContractConfigured(isContractConfigured());
         }
       } catch {
-        /* fall through to dashboard */
+        /* live path does not require API config */
       }
 
       const dash = await service.getDashboard();
@@ -125,6 +133,7 @@ export function BlockchainProvider({ children }: { children: ReactNode }) {
       setData(dash);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load blockchain data");
+      setData(null);
     } finally {
       setLoading(false);
     }
