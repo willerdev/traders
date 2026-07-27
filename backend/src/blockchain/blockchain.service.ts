@@ -352,7 +352,7 @@ export class BlockchainService {
       ok: true,
       alreadySubscribed: false,
       message:
-        "You're on the list — we'll notify you when the contract is live so you can enroll (15% / day, $2,000+).",
+        "You're on the list — we'll notify you when the contract is live so you can enroll (indicative 10%–15% bands, $2,000+).",
     };
   }
 }

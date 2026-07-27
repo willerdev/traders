@@ -8,11 +8,12 @@ import {
   KycDocumentType,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { KycAiService } from './kyc-ai.service';
 
 export const CHAIN_CONTRACT_MIN_USD = 2000;
 export const CHAIN_CONTRACT_TIER_CUTOFF_USD = 5000;
-export const CHAIN_CONTRACT_YIELD_MID = 15;
-export const CHAIN_CONTRACT_YIELD_HIGH = 20;
+export const CHAIN_CONTRACT_YIELD_MID = 10;
+export const CHAIN_CONTRACT_YIELD_HIGH = 15;
 export const CHAIN_CONTRACT_WITHDRAW_FEE_PERCENT = 5;
 
 export function yieldPercentForDeposit(amountUsd: number): number {
@@ -29,7 +30,10 @@ export function yieldPercentForDeposit(amountUsd: number): number {
 
 @Injectable()
 export class ChainEnrollmentService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly kycAi: KycAiService,
+  ) {}
 
   async getEnrollment(userId: string) {
     await this.ensureTable();
@@ -127,6 +131,18 @@ export class ChainEnrollmentService {
       throw new BadRequestException('Complete liveness verification first');
     }
 
+    const numberCheck = await this.kycAi.validateDocumentNumber({
+      documentType: input.documentType,
+      documentNumber: input.documentNumber,
+      country: input.country,
+    });
+    if (!numberCheck.plausible) {
+      throw new BadRequestException(
+        numberCheck.reason ||
+          'Document number does not look valid. Check and try again.',
+      );
+    }
+
     // Keep profile country in sync for display / FX.
     await this.prisma.userProfile.upsert({
       where: { userId },
@@ -211,6 +227,39 @@ export class ChainEnrollmentService {
     return this.toDto(row);
   }
 
+  /** Wipe enrollment and return to phase 1 (terms). */
+  async cancelAndRestart(userId: string) {
+    await this.ensureTable();
+    const existing = await this.prisma.chainContractEnrollment.findUnique({
+      where: { userId },
+    });
+    if (!existing || existing.status === 'NOT_STARTED') {
+      return this.getEnrollment(userId);
+    }
+
+    const row = await this.prisma.chainContractEnrollment.update({
+      where: { userId },
+      data: {
+        status: 'NOT_STARTED',
+        termsAcceptedAt: null,
+        country: null,
+        documentType: null,
+        documentNumber: null,
+        documentFrontUrl: null,
+        documentBackUrl: null,
+        livenessSelfieUrl: null,
+        livenessPassedAt: null,
+        rejectionReason: null,
+        kycSubmittedAt: null,
+        approvedAt: null,
+        activatedAt: null,
+        yieldPercent: null,
+        withdrawFeePercent: CHAIN_CONTRACT_WITHDRAW_FEE_PERCENT,
+      },
+    });
+    return this.toDto(row);
+  }
+
   async listPending(limit = 50) {
     await this.ensureTable();
     const rows = await this.prisma.chainContractEnrollment.findMany({
@@ -285,12 +334,15 @@ export class ChainEnrollmentService {
       canAccessLiveDashboard,
       showNullDashboard,
       canDeposit: status === 'APPROVED',
+      canCancelRestart: status !== 'NOT_STARTED',
       terms: {
         minDepositUsd: CHAIN_CONTRACT_MIN_USD,
         midTierMaxUsd: CHAIN_CONTRACT_TIER_CUTOFF_USD,
         midTierYieldPercent: CHAIN_CONTRACT_YIELD_MID,
         highTierYieldPercent: CHAIN_CONTRACT_YIELD_HIGH,
         withdrawFeePercent: CHAIN_CONTRACT_WITHDRAW_FEE_PERCENT,
+        yieldDisclaimer:
+          'Displayed percentages are indicative starting bands. Actual yield may change based on deposit size, available funds, market conditions, and past user behavior on the platform.',
       },
     };
   }

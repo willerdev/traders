@@ -236,11 +236,11 @@ function PhaseTerms({
           },
           {
             title: `$${t.minDepositUsd.toLocaleString()}–$${t.midTierMaxUsd.toLocaleString()}`,
-            body: `${t.midTierYieldPercent}% contract yield on eligible balance in this band.`,
+            body: `Indicative ${t.midTierYieldPercent}% starting band on eligible balance — may adjust.`,
           },
           {
             title: `Above $${t.midTierMaxUsd.toLocaleString()}`,
-            body: `${t.highTierYieldPercent}% contract yield. Withdrawals deduct a ${t.withdrawFeePercent}% fee.`,
+            body: `Indicative ${t.highTierYieldPercent}% starting band. Withdrawals deduct a ${t.withdrawFeePercent}% fee.`,
           },
         ].map((card) => (
           <div
@@ -269,7 +269,7 @@ function PhaseTerms({
             .
           </li>
           <li>
-            Yield tiers:{" "}
+            Indicative yield bands:{" "}
             <strong className="text-gray-200">
               {t.midTierYieldPercent}%
             </strong>{" "}
@@ -279,6 +279,10 @@ function PhaseTerms({
               {t.highTierYieldPercent}%
             </strong>{" "}
             above ${t.midTierMaxUsd.toLocaleString()}.
+          </li>
+          <li>
+            {t.yieldDisclaimer ??
+              "These percentages are indicative and may change depending on deposit size, available funds, market conditions, and your past behavior on the platform."}
           </li>
           <li>
             Every withdrawal deducts{" "}
@@ -360,6 +364,28 @@ function PhaseKyc({
     if (needsBack && !backUrl) return false;
     return true;
   }, [resolvedCountry, documentNumber, frontUrl, backUrl, needsBack]);
+
+  async function goToLiveness() {
+    if (!docsReady) return;
+    setLoading(true);
+    setError("");
+    try {
+      await api.chainEnrollment.validateDocument({
+        country: resolvedCountry,
+        documentType,
+        documentNumber: documentNumber.trim(),
+      });
+      setStep("liveness");
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Document number looks invalid. Check and try again.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function onLivenessComplete(dataUrl: string) {
     setLoading(true);
@@ -498,12 +524,16 @@ function PhaseKyc({
 
             <Button
               size="lg"
-              disabled={!docsReady}
-              onClick={() => setStep("liveness")}
+              disabled={!docsReady || loading}
+              onClick={() => void goToLiveness()}
               className="gap-2"
             >
-              <ShieldCheck className="h-4 w-4" />
-              Continue to liveness
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ShieldCheck className="h-4 w-4" />
+              )}
+              {loading ? "Checking ID number…" : "Continue to liveness"}
             </Button>
           </motion.div>
         ) : (
@@ -619,9 +649,10 @@ export function ContractNullDashboard({
           <p className="text-sm font-semibold text-white">Launch deposit</p>
           <p className="text-xs text-gray-400">
             ${t.minDepositUsd.toLocaleString()}–$
-            {t.midTierMaxUsd.toLocaleString()} → {t.midTierYieldPercent}% · above
-            ${t.midTierMaxUsd.toLocaleString()} → {t.highTierYieldPercent}% ·
-            withdrawals: {t.withdrawFeePercent}% fee
+            {t.midTierMaxUsd.toLocaleString()} → indicative {t.midTierYieldPercent}% ·
+            above ${t.midTierMaxUsd.toLocaleString()} → indicative{" "}
+            {t.highTierYieldPercent}% · withdrawals: {t.withdrawFeePercent}% fee.
+            Rates may change with funds and past behavior.
           </p>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1 space-y-2">
@@ -656,6 +687,8 @@ export function ContractNullDashboard({
 }
 
 export function ContractEnrollFlow({ enrollment, onUpdated }: Props) {
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState("");
   const phase =
     enrollment.status === "NOT_STARTED"
       ? 1
@@ -664,9 +697,47 @@ export function ContractEnrollFlow({ enrollment, onUpdated }: Props) {
         ? 2
         : 3;
 
+  async function cancelAndRestart() {
+    if (
+      !window.confirm(
+        "Cancel enrollment and start over? Your terms acceptance and KYC for this contract will be cleared.",
+      )
+    ) {
+      return;
+    }
+    setCancelling(true);
+    setCancelError("");
+    try {
+      onUpdated(await api.chainEnrollment.cancel());
+    } catch (e) {
+      setCancelError(
+        e instanceof Error ? e.message : "Could not cancel enrollment",
+      );
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <PhasePills phase={phase} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <PhasePills phase={phase} />
+        {enrollment.canCancelRestart !== false &&
+          enrollment.status !== "NOT_STARTED" && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={cancelling}
+              onClick={() => void cancelAndRestart()}
+              className="gap-2"
+            >
+              {cancelling && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Cancel &amp; restart
+            </Button>
+          )}
+      </div>
+      {cancelError && <p className="text-sm text-danger">{cancelError}</p>}
       {phase === 1 && (
         <PhaseTerms enrollment={enrollment} onAccepted={onUpdated} />
       )}

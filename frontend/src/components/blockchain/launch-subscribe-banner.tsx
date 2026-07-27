@@ -75,11 +75,11 @@ export function LaunchSubscribeBanner() {
             We&apos;re live on Polygon Amoy. Subscribe for enrollment alerts when
             mainnet opens —{" "}
             <span className="font-semibold text-emerald-300">
-              15% per day ROI
+              10%–15% indicative ROI bands
             </span>
             , investments from{" "}
             <span className="font-semibold text-sky-300">$2,000 and above</span>{" "}
-            only.
+            only. Actual rates may vary with funds and past behavior.
           </p>
         </div>
 

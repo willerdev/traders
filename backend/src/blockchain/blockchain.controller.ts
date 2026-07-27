@@ -15,19 +15,13 @@ import { Public } from '../auth/decorators/public.decorator';
 import { JwtAuthGuard, RolesGuard } from '../auth/guards';
 import { BlockchainService } from './blockchain.service';
 import { ChainEnrollmentService } from './chain-enrollment.service';
+import { KycAiService } from './kyc-ai.service';
 
 type AuthedRequest = { user: { id: string; role: UserRole } };
 
 /**
  * REST façade matching the planned contract surface.
  * Prefixed with /blockchain to avoid colliding with platform /wallet.
- *
- * Routes (all under /api/v1/blockchain):
- *   GET  /contract/status | /contract/stats
- *   GET  /wallet | /transactions | /events | /dashboard | /investors | /notifications | /health | /admin
- *   POST /deposit | /withdraw | /claim | /compound
- *   POST /wallet/connect | /wallet/disconnect | /sync | admin actions
- *   GET/POST /enrollment/*
  */
 @Controller('blockchain')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -35,7 +29,42 @@ export class BlockchainController {
   constructor(
     private readonly blockchain: BlockchainService,
     private readonly enrollment: ChainEnrollmentService,
+    private readonly kycAi: KycAiService,
   ) {}
+
+  @Get('enrollment/ai-status')
+  enrollmentAiStatus() {
+    return this.kycAi.configured();
+  }
+
+  @Post('enrollment/validate-document')
+  async validateDocument(
+    @Body()
+    body: {
+      country?: string;
+      documentType?: 'PASSPORT' | 'NATIONAL_ID' | 'DRIVERS_LICENSE';
+      documentNumber?: string;
+    },
+  ) {
+    if (!body.documentType) {
+      throw new BadRequestException('Document type is required');
+    }
+    if (!body.documentNumber?.trim()) {
+      throw new BadRequestException('Document number is required');
+    }
+    const result = await this.kycAi.validateDocumentNumber({
+      documentType: body.documentType,
+      documentNumber: body.documentNumber,
+      country: body.country,
+    });
+    if (!result.plausible) {
+      throw new BadRequestException(
+        result.reason ||
+          'Document number does not look valid. Check and try again.',
+      );
+    }
+    return result;
+  }
 
   @Get('enrollment')
   getEnrollment(@Request() req: AuthedRequest) {
@@ -45,6 +74,11 @@ export class BlockchainController {
   @Post('enrollment/accept-terms')
   acceptTerms(@Request() req: AuthedRequest) {
     return this.enrollment.acceptTerms(req.user.id);
+  }
+
+  @Post('enrollment/cancel')
+  cancelEnrollment(@Request() req: AuthedRequest) {
+    return this.enrollment.cancelAndRestart(req.user.id);
   }
 
   @Post('enrollment/kyc')

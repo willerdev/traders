@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { Blocks } from "lucide-react";
-import type { ChainContractEnrollment } from "@/lib/api";
+import { Blocks, Loader2 } from "lucide-react";
+import { api, type ChainContractEnrollment } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 import { useBlockchain } from "@/hooks/use-blockchain";
 import { ActivityFeed } from "./activity-feed";
 import { AdminDashboardPanel } from "./admin-dashboard";
@@ -19,9 +21,12 @@ import { VaultPreflightScreen } from "./vault-preflight-screen";
 
 export function BlockchainDashboard({
   enrollment,
+  onEnrollmentChange,
 }: {
   enrollment: ChainContractEnrollment;
+  onEnrollmentChange?: (next: ChainContractEnrollment) => void;
 }) {
+  const [cancelling, setCancelling] = useState(false);
   const {
     data,
     loading,
@@ -34,6 +39,27 @@ export function BlockchainDashboard({
     runPreflight,
   } = useBlockchain();
 
+  async function cancelAndRestart() {
+    if (
+      !window.confirm(
+        "Cancel enrollment and restart from terms? You will leave the live vault dashboard until you re-enroll.",
+      )
+    ) {
+      return;
+    }
+    setCancelling(true);
+    try {
+      const next = await api.chainEnrollment.cancel();
+      onEnrollmentChange?.(next);
+    } catch (e) {
+      window.alert(
+        e instanceof Error ? e.message : "Could not cancel enrollment",
+      );
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   if (!vaultReady) {
     return (
       <BlockchainErrorBoundary>
@@ -45,6 +71,17 @@ export function BlockchainDashboard({
             running={preflightRunning}
             onRetry={() => void runPreflight()}
           />
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={cancelling}
+              onClick={() => void cancelAndRestart()}
+            >
+              {cancelling ? "Cancelling…" : "Cancel & restart enrollment"}
+            </Button>
+          </div>
         </div>
       </BlockchainErrorBoundary>
     );
@@ -72,18 +109,31 @@ export function BlockchainDashboard({
             <p className="mt-1 max-w-2xl text-sm text-muted">
               Live vault
               {enrollment.yieldPercent != null
-                ? ` · ${enrollment.yieldPercent}% contract yield`
+                ? ` · ${enrollment.yieldPercent}% contract yield (indicative; may vary)`
                 : ""}
               . Withdrawals deduct {enrollment.withdrawFeePercent}% fee.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void refresh()}
-            className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs text-muted transition hover:border-primary/40 hover:text-foreground"
-          >
-            Live · refreshes every 30s
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={cancelling}
+              onClick={() => void cancelAndRestart()}
+              className="gap-2"
+            >
+              {cancelling && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Cancel &amp; restart
+            </Button>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs text-muted transition hover:border-primary/40 hover:text-foreground"
+            >
+              Live · refreshes every 30s
+            </button>
+          </div>
         </motion.div>
 
         {error && (

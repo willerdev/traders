@@ -269,10 +269,12 @@ export default function TermsPage() {
             contract terms, complete document + liveness KYC, and wait for
             approval before depositing. Minimum deposit is{" "}
             <strong className="text-gray-200">$2,000 USDT</strong>. Accounts from
-            $2,000–$5,000 earn{" "}
-            <strong className="text-gray-200">15%</strong> contract yield; above
-            $5,000 earn <strong className="text-gray-200">20%</strong>. Every
-            withdrawal deducts a{" "}
+            $2,000–$5,000 have an indicative{" "}
+            <strong className="text-gray-200">10%</strong> starting yield band;
+            above $5,000 an indicative{" "}
+            <strong className="text-gray-200">15%</strong> band. Actual percentage
+            may change depending on deposit size, available funds, market
+            conditions, and past user behavior. Every withdrawal deducts a{" "}
             <strong className="text-gray-200">5%</strong> fee. The live dashboard
             stays empty until approval; the contract launches only after an
             approved deposit.

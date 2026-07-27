@@ -304,6 +304,10 @@ class ApiClient {
         "/blockchain/enrollment/accept-terms",
         { method: "POST" },
       ),
+    cancel: () =>
+      this.request<ChainContractEnrollment>("/blockchain/enrollment/cancel", {
+        method: "POST",
+      }),
     submitKyc: (data: ChainContractKycInput) =>
       this.request<ChainContractEnrollment>("/blockchain/enrollment/kyc", {
         method: "POST",
@@ -317,6 +321,21 @@ class ApiClient {
           body: JSON.stringify({ depositUsd }),
         },
       ),
+    validateDocument: (data: {
+      country?: string;
+      documentType: "PASSPORT" | "NATIONAL_ID" | "DRIVERS_LICENSE";
+      documentNumber: string;
+    }) =>
+      this.request<{
+        ok: boolean;
+        plausible: boolean;
+        confidence: number;
+        reason: string;
+        suggestedFormatHint?: string;
+      }>("/blockchain/enrollment/validate-document", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
   };
 
   signals = {
@@ -1906,15 +1925,17 @@ export interface ChainContractEnrollment {
   activatedAt: string | null;
   yieldPercent: number | null;
   withdrawFeePercent: number;
-  canAccessLiveDashboard: boolean;
+    canAccessLiveDashboard: boolean;
   showNullDashboard: boolean;
   canDeposit: boolean;
+  canCancelRestart?: boolean;
   terms: {
     minDepositUsd: number;
     midTierMaxUsd: number;
     midTierYieldPercent: number;
     highTierYieldPercent: number;
     withdrawFeePercent: number;
+    yieldDisclaimer?: string;
   };
 }
 
