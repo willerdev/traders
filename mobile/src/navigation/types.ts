@@ -25,6 +25,7 @@ export type WalletStackParamList = {
 
 export type InvestStackParamList = {
   InvestMain: undefined;
+  ChainEnroll: undefined;
 };
 
 export type MoreStackParamList = {
@@ -32,6 +33,9 @@ export type MoreStackParamList = {
   MessagesMain: undefined;
   SettingsMain: undefined;
   Payouts: undefined;
+  Terms: undefined;
+  Kyc: undefined;
+  ChainEnroll: undefined;
 };
 
 export type MainTabParamList = {

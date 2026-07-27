@@ -75,10 +75,26 @@ export function WithdrawScreen() {
 
   const selected = wallets.find((w) => w.id === selectedId) ?? null;
   const available = summary?.availableBalance ?? 0;
-  const fee = summary?.withdrawalFeeUsdt ?? 0;
+  const processingFee = summary?.withdrawalFeeUsdt ?? 0;
+  const scheduleEnabled = summary?.withdrawalScheduleEnabled !== false;
+  const inWindow = summary?.withdrawalInPreferredWindow !== false;
+  const penaltyPercent =
+    scheduleEnabled && !inWindow
+      ? Number(summary?.withdrawalOffSchedulePenaltyPercent ?? 8)
+      : 0;
   const value = Number(amount);
+  const penaltyUsdt =
+    Number.isFinite(value) && value > 0
+      ? Math.round(((value * penaltyPercent) / 100) * 100) / 100
+      : 0;
+  const totalFees = Math.round((processingFee + penaltyUsdt) * 100) / 100;
   const net =
-    Number.isFinite(value) && value > 0 ? Math.max(value - fee, 0) : 0;
+    Number.isFinite(value) && value > 0 ? Math.max(value - totalFees, 0) : 0;
+  const windowLabel =
+    summary?.withdrawalPreferredWindowLabel ??
+    (String(summary?.withdrawalPreferredSchedule).toUpperCase() === "MONTHLY"
+      ? "the 1st of each month (UTC)"
+      : "Sundays (UTC)");
   const stage = useMemo(() => withdrawStage(submittedStatus), [submittedStatus]);
 
   async function submit() {
@@ -237,12 +253,32 @@ export function WithdrawScreen() {
             }
           />
           <View style={styles.feeRow}>
-            <Text style={{ color: theme.muted, fontSize: 12 }}>Fee</Text>
-            <Text style={{ color: theme.text, fontWeight: "600", fontSize: 12 }}>{formatUsdt(fee)}</Text>
+            <Text style={{ color: theme.muted, fontSize: 12 }}>Processing fee</Text>
+            <Text style={{ color: theme.text, fontWeight: "600", fontSize: 12 }}>
+              {formatUsdt(processingFee)}
+            </Text>
           </View>
+          {scheduleEnabled ? (
+            <Text style={{ color: theme.muted, fontSize: 12, marginBottom: 6, lineHeight: 17 }}>
+              Preferred: {windowLabel}
+              {inWindow
+                ? " · in-window (no off-schedule penalty)"
+                : ` · off-schedule (+${penaltyPercent}% penalty)`}
+            </Text>
+          ) : null}
+          {penaltyUsdt > 0 ? (
+            <View style={styles.feeRow}>
+              <Text style={{ color: theme.muted, fontSize: 12 }}>Off-schedule penalty</Text>
+              <Text style={{ color: theme.text, fontWeight: "600", fontSize: 12 }}>
+                {formatUsdt(penaltyUsdt)}
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.feeRow}>
             <Text style={{ color: theme.muted, fontSize: 12 }}>You receive</Text>
-            <Text style={{ color: theme.text, fontWeight: "700", fontSize: 13 }}>{formatUsdt(net)}</Text>
+            <Text style={{ color: theme.text, fontWeight: "700", fontSize: 13 }}>
+              {formatUsdt(net)}
+            </Text>
           </View>
         </SectionCard>
 

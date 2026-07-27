@@ -135,12 +135,6 @@ export function RegistrationPaymentScreen() {
         <Text style={{ color: theme.text, fontWeight: "800", fontSize: 22 }}>
           {formatUsdt(featured?.registrationFeeUsdt ?? 0)}
         </Text>
-        {featured?.promo ? (
-          <Text style={{ color: theme.primary, marginTop: 8 }}>
-            Featured {featured.promo.code}: {featured.promo.discountPercent}% off →{" "}
-            {formatUsdt(featured.promo.finalAmount)}
-          </Text>
-        ) : null}
       </SectionCard>
 
       <SectionCard title="Promo">

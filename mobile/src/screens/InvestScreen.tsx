@@ -1,17 +1,21 @@
 import { useCallback, useState } from "react";
 import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useAuth } from "../stores/auth";
 import { useTheme } from "../stores/theme";
 import { Field, MoneyRow, PrimaryButton, ScreenState, SectionCard } from "../components/ui";
 import { InvestorPolicyBanners } from "../components/InvestorPolicyBanners";
 import { formatUsdt, fmtDate } from "../lib/format";
+import { dailyCreditTimeShort } from "../lib/daily-credit-time";
 import type { InvestorStatus } from "../lib/types";
+import type { InvestStackParamList } from "../navigation/types";
 
 export function InvestScreen() {
   const { api } = useAuth();
   const { theme } = useTheme();
+  const navigation = useNavigation<NativeStackNavigationProp<InvestStackParamList>>();
   const [status, setStatus] = useState<InvestorStatus | null>(null);
   const [vipFee, setVipFee] = useState<number | null>(null);
   const [amount, setAmount] = useState("100");
@@ -19,6 +23,9 @@ export function InvestScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const creditHint = dailyCreditTimeShort(
+    status?.displayCurrency?.derivedFromCountry ?? null,
+  );
 
   const load = useCallback(async () => {
     setError(null);
@@ -134,11 +141,19 @@ export function InvestScreen() {
               10
             }
           />
+          <PrimaryButton
+            label="Open Chain vault enroll"
+            variant="secondary"
+            onPress={() => navigation.navigate("ChainEnroll")}
+          />
           <SectionCard title="Status">
             <MoneyRow label="Active" value={status?.active ? "Yes" : "No"} />
             <MoneyRow label="Wallet" value={formatUsdt(status?.walletBalance)} />
             <MoneyRow label="Investment" value={formatUsdt(status?.investmentBalance)} emphasize />
             <MoneyRow label="Daily yield" value={`${status?.dailyYieldPercent ?? 0}%`} />
+            <Text style={{ color: theme.muted, marginTop: 8, fontSize: 12 }}>
+              Credits {creditHint}
+            </Text>
             {status?.vip?.active ? (
               <Text style={{ color: theme.primary, marginTop: 8, fontWeight: "700" }}>
                 VIP · {status.vip.benefits?.dailyYieldPercent ?? status.vipDailyYieldPercent ?? 10}%

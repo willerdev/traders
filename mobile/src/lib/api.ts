@@ -24,6 +24,8 @@ import type {
   WalletLedgerItem,
   WalletSummary,
   WithdrawalWalletNetwork,
+  ChainContractEnrollment,
+  ChainContractKycInput,
 } from "./types";
 
 type TokenGetter = () => string | null;
@@ -423,6 +425,48 @@ export class ApiClient {
       }>("/investor/redeem", {
         method: "POST",
         body: JSON.stringify({ amount }),
+      }),
+  };
+
+  chainEnrollment = {
+    get: () =>
+      this.request<ChainContractEnrollment>("/blockchain/enrollment"),
+    acceptTerms: () =>
+      this.request<ChainContractEnrollment>(
+        "/blockchain/enrollment/accept-terms",
+        { method: "POST" },
+      ),
+    cancel: () =>
+      this.request<ChainContractEnrollment>("/blockchain/enrollment/cancel", {
+        method: "POST",
+      }),
+    submitKyc: (data: ChainContractKycInput) =>
+      this.request<ChainContractEnrollment>("/blockchain/enrollment/kyc", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    activate: (depositUsd: number) =>
+      this.request<ChainContractEnrollment>(
+        "/blockchain/enrollment/activate",
+        {
+          method: "POST",
+          body: JSON.stringify({ depositUsd }),
+        },
+      ),
+    validateDocument: (data: {
+      country?: string;
+      documentType: "PASSPORT" | "NATIONAL_ID" | "DRIVERS_LICENSE";
+      documentNumber: string;
+    }) =>
+      this.request<{
+        ok: boolean;
+        plausible: boolean;
+        confidence: number;
+        reason: string;
+        suggestedFormatHint?: string;
+      }>("/blockchain/enrollment/validate-document", {
+        method: "POST",
+        body: JSON.stringify(data),
       }),
   };
 

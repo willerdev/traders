@@ -2,7 +2,9 @@ import { useMemo, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +15,7 @@ import { useAuth } from "../../stores/auth";
 import { useTheme } from "../../stores/theme";
 import { Field, PrimaryButton } from "../../components/ui";
 import { registerSchema } from "../../lib/schemas";
+import { WEB_APP_URL } from "../../config/env";
 import type { AuthStackParamList } from "../../navigation/types";
 
 type Props = NativeStackScreenProps<AuthStackParamList, "Register">;
@@ -25,10 +28,15 @@ export function RegisterScreen({ navigation }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [referralCode, setReferralCode] = useState("");
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleRegister() {
+    if (!acceptTerms) {
+      setError("You must accept the Terms & Conditions");
+      return;
+    }
     const parsed = registerSchema.safeParse({
       displayName: displayName.trim(),
       email: email.trim().toLowerCase(),
@@ -69,7 +77,12 @@ export function RegisterScreen({ navigation }: Props) {
           promo) to reach ACTIVE status.
         </Text>
         <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.divider }]}>
-          <Field label="Display name" value={displayName} onChangeText={setDisplayName} autoCapitalize="words" />
+          <Field
+            label="Display name"
+            value={displayName}
+            onChangeText={setDisplayName}
+            autoCapitalize="words"
+          />
           <Field
             label="Email"
             value={email}
@@ -91,11 +104,42 @@ export function RegisterScreen({ navigation }: Props) {
             placeholder="Required by backend"
             autoCapitalize="characters"
           />
+          <Pressable
+            onPress={() => setAcceptTerms((v) => !v)}
+            style={{
+              flexDirection: "row",
+              gap: 10,
+              marginBottom: 14,
+              alignItems: "flex-start",
+            }}
+          >
+            <View
+              style={{
+                width: 20,
+                height: 20,
+                borderRadius: 6,
+                borderWidth: 1,
+                borderColor: theme.divider,
+                backgroundColor: acceptTerms ? theme.primary : "transparent",
+                marginTop: 2,
+              }}
+            />
+            <Text style={{ color: theme.muted, flex: 1, fontSize: 13, lineHeight: 18 }}>
+              I accept the{" "}
+              <Text
+                style={{ color: theme.primary }}
+                onPress={() => void Linking.openURL(`${WEB_APP_URL}/terms`)}
+              >
+                Terms & Conditions
+              </Text>{" "}
+              (including preferred withdrawals and vault ROI bands).
+            </Text>
+          </Pressable>
           {error ? <Text style={{ color: theme.error, marginBottom: 12 }}>{error}</Text> : null}
           <PrimaryButton
             label={busy ? "Creating…" : "Create account"}
             onPress={() => void handleRegister()}
-            disabled={busy}
+            disabled={busy || !acceptTerms}
           />
         </View>
       </ScrollView>

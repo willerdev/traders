@@ -22,6 +22,13 @@ export function MoreScreen() {
 
   const items: Item[] = [
     {
+      key: "chain",
+      title: "Chain vault",
+      hint: "On-chain enroll, KYC & launch",
+      icon: "cube",
+      onPress: () => navigation.navigate("ChainEnroll"),
+    },
+    {
       key: "mt5",
       title: "MT5",
       hint: "Quotes, charts & trade on web",
@@ -43,11 +50,11 @@ export function MoreScreen() {
       onPress: () => navigation.navigate("Payouts"),
     },
     {
-      key: "claims",
-      title: "TP Claims",
-      hint: "Open on web",
-      icon: "checkmark-done",
-      onPress: () => void Linking.openURL(`${WEB_APP_URL}/tp-claims`),
+      key: "terms",
+      title: "Terms & Conditions",
+      hint: "Withdrawals, vault & risk",
+      icon: "document-text",
+      onPress: () => navigation.navigate("Terms"),
     },
     {
       key: "settings",
@@ -62,7 +69,7 @@ export function MoreScreen() {
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
       <Text style={[styles.title, { color: theme.text }]}>More</Text>
       <Text style={[styles.sub, { color: theme.muted }]}>
-        MT5, support, payouts & account
+        Chain, MT5, support, payouts & account
       </Text>
       <ScrollView contentContainerStyle={styles.content}>
         {items.map((item) => (

@@ -98,6 +98,12 @@ export interface WalletSummary {
   minDepositUsdt: number;
   displayCurrency?: DisplayCurrencyInfo;
   withdrawalFeeUsdt?: number;
+  withdrawalScheduleEnabled?: boolean;
+  withdrawalPreferredSchedule?: "WEEKLY" | "MONTHLY" | string;
+  withdrawalOffSchedulePenaltyPercent?: number;
+  withdrawalInPreferredWindow?: boolean;
+  withdrawalNextPreferredWindowAt?: string;
+  withdrawalPreferredWindowLabel?: string;
   vipActive?: boolean;
   activePlan: {
     id: string;
@@ -392,4 +398,52 @@ export interface PaymentStatusResult {
   payAddress?: string;
   progress: string;
   confirmed: boolean;
+}
+
+export interface ChainContractKycInput {
+  country: string;
+  documentType: "PASSPORT" | "NATIONAL_ID" | "DRIVERS_LICENSE";
+  documentNumber: string;
+  documentFrontUrl: string;
+  documentBackUrl?: string;
+  livenessSelfieUrl: string;
+}
+
+export interface ChainContractEnrollment {
+  id: string | null;
+  userId: string;
+  status:
+    | "NOT_STARTED"
+    | "TERMS_ACCEPTED"
+    | "KYC_PENDING"
+    | "KYC_REJECTED"
+    | "APPROVED"
+    | "ACTIVE";
+  phase: 1 | 2 | 3;
+  termsAcceptedAt: string | null;
+  country: string | null;
+  documentType: "PASSPORT" | "NATIONAL_ID" | "DRIVERS_LICENSE" | null;
+  documentNumber: string | null;
+  documentFrontUrl: string | null;
+  documentBackUrl: string | null;
+  livenessSelfieUrl: string | null;
+  livenessPassedAt: string | null;
+  rejectionReason: string | null;
+  kycSubmittedAt: string | null;
+  approvedAt: string | null;
+  activatedAt: string | null;
+  yieldPercent: number | null;
+  withdrawFeePercent: number;
+  canAccessLiveDashboard: boolean;
+  showNullDashboard: boolean;
+  canDeposit: boolean;
+  canCancelRestart?: boolean;
+  terms: {
+    minDepositUsd: number;
+    midTierMaxUsd: number;
+    midTierYieldPercent: number;
+    highTierYieldPercent: number;
+    withdrawFeePercent: number;
+    yieldDisclaimer?: string;
+  };
 }

@@ -15,8 +15,11 @@ import { MessagesScreen } from "../screens/MessagesScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { MoreScreen } from "../screens/MoreScreen";
 import { SavedWalletsScreen } from "../screens/settings/SavedWalletsScreen";
+import { KycScreen } from "../screens/settings/KycScreen";
 import { PayoutsScreen } from "../screens/PayoutsScreen";
 import { RegistrationPaymentScreen } from "../screens/RegistrationPaymentScreen";
+import { ChainEnrollScreen } from "../screens/ChainEnrollScreen";
+import { TermsScreen } from "../screens/TermsScreen";
 import type {
   HomeStackParamList,
   InvestStackParamList,
@@ -128,6 +131,11 @@ function InvestStackNavigator() {
   return (
     <InvestStack.Navigator screenOptions={stackScreenOptions(theme)}>
       <InvestStack.Screen name="InvestMain" component={InvestScreen} options={{ headerShown: false }} />
+      <InvestStack.Screen
+        name="ChainEnroll"
+        component={ChainEnrollScreen}
+        options={{ title: "Chain vault" }}
+      />
     </InvestStack.Navigator>
   );
 }
@@ -148,6 +156,13 @@ function MoreStackNavigator() {
         options={{ headerShown: false }}
       />
       <MoreStack.Screen name="Payouts" component={PayoutsScreen} options={{ title: "Payouts" }} />
+      <MoreStack.Screen name="Terms" component={TermsScreen} options={{ title: "Terms" }} />
+      <MoreStack.Screen name="Kyc" component={KycScreen} options={{ title: "KYC" }} />
+      <MoreStack.Screen
+        name="ChainEnroll"
+        component={ChainEnrollScreen}
+        options={{ title: "Chain vault" }}
+      />
     </MoreStack.Navigator>
   );
 }

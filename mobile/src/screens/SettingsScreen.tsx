@@ -10,13 +10,15 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import * as Linking from "expo-linking";
 import { useAuth } from "../stores/auth";
 import { useTheme } from "../stores/theme";
 import { Field, ListRow, PrimaryButton, ScreenState, SectionCard } from "../components/ui";
 import { WEB_APP_URL } from "../config/env";
 import type { UserSettings } from "../lib/types";
+import type { MoreStackParamList } from "../navigation/types";
 
 const JUMP = [
   { id: "profile", label: "Profile" },
@@ -28,6 +30,7 @@ const JUMP = [
 export function SettingsScreen() {
   const { api, user, logout, refreshDashboard } = useAuth();
   const { theme, mode, setMode } = useTheme();
+  const navigation = useNavigation<NativeStackNavigationProp<MoreStackParamList>>();
   const scrollRef = useRef<ScrollView>(null);
   const sectionY = useRef<Record<string, number>>({});
   const [settings, setSettings] = useState<UserSettings | null>(null);
@@ -159,13 +162,19 @@ export function SettingsScreen() {
                 title="KYC verification"
                 subtitle="Required for payouts only"
                 showChevron
-                onPress={() => void Linking.openURL(`${WEB_APP_URL}/settings#kyc`)}
+                onPress={() => navigation.navigate("Kyc")}
               />
               <ListRow
                 title="Withdrawal wallets"
                 subtitle="Manage saved destinations"
                 showChevron
                 onPress={() => void Linking.openURL(`${WEB_APP_URL}/wallet`)}
+              />
+              <ListRow
+                title="Terms & Conditions"
+                subtitle="Withdrawals, vault & risk"
+                showChevron
+                onPress={() => navigation.navigate("Terms")}
               />
             </SectionCard>
           </View>
