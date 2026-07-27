@@ -36,7 +36,10 @@ function BlockchainGate() {
 
   return (
     <BlockchainProvider>
-      <BlockchainDashboard enrollment={enrollment} />
+      <BlockchainDashboard
+        enrollment={enrollment}
+        onEnrollmentChange={setEnrollment}
+      />
     </BlockchainProvider>
   );
 }
