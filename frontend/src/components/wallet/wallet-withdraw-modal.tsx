@@ -10,6 +10,8 @@ import {
   WalletWithdrawFeeNotice,
   WALLET_WITHDRAWAL_FEE_USD,
   walletWithdrawNetAmount,
+  estimateWithdrawalFees,
+  type WithdrawalScheduleInfo,
 } from "@/components/wallet/wallet-withdraw-fee-notice";
 import {
   WalletAddWithdrawalWalletModal,
@@ -21,12 +23,14 @@ export function WalletWithdrawModal({
   onClose,
   availableBalance,
   feeUsdt = WALLET_WITHDRAWAL_FEE_USD,
+  schedule,
   onComplete,
 }: {
   open: boolean;
   onClose: () => void;
   availableBalance: number;
   feeUsdt?: number;
+  schedule?: WithdrawalScheduleInfo | null;
   onComplete?: () => void;
 }) {
   const [amount, setAmount] = useState("");
@@ -86,8 +90,17 @@ export function WalletWithdrawModal({
 
   const gross = Number(amount);
   const fee = feeUsdt ?? WALLET_WITHDRAWAL_FEE_USD;
-  const net = walletWithdrawNetAmount(amount, fee);
-  const minWithdraw = fee > 0 ? fee + 0.01 : 0.01;
+  const preview =
+    Number.isFinite(gross) && gross > 0
+      ? estimateWithdrawalFees(gross, fee, schedule)
+      : null;
+  const net = walletWithdrawNetAmount(amount, fee, schedule);
+  const minWithdraw =
+    preview && preview.totalFeesUsdt > 0
+      ? preview.totalFeesUsdt + 0.01
+      : fee > 0
+        ? fee + 0.01
+        : 0.01;
   const selectedWallet = wallets.find((w) => w.id === selectedWalletId);
   const canSubmit =
     !loading &&
@@ -150,6 +163,7 @@ export function WalletWithdrawModal({
                   <WalletWithdrawFeeNotice
                     amount={amount}
                     feeUsdt={fee}
+                    schedule={schedule}
                     className="mt-2"
                   />
                 </div>

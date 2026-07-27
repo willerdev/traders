@@ -1454,6 +1454,12 @@ export interface WalletSummary {
   minDepositUsdt: number;
   displayCurrency?: DisplayCurrencyInfo;
   withdrawalFeeUsdt?: number;
+  withdrawalScheduleEnabled?: boolean;
+  withdrawalPreferredSchedule?: "WEEKLY" | "MONTHLY" | string;
+  withdrawalOffSchedulePenaltyPercent?: number;
+  withdrawalInPreferredWindow?: boolean;
+  withdrawalNextPreferredWindowAt?: string;
+  withdrawalPreferredWindowLabel?: string;
   vipActive?: boolean;
   activePlan: {
     id: string;

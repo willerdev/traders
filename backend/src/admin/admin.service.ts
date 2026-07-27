@@ -1586,6 +1586,7 @@ export class AdminService {
 
   async getInvestorDepositorSettings() {
     await this.ensureLoginOtpColumn();
+    await this.ensureWithdrawalScheduleColumns();
     const config = await this.prisma.platformConfig.findUnique({
       where: { id: 'default' },
     });
@@ -1607,6 +1608,16 @@ export class AdminService {
       depositorDailyYieldPercent: Number(config?.depositorDailyYieldPercent ?? 0.5),
       depositorMinDepositUsdt: Number(config?.depositorMinDepositUsdt ?? 50),
       loginOtpEnabled: otpRows[0]?.enabled ?? false,
+      withdrawalScheduleEnabled: config?.withdrawalScheduleEnabled !== false,
+      withdrawalPreferredSchedule: String(
+        config?.withdrawalPreferredSchedule ?? 'WEEKLY',
+      ).toUpperCase() === 'MONTHLY'
+        ? 'MONTHLY'
+        : 'WEEKLY',
+      withdrawalOffSchedulePenaltyPercent: Number(
+        config?.withdrawalOffSchedulePenaltyPercent ?? 8,
+      ),
+      walletWithdrawalFeeUsdt: Number(config?.walletWithdrawalFeeUsdt ?? 3),
     };
   }
 
@@ -1617,9 +1628,14 @@ export class AdminService {
     depositorDailyYieldPercent?: number;
     depositorMinDepositUsdt?: number;
     loginOtpEnabled?: boolean;
+    withdrawalScheduleEnabled?: boolean;
+    withdrawalPreferredSchedule?: string;
+    withdrawalOffSchedulePenaltyPercent?: number;
+    walletWithdrawalFeeUsdt?: number;
   }) {
     await this.ensureLoginOtpColumn();
-    const data: Record<string, number | boolean> = {};
+    await this.ensureWithdrawalScheduleColumns();
+    const data: Record<string, number | boolean | string> = {};
     if (input.investorFeeUsdt != null) {
       if (input.investorFeeUsdt <= 0) {
         throw new BadRequestException('Investor fee must be positive');
@@ -1653,6 +1669,36 @@ export class AdminService {
       }
       data.depositorMinDepositUsdt = input.depositorMinDepositUsdt;
     }
+    if (typeof input.withdrawalScheduleEnabled === 'boolean') {
+      data.withdrawalScheduleEnabled = input.withdrawalScheduleEnabled;
+    }
+    if (input.withdrawalPreferredSchedule != null) {
+      const s = String(input.withdrawalPreferredSchedule).toUpperCase();
+      if (s !== 'WEEKLY' && s !== 'MONTHLY') {
+        throw new BadRequestException(
+          'Preferred schedule must be WEEKLY or MONTHLY',
+        );
+      }
+      data.withdrawalPreferredSchedule = s;
+    }
+    if (input.withdrawalOffSchedulePenaltyPercent != null) {
+      if (
+        input.withdrawalOffSchedulePenaltyPercent < 0 ||
+        input.withdrawalOffSchedulePenaltyPercent > 50
+      ) {
+        throw new BadRequestException(
+          'Off-schedule penalty must be 0–50%',
+        );
+      }
+      data.withdrawalOffSchedulePenaltyPercent =
+        input.withdrawalOffSchedulePenaltyPercent;
+    }
+    if (input.walletWithdrawalFeeUsdt != null) {
+      if (input.walletWithdrawalFeeUsdt < 0) {
+        throw new BadRequestException('Withdrawal fee cannot be negative');
+      }
+      data.walletWithdrawalFeeUsdt = input.walletWithdrawalFeeUsdt;
+    }
 
     const hasOtpUpdate = typeof input.loginOtpEnabled === 'boolean';
     if (Object.keys(data).length === 0 && !hasOtpUpdate) {
@@ -1674,6 +1720,29 @@ export class AdminService {
     }
 
     return this.getInvestorDepositorSettings();
+  }
+
+  private async ensureWithdrawalScheduleColumns() {
+    await this.prisma.$executeRawUnsafe(`
+      ALTER TABLE "platform_config"
+      ADD COLUMN IF NOT EXISTS "withdrawalScheduleEnabled" BOOLEAN NOT NULL DEFAULT true
+    `);
+    await this.prisma.$executeRawUnsafe(`
+      ALTER TABLE "platform_config"
+      ADD COLUMN IF NOT EXISTS "withdrawalPreferredSchedule" TEXT NOT NULL DEFAULT 'WEEKLY'
+    `);
+    await this.prisma.$executeRawUnsafe(`
+      ALTER TABLE "platform_config"
+      ADD COLUMN IF NOT EXISTS "withdrawalOffSchedulePenaltyPercent" DECIMAL(5,2) NOT NULL DEFAULT 8
+    `);
+    await this.prisma.$executeRawUnsafe(`
+      ALTER TABLE "platform_config"
+      ADD COLUMN IF NOT EXISTS "walletWithdrawalFeeUsdt" DECIMAL(10,2) NOT NULL DEFAULT 3
+    `);
+    await this.prisma.$executeRawUnsafe(`
+      ALTER TABLE "platform_config"
+      ADD COLUMN IF NOT EXISTS "withdrawalScheduleAnnouncedAt" TIMESTAMP(3)
+    `);
   }
 
   private async ensureLoginOtpColumn() {

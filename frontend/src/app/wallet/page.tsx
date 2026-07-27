@@ -148,7 +148,18 @@ export default function WalletPage() {
 
         {summary && (
           <div className="xl:col-span-7 xl:row-start-2">
-            <WalletWithdrawFeeNotice feeUsdt={summary.withdrawalFeeUsdt ?? 3} />
+            <WalletWithdrawFeeNotice
+              feeUsdt={summary.withdrawalFeeUsdt ?? 3}
+              schedule={{
+                scheduleEnabled: summary.withdrawalScheduleEnabled,
+                preferredSchedule: summary.withdrawalPreferredSchedule,
+                offSchedulePenaltyPercent:
+                  summary.withdrawalOffSchedulePenaltyPercent,
+                inPreferredWindow: summary.withdrawalInPreferredWindow,
+                preferredWindowLabel: summary.withdrawalPreferredWindowLabel,
+                nextPreferredWindowAt: summary.withdrawalNextPreferredWindowAt,
+              }}
+            />
           </div>
         )}
 
@@ -285,6 +296,19 @@ export default function WalletPage() {
         onClose={() => setWithdrawOpen(false)}
         availableBalance={summary?.availableBalance ?? 0}
         feeUsdt={summary?.withdrawalFeeUsdt ?? 3}
+        schedule={
+          summary
+            ? {
+                scheduleEnabled: summary.withdrawalScheduleEnabled,
+                preferredSchedule: summary.withdrawalPreferredSchedule,
+                offSchedulePenaltyPercent:
+                  summary.withdrawalOffSchedulePenaltyPercent,
+                inPreferredWindow: summary.withdrawalInPreferredWindow,
+                preferredWindowLabel: summary.withdrawalPreferredWindowLabel,
+                nextPreferredWindowAt: summary.withdrawalNextPreferredWindowAt,
+              }
+            : undefined
+        }
         onComplete={() => void refresh()}
       />
     </div>

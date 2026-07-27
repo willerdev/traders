@@ -213,7 +213,16 @@ export default function RegisterPage() {
                   className="mt-1 rounded border-[var(--color-border)]"
                 />
                 <span>
-                  I accept the Terms of Service and Risk Disclosure. I understand
+                  I accept the{" "}
+                  <Link
+                    href="/terms"
+                    target="_blank"
+                    className="text-primary hover:underline"
+                  >
+                    Terms &amp; Conditions
+                  </Link>{" "}
+                  (including preferred weekly/monthly withdrawals and
+                  off-schedule penalties) and Risk Disclosure. I understand
                   trading involves substantial risk and virtual accounts do not
                   guarantee real profits.
                 </span>

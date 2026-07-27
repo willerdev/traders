@@ -658,6 +658,10 @@ export const api = {
     depositorDailyYieldPercent?: number;
     depositorMinDepositUsdt?: number;
     loginOtpEnabled?: boolean;
+    withdrawalScheduleEnabled?: boolean;
+    withdrawalPreferredSchedule?: "WEEKLY" | "MONTHLY" | string;
+    withdrawalOffSchedulePenaltyPercent?: number;
+    walletWithdrawalFeeUsdt?: number;
   }) =>
     request<InvestorDepositorSettings>(
       "/admin/platform/investor-depositor-settings",
@@ -945,6 +949,10 @@ export type InvestorDepositorSettings = {
   depositorDailyYieldPercent: number;
   depositorMinDepositUsdt: number;
   loginOtpEnabled: boolean;
+  withdrawalScheduleEnabled?: boolean;
+  withdrawalPreferredSchedule?: "WEEKLY" | "MONTHLY" | string;
+  withdrawalOffSchedulePenaltyPercent?: number;
+  walletWithdrawalFeeUsdt?: number;
 };
 
 export type InvestorRow = {

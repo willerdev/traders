@@ -22,6 +22,10 @@ import { NotificationService } from '../email/notification.service';
 import { ComplianceService } from '../compliance/compliance.service';
 import { PaymentsService } from '../payments/payments.service';
 import { WALLET_WITHDRAWAL_FEE_USD } from '../common/constants';
+import {
+  normalizePreferredSchedule,
+  quoteWithdrawalFees,
+} from './withdrawal-schedule';
 import { SavedWithdrawalWalletService } from './saved-withdrawal-wallet.service';
 import {
   isMomoWithdrawalNetwork,
@@ -198,7 +202,23 @@ export class WalletService {
       select: { investorVipActive: true, investorVipExpiresAt: true },
     });
     const vipActive = isInvestorVipActive(vipUser ?? {});
-    const withdrawalFeeUsdt = vipActive ? 0 : WALLET_WITHDRAWAL_FEE_USD;
+    const processingFeeUsdt = vipActive
+      ? 0
+      : Number(config?.walletWithdrawalFeeUsdt ?? WALLET_WITHDRAWAL_FEE_USD);
+    const scheduleEnabled = config?.withdrawalScheduleEnabled !== false;
+    const preferredSchedule = normalizePreferredSchedule(
+      config?.withdrawalPreferredSchedule,
+    );
+    const offSchedulePenaltyPercent = Number(
+      config?.withdrawalOffSchedulePenaltyPercent ?? 8,
+    );
+    const scheduleQuote = quoteWithdrawalFees({
+      grossUsdt: 100,
+      processingFeeUsdt,
+      scheduleEnabled,
+      preferredSchedule,
+      offSchedulePenaltyPercent,
+    });
 
     return {
       availableBalance: Number(wallet.availableBalance),
@@ -213,7 +233,13 @@ export class WalletService {
       totalEarned,
       totalWithdrawn,
       displayCurrency,
-      withdrawalFeeUsdt,
+      withdrawalFeeUsdt: processingFeeUsdt,
+      withdrawalScheduleEnabled: scheduleEnabled,
+      withdrawalPreferredSchedule: preferredSchedule,
+      withdrawalOffSchedulePenaltyPercent: offSchedulePenaltyPercent,
+      withdrawalInPreferredWindow: scheduleQuote.inPreferredWindow,
+      withdrawalNextPreferredWindowAt: scheduleQuote.nextPreferredWindowAt,
+      withdrawalPreferredWindowLabel: scheduleQuote.preferredWindowLabel,
       vipActive,
       activePlan: activePlan
         ? {
@@ -898,17 +924,37 @@ export class WalletService {
       },
     });
     const instantWithdraw = Boolean(vipUser?.instantWithdraw);
-    const fee = isInvestorVipActive(vipUser ?? {})
+    const config = await this.getPlatformConfig();
+    const processingFee = isInvestorVipActive(vipUser ?? {})
       ? 0
-      : WALLET_WITHDRAWAL_FEE_USD;
-    const netPayout = Math.round((grossAmount - fee) * 100) / 100;
+      : Number(config?.walletWithdrawalFeeUsdt ?? WALLET_WITHDRAWAL_FEE_USD);
+    const scheduleEnabled = config?.withdrawalScheduleEnabled !== false;
+    const preferredSchedule = normalizePreferredSchedule(
+      config?.withdrawalPreferredSchedule,
+    );
+    const offSchedulePenaltyPercent = Number(
+      config?.withdrawalOffSchedulePenaltyPercent ?? 8,
+    );
+    const quote = quoteWithdrawalFees({
+      grossUsdt: grossAmount,
+      processingFeeUsdt: processingFee,
+      scheduleEnabled,
+      preferredSchedule,
+      offSchedulePenaltyPercent,
+    });
+    const fee = quote.totalFeesUsdt;
+    const netPayout = quote.netPayoutUsdt;
+    const processingFeeOnly = quote.processingFeeUsdt;
+    const penaltyUsdt = quote.penaltyUsdt;
 
     if (grossAmount <= 0) {
       throw new BadRequestException('Withdrawal amount must be positive');
     }
     if (fee > 0 && grossAmount <= fee) {
       throw new BadRequestException(
-        `Minimum withdrawal is $${(fee + 0.01).toFixed(2)} USDT (includes $${fee.toFixed(2)} processing fee)`,
+        penaltyUsdt > 0
+          ? `Minimum withdrawal is $${(fee + 0.01).toFixed(2)} USDT (includes $${processingFeeOnly.toFixed(2)} processing fee + $${penaltyUsdt.toFixed(2)} off-schedule penalty). Preferred free-penalty window: ${quote.preferredWindowLabel}.`
+          : `Minimum withdrawal is $${(fee + 0.01).toFixed(2)} USDT (includes $${processingFeeOnly.toFixed(2)} processing fee)`,
       );
     }
     if (netPayout <= 0) {
@@ -933,6 +979,13 @@ export class WalletService {
     const newBalance = Number(platformWallet.availableBalance) - grossAmount;
     const { weekNumber, year } = this.isoWeekYear(new Date());
 
+    const feeLabel =
+      penaltyUsdt > 0
+        ? `$${processingFeeOnly.toFixed(2)} fee + $${penaltyUsdt.toFixed(2)} off-schedule penalty (${quote.penaltyPercent}%)`
+        : processingFeeOnly > 0
+          ? `$${processingFeeOnly.toFixed(2)} fee`
+          : 'VIP $0 fee';
+
     const payout = await this.prisma.$transaction(async (tx) => {
       await tx.platformWallet.update({
         where: { userId },
@@ -944,12 +997,8 @@ export class WalletService {
           amount: -grossAmount,
           type: 'DEPOSITOR_WITHDRAW',
           description: isMomo
-            ? fee > 0
-              ? `MoMo withdrawal — $${grossAmount.toFixed(2)} USDT ($${fee.toFixed(2)} fee, $${netPayout.toFixed(2)} payout) → ${walletLabel}`
-              : `MoMo withdrawal — $${grossAmount.toFixed(2)} USDT (VIP $0 fee) → ${walletLabel}`
-            : fee > 0
-              ? `Wallet withdrawal — $${grossAmount.toFixed(2)} USDT ($${fee.toFixed(2)} fee, $${netPayout.toFixed(2)} payout) → ${walletLabel}`
-              : `Wallet withdrawal — $${grossAmount.toFixed(2)} USDT (VIP $0 fee) → ${walletLabel}`,
+            ? `MoMo withdrawal — $${grossAmount.toFixed(2)} USDT (${feeLabel}, $${netPayout.toFixed(2)} payout) → ${walletLabel}`
+            : `Wallet withdrawal — $${grossAmount.toFixed(2)} USDT (${feeLabel}, $${netPayout.toFixed(2)} payout) → ${walletLabel}`,
           balanceAfter: newBalance,
         },
       });
@@ -969,9 +1018,15 @@ export class WalletService {
           status: 'PENDING',
           walletAddress: destination,
           payoutMethod: method,
-          notes: isMomo
-            ? `MoMo wallet withdrawal — $${grossAmount.toFixed(2)} USDT gross, $${fee.toFixed(2)} fee, $${netPayout.toFixed(2)} USDT payout → ${walletLabel} (${savedWallet.network})`
-            : `Platform wallet withdrawal — $${grossAmount.toFixed(2)} USDT gross, $${fee.toFixed(2)} fee, $${netPayout.toFixed(2)} USDT payout → ${walletLabel} (${savedWallet.network})`,
+          notes: [
+            isMomo ? 'MoMo' : 'Platform wallet',
+            `withdrawal — $${grossAmount.toFixed(2)} USDT gross`,
+            `$${processingFeeOnly.toFixed(2)} processing fee`,
+            penaltyUsdt > 0
+              ? `$${penaltyUsdt.toFixed(2)} off-schedule penalty (${quote.penaltyPercent}% · preferred ${quote.preferredWindowLabel})`
+              : `on-schedule (${quote.preferredWindowLabel})`,
+            `$${netPayout.toFixed(2)} USDT payout → ${walletLabel} (${savedWallet.network})`,
+          ].join(', '),
         },
       });
     });

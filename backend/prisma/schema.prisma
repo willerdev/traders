@@ -901,8 +901,16 @@ model PlatformConfig {
   investorAutoStopAnnouncedAt DateTime?
   /// Set after the $1000+ loan eligibility email is broadcast once.
   investorLoanEligibilityAnnouncedAt DateTime?
-  /// Set after the trader/prop-program sunset → investment-focus email is broadcast once.
+  /// Set after the trader-program sunset email is broadcast once.
   traderProgramSunsetAnnouncedAt DateTime?
+  /// Preferred withdrawal cadence: WEEKLY (Sunday UTC) or MONTHLY (1st UTC).
+  withdrawalScheduleEnabled Boolean @default(true)
+  withdrawalPreferredSchedule String @default("WEEKLY")
+  /// Extra % of gross charged when withdrawing outside the preferred window.
+  withdrawalOffSchedulePenaltyPercent Decimal @default(8) @db.Decimal(5, 2)
+  walletWithdrawalFeeUsdt Decimal @default(3) @db.Decimal(10, 2)
+  /// Set after the withdrawal schedule / early-exit policy email is broadcast once.
+  withdrawalScheduleAnnouncedAt DateTime?
 
   @@map("platform_config")
 }

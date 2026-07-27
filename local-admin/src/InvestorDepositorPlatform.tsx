@@ -33,6 +33,12 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
   const [minDeposit, setMinDeposit] = useState("");
   const [loginOtpEnabled, setLoginOtpEnabled] = useState(false);
   const [investorYieldPaused, setInvestorYieldPaused] = useState(false);
+  const [withdrawalScheduleEnabled, setWithdrawalScheduleEnabled] =
+    useState(true);
+  const [withdrawalPreferredSchedule, setWithdrawalPreferredSchedule] =
+    useState<"WEEKLY" | "MONTHLY">("WEEKLY");
+  const [withdrawalPenaltyPercent, setWithdrawalPenaltyPercent] = useState("8");
+  const [walletWithdrawalFeeUsdt, setWalletWithdrawalFeeUsdt] = useState("3");
   const [settingsSaving, setSettingsSaving] = useState(false);
 
   const [yieldDrafts, setYieldDrafts] = useState<Record<string, string>>({});
@@ -69,6 +75,17 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
     setMinDeposit(String(s.depositorMinDepositUsdt));
     setLoginOtpEnabled(s.loginOtpEnabled);
     setInvestorYieldPaused(Boolean(s.investorYieldPaused));
+    setWithdrawalScheduleEnabled(s.withdrawalScheduleEnabled !== false);
+    setWithdrawalPreferredSchedule(
+      String(s.withdrawalPreferredSchedule ?? "WEEKLY").toUpperCase() ===
+        "MONTHLY"
+        ? "MONTHLY"
+        : "WEEKLY",
+    );
+    setWithdrawalPenaltyPercent(
+      String(s.withdrawalOffSchedulePenaltyPercent ?? 8),
+    );
+    setWalletWithdrawalFeeUsdt(String(s.walletWithdrawalFeeUsdt ?? 3));
   }, []);
 
   const load = useCallback(async () => {
@@ -132,6 +149,10 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
         depositorDailyYieldPercent: Number(depositorYield),
         depositorMinDepositUsdt: Number(minDeposit),
         loginOtpEnabled,
+        withdrawalScheduleEnabled,
+        withdrawalPreferredSchedule,
+        withdrawalOffSchedulePenaltyPercent: Number(withdrawalPenaltyPercent),
+        walletWithdrawalFeeUsdt: Number(walletWithdrawalFeeUsdt),
       });
       applySettings(updated);
       onMessage("Platform settings saved.");
@@ -383,6 +404,70 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
                 Require 6-digit email OTP on sign-in
               </span>
             </label>
+          </section>
+
+          <section className="platform-card">
+            <div className="platform-card-head">
+              <span className="platform-card-icon">📅</span>
+              <div>
+                <h3>Withdrawal schedule</h3>
+                <p>
+                  Prefer weekly/monthly windows; anytime still works with an
+                  off-schedule penalty. Users see this on Wallet and{" "}
+                  <code>/terms</code>.
+                </p>
+              </div>
+            </div>
+            <label className="platform-toggle">
+              <input
+                type="checkbox"
+                checked={withdrawalScheduleEnabled}
+                onChange={(e) =>
+                  setWithdrawalScheduleEnabled(e.target.checked)
+                }
+              />
+              <span className="platform-toggle-track" />
+              <span className="platform-toggle-text">
+                Enforce preferred windows + off-schedule penalty
+              </span>
+            </label>
+            <div className="platform-field-grid" style={{ marginTop: "1rem" }}>
+              <label className="platform-field">
+                <span>Preferred cadence</span>
+                <select
+                  className="platform-input"
+                  value={withdrawalPreferredSchedule}
+                  onChange={(e) =>
+                    setWithdrawalPreferredSchedule(
+                      e.target.value === "MONTHLY" ? "MONTHLY" : "WEEKLY",
+                    )
+                  }
+                >
+                  <option value="WEEKLY">Weekly — Sundays (UTC)</option>
+                  <option value="MONTHLY">Monthly — 1st of month (UTC)</option>
+                </select>
+              </label>
+              <label className="platform-field">
+                <span>Off-schedule penalty (%)</span>
+                <input
+                  className="platform-input"
+                  value={withdrawalPenaltyPercent}
+                  onChange={(e) => setWithdrawalPenaltyPercent(e.target.value)}
+                />
+              </label>
+              <label className="platform-field">
+                <span>Processing fee (USDT)</span>
+                <input
+                  className="platform-input"
+                  value={walletWithdrawalFeeUsdt}
+                  onChange={(e) => setWalletWithdrawalFeeUsdt(e.target.value)}
+                />
+              </label>
+            </div>
+            <p className="muted" style={{ marginTop: "0.5rem", fontSize: 12 }}>
+              On-window: processing fee only (VIP $0). Off-window: fee + penalty
+              % of gross. Default penalty 8%.
+            </p>
           </section>
 
           <div className="platform-actions">

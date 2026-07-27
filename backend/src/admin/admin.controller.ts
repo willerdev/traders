@@ -561,6 +561,10 @@ export class AdminController {
       depositorDailyYieldPercent?: number;
       depositorMinDepositUsdt?: number;
       loginOtpEnabled?: boolean;
+      withdrawalScheduleEnabled?: boolean;
+      withdrawalPreferredSchedule?: string;
+      withdrawalOffSchedulePenaltyPercent?: number;
+      walletWithdrawalFeeUsdt?: number;
     },
   ) {
     return this.adminService.updateInvestorDepositorSettings(body);
