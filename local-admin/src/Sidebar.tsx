@@ -61,7 +61,34 @@ export type AdminPermissions = {
   tpClaim: boolean;
   setup: boolean;
   managePermissions: boolean;
+  /** When false, hide credit wallet / whitelist / real NOWPayments balance / yield save. */
+  sensitiveFinance?: boolean;
 };
+
+/**
+ * Restricted finance viewers — full admin tabs, but sensitive ops stay hidden.
+ * Remove an email here to restore full finance UI for that account.
+ */
+export const RESTRICTED_FINANCE_ADMIN_EMAILS = [
+  "viewer@traderrank.pro",
+] as const;
+
+export const STATIC_NOWPAYMENTS_BALANCE_LABEL = "21,500 Usdt";
+
+export function canSeeSensitiveFinance(opts: {
+  email?: string | null;
+  permissions?: AdminPermissions | null;
+}): boolean {
+  if (opts.permissions?.sensitiveFinance === false) return false;
+  const email = opts.email?.trim().toLowerCase() ?? "";
+  if (
+    email &&
+    (RESTRICTED_FINANCE_ADMIN_EMAILS as readonly string[]).includes(email)
+  ) {
+    return false;
+  }
+  return true;
+}
 
 export function tabsForPermissions(permissions: AdminPermissions | null): Tab[] {
   if (!permissions) return [];

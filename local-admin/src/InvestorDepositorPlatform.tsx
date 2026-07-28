@@ -19,9 +19,14 @@ function fmtDate(iso: string) {
 
 type Props = {
   onMessage: (msg: string) => void;
+  /** When false, hide credit wallet + yield save controls (code kept for restore). */
+  showSensitiveFinance?: boolean;
 };
 
-export function InvestorDepositorPlatform({ onMessage }: Props) {
+export function InvestorDepositorPlatform({
+  onMessage,
+  showSensitiveFinance = true,
+}: Props) {
   const [loading, setLoading] = useState(true);
   const [section, setSection] = useState<Section>("overview");
   const [settings, setSettings] = useState<InvestorDepositorSettings | null>(null);
@@ -330,15 +335,23 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
                     {settings?.investmentMax ?? 5000} USDT).
                   </p>
                 </div>
-                <label className="platform-field">
-                  <span>Daily yield (%)</span>
-                  <input
-                    className="platform-input"
-                    value={investorYield}
-                    onChange={(e) => setInvestorYield(e.target.value)}
-                  />
-                </label>
+                {showSensitiveFinance ? (
+                  <label className="platform-field">
+                    <span>Daily yield (%)</span>
+                    <input
+                      className="platform-input"
+                      value={investorYield}
+                      onChange={(e) => setInvestorYield(e.target.value)}
+                    />
+                  </label>
+                ) : (
+                  <div className="platform-field">
+                    <span>Daily yield (%)</span>
+                    <strong>{investorYield || "—"}%</strong>
+                  </div>
+                )}
               </div>
+              {showSensitiveFinance && (
               <label className="platform-toggle" style={{ marginTop: "1rem" }}>
                 <input
                   type="checkbox"
@@ -350,6 +363,7 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
                   Pause all investor daily revenue (global)
                 </span>
               </label>
+              )}
               <p className="muted" style={{ marginTop: "0.5rem", fontSize: 12 }}>
                 Credits run daily at the platform yield window (shown to users in
                 their local country time) on each investor&apos;s
@@ -366,20 +380,28 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
                 </div>
               </div>
               <div className="platform-field-grid">
-                <label className="platform-field">
-                  <span>Daily yield (%)</span>
-                  <input
-                    className="platform-input"
-                    value={depositorYield}
-                    onChange={(e) => setDepositorYield(e.target.value)}
-                  />
-                </label>
+                {showSensitiveFinance ? (
+                  <label className="platform-field">
+                    <span>Daily yield (%)</span>
+                    <input
+                      className="platform-input"
+                      value={depositorYield}
+                      onChange={(e) => setDepositorYield(e.target.value)}
+                    />
+                  </label>
+                ) : (
+                  <div className="platform-field">
+                    <span>Daily yield (%)</span>
+                    <strong>{depositorYield || "—"}%</strong>
+                  </div>
+                )}
                 <label className="platform-field">
                   <span>Minimum deposit (USDT)</span>
                   <input
                     className="platform-input"
                     value={minDeposit}
                     onChange={(e) => setMinDeposit(e.target.value)}
+                    disabled={!showSensitiveFinance}
                   />
                 </label>
               </div>
@@ -472,6 +494,7 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
           </section>
 
           <div className="platform-actions">
+            {showSensitiveFinance && (
             <button
               type="button"
               className="platform-btn platform-btn-primary"
@@ -480,6 +503,7 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
             >
               {settingsSaving ? "Saving…" : "Save platform settings"}
             </button>
+            )}
             <button
               type="button"
               className="platform-btn"
@@ -739,53 +763,57 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
                             <span className="platform-pill platform-pill-investor">
                               {inv.effectiveDailyYieldPercent}%
                             </span>
-                            <input
-                              className="platform-input platform-input-compact"
-                              placeholder="Default"
-                              style={{ width: 72 }}
-                              value={yieldDrafts[inv.id] ?? ""}
-                              onChange={(e) =>
-                                setYieldDrafts((prev) => ({
-                                  ...prev,
-                                  [inv.id]: e.target.value,
-                                }))
-                              }
-                            />
-                            <button
-                              type="button"
-                              className="platform-btn platform-btn-ghost"
-                              onClick={() => {
-                                const raw = yieldDrafts[inv.id]?.trim();
-                                const dailyYieldPercent =
-                                  raw === "" ? null : Number(raw);
-                                void api
-                                  .updateInvestorYield(inv.id, dailyYieldPercent)
-                                  .then((res) => {
-                                    setInvestors((prev) =>
-                                      prev.map((row) =>
-                                        row.id === inv.id
-                                          ? {
-                                              ...row,
-                                              dailyYieldPercent: res.dailyYieldPercent,
-                                              effectiveDailyYieldPercent:
-                                                res.effectiveDailyYieldPercent,
-                                            }
-                                          : row,
-                                      ),
-                                    );
-                                    onMessage(
-                                      `Investor yield updated for ${inv.displayName}.`,
-                                    );
-                                  })
-                                  .catch((e) =>
-                                    onMessage(
-                                      e instanceof Error ? e.message : "Update failed",
-                                    ),
-                                  );
-                              }}
-                            >
-                              Save
-                            </button>
+                            {showSensitiveFinance && (
+                              <>
+                                <input
+                                  className="platform-input platform-input-compact"
+                                  placeholder="Default"
+                                  style={{ width: 72 }}
+                                  value={yieldDrafts[inv.id] ?? ""}
+                                  onChange={(e) =>
+                                    setYieldDrafts((prev) => ({
+                                      ...prev,
+                                      [inv.id]: e.target.value,
+                                    }))
+                                  }
+                                />
+                                <button
+                                  type="button"
+                                  className="platform-btn platform-btn-ghost"
+                                  onClick={() => {
+                                    const raw = yieldDrafts[inv.id]?.trim();
+                                    const dailyYieldPercent =
+                                      raw === "" ? null : Number(raw);
+                                    void api
+                                      .updateInvestorYield(inv.id, dailyYieldPercent)
+                                      .then((res) => {
+                                        setInvestors((prev) =>
+                                          prev.map((row) =>
+                                            row.id === inv.id
+                                              ? {
+                                                  ...row,
+                                                  dailyYieldPercent: res.dailyYieldPercent,
+                                                  effectiveDailyYieldPercent:
+                                                    res.effectiveDailyYieldPercent,
+                                                }
+                                              : row,
+                                          ),
+                                        );
+                                        onMessage(
+                                          `Investor yield updated for ${inv.displayName}.`,
+                                        );
+                                      })
+                                      .catch((e) =>
+                                        onMessage(
+                                          e instanceof Error ? e.message : "Update failed",
+                                        ),
+                                      );
+                                  }}
+                                >
+                                  Save
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                         <td>
@@ -1112,6 +1140,7 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
             </button>
           </section>
 
+          {showSensitiveFinance ? (
           <section className="platform-card platform-card-tool">
             <div className="platform-card-head">
               <span className="platform-card-icon platform-card-icon-wallet">💳</span>
@@ -1184,6 +1213,7 @@ export function InvestorDepositorPlatform({ onMessage }: Props) {
               {creditSaving ? "Crediting…" : "Credit wallet"}
             </button>
           </section>
+          ) : null}
 
           <section className="platform-card platform-card-signal">
             <div className="platform-card-head">

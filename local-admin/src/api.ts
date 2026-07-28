@@ -90,6 +90,7 @@ export type AdminPermissionsView = {
   setup: boolean;
   copy: boolean;
   managePermissions: boolean;
+  sensitiveFinance?: boolean;
 };
 
 export type AdminSession = {
