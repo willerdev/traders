@@ -206,12 +206,33 @@ export function WalletScreen() {
               showChevron
             />
             <ListRow title="Locked" subtitle="Pending / reserved" value={mask(locked)} />
-            {summary?.withdrawalFeeUsdt != null ? (
-              <View style={{ paddingHorizontal: 14, paddingVertical: 10 }}>
+            {summary?.withdrawalFeeUsdt != null ||
+            summary?.withdrawalScheduleEnabled !== false ? (
+              <View style={{ paddingHorizontal: 14, paddingVertical: 10, gap: 4 }}>
                 <Text style={{ color: theme.muted, fontSize: 11 }}>
-                  Withdrawal fee · {formatMoney(summary.withdrawalFeeUsdt, display)}
-                  {summary.vipActive ? " · VIP $0 fee" : ""}
+                  Withdrawal fee ·{" "}
+                  {summary?.vipActive
+                    ? "VIP $0 processing"
+                    : formatMoney(summary?.withdrawalFeeUsdt ?? 0, display)}
                 </Text>
+                {summary?.withdrawalScheduleEnabled !== false ? (
+                  <Text style={{ color: theme.muted, fontSize: 11, lineHeight: 16 }}>
+                    Preferred:{" "}
+                    {summary?.withdrawalPreferredWindowLabel ??
+                      (String(summary?.withdrawalPreferredSchedule).toUpperCase() ===
+                      "MONTHLY"
+                        ? "1st of each month (UTC)"
+                        : "Sundays (UTC)")}
+                    {summary?.withdrawalInPreferredWindow
+                      ? " · in-window now"
+                      : ` · off-schedule +${summary?.withdrawalOffSchedulePenaltyPercent ?? 8}%`}
+                    {summary?.withdrawalNextPreferredWindowAt
+                      ? ` · next ${new Date(
+                          summary.withdrawalNextPreferredWindowAt,
+                        ).toLocaleString()}`
+                      : ""}
+                  </Text>
+                ) : null}
               </View>
             ) : null}
           </SectionCard>

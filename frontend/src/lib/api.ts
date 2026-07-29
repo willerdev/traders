@@ -970,7 +970,12 @@ class ApiClient {
         method: "POST",
         body: JSON.stringify({ amount, riskPercent }),
       }),
-    withdraw: (amount: number, savedWalletId?: string) =>
+    withdraw: (
+      amount: number,
+      savedWalletId: string,
+      sessionId: string,
+      code: string,
+    ) =>
       this.request<{
         status: string;
         payoutId: string;
@@ -982,9 +987,24 @@ class ApiClient {
         method: "POST",
         body: JSON.stringify({
           amount,
-          ...(savedWalletId?.trim()
-            ? { savedWalletId: savedWalletId.trim() }
-            : {}),
+          savedWalletId: savedWalletId.trim(),
+          sessionId: sessionId.trim(),
+          code: code.trim(),
+        }),
+      }),
+    requestWithdrawOtp: (amount: number, savedWalletId: string) =>
+      this.request<{
+        sessionId: string;
+        email: string;
+        amount: number;
+        savedWalletId: string;
+        message: string;
+        expiresIn: number;
+      }>("/wallet/withdraw/request-otp", {
+        method: "POST",
+        body: JSON.stringify({
+          amount,
+          savedWalletId: savedWalletId.trim(),
         }),
       }),
     withdrawalWallets: () =>

@@ -156,8 +156,24 @@ export class ApiClient {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    withdraw: (body: { amount: number; savedWalletId: string }) =>
+    withdraw: (body: {
+      amount: number;
+      savedWalletId: string;
+      sessionId: string;
+      code: string;
+    }) =>
       this.request<{ message: string }>("/wallet/withdraw", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    requestWithdrawOtp: (body: { amount: number; savedWalletId: string }) =>
+      this.request<{
+        sessionId: string;
+        email: string;
+        amount: number;
+        message: string;
+        expiresIn: number;
+      }>("/wallet/withdraw/request-otp", {
         method: "POST",
         body: JSON.stringify(body),
       }),

@@ -16,6 +16,8 @@ import { ProgressTracker } from "../../components/ProgressTracker";
 import { formatUsdt, truncateMiddle } from "../../lib/format";
 import type { SavedWithdrawalWallet, WalletSummary } from "../../lib/types";
 import type { WalletStackParamList } from "../../navigation/types";
+import * as Linking from "expo-linking";
+import { WEB_APP_URL } from "../../config/env";
 
 const WITHDRAW_STEPS = [
   { key: "init", label: "Initiated" },
@@ -48,7 +50,10 @@ export function WithdrawScreen() {
   const [error, setError] = useState<string | null>(null);
   const [submittedStatus, setSubmittedStatus] = useState<string | null>(null);
   const [submittedNet, setSubmittedNet] = useState<number | null>(null);
-  const [phase, setPhase] = useState<"form" | "track">("form");
+  const [phase, setPhase] = useState<"form" | "otp" | "track">("form");
+  const [otpSessionId, setOtpSessionId] = useState("");
+  const [otpEmail, setOtpEmail] = useState("");
+  const [otpCode, setOtpCode] = useState("");
 
   const load = useCallback(async () => {
     setError(null);
@@ -95,9 +100,12 @@ export function WithdrawScreen() {
     (String(summary?.withdrawalPreferredSchedule).toUpperCase() === "MONTHLY"
       ? "the 1st of each month (UTC)"
       : "Sundays (UTC)");
+  const nextWindow = summary?.withdrawalNextPreferredWindowAt
+    ? new Date(summary.withdrawalNextPreferredWindowAt).toLocaleString()
+    : null;
   const stage = useMemo(() => withdrawStage(submittedStatus), [submittedStatus]);
 
-  async function submit() {
+  async function requestOtp() {
     if (!Number.isFinite(value) || value <= 0) {
       setError("Enter a valid amount");
       return;
@@ -109,11 +117,42 @@ export function WithdrawScreen() {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.wallet.withdraw(value, selectedId);
+      const res = await api.wallet.requestWithdrawOtp(value, selectedId);
+      setOtpSessionId(res.sessionId);
+      setOtpEmail(res.email);
+      setOtpCode("");
+      setPhase("otp");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send code");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submit() {
+    if (!selectedId || !otpSessionId) {
+      setError("Request a verification code first");
+      return;
+    }
+    if (otpCode.trim().length < 6) {
+      setError("Enter the 6-digit email code");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.wallet.withdraw(
+        value,
+        selectedId,
+        otpSessionId,
+        otpCode.trim(),
+      );
       setSubmittedStatus(res.status);
       setSubmittedNet(res.netPayout);
       setPhase("track");
       setAmount("");
+      setOtpCode("");
+      setOtpSessionId("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Withdraw failed");
     } finally {
@@ -157,6 +196,61 @@ export function WithdrawScreen() {
             setPhase("form");
             setSubmittedStatus(null);
             setSubmittedNet(null);
+            setOtpSessionId("");
+            setOtpEmail("");
+            setOtpCode("");
+          }}
+        />
+      </ScrollView>
+    );
+  }
+
+  if (phase === "otp") {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={styles.content}>
+        <Text style={[styles.stepTitle, { color: theme.text }]}>Email verification</Text>
+        <Text style={{ color: theme.muted, marginBottom: 14, fontSize: 13, lineHeight: 18 }}>
+          We sent a 6-digit code to {otpEmail || "your email"} to confirm withdrawing{" "}
+          {formatUsdt(value)}.
+        </Text>
+        <SectionCard title="Code">
+          <Field
+            label="Verification code"
+            value={otpCode}
+            onChangeText={(t) => setOtpCode(t.replace(/\D/g, "").slice(0, 6))}
+            keyboardType="number-pad"
+            placeholder="6-digit code"
+          />
+        </SectionCard>
+        {error ? (
+          <Text style={{ color: theme.text, marginBottom: 10, fontSize: 12 }}>
+            {error}
+          </Text>
+        ) : null}
+        <PrimaryButton
+          label={busy ? "Confirming…" : "Confirm withdrawal"}
+          onPress={() => void submit()}
+          disabled={busy || otpCode.trim().length < 6}
+          size="sm"
+        />
+        <View style={{ height: 8 }} />
+        <PrimaryButton
+          label="Resend code"
+          variant="secondary"
+          size="sm"
+          disabled={busy}
+          onPress={() => void requestOtp()}
+        />
+        <View style={{ height: 8 }} />
+        <PrimaryButton
+          label="Back"
+          variant="secondary"
+          size="sm"
+          disabled={busy}
+          onPress={() => {
+            setPhase("form");
+            setOtpCode("");
+            setError(null);
           }}
         />
       </ScrollView>
@@ -172,7 +266,7 @@ export function WithdrawScreen() {
       <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={styles.content}>
         <Text style={[styles.stepTitle, { color: theme.text }]}>Withdraw</Text>
         <Text style={{ color: theme.muted, marginBottom: 14, fontSize: 13, lineHeight: 18 }}>
-          Choose a saved wallet address, enter amount, then confirm.
+          Choose a saved wallet address, enter amount, then confirm with an email code.
         </Text>
 
         <SectionCard>
@@ -264,6 +358,8 @@ export function WithdrawScreen() {
               {inWindow
                 ? " · in-window (no off-schedule penalty)"
                 : ` · off-schedule (+${penaltyPercent}% penalty)`}
+              {nextWindow ? `\nNext window: ${nextWindow}` : ""}
+              {summary?.vipActive ? "\nVIP: $0 processing fee (penalty still applies off-schedule)." : ""}
             </Text>
           ) : null}
           {penaltyUsdt > 0 ? (
@@ -287,11 +383,19 @@ export function WithdrawScreen() {
         ) : null}
 
         <PrimaryButton
-          label={busy ? "Submitting…" : "Confirm withdrawal"}
-          onPress={() => void submit()}
+          label={busy ? "Sending code…" : "Continue — email code"}
+          onPress={() => void requestOtp()}
           disabled={busy || !selectedId}
           size="sm"
         />
+        <Pressable
+          onPress={() => void Linking.openURL(`${WEB_APP_URL}/terms#withdrawals`)}
+          style={{ marginTop: 14 }}
+        >
+          <Text style={{ color: theme.primary, fontWeight: "600", fontSize: 12 }}>
+            Read withdrawal terms →
+          </Text>
+        </Pressable>
       </ScrollView>
     </ScreenState>
   );

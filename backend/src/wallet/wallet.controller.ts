@@ -135,17 +135,35 @@ export class WalletController {
     );
   }
 
-  @Post('withdraw')
+  @Post('withdraw/request-otp')
   @UseGuards(JwtAuthGuard)
-  withdraw(
+  requestWithdrawOtp(
     @Request() req: { user: { id: string } },
     @Body() body: { amount: number; savedWalletId: string },
   ) {
-    return this.wallet.withdraw(
+    return this.wallet.requestWithdrawOtp(
       req.user.id,
       body.amount,
       body.savedWalletId,
     );
+  }
+
+  @Post('withdraw')
+  @UseGuards(JwtAuthGuard)
+  withdraw(
+    @Request() req: { user: { id: string } },
+    @Body()
+    body: {
+      amount: number;
+      savedWalletId: string;
+      sessionId: string;
+      code: string;
+    },
+  ) {
+    return this.wallet.withdraw(req.user.id, body.amount, body.savedWalletId, {
+      sessionId: body.sessionId,
+      code: body.code,
+    });
   }
 
   @Get('withdrawal-wallets')

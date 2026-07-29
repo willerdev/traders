@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import {
   Alert,
   Image,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,6 +16,7 @@ import { useTheme } from "../stores/theme";
 import { Field, PrimaryButton, ScreenState, SectionCard } from "../components/ui";
 import { LivenessScanner } from "../components/LivenessScanner";
 import { formatUsdt } from "../lib/format";
+import { WEB_APP_URL } from "../config/env";
 import type { ChainContractEnrollment } from "../lib/types";
 import type { LocalUploadFile } from "../lib/api";
 
@@ -476,7 +478,7 @@ export function ChainEnrollScreen() {
             {enrollment.status === "KYC_PENDING"
               ? "Balances stay empty until approval."
               : enrollment.status === "APPROVED"
-                ? "Deposit at least $2,000 USDT to launch. Rates are indicative."
+                ? `Deposit at least ${formatUsdt(t.minDepositUsd)} to launch. Rates are indicative.`
                 : enrollment.status === "ACTIVE"
                   ? `Yield band ${enrollment.yieldPercent ?? "—"}%. Withdrawals: ${enrollment.withdrawFeePercent}% fee.`
                   : ""}
@@ -495,12 +497,27 @@ export function ChainEnrollScreen() {
                   <Text style={{ color: theme.muted, fontSize: 22, fontWeight: "700" }}>
                     {enrollment.status === "ACTIVE" && label === "Yield rate"
                       ? `${enrollment.yieldPercent ?? "—"}%`
-                      : "—"}
+                      : enrollment.status === "ACTIVE" && label === "Withdrawals"
+                        ? `${enrollment.withdrawFeePercent}%`
+                        : "—"}
                   </Text>
                 </View>
               ),
             )}
           </View>
+          {enrollment.status === "ACTIVE" ? (
+            <SectionCard title="Live vault">
+              <Text style={{ color: theme.muted, fontSize: 13, lineHeight: 19, marginBottom: 10 }}>
+                Full deposit, rewards, and withdraw tools run on the web vault
+                dashboard after launch.
+              </Text>
+              <PrimaryButton
+                label="Open live vault on web"
+                onPress={() => void Linking.openURL(`${WEB_APP_URL}/blockchain`)}
+                size="sm"
+              />
+            </SectionCard>
+          ) : null}
           {enrollment.status === "APPROVED" ? (
             <SectionCard title="Launch deposit">
               <Field

@@ -108,6 +108,7 @@ export class PaymentsService {
           gatewayId: String(npPayment.payment_id),
           gatewayResponse: {
             ...(npPayment as object),
+            gateway: 'NOWPayments',
             ...(input.promoMeta ?? {}),
           } as object,
           payAddress: npPayment.pay_address,
@@ -715,7 +716,10 @@ export class PaymentsService {
       where: { id: payment.id },
       data: {
         gatewayId: String(npPayment.payment_id),
-        gatewayResponse: npPayment as object,
+        gatewayResponse: {
+          ...(npPayment as object),
+          gateway: 'NOWPayments',
+        } as object,
         payAddress: npPayment.pay_address,
         payAmount: npPayment.pay_amount,
       },
@@ -790,7 +794,10 @@ export class PaymentsService {
       where: { id: payment.id },
       data: {
         gatewayId: String(npPayment.payment_id),
-        gatewayResponse: npPayment as object,
+        gatewayResponse: {
+          ...(npPayment as object),
+          gateway: 'NOWPayments',
+        } as object,
         payAddress: npPayment.pay_address,
         payAmount: npPayment.pay_amount,
       },
@@ -1138,7 +1145,10 @@ export class PaymentsService {
       where: { id: payment.id },
       data: {
         gatewayId: String(npPayment.payment_id),
-        gatewayResponse: npPayment as object,
+        gatewayResponse: {
+          ...(npPayment as object),
+          gateway: 'NOWPayments',
+        } as object,
         payAddress: npPayment.pay_address,
         payAmount: npPayment.pay_amount,
       },

@@ -33,14 +33,16 @@ export function PrimaryButton({
     variant === "ghost"
       ? theme.primary
       : variant === "danger"
-        ? theme.text
+        ? theme.danger
         : variant === "secondary"
           ? theme.text
           : theme.onPrimary;
   const border =
-    variant === "ghost" || variant === "danger" || variant === "secondary"
-      ? theme.divider
-      : bg;
+    variant === "danger"
+      ? theme.danger
+      : variant === "ghost" || variant === "secondary"
+        ? theme.divider
+        : bg;
   const compact = size === "sm";
 
   return (
@@ -140,7 +142,7 @@ export function ScreenState({
   if (error) {
     return (
       <View style={styles.center}>
-        <Text style={[styles.stateText, { color: theme.text }]}>{error}</Text>
+        <Text style={[styles.stateText, { color: theme.danger }]}>{error}</Text>
         {onRetry ? (
           <Pressable onPress={onRetry} style={{ marginTop: 12 }}>
             <Text style={{ color: theme.primary, fontWeight: "700" }}>Retry</Text>

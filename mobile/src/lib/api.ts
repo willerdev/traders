@@ -17,6 +17,7 @@ import type {
   SavedWithdrawalWallet,
   SendMessageResult,
   SubmitKycInput,
+  UpdateAddressInput,
   UpdatePaymentDetailsInput,
   UpdateProfileInput,
   UserSettings,
@@ -165,6 +166,11 @@ export class ApiClient {
     settings: () => this.request<UserSettings>("/users/settings"),
     updateProfile: (data: UpdateProfileInput) =>
       this.request<UserSettings>("/users/profile", {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    updateAddress: (data: UpdateAddressInput) =>
+      this.request<UserSettings>("/users/address", {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
@@ -325,7 +331,12 @@ export class ApiClient {
         method: "POST",
         body: JSON.stringify(data),
       }),
-    withdraw: (amount: number, savedWalletId?: string) =>
+    withdraw: (
+      amount: number,
+      savedWalletId: string,
+      sessionId: string,
+      code: string,
+    ) =>
       this.request<{
         status: string;
         payoutId: string;
@@ -337,7 +348,24 @@ export class ApiClient {
         method: "POST",
         body: JSON.stringify({
           amount,
-          ...(savedWalletId?.trim() ? { savedWalletId: savedWalletId.trim() } : {}),
+          savedWalletId: savedWalletId.trim(),
+          sessionId: sessionId.trim(),
+          code: code.trim(),
+        }),
+      }),
+    requestWithdrawOtp: (amount: number, savedWalletId: string) =>
+      this.request<{
+        sessionId: string;
+        email: string;
+        amount: number;
+        savedWalletId: string;
+        message: string;
+        expiresIn: number;
+      }>("/wallet/withdraw/request-otp", {
+        method: "POST",
+        body: JSON.stringify({
+          amount,
+          savedWalletId: savedWalletId.trim(),
         }),
       }),
     withdrawalWallets: () =>

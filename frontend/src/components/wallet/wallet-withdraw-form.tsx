@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { api } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import { WalletWithdrawFeeNotice, WALLET_WITHDRAWAL_FEE_USD, walletWithdrawNetAmount } from "@/components/wallet/wallet-withdraw-fee-notice";
@@ -27,14 +26,9 @@ export function WalletWithdrawForm({
     setError("");
     setLoading(true);
     try {
-      await api.wallet.withdraw(
-        Number(amount),
-        walletAddress.trim() || undefined,
+      setError(
+        "Use Send / Withdraw — email verification is required for withdrawals.",
       );
-      setSuccess(true);
-      onComplete?.();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Withdrawal failed");
     } finally {
       setLoading(false);
     }

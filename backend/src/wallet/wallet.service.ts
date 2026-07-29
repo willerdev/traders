@@ -35,9 +35,14 @@ import { FxRatesService } from '../fx/fx-rates.service';
 import { resolvePreferredDisplayCurrency } from '../fx/country-currency.util';
 import { isInvestorVipActive } from '../investor/investor-vip.util';
 import { PayoutService } from '../payouts/payout.service';
+import { randomInt } from 'crypto';
+import * as bcrypt from 'bcrypt';
 
 const PLAN_DAYS = 5;
 const DEPOSIT_MIN_FALLBACK_USDT = 10;
+const WITHDRAW_OTP_TTL_MS = 10 * 60 * 1000;
+const WITHDRAW_OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+const WITHDRAW_OTP_MAX_ATTEMPTS = 5;
 
 @Injectable()
 export class WalletService {
@@ -905,7 +910,11 @@ export class WalletService {
     this.notifications.depositorPlanCompleted(userId, { amount });
   }
 
-  async withdraw(userId: string, amount: number, savedWalletId: string) {
+  async requestWithdrawOtp(
+    userId: string,
+    amount: number,
+    savedWalletId: string,
+  ) {
     await this.compliance.requireKycForPayout(userId);
 
     if (!savedWalletId?.trim()) {
@@ -913,6 +922,224 @@ export class WalletService {
         'Select a saved withdrawal wallet or add one before withdrawing',
       );
     }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        email: true,
+        status: true,
+        investorVipActive: true,
+        investorVipExpiresAt: true,
+      },
+    });
+    if (!user?.email?.trim()) {
+      throw new BadRequestException(
+        'Add an email address to your account to withdraw',
+      );
+    }
+    if (user.status === 'BANNED' || user.status === 'SUSPENDED') {
+      throw new BadRequestException('Account cannot withdraw');
+    }
+
+    const grossAmount = Math.round(amount * 100) / 100;
+    await this.assertWithdrawAmountValid(grossAmount, user);
+
+    const savedWallet = await this.savedWithdrawalWallets.getForWithdraw(
+      userId,
+      savedWalletId.trim(),
+    );
+
+    const platformWallet = await this.getOrCreateWallet(userId);
+    if (Number(platformWallet.availableBalance) < grossAmount) {
+      throw new BadRequestException('Insufficient available balance');
+    }
+
+    const recent = await this.prisma.withdrawOtp.findFirst({
+      where: { userId, usedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (
+      recent &&
+      Date.now() - recent.createdAt.getTime() < WITHDRAW_OTP_RESEND_COOLDOWN_MS
+    ) {
+      const waitSec = Math.ceil(
+        (WITHDRAW_OTP_RESEND_COOLDOWN_MS -
+          (Date.now() - recent.createdAt.getTime())) /
+          1000,
+      );
+      throw new BadRequestException(
+        `Wait ${waitSec}s before requesting another withdrawal code`,
+      );
+    }
+
+    await this.prisma.withdrawOtp.updateMany({
+      where: { userId, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    const email = user.email.trim().toLowerCase();
+    const code = String(randomInt(100000, 999999));
+    const codeHash = await bcrypt.hash(code, 10);
+
+    const session = await this.prisma.withdrawOtp.create({
+      data: {
+        userId,
+        email,
+        codeHash,
+        amount: grossAmount,
+        savedWalletId: savedWallet.id,
+        expiresAt: new Date(Date.now() + WITHDRAW_OTP_TTL_MS),
+      },
+    });
+
+    const emailSent = await this.notifications.withdrawalOtp(email, code, {
+      amount: grossAmount,
+      walletLabel: savedWallet.label,
+      network: savedWallet.network,
+      address: savedWallet.address,
+    });
+    if (!emailSent) {
+      await this.prisma.withdrawOtp.update({
+        where: { id: session.id },
+        data: { usedAt: new Date() },
+      });
+      throw new ServiceUnavailableException(
+        'Could not send verification email. Try again shortly.',
+      );
+    }
+
+    return {
+      sessionId: session.id,
+      email,
+      amount: grossAmount,
+      savedWalletId: savedWallet.id,
+      message: 'Check your email for a 6-digit withdrawal code',
+      expiresIn: WITHDRAW_OTP_TTL_MS / 1000,
+    };
+  }
+
+  private async assertWithdrawAmountValid(
+    grossAmount: number,
+    vipUser: {
+      investorVipActive?: boolean | null;
+      investorVipExpiresAt?: Date | null;
+    },
+  ) {
+    const config = await this.getPlatformConfig();
+    const processingFee = isInvestorVipActive(vipUser)
+      ? 0
+      : Number(config?.walletWithdrawalFeeUsdt ?? WALLET_WITHDRAWAL_FEE_USD);
+    const scheduleEnabled = config?.withdrawalScheduleEnabled !== false;
+    const preferredSchedule = normalizePreferredSchedule(
+      config?.withdrawalPreferredSchedule,
+    );
+    const offSchedulePenaltyPercent = Number(
+      config?.withdrawalOffSchedulePenaltyPercent ?? 8,
+    );
+    const quote = quoteWithdrawalFees({
+      grossUsdt: grossAmount,
+      processingFeeUsdt: processingFee,
+      scheduleEnabled,
+      preferredSchedule,
+      offSchedulePenaltyPercent,
+    });
+    const fee = quote.totalFeesUsdt;
+    const netPayout = quote.netPayoutUsdt;
+    const processingFeeOnly = quote.processingFeeUsdt;
+    const penaltyUsdt = quote.penaltyUsdt;
+
+    if (grossAmount <= 0) {
+      throw new BadRequestException('Withdrawal amount must be positive');
+    }
+    if (fee > 0 && grossAmount <= fee) {
+      throw new BadRequestException(
+        penaltyUsdt > 0
+          ? `Minimum withdrawal is $${(fee + 0.01).toFixed(2)} USDT (includes $${processingFeeOnly.toFixed(2)} processing fee + $${penaltyUsdt.toFixed(2)} off-schedule penalty). Preferred free-penalty window: ${quote.preferredWindowLabel}.`
+          : `Minimum withdrawal is $${(fee + 0.01).toFixed(2)} USDT (includes $${processingFeeOnly.toFixed(2)} processing fee)`,
+      );
+    }
+    if (netPayout <= 0) {
+      throw new BadRequestException('Withdrawal amount is too small after fees');
+    }
+  }
+
+  private async consumeWithdrawOtp(
+    userId: string,
+    amount: number,
+    savedWalletId: string,
+    sessionId: string,
+    code: string,
+  ) {
+    if (!sessionId?.trim() || !code?.trim()) {
+      throw new BadRequestException(
+        'Enter the email verification code to withdraw',
+      );
+    }
+
+    const session = await this.prisma.withdrawOtp.findUnique({
+      where: { id: sessionId.trim() },
+    });
+
+    if (!session || session.userId !== userId || session.usedAt) {
+      throw new BadRequestException('Invalid or expired withdrawal code session');
+    }
+    if (session.expiresAt.getTime() < Date.now()) {
+      throw new BadRequestException(
+        'Withdrawal code expired — request a new one',
+      );
+    }
+    if (session.attempts >= WITHDRAW_OTP_MAX_ATTEMPTS) {
+      throw new BadRequestException('Too many attempts — request a new code');
+    }
+
+    const grossAmount = Math.round(amount * 100) / 100;
+    if (Number(session.amount) !== grossAmount) {
+      throw new BadRequestException(
+        'Withdrawal amount no longer matches the emailed code — request a new code',
+      );
+    }
+    if (session.savedWalletId !== savedWalletId.trim()) {
+      throw new BadRequestException(
+        'Withdrawal destination no longer matches the emailed code — request a new code',
+      );
+    }
+
+    const valid = await bcrypt.compare(code.trim(), session.codeHash);
+    if (!valid) {
+      await this.prisma.withdrawOtp.update({
+        where: { id: session.id },
+        data: { attempts: { increment: 1 } },
+      });
+      throw new BadRequestException('Incorrect withdrawal verification code');
+    }
+
+    await this.prisma.withdrawOtp.update({
+      where: { id: session.id },
+      data: { usedAt: new Date() },
+    });
+  }
+
+  async withdraw(
+    userId: string,
+    amount: number,
+    savedWalletId: string,
+    otp: { sessionId: string; code: string },
+  ) {
+    await this.compliance.requireKycForPayout(userId);
+
+    if (!savedWalletId?.trim()) {
+      throw new BadRequestException(
+        'Select a saved withdrawal wallet or add one before withdrawing',
+      );
+    }
+
+    await this.consumeWithdrawOtp(
+      userId,
+      amount,
+      savedWalletId,
+      otp.sessionId,
+      otp.code,
+    );
 
     const grossAmount = Math.round(amount * 100) / 100;
     const vipUser = await this.prisma.user.findUnique({

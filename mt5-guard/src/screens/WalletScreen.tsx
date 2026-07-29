@@ -302,13 +302,28 @@ function WithdrawModal({
   const [walletId, setWalletId] = useState<string | null>(wallets[0]?.id ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [step, setStep] = useState<"form" | "otp">("form");
+  const [otpSessionId, setOtpSessionId] = useState("");
+  const [otpEmail, setOtpEmail] = useState("");
+  const [otpCode, setOtpCode] = useState("");
   const { theme } = useTheme();
 
   useEffect(() => {
     if (wallets[0]) setWalletId(wallets[0].id);
   }, [wallets]);
 
-  async function submit() {
+  useEffect(() => {
+    if (!visible) {
+      setStep("form");
+      setAmount("");
+      setOtpSessionId("");
+      setOtpEmail("");
+      setOtpCode("");
+      setError(null);
+    }
+  }, [visible]);
+
+  async function requestOtp() {
     const amt = Number(amount);
     if (!walletId) {
       setError("Add a verified withdrawal wallet in Settings first");
@@ -321,7 +336,40 @@ function WithdrawModal({
     setBusy(true);
     setError(null);
     try {
-      await api.wallet.withdraw({ amount: amt, savedWalletId: walletId });
+      const res = await api.wallet.requestWithdrawOtp({
+        amount: amt,
+        savedWalletId: walletId,
+      });
+      setOtpSessionId(res.sessionId);
+      setOtpEmail(res.email);
+      setOtpCode("");
+      setStep("otp");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send code");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submit() {
+    const amt = Number(amount);
+    if (!walletId || !otpSessionId) {
+      setError("Request a verification code first");
+      return;
+    }
+    if (otpCode.trim().length < 6) {
+      setError("Enter the 6-digit email code");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await api.wallet.withdraw({
+        amount: amt,
+        savedWalletId: walletId,
+        sessionId: otpSessionId,
+        code: otpCode.trim(),
+      });
       onDone();
       onClose();
     } catch (err) {
@@ -335,35 +383,81 @@ function WithdrawModal({
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
         <View style={styles.modalSheet}>
-          <Text style={styles.modalTitle}>Withdraw</Text>
-          {wallets.length === 0 ? (
-            <Text style={styles.muted}>No verified wallets — add one in Settings.</Text>
+          <Text style={styles.modalTitle}>
+            {step === "otp" ? "Email verification" : "Withdraw"}
+          </Text>
+          {step === "otp" ? (
+            <>
+              <Text style={styles.muted}>
+                Code sent to {otpEmail || "your email"}. Enter it to confirm the
+                withdrawal.
+              </Text>
+              <FieldLabel>Verification code</FieldLabel>
+              <TextInput
+                style={styles.input}
+                value={otpCode}
+                onChangeText={(t) => setOtpCode(t.replace(/\D/g, "").slice(0, 6))}
+                keyboardType="number-pad"
+                placeholderTextColor={theme.muted}
+                placeholder="6-digit code"
+              />
+              {error ? <Text style={styles.error}>{error}</Text> : null}
+              <PrimaryButton
+                label={busy ? "…" : "Confirm withdrawal"}
+                onPress={() => void submit()}
+                disabled={busy || otpCode.trim().length < 6}
+              />
+              <SecondaryButton
+                label="Resend code"
+                onPress={() => void requestOtp()}
+                disabled={busy}
+              />
+              <SecondaryButton
+                label="Back"
+                onPress={() => {
+                  setStep("form");
+                  setOtpCode("");
+                  setError(null);
+                }}
+                disabled={busy}
+              />
+            </>
           ) : (
             <>
-              <FieldLabel>Saved wallet</FieldLabel>
-              {wallets.map((w) => (
-                <Pressable
-                  key={w.id}
-                  onPress={() => setWalletId(w.id)}
-                  style={[styles.walletRow, walletId === w.id && styles.walletActive]}
-                >
-                  <Text style={styles.walletLabel}>{w.label}</Text>
-                  <Text style={styles.walletAddr}>{w.address.slice(0, 12)}… · {w.network}</Text>
-                </Pressable>
-              ))}
+              {wallets.length === 0 ? (
+                <Text style={styles.muted}>No verified wallets — add one in Settings.</Text>
+              ) : (
+                <>
+                  <FieldLabel>Saved wallet</FieldLabel>
+                  {wallets.map((w) => (
+                    <Pressable
+                      key={w.id}
+                      onPress={() => setWalletId(w.id)}
+                      style={[styles.walletRow, walletId === w.id && styles.walletActive]}
+                    >
+                      <Text style={styles.walletLabel}>{w.label}</Text>
+                      <Text style={styles.walletAddr}>{w.address.slice(0, 12)}… · {w.network}</Text>
+                    </Pressable>
+                  ))}
+                </>
+              )}
+              <FieldLabel>Amount</FieldLabel>
+              <TextInput
+                style={styles.input}
+                value={amount}
+                onChangeText={setAmount}
+                keyboardType="decimal-pad"
+                placeholderTextColor={theme.muted}
+              />
+              {error ? <Text style={styles.error}>{error}</Text> : null}
+              <PrimaryButton
+                label={busy ? "…" : "Continue — email code"}
+                onPress={() => void requestOtp()}
+                disabled={busy}
+              />
+              <SecondaryButton label="Close" onPress={onClose} />
             </>
           )}
-          <FieldLabel>Amount</FieldLabel>
-          <TextInput
-            style={styles.input}
-            value={amount}
-            onChangeText={setAmount}
-            keyboardType="decimal-pad"
-            placeholderTextColor={theme.muted}
-          />
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          <PrimaryButton label={busy ? "…" : "Withdraw"} onPress={() => void submit()} disabled={busy} />
-          <SecondaryButton label="Close" onPress={onClose} />
         </View>
       </View>
     </Modal>

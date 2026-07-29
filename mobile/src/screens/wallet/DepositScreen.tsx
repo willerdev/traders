@@ -17,6 +17,8 @@ import { formatUsdt, truncateMiddle } from "../../lib/format";
 import type { WalletDepositCheckout } from "../../lib/types";
 
 type Network = "TRC20" | "ERC20" | "BEP20";
+type PayMethod = "crypto" | "momo";
+type MomoNet = "MTN" | "AIRTEL";
 type Phase = "form" | "track";
 
 const DEPOSIT_STEPS = [
@@ -44,7 +46,10 @@ export function DepositScreen() {
   const { theme } = useTheme();
   const [phase, setPhase] = useState<Phase>("form");
   const [amount, setAmount] = useState("50");
+  const [method, setMethod] = useState<PayMethod>("crypto");
   const [network, setNetwork] = useState<Network>("TRC20");
+  const [momoNetwork, setMomoNetwork] = useState<MomoNet>("MTN");
+  const [momoPhone, setMomoPhone] = useState("");
   const [minUsdt, setMinUsdt] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [checkout, setCheckout] = useState<WalletDepositCheckout | null>(null);
@@ -53,11 +58,15 @@ export function DepositScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (method !== "crypto") {
+      setMinUsdt(null);
+      return;
+    }
     void api.wallet
       .depositMinimum(network)
       .then((r) => setMinUsdt(r.minUsdt))
       .catch(() => setMinUsdt(null));
-  }, [api, network]);
+  }, [api, network, method]);
 
   useEffect(() => {
     if (!checkout?.paymentId) return;
@@ -99,15 +108,28 @@ export function DepositScreen() {
       setError("Enter a valid amount");
       return;
     }
+    if (method === "momo" && momoPhone.trim().length < 9) {
+      setError("Enter a valid MoMo phone number");
+      return;
+    }
     setBusy(true);
     setError(null);
     setConfirmed(false);
     try {
-      const res = await api.wallet.deposit({
-        network,
-        amount: value,
-        method: "crypto",
-      });
+      const res =
+        method === "momo"
+          ? await api.wallet.deposit({
+              amount: value,
+              method: "momo",
+              momoPhone: momoPhone.trim(),
+              momoNetwork,
+              momoCountryCode: "UG",
+            })
+          : await api.wallet.deposit({
+              network,
+              amount: value,
+              method: "crypto",
+            });
       setCheckout(res);
       setStatusLabel(res.liveStatus ?? "Initiated");
       setPhase("track");
@@ -198,11 +220,26 @@ export function DepositScreen() {
     <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={styles.content}>
       <Text style={[styles.stepTitle, { color: theme.text }]}>Deposit</Text>
       <Text style={{ color: theme.muted, marginBottom: 14, fontSize: 13, lineHeight: 18 }}>
-        Select chain and amount, then send USDT to the generated address.
+        Pay with crypto USDT or Mobile Money, then track confirmation here.
       </Text>
 
       <SectionCard>
         <ProgressTracker steps={DEPOSIT_STEPS} activeIndex={0} completed={false} />
+      </SectionCard>
+
+      <SectionCard title="Method">
+        <View style={styles.chips}>
+          <Chip
+            label="Crypto USDT"
+            active={method === "crypto"}
+            onPress={() => setMethod("crypto")}
+          />
+          <Chip
+            label="Mobile Money"
+            active={method === "momo"}
+            onPress={() => setMethod("momo")}
+          />
+        </View>
       </SectionCard>
 
       <SectionCard title="Coin">
@@ -212,18 +249,41 @@ export function DepositScreen() {
         </View>
       </SectionCard>
 
-      <SectionCard title="Chain">
-        <View style={styles.chips}>
-          {(["TRC20", "ERC20", "BEP20"] as Network[]).map((n) => (
-            <Chip key={n} label={n} active={network === n} onPress={() => setNetwork(n)} />
-          ))}
-        </View>
-        {minUsdt != null ? (
-          <Text style={{ color: theme.muted, marginTop: 10, fontSize: 11 }}>
-            Minimum · {formatUsdt(minUsdt)}
-          </Text>
-        ) : null}
-      </SectionCard>
+      {method === "crypto" ? (
+        <SectionCard title="Chain">
+          <View style={styles.chips}>
+            {(["TRC20", "ERC20", "BEP20"] as Network[]).map((n) => (
+              <Chip key={n} label={n} active={network === n} onPress={() => setNetwork(n)} />
+            ))}
+          </View>
+          {minUsdt != null ? (
+            <Text style={{ color: theme.muted, marginTop: 10, fontSize: 11 }}>
+              Minimum · {formatUsdt(minUsdt)}
+            </Text>
+          ) : null}
+        </SectionCard>
+      ) : (
+        <SectionCard title="Mobile Money">
+          <View style={styles.chips}>
+            {(["MTN", "AIRTEL"] as MomoNet[]).map((n) => (
+              <Chip
+                key={n}
+                label={n}
+                active={momoNetwork === n}
+                onPress={() => setMomoNetwork(n)}
+              />
+            ))}
+          </View>
+          <View style={{ height: 10 }} />
+          <Field
+            label="Phone number"
+            value={momoPhone}
+            onChangeText={setMomoPhone}
+            keyboardType="phone-pad"
+            placeholder="07XXXXXXXX"
+          />
+        </SectionCard>
+      )}
 
       <SectionCard title="Amount">
         <Field
@@ -233,7 +293,9 @@ export function DepositScreen() {
           keyboardType="numeric"
           placeholder="0.00"
         />
-        {error ? <Text style={{ color: theme.text, marginBottom: 8, fontSize: 12 }}>{error}</Text> : null}
+        {error ? (
+          <Text style={{ color: theme.danger, marginBottom: 8, fontSize: 12 }}>{error}</Text>
+        ) : null}
         <PrimaryButton
           label={busy ? "Creating…" : "Continue"}
           onPress={() => void continueDeposit()}

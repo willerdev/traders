@@ -70,7 +70,7 @@ const SUPPORT_TOOLS = [
     function: {
       name: 'request_withdrawal',
       description:
-        'Create a wallet withdrawal for this user to a saved withdrawal wallet. Requires KYC approved and sufficient available balance. Non-VIP pays a $3 fee from the gross amount. Requires confirmed: true after the user clearly asks to withdraw a specific amount to a specific saved wallet.',
+        'Start or complete a wallet withdrawal. Step 1: call with amount + saved_wallet_id + confirmed:true (no otp) to email a 6-digit OTP. Step 2: call again with the same amount/wallet plus otp_session_id + otp_code from the user. Requires KYC and balance. Non-VIP pays a $3 fee from gross.',
       parameters: {
         type: 'object',
         properties: {
@@ -85,6 +85,15 @@ const SUPPORT_TOOLS = [
           confirmed: {
             type: 'boolean',
             description: 'Must be true when the user confirmed the withdraw',
+          },
+          otp_session_id: {
+            type: 'string',
+            description:
+              'sessionId returned from the first request_withdrawal call (email OTP step)',
+          },
+          otp_code: {
+            type: 'string',
+            description: '6-digit code the user received by email',
           },
         },
         required: ['amount', 'saved_wallet_id', 'confirmed'],
@@ -289,7 +298,7 @@ ${this.knowledge}
 
 Account tools:
 - You CAN look up this user's balances, saved withdrawal wallets, and pending withdrawals with tools.
-- You CAN request_withdrawal for them when they ask to withdraw — first list_saved_withdrawal_wallets, confirm amount + destination, then call with confirmed:true. KYC must already be approved.
+- You CAN request_withdrawal for them when they ask to withdraw — first list_saved_withdrawal_wallets, confirm amount + destination, then call with confirmed:true. That emails an OTP. Ask the user for the 6-digit code, then call request_withdrawal again with otp_session_id + otp_code. KYC must already be approved.
 - Investor VIP active for this user: ${vipActive ? 'YES' : 'NO'}.
 - If VIP is YES, you may approve_withdrawal for their own PENDING wallet withdrawals that have been pending 30+ minutes, and you may move funds wallet↔investment when they ask.
 - If VIP is NO, explain they need Investor VIP ($20/month from Invest) for AI withdrawal approval (and $0 withdraw fee). They can still request_withdrawal without VIP (standard $${WALLET_WITHDRAWAL_FEE_USD} fee). Transfers still require an enrolled investor account.
@@ -518,8 +527,32 @@ Account tools:
     }
 
     const wallet = this.moduleRef.get(WalletService, { strict: false });
-    const result = await wallet.withdraw(userId, amount, savedWalletId);
-    return { ok: true, ...result };
+    const sessionId = String(args.otp_session_id || '').trim();
+    const code = String(args.otp_code || '').trim();
+
+    if (!sessionId || !code) {
+      const otp = await wallet.requestWithdrawOtp(
+        userId,
+        amount,
+        savedWalletId,
+      );
+      return {
+        ok: true,
+        needsOtp: true,
+        otp_session_id: otp.sessionId,
+        email: otp.email,
+        amount: otp.amount,
+        expiresIn: otp.expiresIn,
+        message:
+          'Email OTP sent. Ask the user for the 6-digit code, then call request_withdrawal again with the same amount/saved_wallet_id plus otp_session_id and otp_code.',
+      };
+    }
+
+    const result = await wallet.withdraw(userId, amount, savedWalletId, {
+      sessionId,
+      code,
+    });
+    return { ok: true, needsOtp: false, ...result };
   }
 
   private async toolApproveWithdrawal(

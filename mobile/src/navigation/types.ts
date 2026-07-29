@@ -36,6 +36,7 @@ export type MoreStackParamList = {
   Terms: undefined;
   Kyc: undefined;
   ChainEnroll: undefined;
+  SavedWallets: undefined;
 };
 
 export type MainTabParamList = {

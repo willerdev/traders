@@ -338,6 +338,15 @@ export interface UpdateProfileInput {
   dateOfBirth?: string;
 }
 
+export interface UpdateAddressInput {
+  country?: string;
+  state?: string;
+  city?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  postalCode?: string;
+}
+
 export interface UpdatePaymentDetailsInput {
   payoutMethod: "TRC20" | "MOBILE_MONEY";
   trc20Address?: string;

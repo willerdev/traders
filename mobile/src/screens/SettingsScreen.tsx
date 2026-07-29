@@ -35,6 +35,7 @@ export function SettingsScreen() {
   const sectionY = useRef<Record<string, number>>({});
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [displayName, setDisplayName] = useState("");
+  const [country, setCountry] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +47,7 @@ export function SettingsScreen() {
       const data = await api.users.settings();
       setSettings(data);
       setDisplayName(data.user.displayName);
+      setCountry(data.profile?.country ?? "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load settings");
     } finally {
@@ -63,6 +65,7 @@ export function SettingsScreen() {
     setBusy(true);
     try {
       await api.users.updateProfile({ displayName: displayName.trim() });
+      await api.users.updateAddress({ country: country.trim() || undefined });
       await refreshDashboard();
       Alert.alert("Saved", "Profile updated");
       await load();
@@ -136,6 +139,16 @@ export function SettingsScreen() {
                 onChangeText={setDisplayName}
                 autoCapitalize="words"
               />
+              <Field
+                label="Country"
+                value={country}
+                onChangeText={setCountry}
+                autoCapitalize="words"
+                placeholder="e.g. Uganda"
+              />
+              <Text style={{ color: theme.muted, marginBottom: 10, fontSize: 11 }}>
+                Used for local daily credit time and currency display.
+              </Text>
               <PrimaryButton
                 label={busy ? "Saving…" : "Save profile"}
                 onPress={() => void saveProfile()}
@@ -168,7 +181,7 @@ export function SettingsScreen() {
                 title="Withdrawal wallets"
                 subtitle="Manage saved destinations"
                 showChevron
-                onPress={() => void Linking.openURL(`${WEB_APP_URL}/wallet`)}
+                onPress={() => navigation.navigate("SavedWallets")}
               />
               <ListRow
                 title="Terms & Conditions"
@@ -208,7 +221,9 @@ export function SettingsScreen() {
                     Dark mode
                   </Text>
                   <Text style={{ color: theme.muted, marginTop: 2, fontSize: 11 }}>
-                    {mode === "dark" ? "Black & white" : "Blue & white"}
+                    {mode === "dark"
+                      ? "Navy Trade Guard theme"
+                      : "Light slate theme"}
                   </Text>
                 </View>
                 <Switch

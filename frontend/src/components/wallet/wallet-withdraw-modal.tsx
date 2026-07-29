@@ -33,11 +33,15 @@ export function WalletWithdrawModal({
   schedule?: WithdrawalScheduleInfo | null;
   onComplete?: () => void;
 }) {
+  const [step, setStep] = useState<"form" | "otp">("form");
   const [amount, setAmount] = useState("");
   const [wallets, setWallets] = useState<SavedWithdrawalWallet[]>([]);
   const [selectedWalletId, setSelectedWalletId] = useState("");
   const [walletsLoading, setWalletsLoading] = useState(false);
   const [addWalletOpen, setAddWalletOpen] = useState(false);
+  const [otpSessionId, setOtpSessionId] = useState("");
+  const [otpEmail, setOtpEmail] = useState("");
+  const [otpCode, setOtpCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -60,7 +64,11 @@ export function WalletWithdrawModal({
 
   useEffect(() => {
     if (!open) {
+      setStep("form");
       setAmount("");
+      setOtpSessionId("");
+      setOtpEmail("");
+      setOtpCode("");
       setError("");
       setSuccess(false);
       return;
@@ -68,7 +76,7 @@ export function WalletWithdrawModal({
     void loadWallets();
   }, [open, loadWallets]);
 
-  async function submit() {
+  async function requestOtp() {
     setError("");
     if (!selectedWalletId) {
       setError("Select a saved withdrawal destination or add one first");
@@ -76,7 +84,35 @@ export function WalletWithdrawModal({
     }
     setLoading(true);
     try {
-      await api.wallet.withdraw(Number(amount), selectedWalletId);
+      const res = await api.wallet.requestWithdrawOtp(
+        Number(amount),
+        selectedWalletId,
+      );
+      setOtpSessionId(res.sessionId);
+      setOtpEmail(res.email);
+      setOtpCode("");
+      setStep("otp");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not send code");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function confirmWithdraw() {
+    setError("");
+    if (!otpCode.trim() || otpCode.trim().length < 6) {
+      setError("Enter the 6-digit code from your email");
+      return;
+    }
+    setLoading(true);
+    try {
+      await api.wallet.withdraw(
+        Number(amount),
+        selectedWalletId,
+        otpSessionId,
+        otpCode.trim(),
+      );
       setSuccess(true);
       onComplete?.();
     } catch (e) {
@@ -102,7 +138,7 @@ export function WalletWithdrawModal({
         ? fee + 0.01
         : 0.01;
   const selectedWallet = wallets.find((w) => w.id === selectedWalletId);
-  const canSubmit =
+  const canRequestOtp =
     !loading &&
     !walletsLoading &&
     Boolean(selectedWalletId) &&
@@ -140,6 +176,64 @@ export function WalletWithdrawModal({
                 </p>
                 <Button onClick={onClose}>Done</Button>
               </div>
+            ) : step === "otp" ? (
+              <>
+                <p className="text-sm text-gray-400">
+                  We emailed a 6-digit code to{" "}
+                  <strong className="text-white">{otpEmail || "your email"}</strong>{" "}
+                  to confirm withdrawing{" "}
+                  <strong className="text-white">{formatCurrency(gross)}</strong>
+                  {selectedWallet
+                    ? ` to ${selectedWallet.label}`
+                    : ""}.
+                </p>
+                <div>
+                  <label className="mb-1 block text-xs text-gray-400">
+                    Verification code
+                  </label>
+                  <Input
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    placeholder="6-digit code"
+                    value={otpCode}
+                    onChange={(e) =>
+                      setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+                    }
+                  />
+                </div>
+                {error && <p className="text-sm text-danger">{error}</p>}
+                <Button
+                  className="w-full"
+                  onClick={() => void confirmWithdraw()}
+                  disabled={loading || otpCode.trim().length < 6}
+                >
+                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Confirm withdrawal
+                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="ghost"
+                    className="flex-1"
+                    disabled={loading}
+                    onClick={() => {
+                      setStep("form");
+                      setOtpCode("");
+                      setError("");
+                    }}
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="flex-1"
+                    disabled={loading}
+                    onClick={() => void requestOtp()}
+                  >
+                    Resend code
+                  </Button>
+                </div>
+              </>
             ) : (
               <>
                 <p className="text-sm text-gray-400">
@@ -206,18 +300,21 @@ export function WalletWithdrawModal({
                     </p>
                   )}
                 </div>
+                <p className="text-xs text-gray-500">
+                  We&apos;ll email a one-time code to confirm this withdrawal.
+                </p>
                 {error && <p className="text-sm text-danger">{error}</p>}
                 <Button
                   className="w-full"
-                  onClick={() => void submit()}
-                  disabled={!canSubmit}
+                  onClick={() => void requestOtp()}
+                  disabled={!canRequestOtp}
                 >
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   {net != null
-                    ? `Withdraw ${formatCurrency(net)}`
+                    ? `Continue — ${formatCurrency(net)}`
                     : amount
-                      ? `Withdraw ${formatCurrency(gross)}`
-                      : "Withdraw"}
+                      ? `Continue — ${formatCurrency(gross)}`
+                      : "Continue"}
                 </Button>
               </>
             )}

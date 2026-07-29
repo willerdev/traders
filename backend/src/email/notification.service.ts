@@ -120,6 +120,19 @@ export class NotificationService {
     return this.sendWithdrawalWalletVerify(email, code, wallet);
   }
 
+  withdrawalOtp(
+    email: string,
+    code: string,
+    details: {
+      amount: number;
+      walletLabel: string;
+      network: string;
+      address: string;
+    },
+  ) {
+    return this.sendWithdrawalOtp(email, code, details);
+  }
+
   /** Email ops + admins about a platform-level issue (broker limits, quotas). */
   async adminSystemAlert(subject: string, bodyLines: string[]) {
     const html = this.email.layout(
@@ -183,6 +196,43 @@ export class NotificationService {
       subject: `${code} — verify your withdrawal wallet`,
       html,
       text: `Your withdrawal wallet verification code is ${code}. Wallet: ${wallet.label} (${wallet.network}) ${masked}. Expires in 10 minutes.`,
+    });
+  }
+
+  private async sendWithdrawalOtp(
+    email: string,
+    code: string,
+    details: {
+      amount: number;
+      walletLabel: string;
+      network: string;
+      address: string;
+    },
+  ) {
+    const to = email.trim().toLowerCase();
+    const masked =
+      details.address.length > 12
+        ? `${details.address.slice(0, 6)}…${details.address.slice(-4)}`
+        : details.address;
+    const amountLabel = `$${Number(details.amount).toFixed(2)} USDT`;
+    const html = this.email.layout(
+      'Confirm your withdrawal',
+      `<p>You requested a withdrawal from TraderRank Pro:</p>
+      <ul style="color:#cbd5e1;padding-left:1.2rem;">
+        <li><strong>Amount:</strong> ${amountLabel}</li>
+        <li><strong>To:</strong> ${details.walletLabel} (${details.network})</li>
+        <li><strong>Address:</strong> <code style="color:#e2e8f0;">${masked}</code></li>
+      </ul>
+      <p>Enter this code to authorize the withdrawal:</p>
+      <p style="font-size:32px;font-weight:700;letter-spacing:0.35em;color:#ffffff;margin:16px 0;">${code}</p>
+      <p style="color:#94a3b8;font-size:14px;">This code expires in 10 minutes. If you did not request a withdrawal, secure your account and ignore this email.</p>`,
+    );
+
+    return this.email.send({
+      to,
+      subject: `${code} — confirm your ${amountLabel} withdrawal`,
+      html,
+      text: `Your withdrawal code is ${code}. Amount: ${amountLabel} → ${details.walletLabel} (${details.network}) ${masked}. Expires in 10 minutes.`,
     });
   }
 

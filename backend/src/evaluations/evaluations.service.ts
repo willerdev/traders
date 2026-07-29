@@ -412,7 +412,10 @@ export class EvaluationsService {
         where: { id: payment.id },
         data: {
           gatewayId: String(npPayment.payment_id),
-          gatewayResponse: npPayment as object,
+          gatewayResponse: {
+            ...(npPayment as object),
+            gateway: 'NOWPayments',
+          } as object,
           payAddress: npPayment.pay_address,
           payAmount: npPayment.pay_amount,
         },

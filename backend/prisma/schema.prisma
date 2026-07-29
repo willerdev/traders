@@ -276,6 +276,7 @@ model User {
   passwordResets     PasswordReset[]
   savedWithdrawalWallets SavedWithdrawalWallet[]
   withdrawalWalletOtps WithdrawalWalletOtp[]
+  withdrawOtps         WithdrawOtp[]
   custodyDeposits    CustodyDeposit[]
   copyTradesSource   CopyTrade[] @relation("CopyTradeSource")
   copyPoolEntry      CopyPoolTrader? @relation("CopyPoolTrader")
@@ -368,6 +369,25 @@ model WithdrawalWalletOtp {
 
   @@index([userId, expiresAt])
   @@map("withdrawal_wallet_otps")
+}
+
+/** Email OTP authorizing a specific wallet withdrawal (amount + destination). */
+model WithdrawOtp {
+  id            String    @id @default(cuid())
+  userId        String
+  email         String
+  codeHash      String
+  amount        Decimal   @db.Decimal(18, 2)
+  savedWalletId String
+  expiresAt     DateTime
+  attempts      Int       @default(0)
+  usedAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("withdraw_otps")
 }
 
 model SavedWithdrawalWallet {

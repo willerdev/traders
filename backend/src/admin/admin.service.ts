@@ -1042,15 +1042,32 @@ export class AdminService {
 
     const items = rows.map((p) => {
       const stored = (p.gatewayResponse ?? {}) as Record<string, unknown>;
-      const gateway =
-        typeof stored.gateway === 'string'
-          ? stored.gateway
-          : p.network.toUpperCase() === 'MOMO'
-            ? 'Flutterwave'
-            : p.network.toUpperCase() === 'WALLET'
-              ? 'Wallet'
-              : 'NOWPayments';
+      const rawGateway =
+        typeof stored.gateway === 'string' ? stored.gateway.trim() : '';
       const networkUpper = p.network.toUpperCase();
+      const gateway = (() => {
+        if (/flutter/i.test(rawGateway) || networkUpper === 'MOMO') {
+          return 'Flutterwave';
+        }
+        if (/wallet/i.test(rawGateway) || networkUpper === 'WALLET') {
+          return 'Wallet';
+        }
+        if (/promo/i.test(rawGateway) || p.gatewayId?.startsWith('promo_')) {
+          return 'Promo';
+        }
+        if (/admin|manual/i.test(rawGateway)) {
+          return 'Manual';
+        }
+        // Crypto checkouts (and any unlabeled NOWPayments payload)
+        if (
+          !rawGateway ||
+          /nowpayments/i.test(rawGateway) ||
+          ['TRC20', 'ERC20', 'BEP20', 'SOL'].includes(networkUpper)
+        ) {
+          return 'NOWPayments';
+        }
+        return rawGateway;
+      })();
       const methodLabel =
         networkUpper === 'MOMO'
           ? 'momo'

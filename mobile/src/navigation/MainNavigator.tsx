@@ -159,6 +159,11 @@ function MoreStackNavigator() {
       <MoreStack.Screen name="Terms" component={TermsScreen} options={{ title: "Terms" }} />
       <MoreStack.Screen name="Kyc" component={KycScreen} options={{ title: "KYC" }} />
       <MoreStack.Screen
+        name="SavedWallets"
+        component={SavedWalletsScreen}
+        options={{ title: "Withdrawal wallets" }}
+      />
+      <MoreStack.Screen
         name="ChainEnroll"
         component={ChainEnrollScreen}
         options={{ title: "Chain vault" }}

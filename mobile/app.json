@@ -9,25 +9,28 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FFFFFF"
+      "backgroundColor": "#121a2e"
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.traderrank.pro",
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "Upload KYC and document images for payout verification."
+        "NSPhotoLibraryUsageDescription": "Upload KYC and document images for payout verification.",
+        "NSCameraUsageDescription": "Camera is used for chain vault liveness verification."
       }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#FFFFFF",
+        "backgroundColor": "#121a2e",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "package": "com.traderrank.pro",
       "permissions": [
-        "READ_MEDIA_IMAGES"
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -39,16 +42,24 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow TraderRank Pro to access your photos for KYC uploads."
+          "photosPermission": "Allow Trade Guard to access your photos for KYC uploads."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Trade Guard to use the camera for liveness verification.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
         }
       ],
       "expo-status-bar"
     ],
     "extra": {
       "eas": {
-        "projectId": "42108d7e-5fca-4d6d-8aa9-fac16092c064"
+        "projectId": "5d079847-3a99-4af4-9bb5-1232a0298b31"
       }
     },
-    "owner": "willer256"
+    "owner": "willerbinance"
   }
 }
