@@ -26,6 +26,7 @@ export type WalletStackParamList = {
 export type InvestStackParamList = {
   InvestMain: undefined;
   ChainEnroll: undefined;
+  Unitrust: undefined;
 };
 
 export type MoreStackParamList = {

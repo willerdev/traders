@@ -34,6 +34,7 @@ import { FxModule } from './fx/fx.module';
 import { AccountTransferModule } from './account-transfer/account-transfer.module';
 import { SmsModule } from './sms/sms.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
+import { UnitrustModule } from './unitrust/unitrust.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { BlockchainModule } from './blockchain/blockchain.module';
     PresenceModule,
     WalletModule,
     InvestorModule,
+    UnitrustModule,
     EvaluationsModule,
     FlutterwaveModule,
     AccountTransferModule,

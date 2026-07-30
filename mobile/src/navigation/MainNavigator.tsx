@@ -11,6 +11,7 @@ import { WithdrawScreen } from "../screens/wallet/WithdrawScreen";
 import { TransactionsScreen } from "../screens/wallet/TransactionsScreen";
 import { JournalScreen } from "../screens/JournalScreen";
 import { InvestScreen } from "../screens/InvestScreen";
+import { UnitrustScreen } from "../screens/UnitrustScreen";
 import { MessagesScreen } from "../screens/MessagesScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { MoreScreen } from "../screens/MoreScreen";
@@ -131,6 +132,11 @@ function InvestStackNavigator() {
   return (
     <InvestStack.Navigator screenOptions={stackScreenOptions(theme)}>
       <InvestStack.Screen name="InvestMain" component={InvestScreen} options={{ headerShown: false }} />
+      <InvestStack.Screen
+        name="Unitrust"
+        component={UnitrustScreen}
+        options={{ title: "Unitrust" }}
+      />
       <InvestStack.Screen
         name="ChainEnroll"
         component={ChainEnrollScreen}

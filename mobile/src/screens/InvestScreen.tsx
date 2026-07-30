@@ -117,7 +117,6 @@ export function InvestScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
-      <Text style={[styles.title, { color: theme.text }]}>Invest</Text>
       <ScreenState loading={loading} error={error} onRetry={() => void load()}>
         <ScrollView
           contentContainerStyle={styles.content}
@@ -132,6 +131,12 @@ export function InvestScreen() {
             />
           }
         >
+          <Text style={[styles.title, { color: theme.text }]}>Invest</Text>
+          <PrimaryButton
+            label="Open Unitrust (5% daily · monthly withdraw)"
+            variant="secondary"
+            onPress={() => navigation.navigate("Unitrust")}
+          />
           <InvestorPolicyBanners
             investmentBalance={status?.investmentBalance ?? 0}
             vipActive={Boolean(status?.vip?.active)}

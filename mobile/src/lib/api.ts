@@ -481,6 +481,41 @@ export class ApiClient {
       }),
   };
 
+  unitrust = {
+    status: () =>
+      this.request<{
+        active: boolean;
+        unitrustBalance: number;
+        availableBalance: number;
+        dailyYieldPercent: number;
+        minDepositUsdt: number;
+        maxDepositUsdt: number;
+        projectedDailyEarning: number;
+        canWithdrawThisMonth: boolean;
+        nextWithdrawAt: string | null;
+        recentCredits: Array<{
+          amount: number;
+          creditDate: string;
+        }>;
+      }>("/unitrust/status"),
+    enroll: (amount: number) =>
+      this.request<{ message: string; unitrustBalance: number }>(
+        "/unitrust/enroll",
+        {
+          method: "POST",
+          body: JSON.stringify({ amount }),
+        },
+      ),
+    redeem: (amount: number) =>
+      this.request<{ message: string; unitrustBalance: number }>(
+        "/unitrust/redeem",
+        {
+          method: "POST",
+          body: JSON.stringify({ amount }),
+        },
+      ),
+  };
+
   chainEnrollment = {
     get: () =>
       this.request<ChainContractEnrollment>("/blockchain/enrollment"),

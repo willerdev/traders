@@ -337,7 +337,11 @@ export class WalletService {
       .reduce((s, p) => s + Number(p.amount), 0);
 
     const totalDeposited = sumByTypes(['DEPOSITOR_DEPOSIT', 'DEPOSIT']);
-    const totalEarned = sumByTypes(['DEPOSITOR_EARNING', 'INVESTOR_EARNING']);
+    const totalEarned = sumByTypes([
+      'DEPOSITOR_EARNING',
+      'INVESTOR_EARNING',
+      'UNITRUST_EARNING',
+    ]);
     const totalWithdrawn = Math.abs(
       sumByTypes(['DEPOSITOR_WITHDRAW', 'PAYOUT']),
     );
@@ -380,6 +384,8 @@ export class WalletService {
     return {
       availableBalance: Number(wallet.availableBalance),
       lockedBalance: Number(wallet.lockedBalance),
+      investorBalance: Number(wallet.investorBalance ?? 0),
+      unitrustBalance: Number(wallet.unitrustBalance ?? 0),
       pendingWalletDeposits: pendingDeposits.length,
       pendingWalletDepositAmount: pendingDeposits.reduce(
         (sum, p) => sum + Number(p.amount),

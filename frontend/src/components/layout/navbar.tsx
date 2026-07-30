@@ -29,6 +29,7 @@ import {
 const navItems = [
   { href: "/dashboard", label: "Dashboard", shortLabel: "Home", icon: LayoutDashboard },
   { href: "/invest", label: "Invest", shortLabel: "Invest", icon: TrendingUp },
+  { href: "/unitrust", label: "Unitrust", shortLabel: "Unitrust", icon: ScrollText },
   { href: "/blockchain", label: "Chain", shortLabel: "Chain", icon: Blocks },
   { href: "/journal", label: "Journal", shortLabel: "Journal", icon: ScrollText },
   { href: "/wallet", label: "Wallet", shortLabel: "Wallet", icon: Wallet },

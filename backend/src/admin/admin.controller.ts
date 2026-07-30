@@ -17,6 +17,7 @@ import { JwtAuthGuard, AdminPermissionGuard } from '../auth/guards';
 import { RequireAdminPermission } from '../auth/decorators/admin-permission.decorator';
 import { UploadStorageService } from '../uploads/upload-storage.service';
 import { WalletService } from '../wallet/wallet.service';
+import { UnitrustService } from '../unitrust/unitrust.service';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, AdminPermissionGuard)
@@ -26,6 +27,7 @@ export class AdminController {
     private adminService: AdminService,
     private uploadStorage: UploadStorageService,
     private wallet: WalletService,
+    private unitrust: UnitrustService,
   ) {}
 
   @Get('session')
@@ -619,6 +621,11 @@ export class AdminController {
       limit ? Number(limit) : 50,
       offset ? Number(offset) : 0,
     );
+  }
+
+  @Get('unitrust')
+  listUnitrust(@Query('limit') limit?: string) {
+    return this.unitrust.listMembers(limit ? Number(limit) : 50);
   }
 
   @Patch('investors/:userId/yield')

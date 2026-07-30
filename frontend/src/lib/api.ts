@@ -1146,6 +1146,44 @@ class ApiClient {
       }),
   };
 
+  unitrust = {
+    status: () => this.request<UnitrustStatus>("/unitrust/status"),
+    enroll: (amount: number) =>
+      this.request<{
+        success: boolean;
+        amount: number;
+        walletBalance: number;
+        unitrustBalance: number;
+        message: string;
+      }>("/unitrust/enroll", {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+      }),
+    allocate: (amount: number) =>
+      this.request<{
+        success: boolean;
+        amount: number;
+        walletBalance: number;
+        unitrustBalance: number;
+        message: string;
+      }>("/unitrust/allocate", {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+      }),
+    redeem: (amount: number) =>
+      this.request<{
+        success: boolean;
+        amount: number;
+        walletBalance: number;
+        unitrustBalance: number;
+        nextWithdrawAt: string;
+        message: string;
+      }>("/unitrust/redeem", {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+      }),
+  };
+
   evaluations = {
     listPlans: () =>
       this.request<EvaluationPlanCatalog[]>("/evaluations/plans"),
@@ -1732,6 +1770,30 @@ export interface InvestorStatus {
     notes: string | null;
     executedAt: string | null;
     closedAt: string | null;
+  }>;
+}
+
+export interface UnitrustStatus {
+  active: boolean;
+  enrolledAt: string | null;
+  unitrustBalance: number;
+  availableBalance: number;
+  dailyYieldPercent: number;
+  minDepositUsdt: number;
+  maxDepositUsdt: number;
+  projectedDailyEarning: number;
+  yieldPaused: boolean;
+  canWithdrawThisMonth: boolean;
+  lastWithdrawAt: string | null;
+  nextWithdrawAt: string | null;
+  withdrawWindowLabel: string;
+  creditTimeLabel: string;
+  recentCredits: Array<{
+    amount: number;
+    yieldPercent: number;
+    baseBalance: number;
+    creditDate: string;
+    creditedAt: string;
   }>;
 }
 

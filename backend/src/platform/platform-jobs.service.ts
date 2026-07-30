@@ -10,6 +10,7 @@ import { WEEKLY_ACCESS_MS } from '../common/weekly-access.util';
 
 import { WalletService } from '../wallet/wallet.service';
 import { InvestorService } from '../investor/investor.service';
+import { UnitrustService } from '../unitrust/unitrust.service';
 import { AbuseHunterService } from './abuse-hunter.service';
 import { AccountTransferService } from '../account-transfer/account-transfer.service';
 
@@ -25,6 +26,7 @@ export class PlatformJobsService implements OnModuleInit {
     private mt5Sync: Mt5SyncService,
     private walletService: WalletService,
     private investorService: InvestorService,
+    private unitrustService: UnitrustService,
     private abuseHunter: AbuseHunterService,
     private accountTransfers: AccountTransferService,
   ) {}
@@ -238,6 +240,28 @@ export class PlatformJobsService implements OnModuleInit {
     } catch (err) {
       this.logger.error(
         `Investor earnings job failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  /** Daily at 16:05 Africa/Kampala — credit Unitrust 5% daily earnings. */
+  @Cron('5 16 * * *', { timeZone: 'Africa/Kampala' })
+  async unitrustDailyEarningsJob() {
+    try {
+      const result = await this.unitrustService.creditDailyEarnings();
+      if (result.credited > 0) {
+        this.logger.log(
+          `Unitrust daily earnings credited: ${result.credited} member(s)` +
+            (result.holdSkipped
+              ? ` (${result.holdSkipped} under 24h hold)`
+              : ''),
+        );
+      } else if (result.skipped === 'global_pause') {
+        this.logger.warn('Unitrust daily earnings skipped — global yield pause');
+      }
+    } catch (err) {
+      this.logger.error(
+        `Unitrust earnings job failed: ${err instanceof Error ? err.message : err}`,
       );
     }
   }

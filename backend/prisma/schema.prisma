@@ -116,6 +116,9 @@ enum WalletTxType {
   INVESTOR_REDEEM
   INVESTOR_REINVEST_FEE
   SUBSCRIPTION
+  UNITRUST_ALLOCATE
+  UNITRUST_REDEEM
+  UNITRUST_EARNING
 }
 
 enum SignalSource {
@@ -250,6 +253,8 @@ model User {
   investorVipExpiresAt DateTime?
   investorVipRemindedAt DateTime?
   depositorActive     Boolean    @default(false)
+  unitrustActive      Boolean    @default(false)
+  unitrustEnrolledAt  DateTime?
   instantWithdraw     Boolean    @default(false)
   instantWithdrawGrantedAt DateTime?
   instantWithdrawGrantedById String?
@@ -262,6 +267,7 @@ model User {
   depositorPlans DepositorPlan[]
   investorTrades InvestorTrade[]
   investorDailyCredits InvestorDailyCredit[]
+  unitrustDailyCredits UnitrustDailyCredit[]
   signals        Signal[]
   tradeScores    TradeScore[]
   rankings       Ranking[]
@@ -951,6 +957,9 @@ model PlatformConfig {
   investorFeeUsdt          Decimal @default(10) @db.Decimal(10, 2)
   investorDailyYieldPercent Decimal @default(8) @db.Decimal(5, 2)
   investorYieldPaused      Boolean @default(false)
+  unitrustDailyYieldPercent Decimal @default(5) @db.Decimal(5, 2)
+  unitrustYieldPaused      Boolean @default(false)
+  unitrustMinDepositUsdt   Decimal @default(100) @db.Decimal(10, 2)
   depositorDailyYieldPercent Decimal @default(0.5) @db.Decimal(5, 2)
   depositorMinDepositUsdt  Decimal @default(50) @db.Decimal(10, 2)
   loginOtpEnabled          Boolean @default(false) @map("login_otp_enabled")
@@ -980,6 +989,7 @@ model PlatformWallet {
   availableBalance Decimal  @default(0) @db.Decimal(12, 2)
   lockedBalance    Decimal  @default(0) @db.Decimal(12, 2)
   investorBalance  Decimal  @default(0) @db.Decimal(12, 2)
+  unitrustBalance  Decimal  @default(0) @db.Decimal(12, 2)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -1087,6 +1097,23 @@ model InvestorDailyCredit {
   @@unique([userId, creditDate])
   @@index([userId, creditDate])
   @@map("investor_daily_credits")
+}
+
+/// Unitrust daily yield ledger — 5% of unitrustBalance credited once per Kampala day.
+model UnitrustDailyCredit {
+  id           String   @id @default(cuid())
+  userId       String
+  amount       Decimal  @db.Decimal(12, 2)
+  yieldPercent Decimal  @db.Decimal(5, 2)
+  baseBalance  Decimal  @db.Decimal(12, 2)
+  creditDate   DateTime @db.Date
+  creditedAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, creditDate])
+  @@index([userId, creditDate])
+  @@map("unitrust_daily_credits")
 }
 
 model PromoCode {

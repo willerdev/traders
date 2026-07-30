@@ -31,6 +31,16 @@ export function InvestorDepositorPlatform({
   const [section, setSection] = useState<Section>("overview");
   const [settings, setSettings] = useState<InvestorDepositorSettings | null>(null);
   const [investors, setInvestors] = useState<InvestorRow[]>([]);
+  const [unitrustMembers, setUnitrustMembers] = useState<
+    Array<{
+      id: string;
+      email: string | null;
+      displayName: string;
+      enrolledAt: string | null;
+      unitrustBalance: number;
+      availableBalance: number;
+    }>
+  >([]);
   const [incomeJournal, setIncomeJournal] = useState<IncomeJournalEntry[]>([]);
 
   const [investorYield, setInvestorYield] = useState("");
@@ -96,13 +106,15 @@ export function InvestorDepositorPlatform({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, investorList, journal] = await Promise.all([
+      const [s, investorList, journal, unitrustList] = await Promise.all([
         api.investorDepositorSettings(),
         api.listInvestors({ limit: 50 }),
         api.incomeJournal({ limit: 50 }),
+        api.listUnitrust(50).catch(() => []),
       ]);
       applySettings(s);
       setInvestors(investorList.items);
+      setUnitrustMembers(unitrustList);
       setYieldDrafts(
         Object.fromEntries(
           investorList.items.map((i) => [
@@ -291,6 +303,43 @@ export function InvestorDepositorPlatform({
 
       {section === "overview" && (
         <div className="platform-section platform-animate-in" style={{ animationDelay: "240ms" }}>
+          <section className="platform-card" style={{ marginBottom: "1rem" }}>
+            <div className="platform-card-head">
+              <span className="platform-card-icon">UT</span>
+              <div>
+                <h3>Unitrust members ({unitrustMembers.length})</h3>
+                <p>5% daily · monthly withdrawals · Kampala clock</p>
+              </div>
+            </div>
+            {unitrustMembers.length === 0 ? (
+              <p className="muted">No Unitrust members yet.</p>
+            ) : (
+              <div className="platform-table-wrap">
+                <table className="platform-table">
+                  <thead>
+                    <tr>
+                      <th>User</th>
+                      <th>Corpus</th>
+                      <th>Wallet</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {unitrustMembers.map((m) => (
+                      <tr key={m.id}>
+                        <td>
+                          {m.displayName}
+                          <br />
+                          <span className="muted">{m.email ?? "—"}</span>
+                        </td>
+                        <td>{fmtMoney(m.unitrustBalance)}</td>
+                        <td>{fmtMoney(m.availableBalance)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
           <div className="platform-config-grid">
             <section className="platform-card platform-card-investor">
               <div className="platform-card-head">

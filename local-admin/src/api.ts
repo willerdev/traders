@@ -756,6 +756,17 @@ export const api = {
     const suffix = q.toString() ? `?${q.toString()}` : "";
     return request<InvestorListResult>(`/admin/investors${suffix}`);
   },
+  listUnitrust: (limit = 50) =>
+    request<
+      Array<{
+        id: string;
+        email: string | null;
+        displayName: string;
+        enrolledAt: string | null;
+        unitrustBalance: number;
+        availableBalance: number;
+      }>
+    >(`/admin/unitrust?limit=${limit}`),
   enrollInvestor: (data: {
     userId?: string;
     email?: string;

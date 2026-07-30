@@ -14,6 +14,7 @@ import { MetaApiModule } from '../metaapi/metaapi.module';
 import { PresenceModule } from '../presence/presence.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { InvestorModule } from '../investor/investor.module';
+import { UnitrustModule } from '../unitrust/unitrust.module';
 import { AdminPermissionGuard } from '../auth/guards/admin-permission.guard';
 
 @Module({
@@ -31,6 +32,7 @@ import { AdminPermissionGuard } from '../auth/guards/admin-permission.guard';
     PresenceModule,
     WalletModule,
     forwardRef(() => InvestorModule),
+    UnitrustModule,
   ],
   controllers: [AdminController],
   providers: [AdminService, AdminPermissionGuard],

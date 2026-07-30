@@ -22,6 +22,13 @@ export default function InvestPage() {
           Investment command center
         </p>
       </div>
+      <p className="text-sm text-gray-400">
+        Looking for 5% daily with monthly withdrawals?{" "}
+        <a href="/unitrust" className="text-primary hover:underline">
+          Open Unitrust
+        </a>
+        .
+      </p>
       <InvestHub />
     </div>
   );
