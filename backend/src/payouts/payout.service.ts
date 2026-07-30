@@ -717,7 +717,10 @@ export class PayoutService {
       where: { id: 'default' },
     });
     if (config?.requireKycForPayouts !== false) {
-      if (user?.kyc?.status !== 'APPROVED') {
+      const cleared =
+        Boolean(user?.kyc?.status === 'APPROVED') ||
+        (await this.compliance.isWithdrawKycExempt(userId));
+      if (!cleared) {
         throw new BadRequestException(
           'Cannot approve withdrawal — KYC is not verified',
         );

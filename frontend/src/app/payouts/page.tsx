@@ -65,7 +65,8 @@ export default function PayoutsPage() {
     }
   };
 
-  const kycApproved = kycStatus === "APPROVED";
+  const kycApproved =
+    kycStatus === "APPROVED" || Boolean(settings?.user?.withdrawKycExempt);
   const pendingRequest = payouts.filter(
     (p) => p.status === "PENDING" && !p.walletAddress,
   );

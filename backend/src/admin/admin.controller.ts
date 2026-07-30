@@ -817,6 +817,19 @@ export class AdminController {
     });
   }
 
+  @Post('withdraw-whitelist/kyc-exempt')
+  @RequireAdminPermission('payout')
+  setInstantWithdrawKycExempt(
+    @Request() req: { user: { id: string } },
+    @Body() body: { userId?: string; email?: string; enabled?: boolean },
+  ) {
+    return this.adminService.setInstantWithdrawKycExempt(req.user.id, {
+      userId: body.userId,
+      email: body.email,
+      enabled: body.enabled !== false,
+    });
+  }
+
   @Get('income-journal')
   getIncomeJournal(
     @Query('limit') limit?: string,

@@ -282,6 +282,8 @@ model User {
   instantWithdraw     Boolean    @default(false)
   instantWithdrawGrantedAt DateTime?
   instantWithdrawGrantedById String?
+  /// When true with instantWithdraw: admin-marked verified — skip KYC for withdrawals.
+  instantWithdrawKycExempt Boolean @default(false)
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 

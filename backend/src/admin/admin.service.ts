@@ -1273,7 +1273,9 @@ export class AdminService {
     });
 
     if (config?.requireKycForPayouts !== false) {
-      if (payout.user.kyc?.status !== 'APPROVED') {
+      const whitelistVerified =
+        payout.user.instantWithdraw && payout.user.instantWithdrawKycExempt;
+      if (payout.user.kyc?.status !== 'APPROVED' && !whitelistVerified) {
         throw new BadRequestException(
           'Cannot approve payout — trader KYC is not verified',
         );
@@ -1989,6 +1991,8 @@ export class AdminService {
         displayName: true,
         instantWithdrawGrantedAt: true,
         instantWithdrawGrantedById: true,
+        instantWithdrawKycExempt: true,
+        kyc: { select: { status: true } },
         platformWallet: {
           select: { availableBalance: true },
         },
@@ -2003,6 +2007,8 @@ export class AdminService {
         walletBalance: Number(u.platformWallet?.availableBalance ?? 0),
         grantedAt: u.instantWithdrawGrantedAt?.toISOString() ?? null,
         grantedById: u.instantWithdrawGrantedById,
+        kycExempt: u.instantWithdrawKycExempt,
+        kycStatus: u.kyc?.status ?? 'NOT_STARTED',
       })),
       count: users.length,
     };
@@ -2034,6 +2040,8 @@ export class AdminService {
         instantWithdraw: enabled,
         instantWithdrawGrantedAt: enabled ? new Date() : null,
         instantWithdrawGrantedById: enabled ? adminId : null,
+        // Drop KYC waiver when removed from whitelist
+        ...(enabled ? {} : { instantWithdrawKycExempt: false }),
       },
       select: {
         id: true,
@@ -2042,6 +2050,8 @@ export class AdminService {
         instantWithdraw: true,
         instantWithdrawGrantedAt: true,
         instantWithdrawGrantedById: true,
+        instantWithdrawKycExempt: true,
+        kyc: { select: { status: true } },
         platformWallet: { select: { availableBalance: true } },
       },
     });
@@ -2060,6 +2070,71 @@ export class AdminService {
       instantWithdraw: updated.instantWithdraw,
       grantedAt: updated.instantWithdrawGrantedAt?.toISOString() ?? null,
       grantedById: updated.instantWithdrawGrantedById,
+      kycExempt: updated.instantWithdrawKycExempt,
+      kycStatus: updated.kyc?.status ?? 'NOT_STARTED',
+      walletBalance: Number(updated.platformWallet?.availableBalance ?? 0),
+    };
+  }
+
+  async setInstantWithdrawKycExempt(
+    adminId: string,
+    input: { userId?: string; email?: string; enabled: boolean },
+  ) {
+    const email = input.email?.trim().toLowerCase();
+    const user = input.userId
+      ? await this.prisma.user.findUnique({ where: { id: input.userId } })
+      : email
+        ? await this.prisma.user.findFirst({
+            where: { email: { equals: email, mode: 'insensitive' } },
+          })
+        : null;
+
+    if (!user) {
+      throw new NotFoundException(
+        'User not found — provide a valid userId or email',
+      );
+    }
+    if (!user.instantWithdraw) {
+      throw new BadRequestException(
+        'User must be on the instant-withdraw whitelist before marking verified',
+      );
+    }
+
+    const enabled = Boolean(input.enabled);
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { instantWithdrawKycExempt: enabled },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        instantWithdraw: true,
+        instantWithdrawGrantedAt: true,
+        instantWithdrawGrantedById: true,
+        instantWithdrawKycExempt: true,
+        kyc: { select: { status: true } },
+        platformWallet: { select: { availableBalance: true } },
+      },
+    });
+
+    await this.logAction(
+      adminId,
+      enabled
+        ? 'INSTANT_WITHDRAW_KYC_EXEMPT_GRANTED'
+        : 'INSTANT_WITHDRAW_KYC_EXEMPT_REVOKED',
+      user.id,
+      { email: user.email },
+    );
+
+    return {
+      id: updated.id,
+      email: updated.email,
+      displayName: updated.displayName,
+      instantWithdraw: updated.instantWithdraw,
+      grantedAt: updated.instantWithdrawGrantedAt?.toISOString() ?? null,
+      grantedById: updated.instantWithdrawGrantedById,
+      kycExempt: updated.instantWithdrawKycExempt,
+      kycStatus: updated.kyc?.status ?? 'NOT_STARTED',
       walletBalance: Number(updated.platformWallet?.availableBalance ?? 0),
     };
   }

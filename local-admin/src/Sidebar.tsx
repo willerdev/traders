@@ -11,6 +11,7 @@ export type Tab =
   | "signals"
   | "kyc"
   | "payouts"
+  | "whitelist"
   | "loans"
   | "agents"
   | "tpClaims"
@@ -33,6 +34,7 @@ export const ADMIN_TABS: Tab[] = [
   "users",
   "platform",
   "payouts",
+  "whitelist",
   "loans",
   "agents",
   "transactions",
@@ -90,6 +92,7 @@ export function tabsForPermissions(permissions: AdminPermissions | null): Tab[] 
   if (permissions.kyc) allowed.add("kyc");
   if (permissions.payout) {
     allowed.add("payouts");
+    allowed.add("whitelist");
     allowed.add("loans");
     allowed.add("agents");
     allowed.add("transactions");
@@ -131,6 +134,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "users", label: "Users", icon: "users" },
   { id: "platform", label: "Investor & depositor", icon: "forecast" },
   { id: "payouts", label: "Payouts", icon: "payouts" },
+  { id: "whitelist", label: "Whitelist", icon: "whitelist" },
   { id: "loans", label: "Loans", icon: "loans" },
   { id: "agents", label: "Agents", icon: "agents" },
   { id: "transactions", label: "Transactions", icon: "transactions" },
@@ -200,6 +204,16 @@ const icons = {
       <rect x="3" y="6" width="18" height="13" rx="2" />
       <path d="M3 10h18" strokeLinecap="round" />
       <path d="M7 15h4" strokeLinecap="round" />
+    </svg>
+  ),
+  whitelist: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M9 11l3 3L22 4" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   ),
   loans: (

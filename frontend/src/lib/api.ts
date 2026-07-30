@@ -2176,6 +2176,8 @@ export interface UserSettings {
     metaApiAccountId?: string | null;
     createdAt: string;
     tier: string;
+    instantWithdraw?: boolean;
+    withdrawKycExempt?: boolean;
   };
   profile: UserProfileRecord | null;
   kyc: KycRecord;

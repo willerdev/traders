@@ -72,6 +72,10 @@ export class ComplianceService {
       return;
     }
 
+    if (await this.isWithdrawKycExempt(userId)) {
+      return;
+    }
+
     const kyc = await this.prisma.kycVerification.findUnique({
       where: { userId },
     });
@@ -81,5 +85,34 @@ export class ComplianceService {
         'Identity verification (KYC) must be approved before requesting payouts. Complete KYC in Settings.',
       );
     }
+  }
+
+  /**
+   * Whitelist users can be admin-marked verified (`instantWithdrawKycExempt`)
+   * so they skip document KYC for withdrawals / payouts.
+   */
+  async isWithdrawKycExempt(userId: string): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        instantWithdraw: true,
+        instantWithdrawKycExempt: true,
+      },
+    });
+    return Boolean(user?.instantWithdraw && user.instantWithdrawKycExempt);
+  }
+
+  /** True when KYC is approved, globally disabled, or whitelist-verified. */
+  async isKycSatisfiedForPayout(userId: string): Promise<boolean> {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    if (config?.requireKycForPayouts === false) return true;
+    if (await this.isWithdrawKycExempt(userId)) return true;
+    const kyc = await this.prisma.kycVerification.findUnique({
+      where: { userId },
+      select: { status: true },
+    });
+    return kyc?.status === 'APPROVED';
   }
 }

@@ -379,6 +379,9 @@ export default function App() {
   const [momoP2pResendingId, setMomoP2pResendingId] = useState<string | null>(
     null,
   );
+  const [instantWithdrawKycSavingId, setInstantWithdrawKycSavingId] = useState<
+    string | null
+  >(null);
   const [loanRows, setLoanRows] = useState<
     Array<{
       id: string;
@@ -770,21 +773,14 @@ export default function App() {
           walletRes,
           depositsRes,
           tierSettingsRes,
-          instantRes,
           momoP2pRes,
         ] = await Promise.allSettled([
           api.payouts(),
           api.nowPaymentsWallet(),
           api.custodyDeposits(20, false),
           api.weeklyTierPayoutSettings(),
-          api.instantWithdrawList(),
           api.momoP2pList(),
         ]);
-        if (instantRes.status === "fulfilled") {
-          setInstantWithdrawUsers(instantRes.value.items);
-        } else {
-          setInstantWithdrawUsers([]);
-        }
         if (momoP2pRes.status === "fulfilled") {
           setMomoP2pRows(momoP2pRes.value);
         } else {
@@ -831,6 +827,13 @@ export default function App() {
           setCustodyDeposits([]);
           setDepositPendingCount(0);
           setDepositConfirmedTotal(0);
+        }
+      } else if (active === "whitelist") {
+        try {
+          const res = await api.instantWithdrawList();
+          setInstantWithdrawUsers(res.items);
+        } catch {
+          setInstantWithdrawUsers([]);
         }
       } else if (active === "loans") {
         try {
@@ -3331,175 +3334,29 @@ export default function App() {
               </div>
             )}
 
-            {showSensitiveFinance && (
-              <div className="kyc-card" style={{ marginBottom: "1rem" }}>
-                <h3 style={{ margin: "0 0 0.5rem" }}>Instant withdraw whitelist</h3>
-                <p className="muted" style={{ margin: "0 0 0.75rem" }}>
-                  Whitelisted users get instant crypto withdraws, <strong>$0 invest
-                  enrollment fee</strong>, and <strong>free VIP</strong> upgrades.
-                </p>
-                <p className="muted" style={{ margin: "0 0 0.75rem" }}>
-                  Users on this list have withdrawals processed instantly with no
-                  admin approval. All other validation (KYC, balance, saved wallet)
-                  still applies. Ops is emailed each time an instant withdrawal
-                  executes.
-                </p>
-                <div
+            <div className="kyc-card" style={{ marginBottom: "1rem" }}>
+              <h3 style={{ margin: "0 0 0.5rem" }}>Instant withdraw whitelist</h3>
+              <p className="muted" style={{ margin: 0 }}>
+                Manage instant-withdraw users and KYC waivers in the{" "}
+                <button
+                  type="button"
+                  className="linkish"
                   style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: "0.5rem",
-                    alignItems: "end",
-                    marginBottom: "0.75rem",
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    color: "inherit",
+                    textDecoration: "underline",
+                    cursor: "pointer",
+                    font: "inherit",
                   }}
+                  onClick={() => setTab("whitelist")}
                 >
-                  <label>
-                    <span
-                      className="muted"
-                      style={{ display: "block", fontSize: "0.75rem" }}
-                    >
-                      Investor email
-                    </span>
-                    <input
-                      type="email"
-                      value={instantWithdrawEmail}
-                      onChange={(e) => setInstantWithdrawEmail(e.target.value)}
-                      placeholder="trader@example.com"
-                      style={{ minWidth: "16rem" }}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="primary"
-                    disabled={
-                      instantWithdrawSaving || !instantWithdrawEmail.trim()
-                    }
-                    onClick={() => {
-                      setInstantWithdrawSaving(true);
-                      setMessage("");
-                      void api
-                        .addInstantWithdraw({
-                          email: instantWithdrawEmail.trim(),
-                        })
-                        .then((res) => {
-                          setInstantWithdrawUsers((prev) => {
-                            const next = prev.filter((u) => u.id !== res.id);
-                            next.unshift({
-                              id: res.id,
-                              email: res.email,
-                              displayName: res.displayName,
-                              walletBalance: res.walletBalance,
-                              grantedAt: res.grantedAt,
-                              grantedById: res.grantedById,
-                            });
-                            return next;
-                          });
-                          setInstantWithdrawEmail("");
-                          setMessage(
-                            `${res.displayName} can now withdraw instantly.`,
-                          );
-                        })
-                        .catch((err: Error) => setMessage(err.message))
-                        .finally(() => setInstantWithdrawSaving(false));
-                    }}
-                  >
-                    {instantWithdrawSaving ? "Adding…" : "Add to whitelist"}
-                  </button>
-                </div>
-                {instantWithdrawUsers.length === 0 ? (
-                  <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-                    No users on the instant-withdraw whitelist.
-                  </p>
-                ) : (
-                  <table
-                    style={{
-                      width: "100%",
-                      borderCollapse: "collapse",
-                      fontSize: "0.85rem",
-                    }}
-                  >
-                    <thead>
-                      <tr>
-                        <th style={{ textAlign: "left", padding: "0.35rem 0" }}>
-                          User
-                        </th>
-                        <th style={{ textAlign: "right", padding: "0.35rem 0" }}>
-                          Wallet
-                        </th>
-                        <th style={{ textAlign: "left", padding: "0.35rem 0" }}>
-                          Granted
-                        </th>
-                        <th />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {instantWithdrawUsers.map((row) => (
-                        <tr key={row.id}>
-                          <td style={{ padding: "0.35rem 0" }}>
-                            <strong>{row.displayName}</strong>
-                            <div className="muted" style={{ fontSize: "0.75rem" }}>
-                              {row.email ?? row.id.slice(0, 8)}
-                            </div>
-                          </td>
-                          <td
-                            style={{
-                              textAlign: "right",
-                              padding: "0.35rem 0",
-                            }}
-                          >
-                            {fmtMoney(row.walletBalance)}
-                          </td>
-                          <td
-                            className="muted"
-                            style={{ padding: "0.35rem 0", fontSize: "0.75rem" }}
-                          >
-                            {row.grantedAt
-                              ? new Date(row.grantedAt).toLocaleString()
-                              : "—"}
-                          </td>
-                          <td style={{ textAlign: "right", padding: "0.35rem 0" }}>
-                            <button
-                              type="button"
-                              className="danger"
-                              disabled={instantWithdrawRemovingId === row.id}
-                              onClick={() => {
-                                if (
-                                  !window.confirm(
-                                    `Remove ${row.displayName} from the instant-withdraw whitelist? They'll need admin approval for future withdrawals.`,
-                                  )
-                                ) {
-                                  return;
-                                }
-                                setInstantWithdrawRemovingId(row.id);
-                                setMessage("");
-                                void api
-                                  .removeInstantWithdraw({ userId: row.id })
-                                  .then(() => {
-                                    setInstantWithdrawUsers((prev) =>
-                                      prev.filter((u) => u.id !== row.id),
-                                    );
-                                    setMessage(
-                                      `${row.displayName} removed from instant-withdraw whitelist.`,
-                                    );
-                                  })
-                                  .catch((err: Error) => setMessage(err.message))
-                                  .finally(() =>
-                                    setInstantWithdrawRemovingId(null),
-                                  );
-                              }}
-                            >
-                              {instantWithdrawRemovingId === row.id
-                                ? "Removing…"
-                                : "Remove"}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            )}
+                  Whitelist
+                </button>{" "}
+                menu.
+              </p>
+            </div>
 
             <div className="kyc-card" style={{ marginBottom: "1rem" }}>
               <h3 style={{ margin: "0 0 0.5rem" }}>Weekly tier payouts</h3>
@@ -4002,6 +3859,252 @@ export default function App() {
                 </div>
               </div>
             )}
+          </>
+        )}
+
+        {tab === "whitelist" && (
+          <>
+            <div className="toolbar">
+              <h2>Instant withdraw whitelist</h2>
+            </div>
+            <div className="kyc-card" style={{ marginBottom: "1rem" }}>
+              <p className="muted" style={{ margin: "0 0 0.75rem" }}>
+                Whitelisted users get instant crypto withdraws,{" "}
+                <strong>$0 invest enrollment fee</strong>, and{" "}
+                <strong>free VIP</strong> upgrades.
+              </p>
+              <p className="muted" style={{ margin: "0 0 0.75rem" }}>
+                Withdrawals process instantly with no admin approval. Use{" "}
+                <strong>Mark verified</strong> so a whitelist user can withdraw
+                without KYC documents. Removing them also clears that waiver.
+                Ops is emailed each time an instant withdrawal executes.
+              </p>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "0.5rem",
+                  alignItems: "end",
+                  marginBottom: "0.75rem",
+                }}
+              >
+                <label>
+                  <span
+                    className="muted"
+                    style={{ display: "block", fontSize: "0.75rem" }}
+                  >
+                    Investor email
+                  </span>
+                  <input
+                    type="email"
+                    value={instantWithdrawEmail}
+                    onChange={(e) => setInstantWithdrawEmail(e.target.value)}
+                    placeholder="trader@example.com"
+                    style={{ minWidth: "16rem" }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={
+                    instantWithdrawSaving || !instantWithdrawEmail.trim()
+                  }
+                  onClick={() => {
+                    setInstantWithdrawSaving(true);
+                    setMessage("");
+                    void api
+                      .addInstantWithdraw({
+                        email: instantWithdrawEmail.trim(),
+                      })
+                      .then((res) => {
+                        setInstantWithdrawUsers((prev) => {
+                          const next = prev.filter((u) => u.id !== res.id);
+                          next.unshift({
+                            id: res.id,
+                            email: res.email,
+                            displayName: res.displayName,
+                            walletBalance: res.walletBalance,
+                            grantedAt: res.grantedAt,
+                            grantedById: res.grantedById,
+                            kycExempt: res.kycExempt,
+                            kycStatus: res.kycStatus,
+                          });
+                          return next;
+                        });
+                        setInstantWithdrawEmail("");
+                        setMessage(
+                          `${res.displayName} can now withdraw instantly.`,
+                        );
+                      })
+                      .catch((err: Error) => setMessage(err.message))
+                      .finally(() => setInstantWithdrawSaving(false));
+                  }}
+                >
+                  {instantWithdrawSaving ? "Adding…" : "Add to whitelist"}
+                </button>
+              </div>
+              {instantWithdrawUsers.length === 0 ? (
+                <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+                  No users on the instant-withdraw whitelist.
+                </p>
+              ) : (
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    fontSize: "0.85rem",
+                  }}
+                >
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: "left", padding: "0.35rem 0" }}>
+                        User
+                      </th>
+                      <th style={{ textAlign: "right", padding: "0.35rem 0" }}>
+                        Wallet
+                      </th>
+                      <th style={{ textAlign: "left", padding: "0.35rem 0" }}>
+                        KYC
+                      </th>
+                      <th style={{ textAlign: "left", padding: "0.35rem 0" }}>
+                        Granted
+                      </th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {instantWithdrawUsers.map((row) => (
+                      <tr key={row.id}>
+                        <td style={{ padding: "0.35rem 0" }}>
+                          <strong>{row.displayName}</strong>
+                          <div className="muted" style={{ fontSize: "0.75rem" }}>
+                            {row.email ?? row.id.slice(0, 8)}
+                          </div>
+                        </td>
+                        <td
+                          style={{
+                            textAlign: "right",
+                            padding: "0.35rem 0",
+                          }}
+                        >
+                          {fmtMoney(row.walletBalance)}
+                        </td>
+                        <td
+                          style={{ padding: "0.35rem 0", fontSize: "0.75rem" }}
+                        >
+                          {row.kycExempt ? (
+                            <strong style={{ color: "var(--ok, #16a34a)" }}>
+                              Verified (waiver)
+                            </strong>
+                          ) : (
+                            <span className="muted">{row.kycStatus}</span>
+                          )}
+                        </td>
+                        <td
+                          className="muted"
+                          style={{ padding: "0.35rem 0", fontSize: "0.75rem" }}
+                        >
+                          {row.grantedAt
+                            ? new Date(row.grantedAt).toLocaleString()
+                            : "—"}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "0.35rem 0" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: "0.35rem",
+                              justifyContent: "flex-end",
+                            }}
+                          >
+                            <button
+                              type="button"
+                              disabled={instantWithdrawKycSavingId === row.id}
+                              onClick={() => {
+                                const next = !row.kycExempt;
+                                setInstantWithdrawKycSavingId(row.id);
+                                setMessage("");
+                                void api
+                                  .setInstantWithdrawKycExempt({
+                                    userId: row.id,
+                                    enabled: next,
+                                  })
+                                  .then((res) => {
+                                    setInstantWithdrawUsers((prev) =>
+                                      prev.map((u) =>
+                                        u.id === res.id
+                                          ? {
+                                              ...u,
+                                              kycExempt: res.kycExempt,
+                                              kycStatus: res.kycStatus,
+                                            }
+                                          : u,
+                                      ),
+                                    );
+                                    setMessage(
+                                      next
+                                        ? `${res.displayName} marked verified — can withdraw without KYC.`
+                                        : `${res.displayName} KYC waiver removed.`,
+                                    );
+                                  })
+                                  .catch((err: Error) =>
+                                    setMessage(err.message),
+                                  )
+                                  .finally(() =>
+                                    setInstantWithdrawKycSavingId(null),
+                                  );
+                              }}
+                            >
+                              {instantWithdrawKycSavingId === row.id
+                                ? "Saving…"
+                                : row.kycExempt
+                                  ? "Clear verified"
+                                  : "Mark verified"}
+                            </button>
+                            <button
+                              type="button"
+                              className="danger"
+                              disabled={instantWithdrawRemovingId === row.id}
+                              onClick={() => {
+                                if (
+                                  !window.confirm(
+                                    `Remove ${row.displayName} from the instant-withdraw whitelist? They'll need admin approval for future withdrawals.`,
+                                  )
+                                ) {
+                                  return;
+                                }
+                                setInstantWithdrawRemovingId(row.id);
+                                setMessage("");
+                                void api
+                                  .removeInstantWithdraw({ userId: row.id })
+                                  .then(() => {
+                                    setInstantWithdrawUsers((prev) =>
+                                      prev.filter((u) => u.id !== row.id),
+                                    );
+                                    setMessage(
+                                      `${row.displayName} removed from instant-withdraw whitelist.`,
+                                    );
+                                  })
+                                  .catch((err: Error) =>
+                                    setMessage(err.message),
+                                  )
+                                  .finally(() =>
+                                    setInstantWithdrawRemovingId(null),
+                                  );
+                              }}
+                            >
+                              {instantWithdrawRemovingId === row.id
+                                ? "Removing…"
+                                : "Remove"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </>
         )}
 

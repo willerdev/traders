@@ -944,6 +944,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+
+  setInstantWithdrawKycExempt: (data: {
+    userId?: string;
+    email?: string;
+    enabled: boolean;
+  }) =>
+    request<InstantWithdrawUser>("/admin/withdraw-whitelist/kyc-exempt", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
   incomeJournal: (params?: {
     limit?: number;
     offset?: number;
@@ -1138,6 +1148,8 @@ export type InstantWithdrawRow = {
   walletBalance: number;
   grantedAt: string | null;
   grantedById: string | null;
+  kycExempt: boolean;
+  kycStatus: string;
 };
 
 export type InstantWithdrawListResult = {
@@ -1153,6 +1165,8 @@ export type InstantWithdrawUser = {
   grantedAt: string | null;
   grantedById: string | null;
   walletBalance: number;
+  kycExempt: boolean;
+  kycStatus: string;
 };
 
 export type IncomeJournalEntry = {

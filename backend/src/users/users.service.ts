@@ -103,6 +103,9 @@ export class UsersService {
         registrationPaid: user.registrationPaid,
         accountActive: user.status === 'ACTIVE',
         kycStatus: user.kyc?.status ?? 'NOT_STARTED',
+        withdrawKycExempt: Boolean(
+          user.instantWithdraw && user.instantWithdrawKycExempt,
+        ),
         profileComplete: Boolean(
           user.profile?.firstName &&
             user.profile?.lastName &&
@@ -163,6 +166,10 @@ export class UsersService {
         metaApiAccountId: user.metaApiAccountId,
         createdAt: user.createdAt,
         tier: user.virtualAccount?.tier ?? 'BRONZE',
+        instantWithdraw: user.instantWithdraw,
+        withdrawKycExempt: Boolean(
+          user.instantWithdraw && user.instantWithdrawKycExempt,
+        ),
       },
       profile: user.profile,
       kyc: user.kyc ?? { status: 'NOT_STARTED' },
