@@ -166,6 +166,36 @@ export class WalletController {
     });
   }
 
+  @Get('momo-p2p/quote')
+  @UseGuards(JwtAuthGuard)
+  momoP2pQuote(@Query('amountUsdt') amountUsdt?: string) {
+    return this.wallet.quoteMomoP2p(Number(amountUsdt));
+  }
+
+  @Get('momo-p2p')
+  @UseGuards(JwtAuthGuard)
+  listMomoP2p(@Request() req: { user: { id: string } }) {
+    return this.wallet.listMomoP2pForUser(req.user.id);
+  }
+
+  @Get('momo-p2p/:id')
+  @UseGuards(JwtAuthGuard)
+  getMomoP2p(
+    @Request() req: { user: { id: string } },
+    @Param('id') id: string,
+  ) {
+    return this.wallet.getMomoP2pForUser(req.user.id, id);
+  }
+
+  @Post('momo-p2p/:id/confirm-received')
+  @UseGuards(JwtAuthGuard)
+  confirmMomoP2pReceived(
+    @Request() req: { user: { id: string } },
+    @Param('id') id: string,
+  ) {
+    return this.wallet.confirmMomoP2pReceived(req.user.id, id);
+  }
+
   @Get('withdrawal-wallets')
   @UseGuards(JwtAuthGuard)
   listWithdrawalWallets(@Request() req: { user: { id: string } }) {

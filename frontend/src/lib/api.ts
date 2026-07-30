@@ -983,6 +983,13 @@ class ApiClient {
         fee: number;
         netPayout: number;
         balance: number;
+        p2pId?: string;
+        amountUgx?: number;
+        rateUgxPerUsdt?: number;
+        momoPhone?: string;
+        momoNetwork?: string;
+        message?: string;
+        p2p?: MomoP2pWithdrawal;
       }>("/wallet/withdraw", {
         method: "POST",
         body: JSON.stringify({
@@ -991,6 +998,24 @@ class ApiClient {
           sessionId: sessionId.trim(),
           code: code.trim(),
         }),
+      }),
+    momoP2pQuote: (amountUsdt: number) =>
+      this.request<{
+        asset: string;
+        fiat: string;
+        tradeType: string;
+        price: number;
+        amountUsdt: number;
+        amountUgx: number;
+        fetchedAt: string;
+        source: string;
+      }>(`/wallet/momo-p2p/quote?amountUsdt=${encodeURIComponent(String(amountUsdt))}`),
+    momoP2pList: () => this.request<MomoP2pWithdrawal[]>("/wallet/momo-p2p"),
+    momoP2pGet: (id: string) =>
+      this.request<MomoP2pWithdrawal>(`/wallet/momo-p2p/${id}`),
+    momoP2pConfirmReceived: (id: string) =>
+      this.request<MomoP2pWithdrawal>(`/wallet/momo-p2p/${id}/confirm-received`, {
+        method: "POST",
       }),
     requestWithdrawOtp: (amount: number, savedWalletId: string) =>
       this.request<{
@@ -1558,6 +1583,25 @@ export interface SavedWithdrawalWallet {
   address: string;
   network: WithdrawalWalletNetwork;
   verifiedAt: string;
+  createdAt: string;
+}
+
+export interface MomoP2pWithdrawal {
+  id: string;
+  payoutId: string;
+  amountUsdt: number;
+  amountUgx: number;
+  rateUgxPerUsdt: number;
+  momoNetwork: string;
+  momoPhone: string;
+  momoLabel: string | null;
+  recipientName: string | null;
+  status: "INITIATED" | "UNDER_PROCESS" | "COMPLETED" | "CANCELLED";
+  opsEmailSentAt: string | null;
+  userConfirmedAt: string | null;
+  adminConfirmedAt: string | null;
+  completedAt: string | null;
+  completedBy: string | null;
   createdAt: string;
 }
 

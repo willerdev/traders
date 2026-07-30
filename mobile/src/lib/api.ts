@@ -344,6 +344,20 @@ export class ApiClient {
         fee: number;
         netPayout: number;
         balance: number;
+        p2pId?: string;
+        amountUgx?: number;
+        rateUgxPerUsdt?: number;
+        momoPhone?: string;
+        message?: string;
+        p2p?: {
+          id: string;
+          status: string;
+          amountUsdt: number;
+          amountUgx: number;
+          rateUgxPerUsdt: number;
+          momoPhone: string;
+          momoNetwork: string;
+        };
       }>("/wallet/withdraw", {
         method: "POST",
         body: JSON.stringify({
@@ -353,6 +367,17 @@ export class ApiClient {
           code: code.trim(),
         }),
       }),
+    momoP2pQuote: (amountUsdt: number) =>
+      this.request<{
+        price: number;
+        amountUsdt: number;
+        amountUgx: number;
+      }>(`/wallet/momo-p2p/quote?amountUsdt=${encodeURIComponent(String(amountUsdt))}`),
+    momoP2pConfirmReceived: (id: string) =>
+      this.request<{ id: string; status: string }>(
+        `/wallet/momo-p2p/${id}/confirm-received`,
+        { method: "POST" },
+      ),
     requestWithdrawOtp: (amount: number, savedWalletId: string) =>
       this.request<{
         sessionId: string;

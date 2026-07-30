@@ -494,6 +494,24 @@ export class PayoutService {
     const isMobileMoney = payout.payoutMethod === 'MOBILE_MONEY';
 
     if (isMobileMoney) {
+      const p2p = await this.prisma.momoP2pWithdrawal.findUnique({
+        where: { payoutId: payout.id },
+      });
+      if (p2p) {
+        if (p2p.status === 'COMPLETED') {
+          return {
+            payout,
+            verificationRequired: false,
+            creditedToWallet: false,
+            settlement: 'momo_p2p' as const,
+            message: 'MoMo P2P already completed.',
+          };
+        }
+        throw new BadRequestException(
+          'This is a MoMo P2P withdrawal — send UGX manually, then confirm with POST /admin/momo-p2p/:id/confirm-sent (do not use Flutterwave approve).',
+        );
+      }
+
       if (this.flutterwavePayments.getPublicConfig().enabled) {
         const user = await this.prisma.user.findUnique({
           where: { id: payout.userId },
@@ -742,7 +760,15 @@ export class PayoutService {
         : 'Withdrawal approved — funds are being sent to your saved wallet.';
     return {
       payoutId,
-      status: result.payout?.status ?? 'APPROVED',
+      status:
+        result &&
+        typeof result === 'object' &&
+        'payout' in result &&
+        result.payout &&
+        typeof result.payout === 'object' &&
+        'status' in result.payout
+          ? String(result.payout.status)
+          : 'APPROVED',
       amountUsdt: Number(payout.traderShare),
       gatewayPayoutId:
         'gatewayPayoutId' in result ? result.gatewayPayoutId : undefined,

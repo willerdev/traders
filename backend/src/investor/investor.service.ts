@@ -92,7 +92,33 @@ export class InvestorService {
     return amount;
   }
 
-  /** Deposit T → fee F deducted → net N invested. */
+  /** Deposit T → fee F deducted → net N invested. Whitelist (instantWithdraw) pays $0 fee. */
+  private async splitDepositForUser(
+    userId: string,
+    raw: unknown,
+  ): Promise<{
+    deposit: number;
+    fee: number;
+    netInvested: number;
+    feeWaived: boolean;
+  }> {
+    const deposit = this.normalizeInvestmentAmount(raw);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { instantWithdraw: true },
+    });
+    const feeWaived = Boolean(user?.instantWithdraw);
+    const fee = feeWaived ? 0 : this.resolveFeeForInvestment(deposit);
+    const netInvested = Math.round((deposit - fee) * 100) / 100;
+    if (netInvested <= 0) {
+      throw new BadRequestException(
+        'Deposit must be greater than the subscription fee for that tier',
+      );
+    }
+    return { deposit, fee, netInvested, feeWaived };
+  }
+
+  /** @deprecated Prefer splitDepositForUser — kept for admin/comp helpers. */
   private splitDeposit(raw: unknown): {
     deposit: number;
     fee: number;
@@ -321,10 +347,13 @@ export class InvestorService {
       };
     }
 
-    const { deposit, fee, netInvested } = this.splitDeposit(investmentAmountRaw);
+    const { deposit, fee, netInvested, feeWaived } =
+      await this.splitDepositForUser(userId, investmentAmountRaw);
 
     if (source === 'wallet') {
-      return this.payEnrollmentFromWallet(userId, deposit, fee, netInvested);
+      return this.payEnrollmentFromWallet(userId, deposit, fee, netInvested, {
+        feeWaived,
+      });
     }
 
     const payment = await this.prisma.payment.create({
@@ -339,6 +368,7 @@ export class InvestorService {
           investmentAmount: deposit,
           feeUsdt: fee,
           netInvested,
+          feeWaived,
         } as object,
       },
     });
@@ -408,7 +438,7 @@ export class InvestorService {
     deposit: number,
     fee: number,
     netInvested: number,
-    opts?: { suppressNotification?: boolean },
+    opts?: { suppressNotification?: boolean; feeWaived?: boolean },
   ) {
     const wallet = await this.walletService.getOrCreateWallet(userId);
     const balance = Number(wallet.availableBalance);
@@ -431,17 +461,20 @@ export class InvestorService {
           investmentAmount: deposit,
           feeUsdt: fee,
           netInvested,
+          feeWaived: Boolean(opts?.feeWaived) || fee === 0,
         } as object,
       },
     });
 
-    await this.walletService.debitBalance(
-      userId,
-      fee,
-      'INVESTOR_FEE',
-      `Investor subscription fee — $${fee.toFixed(2)} USDT deducted from $${deposit.toFixed(2)} deposit`,
-      payment.id,
-    );
+    if (fee > 0) {
+      await this.walletService.debitBalance(
+        userId,
+        fee,
+        'INVESTOR_FEE',
+        `Investor subscription fee — $${fee.toFixed(2)} USDT deducted from $${deposit.toFixed(2)} deposit`,
+        payment.id,
+      );
+    }
 
     await this.confirmEnrollment(
       payment.id,
@@ -489,13 +522,14 @@ export class InvestorService {
     }
 
     if (source === 'wallet') {
-      const { deposit, fee, netInvested } = this.splitDeposit(investmentAmountRaw);
+      const { deposit, fee, netInvested, feeWaived } =
+        await this.splitDepositForUser(userId, investmentAmountRaw);
       const result = await this.payEnrollmentFromWallet(
         userId,
         deposit,
         fee,
         netInvested,
-        { suppressNotification: true },
+        { suppressNotification: true, feeWaived },
       );
       this.notifications.investorAdminEnrolled(userId, {
         investmentAmount: deposit,
@@ -701,13 +735,15 @@ export class InvestorService {
         `Investor deposit — $${deposit.toFixed(2)} USDT`,
         paymentId,
       );
-      await this.walletService.debitBalance(
-        payment.userId,
-        fee,
-        'INVESTOR_FEE',
-        `Investor subscription fee — $${fee.toFixed(2)} USDT deducted from deposit`,
-        paymentId,
-      );
+      if (fee > 0) {
+        await this.walletService.debitBalance(
+          payment.userId,
+          fee,
+          'INVESTOR_FEE',
+          `Investor subscription fee — $${fee.toFixed(2)} USDT deducted from deposit`,
+          paymentId,
+        );
+      }
       await this.transferInvestment(
         payment.userId,
         netInvested,
@@ -951,16 +987,19 @@ export class InvestorService {
         investorActive: true,
         investorVipActive: true,
         investorVipExpiresAt: true,
+        instantWithdraw: true,
         platformWallet: { select: { availableBalance: true } },
       },
     });
     if (!user) throw new NotFoundException('User not found');
     const active = isInvestorVipActive(user);
+    const feeWaived = Boolean(user.instantWithdraw);
     return {
       eligible: user.investorActive,
       active,
       expiresAt: user.investorVipExpiresAt?.toISOString() ?? null,
-      feeUsdt: INVESTOR_VIP_FEE_USDT,
+      feeUsdt: feeWaived ? 0 : INVESTOR_VIP_FEE_USDT,
+      feeWaived,
       walletBalance: Number(user.platformWallet?.availableBalance ?? 0),
       benefits: {
         weekendEarnings: true,
@@ -978,6 +1017,7 @@ export class InvestorService {
         investorActive: true,
         investorVipActive: true,
         investorVipExpiresAt: true,
+        instantWithdraw: true,
       },
     });
     if (!user) throw new NotFoundException('User not found');
@@ -987,13 +1027,17 @@ export class InvestorService {
       );
     }
 
-    const fee = INVESTOR_VIP_FEE_USDT;
-    const wallet = await this.walletService.getOrCreateWallet(userId);
-    const balance = Number(wallet.availableBalance);
-    if (balance < fee) {
-      throw new BadRequestException(
-        `Insufficient wallet balance — need $${fee.toFixed(2)} USDT for VIP but have $${balance.toFixed(2)}`,
-      );
+    const feeWaived = Boolean(user.instantWithdraw);
+    const fee = feeWaived ? 0 : INVESTOR_VIP_FEE_USDT;
+
+    if (fee > 0) {
+      const wallet = await this.walletService.getOrCreateWallet(userId);
+      const balance = Number(wallet.availableBalance);
+      if (balance < fee) {
+        throw new BadRequestException(
+          `Insufficient wallet balance — need $${fee.toFixed(2)} USDT for VIP but have $${balance.toFixed(2)}`,
+        );
+      }
     }
 
     const expiresAt = nextVipExpiry(user.investorVipExpiresAt);
@@ -1006,22 +1050,27 @@ export class InvestorService {
         purpose: 'investor_vip',
         status: 'CONFIRMED',
         confirmedAt: new Date(),
-        gatewayId: `vip_wallet_${Date.now()}`,
+        gatewayId: feeWaived
+          ? `vip_whitelist_${Date.now()}`
+          : `vip_wallet_${Date.now()}`,
         gatewayResponse: {
-          paymentSource: 'wallet',
+          paymentSource: feeWaived ? 'whitelist' : 'wallet',
+          feeWaived,
           expiresAt: expiresAt.toISOString(),
           months: 1,
         } as object,
       },
     });
 
-    await this.walletService.debitBalance(
-      userId,
-      fee,
-      'SUBSCRIPTION',
-      `Investor VIP — $${fee.toFixed(2)} USDT / 30 days`,
-      payment.id,
-    );
+    if (fee > 0) {
+      await this.walletService.debitBalance(
+        userId,
+        fee,
+        'SUBSCRIPTION',
+        `Investor VIP — $${fee.toFixed(2)} USDT / 30 days`,
+        payment.id,
+      );
+    }
 
     await this.prisma.user.update({
       where: { id: userId },
@@ -1041,9 +1090,12 @@ export class InvestorService {
       success: true,
       active: true,
       feeUsdt: fee,
+      feeWaived,
       expiresAt: expiresAt.toISOString(),
       paymentId: payment.id,
-      message: `VIP active until ${expiresAt.toISOString().slice(0, 10)}`,
+      message: feeWaived
+        ? `VIP granted free (whitelist) until ${expiresAt.toISOString().slice(0, 10)}`
+        : `VIP active until ${expiresAt.toISOString().slice(0, 10)}`,
     };
   }
 

@@ -1735,6 +1735,92 @@ export class NotificationService {
     );
   }
 
+  /** Awaitable ops email for MoMo P2P — send money instructions. */
+  async notifyMomoP2pOps(data: {
+    userId: string;
+    userName: string;
+    userEmail: string | null;
+    payoutId: string;
+    p2pId: string;
+    amountUsdt: number;
+    amountUgx: number;
+    rateUgxPerUsdt: number;
+    momoPhone: string;
+    momoNetwork: string;
+    momoLabel?: string | null;
+  }): Promise<boolean> {
+    const who = data.userEmail
+      ? `${data.userName} (${data.userEmail})`
+      : data.userName;
+    const ugx = data.amountUgx.toLocaleString('en-UG', {
+      maximumFractionDigits: 0,
+    });
+    const html = this.email.layout(
+      'MoMo P2P — send money',
+      `<p>A MoMo P2P withdrawal was initiated. Send mobile money, then confirm in admin (or wait for the user to confirm arrival).</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">Who</td><td style="padding:6px 0;"><strong>${this.escape(who)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Send to number</td><td style="padding:6px 0;"><strong style="font-size:18px;">${this.escape(data.momoPhone)}</strong> (${this.escape(data.momoNetwork)})</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Amount (UGX)</td><td style="padding:6px 0;"><strong style="font-size:18px;">UGX ${this.escape(ugx)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">USDT net</td><td style="padding:6px 0;"><strong>$${data.amountUsdt.toFixed(2)} USDT</strong> @ ${data.rateUgxPerUsdt.toFixed(2)} UGX/USDT (Binance C2C BUY)</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Saved label</td><td style="padding:6px 0;">${this.escape(data.momoLabel ?? '—')}</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">P2P ID</td><td style="padding:6px 0;"><code style="color:#93c5fd;">${this.escape(data.p2pId)}</code></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Payout ID</td><td style="padding:6px 0;"><code style="color:#93c5fd;">${this.escape(data.payoutId)}</code></td></tr>
+      </table>`,
+    );
+    return this.sendOpsAlert({
+      label: `Ops alert: MoMo P2P ${data.p2pId} — send UGX ${ugx} to ${data.momoPhone}`,
+      subject: `[MoMo P2P] Send UGX ${ugx} to ${data.momoPhone} — ${data.userName}`,
+      html,
+      text: `MoMo P2P: send UGX ${ugx} to ${data.momoPhone} (${data.momoNetwork}) for ${who}. Net $${data.amountUsdt.toFixed(2)} USDT @ ${data.rateUgxPerUsdt}. p2p=${data.p2pId} payout=${data.payoutId}`,
+    });
+  }
+
+  momoP2pCompleted(
+    userId: string,
+    data: {
+      amountUsdt: number;
+      amountUgx: number;
+      momoPhone: string;
+      completedBy: 'USER' | 'ADMIN';
+      p2pId: string;
+    },
+  ) {
+    this.dispatch(
+      this.sendMomoP2pCompletedUser(userId, data),
+      'MoMo P2P completed user',
+    );
+  }
+
+  private async sendMomoP2pCompletedUser(
+    userId: string,
+    data: {
+      amountUsdt: number;
+      amountUgx: number;
+      momoPhone: string;
+      completedBy: 'USER' | 'ADMIN';
+      p2pId: string;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const ugx = data.amountUgx.toLocaleString('en-UG', {
+      maximumFractionDigits: 0,
+    });
+    const html = this.email.layout(
+      'MoMo withdrawal complete',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your MoMo P2P withdrawal of <strong>$${data.amountUsdt.toFixed(2)} USDT</strong> (UGX ${this.escape(ugx)}) to <strong>${this.escape(data.momoPhone)}</strong> is marked complete${data.completedBy === 'USER' ? ' (you confirmed arrival)' : ' (admin confirmed sent)'}.</p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `MoMo withdrawal complete — UGX ${ugx}`,
+      html,
+      text: `MoMo P2P complete: $${data.amountUsdt.toFixed(2)} USDT / UGX ${ugx} to ${data.momoPhone}.`,
+    });
+  }
+
   walletAdminCredit(
     userId: string,
     data: { amount: number; balance: number; note?: string },

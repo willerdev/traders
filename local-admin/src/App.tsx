@@ -357,6 +357,25 @@ export default function App() {
     rejected: 0,
   });
   const [payouts, setPayouts] = useState<PayoutRow[]>([]);
+  const [momoP2pRows, setMomoP2pRows] = useState<
+    Array<{
+      id: string;
+      payoutId: string;
+      amountUsdt: number;
+      amountUgx: number;
+      rateUgxPerUsdt: number;
+      momoNetwork: string;
+      momoPhone: string;
+      momoLabel: string | null;
+      recipientName: string | null;
+      status: string;
+      createdAt: string;
+      user: { id: string; email: string | null; displayName: string };
+    }>
+  >([]);
+  const [momoP2pConfirmingId, setMomoP2pConfirmingId] = useState<string | null>(
+    null,
+  );
   const [weeklyTierPayoutsEnabled, setWeeklyTierPayoutsEnabled] = useState(false);
   const [weeklyTierSaving, setWeeklyTierSaving] = useState(false);
   const [npWallet, setNpWallet] = useState<NowPaymentsWalletSummary | null>(null);
@@ -712,17 +731,24 @@ export default function App() {
           depositsRes,
           tierSettingsRes,
           instantRes,
+          momoP2pRes,
         ] = await Promise.allSettled([
           api.payouts(),
           api.nowPaymentsWallet(),
           api.custodyDeposits(20, false),
           api.weeklyTierPayoutSettings(),
           api.instantWithdrawList(),
+          api.momoP2pList(),
         ]);
         if (instantRes.status === "fulfilled") {
           setInstantWithdrawUsers(instantRes.value.items);
         } else {
           setInstantWithdrawUsers([]);
+        }
+        if (momoP2pRes.status === "fulfilled") {
+          setMomoP2pRows(momoP2pRes.value);
+        } else {
+          setMomoP2pRows([]);
         }
 
         if (payoutsRes.status === "fulfilled") {
@@ -2648,6 +2674,88 @@ export default function App() {
             <div className="toolbar">
               <h2>Payout requests</h2>
             </div>
+            <div className="kyc-card" style={{ marginBottom: "1.25rem" }}>
+              <h3 style={{ margin: "0 0 0.5rem" }}>MoMo P2P queue</h3>
+              <p className="muted" style={{ margin: "0 0 0.75rem" }}>
+                Send the UGX amount to the phone number below (Binance C2C rate),
+                then confirm sent. Users can also confirm arrival themselves.
+              </p>
+              {momoP2pRows.length === 0 ? (
+                <p className="muted">No open MoMo P2P withdrawals.</p>
+              ) : (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Who</th>
+                      <th>Send to</th>
+                      <th>UGX</th>
+                      <th>USDT</th>
+                      <th>Rate</th>
+                      <th>Status</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {momoP2pRows.map((row) => (
+                      <tr key={row.id}>
+                        <td>
+                          {row.user.displayName}
+                          <br />
+                          <span className="muted">{row.user.email ?? "—"}</span>
+                        </td>
+                        <td>
+                          <strong>{row.momoPhone}</strong>
+                          <br />
+                          <span className="muted">{row.momoNetwork}</span>
+                        </td>
+                        <td>
+                          UGX{" "}
+                          {Math.round(row.amountUgx).toLocaleString("en-UG")}
+                        </td>
+                        <td>${Number(row.amountUsdt).toFixed(2)}</td>
+                        <td>{Number(row.rateUgxPerUsdt).toFixed(2)}</td>
+                        <td>{row.status}</td>
+                        <td>
+                          {row.status !== "COMPLETED" && (
+                            <button
+                              type="button"
+                              className="primary"
+                              disabled={momoP2pConfirmingId === row.id}
+                              onClick={() => {
+                                setMomoP2pConfirmingId(row.id);
+                                void api
+                                  .confirmMomoP2pSent(row.id)
+                                  .then(() => {
+                                    setMessage(
+                                      `MoMo P2P confirmed sent for ${row.momoPhone}`,
+                                    );
+                                    setMomoP2pRows((rows) =>
+                                      rows.filter((r) => r.id !== row.id),
+                                    );
+                                    return loadTab("payouts");
+                                  })
+                                  .catch((err) =>
+                                    setMessage(
+                                      err instanceof Error
+                                        ? err.message
+                                        : "Confirm failed",
+                                    ),
+                                  )
+                                  .finally(() =>
+                                    setMomoP2pConfirmingId(null),
+                                  );
+                              }}
+                            >
+                              Confirm sent
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
             <p className="muted" style={{ margin: "0 0 1rem" }}>
               Every TP claim is queued here as a <strong>TP reward</strong>. Approving
               credits the trader&apos;s platform wallet. If the claim is still pending
@@ -2746,6 +2854,10 @@ export default function App() {
             {showSensitiveFinance && (
               <div className="kyc-card" style={{ marginBottom: "1rem" }}>
                 <h3 style={{ margin: "0 0 0.5rem" }}>Instant withdraw whitelist</h3>
+                <p className="muted" style={{ margin: "0 0 0.75rem" }}>
+                  Whitelisted users get instant crypto withdraws, <strong>$0 invest
+                  enrollment fee</strong>, and <strong>free VIP</strong> upgrades.
+                </p>
                 <p className="muted" style={{ margin: "0 0 0.75rem" }}>
                   Users on this list have withdrawals processed instantly with no
                   admin approval. All other validation (KYC, balance, saved wallet)

@@ -54,6 +54,9 @@ export function WithdrawScreen() {
   const [otpSessionId, setOtpSessionId] = useState("");
   const [otpEmail, setOtpEmail] = useState("");
   const [otpCode, setOtpCode] = useState("");
+  const [p2pId, setP2pId] = useState<string | null>(null);
+  const [p2pUgx, setP2pUgx] = useState<number | null>(null);
+  const [momoQuoteUgx, setMomoQuoteUgx] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -79,6 +82,8 @@ export function WithdrawScreen() {
   );
 
   const selected = wallets.find((w) => w.id === selectedId) ?? null;
+  const isMomo =
+    selected?.network === "MOMO_MTN" || selected?.network === "MOMO_AIRTEL";
   const available = summary?.availableBalance ?? 0;
   const processingFee = summary?.withdrawalFeeUsdt ?? 0;
   const scheduleEnabled = summary?.withdrawalScheduleEnabled !== false;
@@ -103,8 +108,37 @@ export function WithdrawScreen() {
   const nextWindow = summary?.withdrawalNextPreferredWindowAt
     ? new Date(summary.withdrawalNextPreferredWindowAt).toLocaleString()
     : null;
-  const stage = useMemo(() => withdrawStage(submittedStatus), [submittedStatus]);
+  const stage = useMemo(() => {
+    if (p2pId && submittedStatus === "momo_p2p") {
+      return {
+        index: 1,
+        completed: false,
+        label: "Under process — MoMo P2P",
+      };
+    }
+    return withdrawStage(submittedStatus);
+  }, [submittedStatus, p2pId]);
 
+  useFocusEffect(
+    useCallback(() => {
+      if (!isMomo || !(net > 0)) {
+        setMomoQuoteUgx(null);
+        return;
+      }
+      let alive = true;
+      void api.wallet
+        .momoP2pQuote(net)
+        .then((q) => {
+          if (alive) setMomoQuoteUgx(q.amountUgx);
+        })
+        .catch(() => {
+          if (alive) setMomoQuoteUgx(null);
+        });
+      return () => {
+        alive = false;
+      };
+    }, [api, isMomo, net]),
+  );
   async function requestOtp() {
     if (!Number.isFinite(value) || value <= 0) {
       setError("Enter a valid amount");
@@ -149,6 +183,13 @@ export function WithdrawScreen() {
       );
       setSubmittedStatus(res.status);
       setSubmittedNet(res.netPayout);
+      if (res.status === "momo_p2p" && res.p2pId) {
+        setP2pId(res.p2pId);
+        setP2pUgx(res.amountUgx ?? res.p2p?.amountUgx ?? null);
+      } else {
+        setP2pId(null);
+        setP2pUgx(null);
+      }
       setPhase("track");
       setAmount("");
       setOtpCode("");
@@ -179,7 +220,35 @@ export function WithdrawScreen() {
           {submittedNet != null ? (
             <Text style={{ color: theme.muted, textAlign: "center", marginTop: 8, fontSize: 12 }}>
               Net payout · {formatUsdt(submittedNet)}
+              {p2pUgx != null
+                ? ` · ~UGX ${Math.round(p2pUgx).toLocaleString()}`
+                : ""}
             </Text>
+          ) : null}
+          {p2pId ? (
+            <>
+              <View style={{ height: 12 }} />
+              <PrimaryButton
+                label="Confirm MoMo arrived"
+                loading={busy}
+                onPress={() => {
+                  setBusy(true);
+                  void api.wallet
+                    .momoP2pConfirmReceived(p2pId)
+                    .then(() => {
+                      setSubmittedStatus("COMPLETED");
+                      setP2pId(null);
+                      Alert.alert("Confirmed", "MoMo arrival recorded.");
+                    })
+                    .catch((err) =>
+                      setError(
+                        err instanceof Error ? err.message : "Confirm failed",
+                      ),
+                    )
+                    .finally(() => setBusy(false));
+                }}
+              />
+            </>
           ) : null}
         </SectionCard>
         <PrimaryButton
@@ -196,6 +265,8 @@ export function WithdrawScreen() {
             setPhase("form");
             setSubmittedStatus(null);
             setSubmittedNet(null);
+            setP2pId(null);
+            setP2pUgx(null);
             setOtpSessionId("");
             setOtpEmail("");
             setOtpCode("");
@@ -360,6 +431,11 @@ export function WithdrawScreen() {
                 : ` · off-schedule (+${penaltyPercent}% penalty)`}
               {nextWindow ? `\nNext window: ${nextWindow}` : ""}
               {summary?.vipActive ? "\nVIP: $0 processing fee (penalty still applies off-schedule)." : ""}
+            </Text>
+          ) : null}
+          {isMomo && momoQuoteUgx != null ? (
+            <Text style={{ color: theme.primary, fontSize: 12, marginBottom: 6, lineHeight: 17 }}>
+              MoMo P2P preview · ~UGX {Math.round(momoQuoteUgx).toLocaleString()} (Binance rate)
             </Text>
           ) : null}
           {penaltyUsdt > 0 ? (

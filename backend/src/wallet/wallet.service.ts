@@ -8,7 +8,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DepositorPlanStatus, WalletTxType } from '@prisma/client';
+import { DepositorPlanStatus, MomoP2pStatus, WalletTxType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   NowPaymentsApiError,
@@ -32,6 +32,7 @@ import {
 } from '../flutterwave/flutterwave.constants';
 import { FlutterwavePaymentsService } from '../flutterwave/flutterwave-payments.service';
 import { FxRatesService } from '../fx/fx-rates.service';
+import { BinanceC2cService } from '../fx/binance-c2c.service';
 import { resolvePreferredDisplayCurrency } from '../fx/country-currency.util';
 import { isInvestorVipActive } from '../investor/investor-vip.util';
 import { PayoutService } from '../payouts/payout.service';
@@ -60,9 +61,160 @@ export class WalletService {
     @Inject(forwardRef(() => FlutterwavePaymentsService))
     private flutterwavePayments: FlutterwavePaymentsService,
     private fxRates: FxRatesService,
+    private binanceC2c: BinanceC2cService,
     @Inject(forwardRef(() => PayoutService))
     private payouts: PayoutService,
   ) {}
+
+  quoteMomoP2p(amountUsdt: number) {
+    return this.binanceC2c.quoteUsdtToUgx(amountUsdt);
+  }
+
+  private serializeMomoP2p(row: {
+    id: string;
+    payoutId: string;
+    amountUsdt: { toString(): string } | number;
+    amountUgx: { toString(): string } | number;
+    rateUgxPerUsdt: { toString(): string } | number;
+    momoNetwork: string;
+    momoPhone: string;
+    momoLabel: string | null;
+    recipientName: string | null;
+    status: MomoP2pStatus;
+    opsEmailSentAt: Date | null;
+    userConfirmedAt: Date | null;
+    adminConfirmedAt: Date | null;
+    completedAt: Date | null;
+    completedBy: string | null;
+    createdAt: Date;
+  }) {
+    return {
+      id: row.id,
+      payoutId: row.payoutId,
+      amountUsdt: Number(row.amountUsdt),
+      amountUgx: Number(row.amountUgx),
+      rateUgxPerUsdt: Number(row.rateUgxPerUsdt),
+      momoNetwork: row.momoNetwork,
+      momoPhone: row.momoPhone,
+      momoLabel: row.momoLabel,
+      recipientName: row.recipientName,
+      status: row.status,
+      opsEmailSentAt: row.opsEmailSentAt?.toISOString() ?? null,
+      userConfirmedAt: row.userConfirmedAt?.toISOString() ?? null,
+      adminConfirmedAt: row.adminConfirmedAt?.toISOString() ?? null,
+      completedAt: row.completedAt?.toISOString() ?? null,
+      completedBy: row.completedBy,
+      createdAt: row.createdAt.toISOString(),
+    };
+  }
+
+  async listMomoP2pForUser(userId: string) {
+    const rows = await this.prisma.momoP2pWithdrawal.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+    return rows.map((r) => this.serializeMomoP2p(r));
+  }
+
+  async getMomoP2pForUser(userId: string, id: string) {
+    const row = await this.prisma.momoP2pWithdrawal.findFirst({
+      where: { id, userId },
+    });
+    if (!row) throw new NotFoundException('MoMo P2P withdrawal not found');
+    return this.serializeMomoP2p(row);
+  }
+
+  async confirmMomoP2pReceived(userId: string, id: string) {
+    return this.completeMomoP2p(id, 'USER', userId);
+  }
+
+  async confirmMomoP2pSentByAdmin(adminId: string, id: string) {
+    return this.completeMomoP2p(id, 'ADMIN', undefined, adminId);
+  }
+
+  async listMomoP2pAdmin(status?: string, limit = 50) {
+    const take = Math.min(Math.max(limit, 1), 100);
+    const where =
+      status && status !== 'ALL'
+        ? { status: status as MomoP2pStatus }
+        : { status: { in: ['INITIATED', 'UNDER_PROCESS'] as MomoP2pStatus[] } };
+    const rows = await this.prisma.momoP2pWithdrawal.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take,
+      include: {
+        user: { select: { id: true, email: true, displayName: true } },
+      },
+    });
+    return rows.map((r) => ({
+      ...this.serializeMomoP2p(r),
+      user: r.user,
+    }));
+  }
+
+  private async completeMomoP2p(
+    id: string,
+    by: 'USER' | 'ADMIN',
+    userId?: string,
+    adminId?: string,
+  ) {
+    const row = await this.prisma.momoP2pWithdrawal.findUnique({
+      where: { id },
+    });
+    if (!row) throw new NotFoundException('MoMo P2P withdrawal not found');
+    if (by === 'USER' && row.userId !== userId) {
+      throw new NotFoundException('MoMo P2P withdrawal not found');
+    }
+    if (row.status === 'COMPLETED') {
+      return this.serializeMomoP2p(row);
+    }
+    if (row.status === 'CANCELLED') {
+      throw new BadRequestException('This MoMo P2P withdrawal was cancelled');
+    }
+
+    const now = new Date();
+    const confirmNote =
+      by === 'USER'
+        ? 'User confirmed MoMo arrival'
+        : `Admin ${adminId ?? ''} confirmed MoMo sent`;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const payout = await tx.payout.findUnique({
+        where: { id: row.payoutId },
+        select: { notes: true },
+      });
+      const p2p = await tx.momoP2pWithdrawal.update({
+        where: { id },
+        data: {
+          status: 'COMPLETED',
+          completedAt: now,
+          completedBy: by,
+          userConfirmedAt: by === 'USER' ? now : row.userConfirmedAt,
+          adminConfirmedAt: by === 'ADMIN' ? now : row.adminConfirmedAt,
+        },
+      });
+      await tx.payout.update({
+        where: { id: row.payoutId },
+        data: {
+          status: 'PAID',
+          processedAt: now,
+          notes: `${payout?.notes ?? ''} — ${confirmNote}`.trim(),
+        },
+      });
+      return p2p;
+    });
+
+    this.notifications.momoP2pCompleted(row.userId, {
+      amountUsdt: Number(row.amountUsdt),
+      amountUgx: Number(row.amountUgx),
+      momoPhone: row.momoPhone,
+      completedBy: by,
+      p2pId: row.id,
+    });
+
+    return this.serializeMomoP2p(updated);
+  }
 
   private ipnUrl() {
     const base = resolvePublicApiBaseUrl(this.config);
@@ -1258,7 +1410,7 @@ export class WalletService {
       });
     });
 
-    if (instantWithdraw) {
+    if (instantWithdraw && !isMomo) {
       try {
         const result = await this.payouts.approveAndSendPayout(
           payout.id,
@@ -1282,7 +1434,15 @@ export class WalletService {
           fee,
           netPayout,
           balance: newBalance,
-          payoutStatus: result.payout?.status ?? 'APPROVED',
+          payoutStatus:
+            result &&
+            typeof result === 'object' &&
+            'payout' in result &&
+            result.payout &&
+            typeof result.payout === 'object' &&
+            'status' in result.payout
+              ? String(result.payout.status)
+              : 'APPROVED',
           gatewayPayoutId: gatewayPayoutId ?? null,
           message:
             'message' in result && typeof result.message === 'string'
@@ -1311,6 +1471,98 @@ export class WalletService {
             err instanceof Error ? err.message : 'Instant payout failed',
         };
       }
+    }
+
+    if (isMomo) {
+      const recipient = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { displayName: true, email: true },
+      });
+      let rateQuote;
+      try {
+        rateQuote = await this.binanceC2c.quoteUsdtToUgx(netPayout);
+      } catch (err) {
+        this.logger.error(
+          `MoMo P2P quote failed for payout ${payout.id}: ${err instanceof Error ? err.message : err}`,
+        );
+        throw new ServiceUnavailableException(
+          'Could not fetch Binance MoMo rate — try again shortly',
+        );
+      }
+
+      const p2p = await this.prisma.momoP2pWithdrawal.create({
+        data: {
+          userId,
+          payoutId: payout.id,
+          amountUsdt: netPayout,
+          amountUgx: rateQuote.amountUgx,
+          rateUgxPerUsdt: rateQuote.price,
+          momoNetwork: savedWallet.network,
+          momoPhone: destination,
+          momoLabel: walletLabel,
+          recipientName: recipient?.displayName ?? null,
+          status: 'INITIATED',
+        },
+      });
+
+      await this.prisma.payout.update({
+        where: { id: payout.id },
+        data: {
+          notes: [
+            'MoMo P2P',
+            `$${grossAmount.toFixed(2)} USDT gross`,
+            `$${netPayout.toFixed(2)} USDT → UGX ${rateQuote.amountUgx.toLocaleString('en-US')} @ ${rateQuote.price}`,
+            `send to ${destination} (${savedWallet.network})`,
+            `who: ${recipient?.displayName ?? userId}${recipient?.email ? ` <${recipient.email}>` : ''}`,
+            `p2p ${p2p.id}`,
+          ].join(', '),
+        },
+      });
+
+      this.notifications.walletWithdrawRequested(userId, {
+        amount: grossAmount,
+        payoutId: payout.id,
+        destination,
+      });
+
+      const emailSent = await this.notifications.notifyMomoP2pOps({
+        userId,
+        userName: recipient?.displayName ?? 'User',
+        userEmail: recipient?.email ?? null,
+        payoutId: payout.id,
+        p2pId: p2p.id,
+        amountUsdt: netPayout,
+        amountUgx: rateQuote.amountUgx,
+        rateUgxPerUsdt: rateQuote.price,
+        momoPhone: destination,
+        momoNetwork: savedWallet.network,
+        momoLabel: walletLabel,
+      });
+
+      const underProcess = await this.prisma.momoP2pWithdrawal.update({
+        where: { id: p2p.id },
+        data: {
+          status: 'UNDER_PROCESS',
+          opsEmailSentAt: emailSent ? new Date() : new Date(),
+        },
+      });
+
+      return {
+        status: 'momo_p2p' as const,
+        payoutId: payout.id,
+        p2pId: p2p.id,
+        amount: grossAmount,
+        fee,
+        netPayout,
+        balance: newBalance,
+        amountUgx: rateQuote.amountUgx,
+        rateUgxPerUsdt: rateQuote.price,
+        momoPhone: destination,
+        momoNetwork: savedWallet.network,
+        p2p: this.serializeMomoP2p(underProcess),
+        message:
+          'Withdraw initiated. MoMo transfer is under process — confirm when the money arrives.',
+      };
     }
 
     this.notifications.walletWithdrawRequested(userId, {

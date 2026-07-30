@@ -297,6 +297,30 @@ export const api = {
       body: JSON.stringify({ reason }),
     }),
 
+  momoP2pList: (status?: string, limit = 50) => {
+    const q = new URLSearchParams({ limit: String(limit) });
+    if (status) q.set("status", status);
+    return request<
+      Array<{
+        id: string;
+        payoutId: string;
+        amountUsdt: number;
+        amountUgx: number;
+        rateUgxPerUsdt: number;
+        momoNetwork: string;
+        momoPhone: string;
+        momoLabel: string | null;
+        recipientName: string | null;
+        status: string;
+        createdAt: string;
+        user: { id: string; email: string | null; displayName: string };
+      }>
+    >(`/admin/momo-p2p?${q.toString()}`);
+  },
+
+  confirmMomoP2pSent: (id: string) =>
+    request(`/admin/momo-p2p/${id}/confirm-sent`, { method: "POST" }),
+
   nowPaymentsWallet: () =>
     request<NowPaymentsWalletSummary>("/admin/payouts/custody/wallet"),
 

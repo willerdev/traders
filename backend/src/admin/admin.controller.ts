@@ -16,6 +16,7 @@ import { CreatePromoCodeDto, BulkCreatePromoCodesDto, SendMessageDto, AdminRejec
 import { JwtAuthGuard, AdminPermissionGuard } from '../auth/guards';
 import { RequireAdminPermission } from '../auth/decorators/admin-permission.decorator';
 import { UploadStorageService } from '../uploads/upload-storage.service';
+import { WalletService } from '../wallet/wallet.service';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, AdminPermissionGuard)
@@ -24,6 +25,7 @@ export class AdminController {
   constructor(
     private adminService: AdminService,
     private uploadStorage: UploadStorageService,
+    private wallet: WalletService,
   ) {}
 
   @Get('session')
@@ -292,6 +294,27 @@ export class AdminController {
     @Body('reason') reason?: string,
   ) {
     return this.adminService.refundPayout(payoutId, req.user.id, reason);
+  }
+
+  @Get('momo-p2p')
+  @RequireAdminPermission('payout')
+  listMomoP2p(
+    @Query('status') status?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.wallet.listMomoP2pAdmin(
+      status,
+      limit ? Number(limit) : 50,
+    );
+  }
+
+  @Post('momo-p2p/:id/confirm-sent')
+  @RequireAdminPermission('payout')
+  confirmMomoP2pSent(
+    @Param('id') id: string,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.wallet.confirmMomoP2pSentByAdmin(req.user.id, id);
   }
 
   @Get('nowpayments/wallet')
