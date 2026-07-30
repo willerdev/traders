@@ -115,6 +115,13 @@ html.light .mobile-nav-dock {
   --nav-dock-inactive: #64748b;
 }
 
+/* Desktop floating sidebar — expand main padding when open */
+@media (min-width: 768px) {
+  body[data-sidebar-expanded="1"] .app-main {
+    padding-left: calc(16.5rem + 1.5rem);
+  }
+}
+
 .gradient-orb {
   position: absolute;
   border-radius: 50%;
