@@ -141,6 +141,49 @@ export class WalletService {
     return this.completeMomoP2p(id, 'ADMIN', undefined, adminId);
   }
 
+  /** Re-send MoMo P2P “send money” email to ops + ACTIVE cash agents. */
+  async resendMomoP2pOpsEmail(id: string) {
+    const row = await this.prisma.momoP2pWithdrawal.findUnique({
+      where: { id },
+      include: {
+        user: { select: { id: true, displayName: true, email: true } },
+      },
+    });
+    if (!row) throw new NotFoundException('MoMo P2P withdrawal not found');
+    if (row.status === 'COMPLETED' || row.status === 'CANCELLED') {
+      throw new BadRequestException(
+        'This MoMo P2P withdrawal is already closed',
+      );
+    }
+
+    const emailSent = await this.notifications.notifyMomoP2pOps({
+      userId: row.userId,
+      userName: row.recipientName || row.user.displayName,
+      userEmail: row.user.email ?? null,
+      payoutId: row.payoutId,
+      p2pId: row.id,
+      amountUsdt: Number(row.amountUsdt),
+      amountUgx: Number(row.amountUgx),
+      rateUgxPerUsdt: Number(row.rateUgxPerUsdt),
+      momoPhone: row.momoPhone,
+      momoNetwork: row.momoNetwork,
+      momoLabel: row.momoLabel,
+    });
+
+    const updated = await this.prisma.momoP2pWithdrawal.update({
+      where: { id: row.id },
+      data: { opsEmailSentAt: new Date() },
+    });
+
+    return {
+      ok: emailSent,
+      p2p: this.serializeMomoP2p(updated),
+      message: emailSent
+        ? 'MoMo P2P email re-sent to ops and active cash agents'
+        : 'Email send failed — check Resend config',
+    };
+  }
+
   async listMomoP2pForAgent(agentId: string, limit = 50) {
     const take = Math.min(Math.max(limit, 1), 100);
     const rows = await this.prisma.momoP2pWithdrawal.findMany({

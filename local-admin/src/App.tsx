@@ -376,6 +376,9 @@ export default function App() {
   const [momoP2pConfirmingId, setMomoP2pConfirmingId] = useState<string | null>(
     null,
   );
+  const [momoP2pResendingId, setMomoP2pResendingId] = useState<string | null>(
+    null,
+  );
   const [loanRows, setLoanRows] = useState<
     Array<{
       id: string;
@@ -3115,7 +3118,10 @@ export default function App() {
               <h3 style={{ margin: "0 0 0.5rem" }}>MoMo P2P queue</h3>
               <p className="muted" style={{ margin: "0 0 0.75rem" }}>
                 Send the UGX amount to the phone number below (Binance C2C rate),
-                then confirm sent. Users can also confirm arrival themselves.
+                then confirm sent. Open jobs also email{" "}
+                <strong>ACTIVE cash agents</strong>. Use{" "}
+                <strong>Email agents</strong> to re-send. Users can also confirm
+                arrival themselves.
               </p>
               {momoP2pRows.length === 0 ? (
                 <p className="muted">No open MoMo P2P withdrawals.</p>
@@ -3154,37 +3160,74 @@ export default function App() {
                         <td>{row.status}</td>
                         <td>
                           {row.status !== "COMPLETED" && (
-                            <button
-                              type="button"
-                              className="primary"
-                              disabled={momoP2pConfirmingId === row.id}
-                              onClick={() => {
-                                setMomoP2pConfirmingId(row.id);
-                                void api
-                                  .confirmMomoP2pSent(row.id)
-                                  .then(() => {
-                                    setMessage(
-                                      `MoMo P2P confirmed sent for ${row.momoPhone}`,
-                                    );
-                                    setMomoP2pRows((rows) =>
-                                      rows.filter((r) => r.id !== row.id),
-                                    );
-                                    return loadTab("payouts");
-                                  })
-                                  .catch((err) =>
-                                    setMessage(
-                                      err instanceof Error
-                                        ? err.message
-                                        : "Confirm failed",
-                                    ),
-                                  )
-                                  .finally(() =>
-                                    setMomoP2pConfirmingId(null),
-                                  );
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "0.35rem",
                               }}
                             >
-                              Confirm sent
-                            </button>
+                              <button
+                                type="button"
+                                className="primary"
+                                disabled={momoP2pConfirmingId === row.id}
+                                onClick={() => {
+                                  setMomoP2pConfirmingId(row.id);
+                                  void api
+                                    .confirmMomoP2pSent(row.id)
+                                    .then(() => {
+                                      setMessage(
+                                        `MoMo P2P confirmed sent for ${row.momoPhone}`,
+                                      );
+                                      setMomoP2pRows((rows) =>
+                                        rows.filter((r) => r.id !== row.id),
+                                      );
+                                      return loadTab("payouts");
+                                    })
+                                    .catch((err) =>
+                                      setMessage(
+                                        err instanceof Error
+                                          ? err.message
+                                          : "Confirm failed",
+                                      ),
+                                    )
+                                    .finally(() =>
+                                      setMomoP2pConfirmingId(null),
+                                    );
+                                }}
+                              >
+                                Confirm sent
+                              </button>
+                              <button
+                                type="button"
+                                disabled={momoP2pResendingId === row.id}
+                                onClick={() => {
+                                  setMomoP2pResendingId(row.id);
+                                  void api
+                                    .resendMomoP2pEmail(row.id)
+                                    .then((res) => {
+                                      setMessage(
+                                        res.message ||
+                                          "MoMo P2P email re-sent to ops + agents",
+                                      );
+                                    })
+                                    .catch((err) =>
+                                      setMessage(
+                                        err instanceof Error
+                                          ? err.message
+                                          : "Resend failed",
+                                      ),
+                                    )
+                                    .finally(() =>
+                                      setMomoP2pResendingId(null),
+                                    );
+                                }}
+                              >
+                                {momoP2pResendingId === row.id
+                                  ? "Sending…"
+                                  : "Email agents"}
+                              </button>
+                            </div>
                           )}
                         </td>
                       </tr>

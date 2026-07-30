@@ -323,6 +323,12 @@ export class AdminController {
     return this.wallet.confirmMomoP2pSentByAdmin(req.user.id, id);
   }
 
+  @Post('momo-p2p/:id/resend-email')
+  @RequireAdminPermission('payout')
+  resendMomoP2pEmail(@Param('id') id: string) {
+    return this.wallet.resendMomoP2pOpsEmail(id);
+  }
+
   @Get('nowpayments/wallet')
   getNowPaymentsWallet() {
     return this.adminService.getNowPaymentsWallet();

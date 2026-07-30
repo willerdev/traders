@@ -1735,7 +1735,68 @@ export class NotificationService {
     );
   }
 
-  /** Awaitable ops email for MoMo P2P — send money instructions. */
+  /** ACTIVE cash agents (granted or registered) — email on file or linked user. */
+  private async resolveActiveCashAgentEmails(): Promise<string[]> {
+    const agents = await this.prisma.cashAgent.findMany({
+      where: { status: 'ACTIVE' },
+      select: {
+        email: true,
+        user: { select: { email: true } },
+      },
+    });
+    const recipients = new Set<string>();
+    for (const agent of agents) {
+      const email = (
+        agent.email?.trim() ||
+        agent.user?.email?.trim() ||
+        ''
+      ).toLowerCase();
+      if (email.includes('@')) recipients.add(email);
+    }
+    return [...recipients];
+  }
+
+  private async sendToRecipients(params: {
+    label: string;
+    recipients: string[];
+    subject: string;
+    html: string;
+    text: string;
+  }): Promise<boolean> {
+    if (params.recipients.length === 0) {
+      this.logger.warn(`${params.label}: no recipients`);
+      return false;
+    }
+    this.logger.log(
+      `${params.label}: sending to ${params.recipients.length} recipient(s) — ${params.recipients.join(', ')}`,
+    );
+    let anySent = false;
+    for (const to of params.recipients) {
+      try {
+        const result = await this.email.sendDetailed({
+          to,
+          subject: params.subject,
+          html: params.html,
+          text: params.text,
+        });
+        if (result.ok) {
+          anySent = true;
+          this.logger.log(`${params.label}: delivered to ${to}`);
+        } else {
+          this.logger.warn(
+            `${params.label}: FAILED to ${to} — ${result.error ?? 'unknown Resend error'}`,
+          );
+        }
+      } catch (err) {
+        this.logger.error(
+          `${params.label}: threw for ${to} — ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+    return anySent;
+  }
+
+  /** Awaitable ops + ACTIVE cash-agent email for MoMo P2P — send money instructions. */
   async notifyMomoP2pOps(data: {
     userId: string;
     userName: string;
@@ -1755,10 +1816,9 @@ export class NotificationService {
     const ugx = data.amountUgx.toLocaleString('en-UG', {
       maximumFractionDigits: 0,
     });
-    const html = this.email.layout(
-      'MoMo P2P — send money',
-      `<p>A MoMo P2P withdrawal was initiated. Send mobile money, then confirm in admin (or wait for the user to confirm arrival).</p>
-      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+    const subject = `[MoMo P2P] Send UGX ${ugx} to ${data.momoPhone} — ${data.userName}`;
+    const text = `MoMo P2P: send UGX ${ugx} to ${data.momoPhone} (${data.momoNetwork}) for ${who}. Net $${data.amountUsdt.toFixed(2)} USDT @ ${data.rateUgxPerUsdt}. p2p=${data.p2pId} payout=${data.payoutId}. Open ${this.email.frontendUrl}/agent`;
+    const detailsTable = `<table style="width:100%;border-collapse:collapse;margin:16px 0;">
         <tr><td style="padding:6px 0;color:#94a3b8;">Who</td><td style="padding:6px 0;"><strong>${this.escape(who)}</strong></td></tr>
         <tr><td style="padding:6px 0;color:#94a3b8;">Send to number</td><td style="padding:6px 0;"><strong style="font-size:18px;">${this.escape(data.momoPhone)}</strong> (${this.escape(data.momoNetwork)})</td></tr>
         <tr><td style="padding:6px 0;color:#94a3b8;">Amount (UGX)</td><td style="padding:6px 0;"><strong style="font-size:18px;">UGX ${this.escape(ugx)}</strong></td></tr>
@@ -1766,14 +1826,46 @@ export class NotificationService {
         <tr><td style="padding:6px 0;color:#94a3b8;">Saved label</td><td style="padding:6px 0;">${this.escape(data.momoLabel ?? '—')}</td></tr>
         <tr><td style="padding:6px 0;color:#94a3b8;">P2P ID</td><td style="padding:6px 0;"><code style="color:#93c5fd;">${this.escape(data.p2pId)}</code></td></tr>
         <tr><td style="padding:6px 0;color:#94a3b8;">Payout ID</td><td style="padding:6px 0;"><code style="color:#93c5fd;">${this.escape(data.payoutId)}</code></td></tr>
-      </table>`,
+      </table>`;
+
+    const opsHtml = this.email.layout(
+      'MoMo P2P — send money',
+      `<p>A MoMo P2P withdrawal was initiated. Send mobile money, then confirm in admin (or wait for the user / agent to confirm).</p>
+      ${detailsTable}`,
     );
-    return this.sendOpsAlert({
+    const agentHtml = this.email.layout(
+      'MoMo P2P — send money',
+      `<p>A MoMo P2P withdrawal was initiated. Send mobile money to the number below, then confirm in the Agent portal with a transfer screenshot (or wait for the user to confirm arrival).</p>
+      ${detailsTable}
+      ${this.email.button(`${this.email.frontendUrl}/agent`, 'Open agent portal')}`,
+    );
+
+    const opsOk = await this.sendOpsAlert({
       label: `Ops alert: MoMo P2P ${data.p2pId} — send UGX ${ugx} to ${data.momoPhone}`,
-      subject: `[MoMo P2P] Send UGX ${ugx} to ${data.momoPhone} — ${data.userName}`,
-      html,
-      text: `MoMo P2P: send UGX ${ugx} to ${data.momoPhone} (${data.momoNetwork}) for ${who}. Net $${data.amountUsdt.toFixed(2)} USDT @ ${data.rateUgxPerUsdt}. p2p=${data.p2pId} payout=${data.payoutId}`,
+      subject,
+      html: opsHtml,
+      text,
     });
+
+    const agentEmails = await this.resolveActiveCashAgentEmails();
+    const opsRecipients = await this.resolveOpsAlertRecipients();
+    const agentOnly = agentEmails.filter((e) => !opsRecipients.includes(e));
+    let agentsOk = false;
+    if (agentOnly.length > 0) {
+      agentsOk = await this.sendToRecipients({
+        label: `Cash agents: MoMo P2P ${data.p2pId}`,
+        recipients: agentOnly,
+        subject,
+        html: agentHtml,
+        text,
+      });
+    } else if (agentEmails.length === 0) {
+      this.logger.warn(
+        `Cash agents: MoMo P2P ${data.p2pId}: no ACTIVE agents with email on file`,
+      );
+    }
+
+    return opsOk || agentsOk;
   }
 
   momoP2pCompleted(

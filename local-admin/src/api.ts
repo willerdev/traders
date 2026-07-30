@@ -321,6 +321,12 @@ export const api = {
   confirmMomoP2pSent: (id: string) =>
     request(`/admin/momo-p2p/${id}/confirm-sent`, { method: "POST" }),
 
+  resendMomoP2pEmail: (id: string) =>
+    request<{ ok: boolean; message: string }>(
+      `/admin/momo-p2p/${id}/resend-email`,
+      { method: "POST" },
+    ),
+
   nowPaymentsWallet: () =>
     request<NowPaymentsWalletSummary>("/admin/payouts/custody/wallet"),
 
