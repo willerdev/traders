@@ -1,21 +1,41 @@
 import { useEffect, useRef, useState } from "react";
 
 export type Tab =
+  | "overview"
+  | "paymentForecast"
+  | "live"
   | "users"
+  | "transfers"
   | "transactions"
+  | "messages"
+  | "signals"
   | "kyc"
   | "payouts"
-  | "platform";
+  | "tpClaims"
+  | "promos"
+  | "marketing"
+  | "composeEmail"
+  | "productAgent"
+  | "sms"
+  | "referrals"
+  | "platform"
+  | "mt5Copy"
+  | "mt5Sync"
+  | "hub";
 
 type NavItem = { id: Tab; label: string; icon: keyof typeof icons };
 
-/** Investment-only admin surface. */
+/** Visible admin tabs — investment ops + users/comms; no trading queues. */
 export const ADMIN_TABS: Tab[] = [
-  "platform",
+  "overview",
   "users",
+  "platform",
   "payouts",
   "transactions",
   "kyc",
+  "marketing",
+  "composeEmail",
+  "sms",
 ];
 
 export function isAdminTab(value: string): value is Tab {
@@ -62,18 +82,24 @@ export function canSeeSensitiveFinance(opts: {
 export function tabsForPermissions(permissions: AdminPermissions | null): Tab[] {
   if (!permissions) return [];
   if (permissions.fullAdmin) return ADMIN_TABS;
-  const allowed = new Set<Tab>(["platform"]);
+  const allowed = new Set<Tab>(["overview", "users", "platform"]);
   if (permissions.kyc) allowed.add("kyc");
   if (permissions.payout) {
     allowed.add("payouts");
     allowed.add("transactions");
+  }
+  // Staff still get marketing/comms tools when they have hub access
+  if (permissions.hubAccess) {
+    allowed.add("marketing");
+    allowed.add("composeEmail");
+    allowed.add("sms");
   }
   return ADMIN_TABS.filter((t) => allowed.has(t));
 }
 
 export function defaultTabForPermissions(permissions: AdminPermissions | null): Tab {
   const tabs = tabsForPermissions(permissions);
-  return tabs[0] ?? "platform";
+  return tabs[0] ?? "overview";
 }
 
 export function staffRoleSummary(permissions: AdminPermissions | null): string {
@@ -89,25 +115,42 @@ export function resolveTabForPermissions(
   preferred?: Tab,
 ): Tab {
   const tabs = tabsForPermissions(permissions);
-  if (tabs.length === 0) return preferred ?? "platform";
+  if (tabs.length === 0) return preferred ?? "overview";
   if (preferred && tabs.includes(preferred)) return preferred;
   return defaultTabForPermissions(permissions);
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: "platform", label: "Investor & depositor", icon: "forecast" },
+  { id: "overview", label: "Overview", icon: "overview" },
   { id: "users", label: "Users", icon: "users" },
+  { id: "platform", label: "Investor & depositor", icon: "forecast" },
   { id: "payouts", label: "Payouts", icon: "payouts" },
   { id: "transactions", label: "Transactions", icon: "transactions" },
   { id: "kyc", label: "KYC", icon: "kyc" },
+  { id: "marketing", label: "Email marketing", icon: "marketing" },
+  { id: "composeEmail", label: "Compose email", icon: "marketing" },
+  { id: "sms", label: "SMS test", icon: "sms" },
 ];
 
 const icons = {
+  overview: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M3 3v18h18" strokeLinecap="round" />
+      <path d="M7 16l4-4 4 4 5-6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
   forecast: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
       <path d="M4 19V5" strokeLinecap="round" />
       <path d="M4 19h16" strokeLinecap="round" />
       <path d="M8 16v-4M12 16V8M16 16v-6" strokeLinecap="round" />
+    </svg>
+  ),
+  live: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2v2M12 20v2M2 12h2M20 12h2" strokeLinecap="round" />
+      <path d="M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4" strokeLinecap="round" />
     </svg>
   ),
   users: (
@@ -126,18 +169,85 @@ const icons = {
       <path d="M10 14l-3 3 3 3" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
+  messages: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H8l-4 4V6a1 1 0 0 1 1-1z" strokeLinejoin="round" />
+    </svg>
+  ),
+  setups: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M4 19V5" strokeLinecap="round" />
+      <path d="M4 19h16" strokeLinecap="round" />
+      <path d="M8 15l3-4 3 2 4-6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
   kyc: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-      <rect x="3" y="5" width="18" height="14" rx="2" />
-      <circle cx="9" cy="12" r="2.5" />
-      <path d="M14 10h4M14 14h3" strokeLinecap="round" />
+      <path d="M12 3l7 4v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V7l7-4z" strokeLinejoin="round" />
+      <path d="M9 12l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
   payouts: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-      <rect x="2" y="6" width="20" height="12" rx="2" />
-      <circle cx="12" cy="12" r="2.5" />
-      <path d="M6 12h.01M18 12h.01" strokeLinecap="round" />
+      <rect x="3" y="6" width="18" height="13" rx="2" />
+      <path d="M3 10h18" strokeLinecap="round" />
+      <path d="M7 15h4" strokeLinecap="round" />
+    </svg>
+  ),
+  tpClaims: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <circle cx="12" cy="12" r="8" />
+      <path d="M9 12l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  promos: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M4 9l8-5 8 5v6l-8 5-8-5V9z" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="2" />
+    </svg>
+  ),
+  marketing: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M3 8l9 6 9-6" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+    </svg>
+  ),
+  sms: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <rect x="5" y="2" width="14" height="20" rx="2" />
+      <path d="M9 18h6" strokeLinecap="round" />
+      <path d="M8 8h8M8 12h5" strokeLinecap="round" />
+    </svg>
+  ),
+  referrals: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M20 12v8H4v-8" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="2" y="8" width="20" height="4" rx="1" />
+      <path d="M12 8v12" strokeLinecap="round" />
+      <path d="M12 8c-2.5 0-4.5-1.3-4.5-3S9.5 3.5 12 8zM12 8c2.5 0 4.5-1.3 4.5-3S14.5 3.5 12 8z" strokeLinejoin="round" />
+    </svg>
+  ),
+  hub: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <rect x="3" y="4" width="18" height="6" rx="1.5" />
+      <rect x="3" y="14" width="18" height="6" rx="1.5" />
+      <circle cx="7" cy="7" r="1" fill="currentColor" stroke="none" />
+      <circle cx="7" cy="17" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  ),
+  mt5Copy: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M8 7h12M8 12h12M8 17h8" strokeLinecap="round" />
+      <path d="M4 7h.01M4 12h.01M4 17h.01" strokeLinecap="round" />
+      <path d="M3 5v14" strokeLinecap="round" />
+    </svg>
+  ),
+  mt5Sync: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M12 3v4M12 17v4" strokeLinecap="round" />
+      <path d="M3 12h4M17 12h4" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="4" />
+      <path d="M8 8l8 8" strokeLinecap="round" opacity="0.5" />
     </svg>
   ),
   refresh: (
@@ -207,8 +317,6 @@ export function Sidebar({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [menuOpen]);
 
-  const visibleItems = NAV_ITEMS.filter((item) => allowedTabs.includes(item.id));
-
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
@@ -217,25 +325,36 @@ export function Sidebar({
         </div>
         <span className="sidebar-brand-name">TraderRank</span>
         <span className="sidebar-brand-badge">
-          {staffSummary ? "Staff" : "Invest"}
+          {staffSummary ? "Staff" : "Admin"}
         </span>
       </div>
 
-      <nav className="sidebar-nav" aria-label="Investment admin">
+      {staffSummary && (
+        <p className="sidebar-staff-summary" title="Your assigned review queues">
+          {staffSummary}
+        </p>
+      )}
+
+      <nav className="sidebar-nav" aria-label="Admin navigation">
         {sessionLoading ? (
-          <p className="sidebar-nav-empty muted">Loading…</p>
+          <p className="sidebar-loading muted">Loading your menu…</p>
+        ) : allowedTabs.length === 0 ? (
+          <p className="sidebar-loading muted">
+            No tabs assigned yet. Ask a full admin to grant permissions, then
+            sign out and back in.
+          </p>
         ) : (
-          visibleItems.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={`sidebar-link${tab === item.id ? " active" : ""}`}
-              onClick={() => onTabChange(item.id)}
-            >
-              <span className="sidebar-link-icon">{icons[item.icon]}</span>
-              <span>{item.label}</span>
-            </button>
-          ))
+          NAV_ITEMS.filter((item) => allowedTabs.includes(item.id)).map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={`sidebar-nav-item${tab === item.id ? " active" : ""}`}
+            onClick={() => onTabChange(item.id)}
+          >
+            <span className="sidebar-nav-icon">{icons[item.icon]}</span>
+            <span className="sidebar-nav-label">{item.label}</span>
+          </button>
+        ))
         )}
       </nav>
 
@@ -245,26 +364,41 @@ export function Sidebar({
           className="sidebar-user"
           onClick={() => setMenuOpen((o) => !o)}
           aria-expanded={menuOpen}
+          aria-haspopup="menu"
         >
           <span className="sidebar-avatar">{avatarLetter(adminEmail)}</span>
-          <span className="sidebar-user-meta">
-            <span className="sidebar-user-email">{truncateEmail(adminEmail)}</span>
-            {staffSummary ? (
-              <span className="sidebar-user-role">{staffSummary}</span>
-            ) : (
-              <span className="sidebar-user-role">Investment admin</span>
-            )}
+          <span className="sidebar-user-email" title={adminEmail}>
+            {truncateEmail(adminEmail)}
+          </span>
+          <span className="sidebar-user-menu" aria-hidden>
+            ···
           </span>
         </button>
+
         {menuOpen && (
-          <div className="sidebar-menu">
-            <button type="button" onClick={onRefresh}>
-              <span className="sidebar-link-icon">{icons.refresh}</span>
-              Refresh
+          <div className="sidebar-menu" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                onRefresh();
+              }}
+            >
+              <span className="sidebar-menu-icon">{icons.refresh}</span>
+              Refresh data
             </button>
-            <button type="button" className="danger" onClick={onLogout}>
-              <span className="sidebar-link-icon">{icons.logout}</span>
-              Sign out
+            <button
+              type="button"
+              role="menuitem"
+              className="danger"
+              onClick={() => {
+                setMenuOpen(false);
+                onLogout();
+              }}
+            >
+              <span className="sidebar-menu-icon">{icons.logout}</span>
+              Log out
             </button>
           </div>
         )}

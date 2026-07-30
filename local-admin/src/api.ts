@@ -334,7 +334,11 @@ export const api = {
 
   tpClaimsPending: () => request<TpClaimRow[]>("/admin/tp-claims/pending"),
   approveTpClaim: (claimId: string) =>
-    request(`/admin/tp-claims/${claimId}/approve`, { method: "POST" }),
+    request<{
+      awaitsPayoutApproval?: boolean;
+      creditedToWallet?: boolean;
+      reward?: number;
+    }>(`/admin/tp-claims/${claimId}/approve`, { method: "POST" }),
   rejectTpClaim: (claimId: string, reason: string) =>
     request(`/admin/tp-claims/${claimId}/reject`, {
       method: "POST",

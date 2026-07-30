@@ -1,8 +1,8 @@
-# TraderRank Local Admin (Investment)
+# TraderRank Local Admin
 
 **Runs on your machine only** — not deployed to Render or thetradeguard.com.
 
-Investment-focused console: investor/depositor platform, users, payouts, transactions, and KYC.
+Investment + ops console (no trading queues like setups, TP claims, or MT5).
 
 ## Setup
 
@@ -32,8 +32,12 @@ VITE_PROXY_TARGET=https://traders-c53s.onrender.com
 
 ## Tabs
 
-1. **Investor & depositor** — yields, enrollments, income journal, wallet tools
+1. **Overview** — users & platform snapshot
 2. **Users** — registered accounts
-3. **Payouts** — approve wallet withdrawals / custody
-4. **Transactions** — NOWPayments / MoMo payments
-5. **KYC** — approve / reject identity (required for payouts)
+3. **Investor & depositor** — yields, enrollments, income tools
+4. **Payouts** — wallet withdrawals / custody
+5. **Transactions** — NOWPayments / MoMo
+6. **KYC** — identity review
+7. **Email marketing** — campaigns
+8. **Compose email** — send / test email
+9. **SMS test** — SMS sending
