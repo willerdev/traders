@@ -11,11 +11,17 @@ type Recipient = {
   email: string | null;
 };
 
+type AudienceMode = "selected" | "active" | "investors" | "all";
+
 export function ComposeEmailPanel({ onMessage }: Props) {
   const [status, setStatus] = useState<{
     emailConfigured: boolean;
     emailFrom?: string;
     aiConfigured: boolean;
+    audiences?: {
+      active: { count: number; label: string; description: string };
+      investors: { count: number; label: string; description: string };
+    };
   } | null>(null);
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<UserRow[]>([]);
@@ -23,7 +29,7 @@ export function ComposeEmailPanel({ onMessage }: Props) {
   const [selected, setSelected] = useState<Recipient[]>([]);
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
-  const [allUsers, setAllUsers] = useState(false);
+  const [audience, setAudience] = useState<AudienceMode>("active");
   const [polishing, setPolishing] = useState(false);
   const [sending, setSending] = useState(false);
   const [lastResult, setLastResult] = useState("");
@@ -67,7 +73,7 @@ export function ComposeEmailPanel({ onMessage }: Props) {
         ? prev
         : [...prev, { id: u.id, displayName: u.displayName, email: u.email }],
     );
-    setAllUsers(false);
+    setAudience("selected");
   }
 
   function removeRecipient(id: string) {
@@ -92,18 +98,31 @@ export function ComposeEmailPanel({ onMessage }: Props) {
     }
   }
 
+  function audienceLabel(): string {
+    if (audience === "active") {
+      const n = status?.audiences?.active.count;
+      return n != null ? `active users (${n})` : "active users";
+    }
+    if (audience === "investors") {
+      const n = status?.audiences?.investors.count;
+      return n != null ? `investors (${n})` : "investors";
+    }
+    if (audience === "all") return "ALL users with email";
+    return `${selected.length} selected`;
+  }
+
   async function send() {
     if (!subject.trim() || body.trim().length < 8) {
       onMessage("Subject and body are required.");
       return;
     }
-    if (!allUsers && selected.length === 0) {
-      onMessage("Select users or choose Send to all users.");
+    if (audience === "selected" && selected.length === 0) {
+      onMessage("Select users, or choose Active / Investors.");
       return;
     }
-    if (allUsers) {
+    if (audience !== "selected") {
       const ok = window.confirm(
-        "Send this email to ALL non-banned users with an email address? This cannot be undone.",
+        `Send this email to ${audienceLabel()}? This cannot be undone.`,
       );
       if (!ok) return;
     }
@@ -114,13 +133,15 @@ export function ComposeEmailPanel({ onMessage }: Props) {
       const res = await api.composeEmailSend({
         subject: subject.trim(),
         body: body.trim(),
-        userIds: allUsers ? undefined : selected.map((s) => s.id),
-        allUsers,
-        confirmAll: allUsers,
+        audience,
+        userIds: audience === "selected" ? selected.map((s) => s.id) : undefined,
+        allUsers: audience === "all",
+        confirmAll: audience !== "selected",
       });
       const summary = `Sent ${res.sent}/${res.targeted} (failed ${res.failed}, skipped ${res.skipped})`;
       setLastResult(summary);
       onMessage(summary);
+      void refreshStatus();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Send failed";
       setLastResult(msg);
@@ -130,14 +151,45 @@ export function ComposeEmailPanel({ onMessage }: Props) {
     }
   }
 
+  const audienceOptions: Array<{
+    id: AudienceMode;
+    title: string;
+    detail: string;
+  }> = [
+    {
+      id: "active",
+      title: "Active users",
+      detail:
+        status?.audiences?.active.description ??
+        "Only ACTIVE accounts — skips pending / unpaid / banned",
+    },
+    {
+      id: "investors",
+      title: "Investors",
+      detail:
+        status?.audiences?.investors.description ??
+        "Only Smart Invest enrolled users",
+    },
+    {
+      id: "selected",
+      title: "Selected people",
+      detail: "Search and pick individual recipients",
+    },
+    {
+      id: "all",
+      title: "All users (not recommended)",
+      detail: "Every non-banned user with an email — includes inactive/unpaid",
+    },
+  ];
+
   return (
     <>
       <div className="toolbar toolbar-wrap">
         <div>
           <h2>Compose email</h2>
           <p className="muted" style={{ margin: "0.35rem 0 0", maxWidth: 620 }}>
-            Search users, write a message, click the AI icon to make it professional,
-            then send to selected people or everyone.
+            Choose Active or Investors so you don’t email useless accounts. Write
+            a message, polish with AI, then send.
           </p>
         </div>
       </div>
@@ -167,6 +219,16 @@ export function ComposeEmailPanel({ onMessage }: Props) {
                 : "DEEPSEEK_API_KEY missing"}
             </strong>
           </span>
+          {status.audiences && (
+            <>
+              <span>
+                Active: <strong>{status.audiences.active.count}</strong>
+              </span>
+              <span>
+                Investors: <strong>{status.audiences.investors.count}</strong>
+              </span>
+            </>
+          )}
         </div>
       )}
 
@@ -179,35 +241,68 @@ export function ComposeEmailPanel({ onMessage }: Props) {
         }}
       >
         <div className="kyc-card" style={{ padding: "1rem" }}>
-          <strong>Recipients</strong>
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              margin: "0.85rem 0",
-              fontSize: 14,
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={allUsers}
-              onChange={(e) => {
-                setAllUsers(e.target.checked);
-                if (e.target.checked) setSelected([]);
-              }}
-            />
-            Send to all users
-          </label>
+          <strong>Send to</strong>
+          <div style={{ marginTop: "0.75rem", display: "grid", gap: "0.55rem" }}>
+            {audienceOptions.map((opt) => {
+              const count =
+                opt.id === "active"
+                  ? status?.audiences?.active.count
+                  : opt.id === "investors"
+                    ? status?.audiences?.investors.count
+                    : undefined;
+              return (
+                <label
+                  key={opt.id}
+                  style={{
+                    display: "flex",
+                    gap: "0.65rem",
+                    alignItems: "flex-start",
+                    padding: "0.65rem 0.75rem",
+                    borderRadius: 10,
+                    border:
+                      audience === opt.id
+                        ? "1px solid rgba(56, 189, 248, 0.55)"
+                        : "1px solid #1e2936",
+                    background:
+                      audience === opt.id
+                        ? "rgba(14, 165, 233, 0.1)"
+                        : "transparent",
+                    cursor: "pointer",
+                    fontSize: 14,
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="compose-audience"
+                    checked={audience === opt.id}
+                    onChange={() => {
+                      setAudience(opt.id);
+                      if (opt.id !== "selected") setSelected([]);
+                    }}
+                    style={{ marginTop: 3 }}
+                  />
+                  <span>
+                    <strong>
+                      {opt.title}
+                      {count != null ? ` (${count})` : ""}
+                    </strong>
+                    <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                      {opt.detail}
+                    </div>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
 
-          {!allUsers && (
+          {audience === "selected" && (
             <>
               <input
                 type="search"
                 placeholder="Search name or email…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                style={{ width: "100%", marginBottom: "0.5rem" }}
+                style={{ width: "100%", margin: "0.85rem 0 0.5rem" }}
               />
               {searching && <p className="muted" style={{ fontSize: 12 }}>Searching…</p>}
               <ul
@@ -286,10 +381,9 @@ export function ComposeEmailPanel({ onMessage }: Props) {
             </>
           )}
 
-          {allUsers && (
-            <p className="muted" style={{ fontSize: 13, marginTop: "0.5rem" }}>
-              Will email every non-banned user who has a valid address. Confirm again
-              when you hit Send.
+          {audience !== "selected" && (
+            <p className="muted" style={{ fontSize: 13, marginTop: "0.85rem" }}>
+              Will email {audienceLabel()}. You’ll confirm again when you hit Send.
             </p>
           )}
         </div>
@@ -389,11 +483,7 @@ export function ComposeEmailPanel({ onMessage }: Props) {
               disabled={sending || !status?.emailConfigured}
               onClick={() => void send()}
             >
-              {sending
-                ? "Sending…"
-                : allUsers
-                  ? "Send to all users"
-                  : `Send to ${selected.length || 0} selected`}
+              {sending ? "Sending…" : `Send to ${audienceLabel()}`}
             </button>
             <button
               type="button"

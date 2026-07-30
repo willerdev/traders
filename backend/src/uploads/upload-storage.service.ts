@@ -15,7 +15,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import type { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 
-export type UploadCategory = 'setups' | 'kyc';
+export type UploadCategory = 'setups' | 'kyc' | 'agents';
 
 @Injectable()
 export class UploadStorageService {

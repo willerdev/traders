@@ -392,6 +392,27 @@ export default function App() {
     }>
   >([]);
   const [loanActionId, setLoanActionId] = useState<string | null>(null);
+  const [cashAgentRows, setCashAgentRows] = useState<
+    Array<{
+      id: string;
+      displayName: string;
+      phone: string | null;
+      email: string | null;
+      status: string;
+      code: string | null;
+      hasCode: boolean;
+      applyNote: string | null;
+      adminNote: string | null;
+      createdAt: string;
+      completedJobs: number;
+      user: { id: string; email: string | null; displayName: string } | null;
+    }>
+  >([]);
+  const [agentActionId, setAgentActionId] = useState<string | null>(null);
+  const [newAgentName, setNewAgentName] = useState("");
+  const [newAgentPhone, setNewAgentPhone] = useState("");
+  const [newAgentEmail, setNewAgentEmail] = useState("");
+  const [newAgentCode, setNewAgentCode] = useState("");
   const [weeklyTierPayoutsEnabled, setWeeklyTierPayoutsEnabled] = useState(false);
   const [weeklyTierSaving, setWeeklyTierSaving] = useState(false);
   const [npWallet, setNpWallet] = useState<NowPaymentsWalletSummary | null>(null);
@@ -813,6 +834,12 @@ export default function App() {
           setLoanRows(await api.listLoans());
         } catch {
           setLoanRows([]);
+        }
+      } else if (active === "agents") {
+        try {
+          setCashAgentRows(await api.listCashAgents("ALL"));
+        } catch {
+          setCashAgentRows([]);
         }
       } else if (active === "tpClaims") {
         setTpClaims(await api.tpClaimsPending());
@@ -2688,6 +2715,242 @@ export default function App() {
                 </div>
               </div>
             )}
+          </>
+        )}
+
+        {tab === "agents" && (
+          <>
+            <div className="toolbar">
+              <h2>Cash agents</h2>
+            </div>
+            <div className="kyc-card" style={{ marginBottom: "1.25rem" }}>
+              <p className="muted" style={{ margin: "0 0 0.75rem" }}>
+                Agents unlock{" "}
+                <code>/agent</code> with a code, claim MoMo withdrawals, send
+                UGX, and upload a transfer screenshot to confirm. Approving an
+                application emails them the code.
+              </p>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "0.5rem",
+                  marginBottom: "1rem",
+                  alignItems: "end",
+                }}
+              >
+                <label>
+                  <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                    Name
+                  </span>
+                  <input
+                    value={newAgentName}
+                    onChange={(e) => setNewAgentName(e.target.value)}
+                    placeholder="Agent name"
+                  />
+                </label>
+                <label>
+                  <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                    Phone
+                  </span>
+                  <input
+                    value={newAgentPhone}
+                    onChange={(e) => setNewAgentPhone(e.target.value)}
+                    placeholder="Optional"
+                  />
+                </label>
+                <label>
+                  <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                    Email
+                  </span>
+                  <input
+                    type="email"
+                    value={newAgentEmail}
+                    onChange={(e) => setNewAgentEmail(e.target.value)}
+                    placeholder="For code delivery"
+                  />
+                </label>
+                <label>
+                  <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                    Code (optional)
+                  </span>
+                  <input
+                    value={newAgentCode}
+                    onChange={(e) =>
+                      setNewAgentCode(e.target.value.toUpperCase())
+                    }
+                    placeholder="Auto if blank"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={!newAgentName.trim() || agentActionId === "create"}
+                  onClick={() => {
+                    setAgentActionId("create");
+                    void api
+                      .createCashAgent({
+                        displayName: newAgentName.trim(),
+                        phone: newAgentPhone || undefined,
+                        email: newAgentEmail || undefined,
+                        code: newAgentCode || undefined,
+                      })
+                      .then((res) => {
+                        setMessage(
+                          `Agent created — code ${res.code ?? "(emailed)"}`,
+                        );
+                        setNewAgentName("");
+                        setNewAgentPhone("");
+                        setNewAgentEmail("");
+                        setNewAgentCode("");
+                        return loadTab("agents");
+                      })
+                      .catch((err) =>
+                        setMessage(
+                          err instanceof Error
+                            ? err.message
+                            : "Create agent failed",
+                        ),
+                      )
+                      .finally(() => setAgentActionId(null));
+                  }}
+                >
+                  Create agent
+                </button>
+              </div>
+              {cashAgentRows.length === 0 ? (
+                <p className="muted">No agents yet.</p>
+              ) : (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Who</th>
+                      <th>Status</th>
+                      <th>Code</th>
+                      <th>Jobs</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cashAgentRows.map((row) => (
+                      <tr key={row.id}>
+                        <td>
+                          {row.displayName}
+                          <br />
+                          <span className="muted">{row.email ?? "—"}</span>
+                          <br />
+                          <span className="muted">{row.phone ?? ""}</span>
+                          {row.applyNote && (
+                            <>
+                              <br />
+                              <span className="muted" style={{ fontSize: "0.7rem" }}>
+                                {row.applyNote}
+                              </span>
+                            </>
+                          )}
+                        </td>
+                        <td>{row.status}</td>
+                        <td>
+                          <code>{row.code ?? "—"}</code>
+                        </td>
+                        <td>{row.completedJobs}</td>
+                        <td>
+                          <div
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: "0.35rem",
+                            }}
+                          >
+                            {row.status === "PENDING" && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="primary"
+                                  disabled={agentActionId === row.id}
+                                  onClick={() => {
+                                    setAgentActionId(row.id);
+                                    void api
+                                      .approveCashAgent(row.id)
+                                      .then((res) => {
+                                        setMessage(
+                                          `Approved — code ${(res as { code?: string }).code ?? "sent"}`,
+                                        );
+                                        return loadTab("agents");
+                                      })
+                                      .catch((err) =>
+                                        setMessage(
+                                          err instanceof Error
+                                            ? err.message
+                                            : "Approve failed",
+                                        ),
+                                      )
+                                      .finally(() => setAgentActionId(null));
+                                  }}
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={agentActionId === row.id}
+                                  onClick={() => {
+                                    const reason =
+                                      window.prompt("Rejection reason") ??
+                                      undefined;
+                                    setAgentActionId(row.id);
+                                    void api
+                                      .rejectCashAgent(row.id, reason)
+                                      .then(() => {
+                                        setMessage("Agent rejected");
+                                        return loadTab("agents");
+                                      })
+                                      .catch((err) =>
+                                        setMessage(
+                                          err instanceof Error
+                                            ? err.message
+                                            : "Reject failed",
+                                        ),
+                                      )
+                                      .finally(() => setAgentActionId(null));
+                                  }}
+                                >
+                                  Reject
+                                </button>
+                              </>
+                            )}
+                            {row.status === "ACTIVE" && (
+                              <button
+                                type="button"
+                                disabled={agentActionId === row.id}
+                                onClick={() => {
+                                  setAgentActionId(row.id);
+                                  void api
+                                    .suspendCashAgent(row.id)
+                                    .then(() => {
+                                      setMessage("Agent suspended");
+                                      return loadTab("agents");
+                                    })
+                                    .catch((err) =>
+                                      setMessage(
+                                        err instanceof Error
+                                          ? err.message
+                                          : "Suspend failed",
+                                      ),
+                                    )
+                                    .finally(() => setAgentActionId(null));
+                                }}
+                              >
+                                Suspend
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </>
         )}
 

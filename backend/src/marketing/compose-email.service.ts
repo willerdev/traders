@@ -5,12 +5,19 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { isRegistrationEmailAllowed } from '../common/email-quality.util';
 
 const SEND_DELAY_MS = 450;
 const MAX_SENDS = 2500;
+
+export type ComposeAudience =
+  | 'selected'
+  | 'all'
+  | 'active'
+  | 'investors';
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -54,12 +61,48 @@ export class ComposeEmailService {
     return (this.config.get<string>('DEEPSEEK_API_KEY') || '').trim();
   }
 
-  status() {
+  private baseRecipientWhere(): Prisma.UserWhereInput {
+    return {
+      role: { not: 'ADMIN' },
+      status: { notIn: ['BANNED'] },
+      email: { not: null },
+    };
+  }
+
+  private async countAudience(where: Prisma.UserWhereInput) {
+    return this.prisma.user.count({ where });
+  }
+
+  async status() {
+    const base = this.baseRecipientWhere();
+    const [activeCount, investorCount] = await Promise.all([
+      this.countAudience({
+        ...base,
+        status: 'ACTIVE',
+      }),
+      this.countAudience({
+        ...base,
+        investorActive: true,
+      }),
+    ]);
+
     return {
       emailConfigured: this.email.isConfigured,
       emailFrom: this.email.from,
       aiConfigured: this.deepseekKey().length > 0,
       aiProvider: 'deepseek',
+      audiences: {
+        active: {
+          count: activeCount,
+          label: 'Active accounts',
+          description: 'Users with ACTIVE status (paid / verified accounts)',
+        },
+        investors: {
+          count: investorCount,
+          label: 'Investors',
+          description: 'Users with Smart Invest enrollment (investorActive)',
+        },
+      },
     };
   }
 
@@ -133,7 +176,6 @@ ${draft}`,
       choices?: Array<{ message?: { content?: string } }>;
     };
     let raw = data.choices?.[0]?.message?.content?.trim() || '{}';
-    // Strip accidental markdown fences from DeepSeek.
     raw = raw
       .replace(/^```(?:json)?\s*/i, '')
       .replace(/\s*```$/i, '')
@@ -158,11 +200,45 @@ ${draft}`,
     return { subject, body };
   }
 
+  private resolveAudience(input: {
+    audience?: string;
+    allUsers?: boolean;
+  }): ComposeAudience {
+    const raw = String(input.audience ?? '')
+      .trim()
+      .toLowerCase();
+    if (
+      raw === 'active' ||
+      raw === 'investors' ||
+      raw === 'all' ||
+      raw === 'selected'
+    ) {
+      return raw;
+    }
+    if (input.allUsers) return 'all';
+    return 'selected';
+  }
+
+  private audienceWhere(audience: ComposeAudience): Prisma.UserWhereInput {
+    const base = this.baseRecipientWhere();
+    if (audience === 'active') {
+      return { ...base, status: 'ACTIVE' };
+    }
+    if (audience === 'investors') {
+      return {
+        ...base,
+        investorActive: true,
+      };
+    }
+    return base;
+  }
+
   async send(input: {
     subject: string;
     body: string;
     userIds?: string[];
     allUsers?: boolean;
+    audience?: string;
     confirmAll?: boolean;
   }) {
     if (this.sending) {
@@ -177,39 +253,41 @@ ${draft}`,
     if (!subject) throw new BadRequestException('Subject is required.');
     if (body.length < 8) throw new BadRequestException('Body is too short.');
 
-    const allUsers = Boolean(input.allUsers);
-    if (allUsers && !input.confirmAll) {
+    const audience = this.resolveAudience(input);
+    const bulk =
+      audience === 'all' || audience === 'active' || audience === 'investors';
+    if (bulk && !input.confirmAll) {
       throw new BadRequestException(
-        'Sending to all users requires confirmAll: true.',
+        'Bulk audience sends require confirmAll: true.',
       );
     }
 
     const userIds = [...new Set((input.userIds || []).filter(Boolean))];
-    if (!allUsers && userIds.length === 0) {
-      throw new BadRequestException('Select at least one user, or choose all users.');
+    if (audience === 'selected' && userIds.length === 0) {
+      throw new BadRequestException(
+        'Select at least one user, or choose Active / Investors.',
+      );
     }
 
     this.sending = true;
     try {
-      const recipients = allUsers
-        ? await this.prisma.user.findMany({
-            where: {
-              role: { not: 'ADMIN' },
-              status: { notIn: ['BANNED'] },
-              email: { not: null },
-            },
-            select: { id: true, email: true, displayName: true },
-            take: MAX_SENDS,
-          })
-        : await this.prisma.user.findMany({
-            where: {
-              id: { in: userIds },
-              email: { not: null },
-            },
-            select: { id: true, email: true, displayName: true },
-          });
+      const recipients =
+        audience === 'selected'
+          ? await this.prisma.user.findMany({
+              where: {
+                id: { in: userIds },
+                email: { not: null },
+                status: { notIn: ['BANNED'] },
+              },
+              select: { id: true, email: true, displayName: true },
+            })
+          : await this.prisma.user.findMany({
+              where: this.audienceWhere(audience),
+              select: { id: true, email: true, displayName: true },
+              take: MAX_SENDS,
+            });
 
-      const audience = allUsers ? 'admin_compose:all' : 'admin_compose:selected';
+      const audienceKey = `admin_compose:${audience}`;
 
       let sent = 0;
       let failed = 0;
@@ -237,10 +315,10 @@ ${draft}`,
           data: {
             userId: u.id,
             email: to,
-            audience,
+            audience: audienceKey,
             subject,
             status: ok ? 'SENT' : 'FAILED',
-            detail: allUsers ? 'compose:all' : 'compose:selected',
+            detail: `compose:${audience}`,
           },
         });
 
@@ -250,12 +328,12 @@ ${draft}`,
       }
 
       this.logger.log(
-        `Compose email (${audience}): sent=${sent} failed=${failed} skipped=${skipped}`,
+        `Compose email (${audienceKey}): sent=${sent} failed=${failed} skipped=${skipped}`,
       );
 
       return {
         ok: true,
-        audience,
+        audience: audienceKey,
         targeted: recipients.length,
         sent,
         failed,

@@ -19,6 +19,7 @@ import { UploadStorageService } from '../uploads/upload-storage.service';
 import { WalletService } from '../wallet/wallet.service';
 import { UnitrustService } from '../unitrust/unitrust.service';
 import { LoansService } from '../loans/loans.service';
+import { CashAgentsService } from '../cash-agents/cash-agents.service';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, AdminPermissionGuard)
@@ -30,6 +31,7 @@ export class AdminController {
     private wallet: WalletService,
     private unitrust: UnitrustService,
     private loans: LoansService,
+    private cashAgents: CashAgentsService,
   ) {}
 
   @Get('session')
@@ -667,6 +669,68 @@ export class AdminController {
     @Body('note') note?: string,
   ) {
     return this.loans.markDefaulted(id, req.user.id, note);
+  }
+
+  @Get('cash-agents')
+  @RequireAdminPermission('payout')
+  listCashAgents(
+    @Query('status') status?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.cashAgents.listAdmin(status, limit ? Number(limit) : 50);
+  }
+
+  @Post('cash-agents')
+  @RequireAdminPermission('payout')
+  createCashAgent(
+    @Request() req: { user: { id: string } },
+    @Body()
+    body: {
+      displayName?: string;
+      phone?: string;
+      email?: string;
+      code?: string;
+      userId?: string;
+    },
+  ) {
+    return this.cashAgents.createAdmin({
+      displayName: body.displayName ?? '',
+      phone: body.phone,
+      email: body.email,
+      code: body.code,
+      userId: body.userId,
+      adminId: req.user.id,
+    });
+  }
+
+  @Post('cash-agents/:id/approve')
+  @RequireAdminPermission('payout')
+  approveCashAgent(
+    @Param('id') id: string,
+    @Request() req: { user: { id: string } },
+    @Body('code') code?: string,
+  ) {
+    return this.cashAgents.approve(id, req.user.id, code);
+  }
+
+  @Post('cash-agents/:id/reject')
+  @RequireAdminPermission('payout')
+  rejectCashAgent(
+    @Param('id') id: string,
+    @Request() req: { user: { id: string } },
+    @Body('reason') reason?: string,
+  ) {
+    return this.cashAgents.reject(id, req.user.id, reason);
+  }
+
+  @Post('cash-agents/:id/suspend')
+  @RequireAdminPermission('payout')
+  suspendCashAgent(
+    @Param('id') id: string,
+    @Request() req: { user: { id: string } },
+    @Body('note') note?: string,
+  ) {
+    return this.cashAgents.suspend(id, req.user.id, note);
   }
 
   @Patch('investors/:userId/yield')

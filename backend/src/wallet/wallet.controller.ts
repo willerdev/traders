@@ -135,6 +135,20 @@ export class WalletController {
     );
   }
 
+  @Post('daily-calendar/report')
+  @UseGuards(JwtAuthGuard)
+  sendDailyCalendarReport(
+    @Request() req: { user: { id: string } },
+    @Body() body: { year?: number; month?: number },
+  ) {
+    const now = new Date();
+    return this.wallet.sendMonthlyJournalReport(
+      req.user.id,
+      body.year ? Number(body.year) : now.getUTCFullYear(),
+      body.month ? Number(body.month) : now.getUTCMonth() + 1,
+    );
+  }
+
   @Post('withdraw/request-otp')
   @UseGuards(JwtAuthGuard)
   requestWithdrawOtp(

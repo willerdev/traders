@@ -70,6 +70,38 @@ class ApiClient {
     }
   }
 
+  private async agentRequest<T>(
+    path: string,
+    agentToken: string,
+    options: RequestInit = {},
+  ): Promise<T> {
+    const headers: Record<string, string> = {
+      ...(options.headers as Record<string, string>),
+      "X-Agent-Token": agentToken,
+    };
+    const hasBody = options.body != null && options.body !== "";
+    if (hasBody && !headers["Content-Type"] && !headers["content-type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers,
+    }).catch(() => {
+      throw new Error(networkErrorMessage());
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      let error: { message?: unknown } = { message: res.statusText };
+      try {
+        if (text) error = JSON.parse(text) as { message?: unknown };
+      } catch {
+        throw new Error(text.slice(0, 120) || "Request failed");
+      }
+      throw new Error(apiErrorMessage(error, res.statusText));
+    }
+    return res.json() as Promise<T>;
+  }
+
   private async request<T>(
     path: string,
     options: RequestInit = {},
@@ -1070,6 +1102,18 @@ class ApiClient {
       this.request<DailyCalendarResult>(
         `/wallet/daily-calendar?year=${year}&month=${month}`,
       ),
+    sendJournalReport: (year: number, month: number) =>
+      this.request<{
+        ok: boolean;
+        year: number;
+        month: number;
+        monthLabel: string;
+        monthNet: number;
+        message: string;
+      }>("/wallet/daily-calendar/report", {
+        method: "POST",
+        body: JSON.stringify({ year, month }),
+      }),
   };
 
   investor = {
@@ -1200,6 +1244,73 @@ class ApiClient {
       this.request<LoanRow>(`/loans/${id}/cancel`, { method: "POST" }),
     repay: (id: string) =>
       this.request<LoanRow>(`/loans/${id}/repay`, { method: "POST" }),
+  };
+
+  agents = {
+    apply: (data: {
+      displayName: string;
+      phone?: string;
+      email?: string;
+      note?: string;
+    }) =>
+      this.request<{ id: string; status: string; message: string }>(
+        "/agents/apply",
+        { method: "POST", body: JSON.stringify(data) },
+      ),
+    applyMe: (data: {
+      displayName: string;
+      phone?: string;
+      email?: string;
+      note?: string;
+    }) =>
+      this.request<{ id: string; status: string; message: string }>(
+        "/agents/apply/me",
+        { method: "POST", body: JSON.stringify(data) },
+      ),
+    openSession: (code: string) =>
+      this.request<{
+        token: string;
+        expiresAt: string;
+        agent: CashAgentProfile;
+      }>("/agents/session", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      }),
+    me: (agentToken: string) =>
+      this.agentRequest<CashAgentProfile>("/agents/me", agentToken),
+    listJobs: (agentToken: string) =>
+      this.agentRequest<AgentMomoJob[]>("/agents/momo-p2p", agentToken),
+    claimJob: (agentToken: string, id: string) =>
+      this.agentRequest<AgentMomoJob>(
+        `/agents/momo-p2p/${id}/claim`,
+        agentToken,
+        { method: "POST" },
+      ),
+    confirmJob: async (agentToken: string, id: string, file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const headers: Record<string, string> = {
+        "X-Agent-Token": agentToken,
+      };
+      const jwt = this.getToken();
+      if (jwt) headers.Authorization = `Bearer ${jwt}`;
+      const res = await fetch(`${API_BASE}/agents/momo-p2p/${id}/confirm`, {
+        method: "POST",
+        headers,
+        body: formData,
+      }).catch(() => {
+        throw new Error(networkErrorMessage());
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({
+          message: res.statusText,
+        }));
+        throw new Error(
+          apiErrorMessage(error, res.statusText) || "Confirm failed",
+        );
+      }
+      return res.json() as Promise<AgentMomoJob>;
+    },
   };
 
   evaluations = {
@@ -1720,11 +1831,23 @@ export interface DailyCalendarDay {
   }>;
 }
 
+export interface DailyCalendarSummary {
+  activeDays: number;
+  creditTotal: number;
+  debitTotal: number;
+  monthNet: number;
+  bestDay: { date: string; net: number } | null;
+  worstDay: { date: string; net: number } | null;
+  byType: Array<{ type: string; amount: number }>;
+  dailyNets: Array<{ date: string; net: number; txCount: number }>;
+}
+
 export interface DailyCalendarResult {
   year: number;
   month: number;
   monthNet: number;
   days: Record<string, DailyCalendarDay>;
+  summary?: DailyCalendarSummary;
 }
 
 export interface InvestorFeeTier {
@@ -1865,6 +1988,38 @@ export interface LoanRow {
   repaidAt: string | null;
   rejectedReason: string | null;
   adminNote: string | null;
+  createdAt: string;
+}
+
+export interface CashAgentProfile {
+  id: string;
+  displayName: string;
+  phone: string | null;
+  email: string | null;
+  status: "PENDING" | "ACTIVE" | "REJECTED" | "SUSPENDED";
+  hasCode: boolean;
+  applyNote: string | null;
+  adminNote: string | null;
+  approvedAt: string | null;
+  createdAt: string;
+  userId: string | null;
+}
+
+export interface AgentMomoJob {
+  id: string;
+  payoutId: string;
+  amountUsdt: number;
+  amountUgx: number;
+  rateUgxPerUsdt: number;
+  momoNetwork: string;
+  momoPhone: string;
+  momoLabel: string | null;
+  recipientName: string | null;
+  status: string;
+  agentId: string | null;
+  agentClaimedAt: string | null;
+  agentProofUrl: string | null;
+  mine?: boolean;
   createdAt: string;
 }
 

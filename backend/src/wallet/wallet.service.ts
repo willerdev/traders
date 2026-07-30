@@ -84,6 +84,10 @@ export class WalletService {
     opsEmailSentAt: Date | null;
     userConfirmedAt: Date | null;
     adminConfirmedAt: Date | null;
+    agentId?: string | null;
+    agentClaimedAt?: Date | null;
+    agentConfirmedAt?: Date | null;
+    agentProofUrl?: string | null;
     completedAt: Date | null;
     completedBy: string | null;
     createdAt: Date;
@@ -102,6 +106,10 @@ export class WalletService {
       opsEmailSentAt: row.opsEmailSentAt?.toISOString() ?? null,
       userConfirmedAt: row.userConfirmedAt?.toISOString() ?? null,
       adminConfirmedAt: row.adminConfirmedAt?.toISOString() ?? null,
+      agentId: row.agentId ?? null,
+      agentClaimedAt: row.agentClaimedAt?.toISOString() ?? null,
+      agentConfirmedAt: row.agentConfirmedAt?.toISOString() ?? null,
+      agentProofUrl: row.agentProofUrl ?? null,
       completedAt: row.completedAt?.toISOString() ?? null,
       completedBy: row.completedBy,
       createdAt: row.createdAt.toISOString(),
@@ -133,6 +141,56 @@ export class WalletService {
     return this.completeMomoP2p(id, 'ADMIN', undefined, adminId);
   }
 
+  async listMomoP2pForAgent(agentId: string, limit = 50) {
+    const take = Math.min(Math.max(limit, 1), 100);
+    const rows = await this.prisma.momoP2pWithdrawal.findMany({
+      where: {
+        status: { in: ['INITIATED', 'UNDER_PROCESS'] },
+        OR: [{ agentId: null }, { agentId }],
+      },
+      orderBy: { createdAt: 'asc' },
+      take,
+      include: {
+        user: { select: { id: true, displayName: true } },
+      },
+    });
+    return rows.map((r) => ({
+      ...this.serializeMomoP2p(r),
+      mine: r.agentId === agentId,
+      recipientName: r.recipientName || r.user.displayName,
+    }));
+  }
+
+  async claimMomoP2pForAgent(agentId: string, id: string) {
+    const row = await this.prisma.momoP2pWithdrawal.findUnique({
+      where: { id },
+    });
+    if (!row) throw new NotFoundException('MoMo P2P withdrawal not found');
+    if (row.status === 'COMPLETED' || row.status === 'CANCELLED') {
+      throw new BadRequestException('This withdrawal is no longer open');
+    }
+    if (row.agentId && row.agentId !== agentId) {
+      throw new BadRequestException('Another agent already claimed this payout');
+    }
+    const updated = await this.prisma.momoP2pWithdrawal.update({
+      where: { id },
+      data: {
+        agentId,
+        agentClaimedAt: row.agentClaimedAt ?? new Date(),
+        status: row.status === 'INITIATED' ? 'UNDER_PROCESS' : row.status,
+      },
+    });
+    return this.serializeMomoP2p(updated);
+  }
+
+  async confirmMomoP2pSentByAgent(
+    agentId: string,
+    id: string,
+    proofUrl: string,
+  ) {
+    return this.completeMomoP2p(id, 'AGENT', undefined, undefined, agentId, proofUrl);
+  }
+
   async listMomoP2pAdmin(status?: string, limit = 50) {
     const take = Math.min(Math.max(limit, 1), 100);
     const where =
@@ -155,9 +213,11 @@ export class WalletService {
 
   private async completeMomoP2p(
     id: string,
-    by: 'USER' | 'ADMIN',
+    by: 'USER' | 'ADMIN' | 'AGENT',
     userId?: string,
     adminId?: string,
+    agentId?: string,
+    proofUrl?: string,
   ) {
     const row = await this.prisma.momoP2pWithdrawal.findUnique({
       where: { id },
@@ -165,6 +225,19 @@ export class WalletService {
     if (!row) throw new NotFoundException('MoMo P2P withdrawal not found');
     if (by === 'USER' && row.userId !== userId) {
       throw new NotFoundException('MoMo P2P withdrawal not found');
+    }
+    if (by === 'AGENT') {
+      if (!agentId) {
+        throw new BadRequestException('Agent id required');
+      }
+      if (row.agentId && row.agentId !== agentId) {
+        throw new BadRequestException('This payout is claimed by another agent');
+      }
+      if (!proofUrl?.trim()) {
+        throw new BadRequestException(
+          'Screenshot proof is required to confirm agent send',
+        );
+      }
     }
     if (row.status === 'COMPLETED') {
       return this.serializeMomoP2p(row);
@@ -177,7 +250,9 @@ export class WalletService {
     const confirmNote =
       by === 'USER'
         ? 'User confirmed MoMo arrival'
-        : `Admin ${adminId ?? ''} confirmed MoMo sent`;
+        : by === 'ADMIN'
+          ? `Admin ${adminId ?? ''} confirmed MoMo sent`
+          : `Agent ${agentId ?? ''} confirmed MoMo sent with proof`;
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const payout = await tx.payout.findUnique({
@@ -192,6 +267,14 @@ export class WalletService {
           completedBy: by,
           userConfirmedAt: by === 'USER' ? now : row.userConfirmedAt,
           adminConfirmedAt: by === 'ADMIN' ? now : row.adminConfirmedAt,
+          agentId: by === 'AGENT' ? agentId : row.agentId,
+          agentClaimedAt:
+            by === 'AGENT'
+              ? row.agentClaimedAt ?? now
+              : row.agentClaimedAt,
+          agentConfirmedAt: by === 'AGENT' ? now : row.agentConfirmedAt,
+          agentProofUrl:
+            by === 'AGENT' ? proofUrl!.trim() : row.agentProofUrl,
         },
       });
       await tx.payout.update({
@@ -1042,8 +1125,95 @@ export class WalletService {
     }
 
     const monthNet = Object.values(days).reduce((sum, d) => sum + d.net, 0);
+    const summary = this.buildCalendarMonthSummary(days, monthNet);
 
-    return { year, month, monthNet, days };
+    return { year, month, monthNet, days, summary };
+  }
+
+  private buildCalendarMonthSummary(
+    days: Record<
+      string,
+      {
+        date: string;
+        net: number;
+        transactions: Array<{
+          amount: number;
+          type: string;
+          description: string;
+        }>;
+      }
+    >,
+    monthNet: number,
+  ) {
+    const dayList = Object.values(days);
+    let creditTotal = 0;
+    let debitTotal = 0;
+    const byType: Record<string, number> = {};
+    let bestDay: { date: string; net: number } | null = null;
+    let worstDay: { date: string; net: number } | null = null;
+
+    for (const day of dayList) {
+      if (!bestDay || day.net > bestDay.net) {
+        bestDay = { date: day.date, net: day.net };
+      }
+      if (!worstDay || day.net < worstDay.net) {
+        worstDay = { date: day.date, net: day.net };
+      }
+      for (const tx of day.transactions) {
+        if (tx.amount > 0) creditTotal += tx.amount;
+        else if (tx.amount < 0) debitTotal += Math.abs(tx.amount);
+        byType[tx.type] = (byType[tx.type] ?? 0) + tx.amount;
+      }
+    }
+
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const byTypeSorted = Object.entries(byType)
+      .map(([type, amount]) => ({ type, amount: round2(amount) }))
+      .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+
+    return {
+      activeDays: dayList.length,
+      creditTotal: round2(creditTotal),
+      debitTotal: round2(debitTotal),
+      monthNet: round2(monthNet),
+      bestDay,
+      worstDay,
+      byType: byTypeSorted,
+      dailyNets: dayList
+        .map((d) => ({ date: d.date, net: round2(d.net), txCount: d.transactions.length }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+    };
+  }
+
+  async sendMonthlyJournalReport(userId: string, year: number, month: number) {
+    const calendar = await this.getDailyCalendar(userId, year, month);
+    const monthName = new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString(
+      'en-US',
+      { month: 'long', year: 'numeric', timeZone: 'UTC' },
+    );
+
+    const sent = await this.notifications.journalMonthlyReport(userId, {
+      year,
+      month,
+      monthLabel: monthName,
+      summary: calendar.summary,
+    });
+
+    if (!sent) {
+      throw new BadRequestException(
+        'Could not send the report — add an email to your account or try again',
+      );
+    }
+
+    return {
+      ok: true,
+      year,
+      month,
+      monthLabel: monthName,
+      monthNet: calendar.monthNet,
+      summary: calendar.summary,
+      message: `Monthly journal summary for ${monthName} was emailed to you`,
+    };
   }
 
   private async completePlan(planId: string, userId: string, amount: number) {

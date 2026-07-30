@@ -16,6 +16,7 @@ import { WalletModule } from '../wallet/wallet.module';
 import { InvestorModule } from '../investor/investor.module';
 import { UnitrustModule } from '../unitrust/unitrust.module';
 import { LoansModule } from '../loans/loans.module';
+import { CashAgentsModule } from '../cash-agents/cash-agents.module';
 import { AdminPermissionGuard } from '../auth/guards/admin-permission.guard';
 
 @Module({
@@ -35,6 +36,7 @@ import { AdminPermissionGuard } from '../auth/guards/admin-permission.guard';
     forwardRef(() => InvestorModule),
     UnitrustModule,
     LoansModule,
+    CashAgentsModule,
   ],
   controllers: [AdminController],
   providers: [AdminService, AdminPermissionGuard],

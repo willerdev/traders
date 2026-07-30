@@ -36,6 +36,7 @@ import { SmsModule } from './sms/sms.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
 import { UnitrustModule } from './unitrust/unitrust.module';
 import { LoansModule } from './loans/loans.module';
+import { CashAgentsModule } from './cash-agents/cash-agents.module';
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { LoansModule } from './loans/loans.module';
     InvestorModule,
     UnitrustModule,
     LoansModule,
+    CashAgentsModule,
     EvaluationsModule,
     FlutterwaveModule,
     AccountTransferModule,

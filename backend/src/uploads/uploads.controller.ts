@@ -240,6 +240,14 @@ export class UploadsController {
     return this.storage.sendFile('kyc', safeName, res);
   }
 
+  @Get('agents/:filename')
+  async getAgentProofFile(
+    @Param('filename') filename: string,
+    @Res() res: Response,
+  ) {
+    return this.storage.sendFile('agents', filename, res);
+  }
+
   private async registerPendingKycUpload(userId: string, filename: string) {
     const existing = await this.prisma.kycVerification.findUnique({
       where: { userId },

@@ -1782,13 +1782,52 @@ export class NotificationService {
       amountUsdt: number;
       amountUgx: number;
       momoPhone: string;
-      completedBy: 'USER' | 'ADMIN';
+      completedBy: 'USER' | 'ADMIN' | 'AGENT';
       p2pId: string;
     },
   ) {
     this.dispatch(
       this.sendMomoP2pCompletedUser(userId, data),
       'MoMo P2P completed user',
+    );
+  }
+
+  cashAgentApplied(
+    agentId: string,
+    data: {
+      displayName: string;
+      phone: string | null;
+      email: string | null;
+      note: string | null;
+    },
+  ) {
+    this.dispatch(this.sendCashAgentAppliedOps(agentId, data), 'Cash agent applied');
+    if (data.email?.trim()) {
+      this.dispatch(
+        this.sendCashAgentAppliedUser(data.email.trim(), data.displayName),
+        'Cash agent applied user',
+      );
+    }
+  }
+
+  cashAgentApproved(agentId: string, data: { code: string }) {
+    this.dispatch(
+      this.sendCashAgentApproved(agentId, data),
+      'Cash agent approved',
+    );
+  }
+
+  cashAgentRejected(agentId: string, data: { reason: string }) {
+    this.dispatch(
+      this.sendCashAgentRejected(agentId, data),
+      'Cash agent rejected',
+    );
+  }
+
+  cashAgentSessionOpened(agentId: string) {
+    this.dispatch(
+      this.sendCashAgentSessionOpened(agentId),
+      'Cash agent session opened',
     );
   }
 
@@ -2172,7 +2211,7 @@ export class NotificationService {
       amountUsdt: number;
       amountUgx: number;
       momoPhone: string;
-      completedBy: 'USER' | 'ADMIN';
+      completedBy: 'USER' | 'ADMIN' | 'AGENT';
       p2pId: string;
     },
   ) {
@@ -2181,10 +2220,16 @@ export class NotificationService {
     const ugx = data.amountUgx.toLocaleString('en-UG', {
       maximumFractionDigits: 0,
     });
+    const byLabel =
+      data.completedBy === 'USER'
+        ? ' (you confirmed arrival)'
+        : data.completedBy === 'AGENT'
+          ? ' (agent confirmed sent with proof)'
+          : ' (admin confirmed sent)';
     const html = this.email.layout(
       'MoMo withdrawal complete',
       `<p>Hi ${this.escape(user.name)},</p>
-      <p>Your MoMo P2P withdrawal of <strong>$${data.amountUsdt.toFixed(2)} USDT</strong> (UGX ${this.escape(ugx)}) to <strong>${this.escape(data.momoPhone)}</strong> is marked complete${data.completedBy === 'USER' ? ' (you confirmed arrival)' : ' (admin confirmed sent)'}.</p>
+      <p>Your MoMo P2P withdrawal of <strong>$${data.amountUsdt.toFixed(2)} USDT</strong> (UGX ${this.escape(ugx)}) to <strong>${this.escape(data.momoPhone)}</strong> is marked complete${byLabel}.</p>
       ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
     );
     return this.email.send({
@@ -2192,6 +2237,143 @@ export class NotificationService {
       subject: `MoMo withdrawal complete — UGX ${ugx}`,
       html,
       text: `MoMo P2P complete: $${data.amountUsdt.toFixed(2)} USDT / UGX ${ugx} to ${data.momoPhone}.`,
+    });
+  }
+
+  private async sendCashAgentAppliedOps(
+    agentId: string,
+    data: {
+      displayName: string;
+      phone: string | null;
+      email: string | null;
+      note: string | null;
+    },
+  ) {
+    return this.sendOpsAlert({
+      label: `Ops alert: cash agent apply ${agentId}`,
+      subject: `Cash agent application — ${data.displayName}`,
+      html: this.email.layout(
+        'New cash agent application',
+        `<p><strong>${this.escape(data.displayName)}</strong> applied to become a cash agent.</p>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><td style="padding:6px 0;color:#94a3b8;">Phone</td><td>${this.escape(data.phone ?? '—')}</td></tr>
+          <tr><td style="padding:6px 0;color:#94a3b8;">Email</td><td>${this.escape(data.email ?? '—')}</td></tr>
+          <tr><td style="padding:6px 0;color:#94a3b8;">Note</td><td>${this.escape(data.note ?? '—')}</td></tr>
+          <tr><td style="padding:6px 0;color:#94a3b8;">Agent ID</td><td><code>${this.escape(agentId)}</code></td></tr>
+        </table>`,
+      ),
+      text: `Cash agent apply: ${data.displayName} phone=${data.phone ?? ''} email=${data.email ?? ''} id=${agentId}`,
+    });
+  }
+
+  private async sendCashAgentAppliedUser(email: string, displayName: string) {
+    const html = this.email.layout(
+      'Agent application received',
+      `<p>Hi ${this.escape(displayName)},</p>
+      <p>We received your application to become a TraderRank cash agent. We will email your access code when approved.</p>
+      ${this.email.button(`${this.email.frontendUrl}/agent`, 'Open agent page')}`,
+    );
+    return this.email.send({
+      to: email,
+      subject: 'Cash agent application received',
+      html,
+      text: 'We received your cash agent application. You will get a code by email when approved.',
+    });
+  }
+
+  private async sendCashAgentApproved(
+    agentId: string,
+    data: { code: string },
+  ) {
+    const agent = await this.prisma.cashAgent.findUnique({
+      where: { id: agentId },
+    });
+    if (!agent?.email?.trim()) {
+      await this.sendOpsAlert({
+        label: `Ops alert: cash agent approved ${agentId}`,
+        subject: `Cash agent approved — ${agent?.displayName ?? agentId}`,
+        html: this.email.layout(
+          'Cash agent approved',
+          `<p>Approved <strong>${this.escape(agent?.displayName ?? agentId)}</strong>. Code: <code>${this.escape(data.code)}</code> (no agent email on file).</p>`,
+        ),
+        text: `Cash agent approved ${agentId} code=${data.code}`,
+      });
+      return false;
+    }
+    const html = this.email.layout(
+      'You are a cash agent',
+      `<p>Hi ${this.escape(agent.displayName)},</p>
+      <p>Your cash agent application was approved. Use this code on the Agent page to process MoMo withdrawals:</p>
+      <p style="font-size:28px;letter-spacing:0.12em;font-weight:700;"><code>${this.escape(data.code)}</code></p>
+      ${this.email.button(`${this.email.frontendUrl}/agent`, 'Open agent portal')}`,
+    );
+    const sent = await this.email.send({
+      to: agent.email.trim().toLowerCase(),
+      subject: 'Your TraderRank agent code',
+      html,
+      text: `Your agent code is ${data.code}. Open ${this.email.frontendUrl}/agent`,
+    });
+    await this.sendOpsAlert({
+      label: `Ops alert: cash agent approved ${agentId}`,
+      subject: `Cash agent approved — ${agent.displayName}`,
+      html: this.email.layout(
+        'Cash agent approved',
+        `<p>Approved <strong>${this.escape(agent.displayName)}</strong> (${this.escape(agent.email)}). Code: <code>${this.escape(data.code)}</code>.</p>`,
+      ),
+      text: `Cash agent approved ${agent.displayName} code=${data.code}`,
+    });
+    return sent;
+  }
+
+  private async sendCashAgentRejected(
+    agentId: string,
+    data: { reason: string },
+  ) {
+    const agent = await this.prisma.cashAgent.findUnique({
+      where: { id: agentId },
+    });
+    if (!agent?.email?.trim()) return false;
+    const html = this.email.layout(
+      'Agent application update',
+      `<p>Hi ${this.escape(agent.displayName)},</p>
+      <p>Your cash agent application was not approved.</p>
+      <p><strong>Reason:</strong> ${this.escape(data.reason)}</p>`,
+    );
+    return this.email.send({
+      to: agent.email.trim().toLowerCase(),
+      subject: 'Cash agent application update',
+      html,
+      text: `Your cash agent application was not approved. ${data.reason}`,
+    });
+  }
+
+  private async sendCashAgentSessionOpened(agentId: string) {
+    const agent = await this.prisma.cashAgent.findUnique({
+      where: { id: agentId },
+    });
+    if (!agent) return false;
+    if (agent.email?.trim()) {
+      const html = this.email.layout(
+        'Agent portal signed in',
+        `<p>Hi ${this.escape(agent.displayName)},</p>
+        <p>Someone unlocked the cash agent portal with your code. If this was not you, contact support.</p>
+        ${this.email.button(`${this.email.frontendUrl}/agent`, 'Open agent portal')}`,
+      );
+      await this.email.send({
+        to: agent.email.trim().toLowerCase(),
+        subject: 'Agent portal unlocked',
+        html,
+        text: 'Your cash agent portal was unlocked with your code.',
+      });
+    }
+    return this.sendOpsAlert({
+      label: `Ops alert: cash agent session ${agentId}`,
+      subject: `Agent portal unlocked — ${agent.displayName}`,
+      html: this.email.layout(
+        'Agent session opened',
+        `<p><strong>${this.escape(agent.displayName)}</strong> unlocked the agent portal.</p>`,
+      ),
+      text: `Agent session opened: ${agent.displayName} (${agentId})`,
     });
   }
 
@@ -2553,6 +2735,28 @@ export class NotificationService {
     );
   }
 
+  /** Awaitable — used when the user requests a monthly journal email. */
+  journalMonthlyReport(
+    userId: string,
+    data: {
+      year: number;
+      month: number;
+      monthLabel: string;
+      summary: {
+        activeDays: number;
+        creditTotal: number;
+        debitTotal: number;
+        monthNet: number;
+        bestDay: { date: string; net: number } | null;
+        worstDay: { date: string; net: number } | null;
+        byType: Array<{ type: string; amount: number }>;
+        dailyNets: Array<{ date: string; net: number; txCount: number }>;
+      };
+    },
+  ): Promise<boolean> {
+    return this.sendJournalMonthlyReport(userId, data);
+  }
+
   investorVipActivated(
     userId: string,
     data: { feeUsdt: number; expiresAt: string },
@@ -2571,6 +2775,86 @@ export class NotificationService {
       this.sendInvestorVipExpiring(userId, data),
       'Investor VIP expiring',
     );
+  }
+
+  private async sendJournalMonthlyReport(
+    userId: string,
+    data: {
+      year: number;
+      month: number;
+      monthLabel: string;
+      summary: {
+        activeDays: number;
+        creditTotal: number;
+        debitTotal: number;
+        monthNet: number;
+        bestDay: { date: string; net: number } | null;
+        worstDay: { date: string; net: number } | null;
+        byType: Array<{ type: string; amount: number }>;
+        dailyNets: Array<{ date: string; net: number; txCount: number }>;
+      };
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+
+    const fmt = (n: number) => {
+      const abs = Math.abs(n).toFixed(2);
+      if (n > 0) return `+$${abs}`;
+      if (n < 0) return `-$${abs}`;
+      return `$${abs}`;
+    };
+    const s = data.summary;
+    const typeRows = s.byType
+      .slice(0, 12)
+      .map(
+        (row) =>
+          `<tr><td style="padding:6px 0;color:#94a3b8;">${this.escape(row.type.replace(/_/g, ' '))}</td><td style="padding:6px 0;text-align:right;font-weight:600;">${fmt(row.amount)}</td></tr>`,
+      )
+      .join('');
+    const dayRows = s.dailyNets
+      .map(
+        (d) =>
+          `<tr><td style="padding:4px 0;color:#cbd5e1;">${this.escape(d.date)}</td><td style="padding:4px 0;text-align:right;">${fmt(d.net)}</td><td style="padding:4px 0;text-align:right;color:#94a3b8;">${d.txCount}</td></tr>`,
+      )
+      .join('');
+
+    const html = this.email.layout(
+      `Journal summary — ${data.monthLabel}`,
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Here is your wallet activity summary for <strong>${this.escape(data.monthLabel)}</strong>.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">Month net</td><td style="text-align:right;font-weight:700;">${fmt(s.monthNet)}</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Credits in</td><td style="text-align:right;">${fmt(s.creditTotal)}</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Debits out</td><td style="text-align:right;">${fmt(-s.debitTotal)}</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Active days</td><td style="text-align:right;">${s.activeDays}</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Best day</td><td style="text-align:right;">${s.bestDay ? `${this.escape(s.bestDay.date)} (${fmt(s.bestDay.net)})` : '—'}</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Lowest day</td><td style="text-align:right;">${s.worstDay ? `${this.escape(s.worstDay.date)} (${fmt(s.worstDay.net)})` : '—'}</td></tr>
+      </table>
+      ${
+        typeRows
+          ? `<h3 style="margin:20px 0 8px;font-size:14px;color:#e2e8f0;">By activity type</h3>
+      <table style="width:100%;border-collapse:collapse;">${typeRows}</table>`
+          : '<p>No wallet activity this month.</p>'
+      }
+      ${
+        dayRows
+          ? `<h3 style="margin:20px 0 8px;font-size:14px;color:#e2e8f0;">Day by day</h3>
+      <table style="width:100%;border-collapse:collapse;">
+        <tr><td style="padding:4px 0;color:#64748b;font-size:12px;">Date</td><td style="padding:4px 0;text-align:right;color:#64748b;font-size:12px;">Net</td><td style="padding:4px 0;text-align:right;color:#64748b;font-size:12px;">Tx</td></tr>
+        ${dayRows}
+      </table>`
+          : ''
+      }
+      ${this.email.button(`${this.email.frontendUrl}/journal`, 'Open journal')}`,
+    );
+
+    return this.email.send({
+      to: user.email,
+      subject: `Your ${data.monthLabel} journal summary`,
+      html,
+      text: `Journal ${data.monthLabel}: net ${fmt(s.monthNet)}, credits ${fmt(s.creditTotal)}, debits ${fmt(-s.debitTotal)}, ${s.activeDays} active days.`,
+    });
   }
 
   private async sendInvestorDailyEarning(

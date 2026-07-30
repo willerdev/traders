@@ -78,6 +78,13 @@ enum MomoP2pStatus {
   CANCELLED
 }
 
+enum CashAgentStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+  SUSPENDED
+}
+
 enum LoanTerm {
   DAILY
   WEEKLY
@@ -286,6 +293,7 @@ model User {
   investorDailyCredits InvestorDailyCredit[]
   unitrustDailyCredits UnitrustDailyCredit[]
   loans            Loan[]
+  cashAgent        CashAgent?
   signals        Signal[]
   tradeScores    TradeScore[]
   rankings       Ranking[]
@@ -749,7 +757,7 @@ model Payout {
   @@map("payouts")
 }
 
-/// Manual MoMo P2P withdrawal — admin sends UGX after Binance C2C quote; user or admin confirms.
+/// Manual MoMo P2P withdrawal — admin/agent sends UGX after Binance C2C quote; user, admin, or agent confirms.
 model MomoP2pWithdrawal {
   id               String        @id @default(cuid())
   userId           String
@@ -765,16 +773,24 @@ model MomoP2pWithdrawal {
   opsEmailSentAt   DateTime?
   userConfirmedAt  DateTime?
   adminConfirmedAt DateTime?
+  /// Cash agent who claimed / is processing this payout.
+  agentId          String?
+  agentClaimedAt   DateTime?
+  agentConfirmedAt DateTime?
+  /// Screenshot proof URL uploaded by agent when confirming send.
+  agentProofUrl    String?
   completedAt      DateTime?
   completedBy      String?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  payout Payout @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payout Payout     @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+  agent  CashAgent? @relation(fields: [agentId], references: [id], onDelete: SetNull)
 
   @@index([userId, status])
   @@index([status])
+  @@index([agentId, status])
   @@map("momo_p2p_withdrawals")
 }
 
@@ -1189,6 +1205,47 @@ model PromoCode {
   @@index([expiresAt])
   @@index([active])
   @@map("promo_codes")
+}
+
+/// Field cash agent — unlocks /agent with a code to process MoMo P2P withdrawals.
+model CashAgent {
+  id           String          @id @default(cuid())
+  userId       String?         @unique
+  /// Access code shown after approval / when admin creates the agent. Null while PENDING.
+  code         String?         @unique
+  displayName  String
+  phone        String?
+  email        String?
+  status       CashAgentStatus @default(PENDING)
+  applyNote    String?
+  adminNote    String?
+  approvedAt   DateTime?
+  approvedById String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  user     User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sessions CashAgentSession[]
+  momoJobs MomoP2pWithdrawal[]
+
+  @@index([status])
+  @@index([email])
+  @@map("cash_agents")
+}
+
+model CashAgentSession {
+  id         String   @id @default(cuid())
+  agentId    String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime?
+
+  agent CashAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([expiresAt])
+  @@map("cash_agent_sessions")
 }
 
 model AuditLog {

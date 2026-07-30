@@ -610,6 +610,10 @@ export const api = {
       emailFrom?: string;
       aiConfigured: boolean;
       aiProvider?: string;
+      audiences?: {
+        active: { count: number; label: string; description: string };
+        investors: { count: number; label: string; description: string };
+      };
     }>("/admin/marketing/compose/status"),
   composeEmailPolish: (data: { subject?: string; body: string }) =>
     request<{ subject: string; body: string }>(
@@ -624,6 +628,7 @@ export const api = {
     body: string;
     userIds?: string[];
     allUsers?: boolean;
+    audience?: "selected" | "all" | "active" | "investors";
     confirmAll?: boolean;
   }) =>
     request<{
@@ -802,6 +807,56 @@ export const api = {
 
   defaultLoan: (id: string, note?: string) =>
     request(`/admin/loans/${id}/default`, {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    }),
+
+  listCashAgents: (status?: string, limit = 50) => {
+    const q = new URLSearchParams({ limit: String(limit) });
+    if (status) q.set("status", status);
+    return request<
+      Array<{
+        id: string;
+        displayName: string;
+        phone: string | null;
+        email: string | null;
+        status: string;
+        code: string | null;
+        hasCode: boolean;
+        applyNote: string | null;
+        adminNote: string | null;
+        createdAt: string;
+        completedJobs: number;
+        user: { id: string; email: string | null; displayName: string } | null;
+      }>
+    >(`/admin/cash-agents?${q.toString()}`);
+  },
+
+  createCashAgent: (data: {
+    displayName: string;
+    phone?: string;
+    email?: string;
+    code?: string;
+  }) =>
+    request<{ id: string; code: string | null; displayName: string }>(
+      "/admin/cash-agents",
+      { method: "POST", body: JSON.stringify(data) },
+    ),
+
+  approveCashAgent: (id: string, code?: string) =>
+    request(`/admin/cash-agents/${id}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    }),
+
+  rejectCashAgent: (id: string, reason?: string) =>
+    request(`/admin/cash-agents/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+
+  suspendCashAgent: (id: string, note?: string) =>
+    request(`/admin/cash-agents/${id}/suspend`, {
       method: "POST",
       body: JSON.stringify({ note }),
     }),

@@ -69,6 +69,7 @@ export class MarketingController {
       body: string;
       userIds?: string[];
       allUsers?: boolean;
+      audience?: 'selected' | 'all' | 'active' | 'investors';
       confirmAll?: boolean;
     },
   ) {
