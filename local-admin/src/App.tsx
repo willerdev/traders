@@ -376,6 +376,22 @@ export default function App() {
   const [momoP2pConfirmingId, setMomoP2pConfirmingId] = useState<string | null>(
     null,
   );
+  const [loanRows, setLoanRows] = useState<
+    Array<{
+      id: string;
+      term: string;
+      status: string;
+      principal: number;
+      interestAmount: number;
+      totalDue: number;
+      projectedEarnings: number;
+      dailyEarningEstimate: number;
+      dueAt: string | null;
+      requestedAt: string;
+      user: { id: string; email: string | null; displayName: string };
+    }>
+  >([]);
+  const [loanActionId, setLoanActionId] = useState<string | null>(null);
   const [weeklyTierPayoutsEnabled, setWeeklyTierPayoutsEnabled] = useState(false);
   const [weeklyTierSaving, setWeeklyTierSaving] = useState(false);
   const [npWallet, setNpWallet] = useState<NowPaymentsWalletSummary | null>(null);
@@ -791,6 +807,12 @@ export default function App() {
           setCustodyDeposits([]);
           setDepositPendingCount(0);
           setDepositConfirmedTotal(0);
+        }
+      } else if (active === "loans") {
+        try {
+          setLoanRows(await api.listLoans());
+        } catch {
+          setLoanRows([]);
         }
       } else if (active === "tpClaims") {
         setTpClaims(await api.tpClaimsPending());
@@ -2666,6 +2688,158 @@ export default function App() {
                 </div>
               </div>
             )}
+          </>
+        )}
+
+        {tab === "loans" && (
+          <>
+            <div className="toolbar">
+              <h2>Loan requests</h2>
+            </div>
+            <div className="kyc-card" style={{ marginBottom: "1.25rem" }}>
+              <p className="muted" style={{ margin: "0 0 0.75rem" }}>
+                Advance is 80% of projected period earnings (daily / weekly /
+                monthly). Borrower repays principal + 20% interest. Approving
+                credits their wallet and emails the user.
+              </p>
+              {loanRows.length === 0 ? (
+                <p className="muted">No open loan requests.</p>
+              ) : (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Who</th>
+                      <th>Term</th>
+                      <th>Advance</th>
+                      <th>Interest</th>
+                      <th>Repay</th>
+                      <th>Status</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loanRows.map((row) => (
+                      <tr key={row.id}>
+                        <td>
+                          {row.user.displayName}
+                          <br />
+                          <span className="muted">{row.user.email ?? "—"}</span>
+                          <br />
+                          <span className="muted" style={{ fontSize: "0.7rem" }}>
+                            ~${Number(row.dailyEarningEstimate).toFixed(2)}/day → $
+                            {Number(row.projectedEarnings).toFixed(2)} period
+                          </span>
+                        </td>
+                        <td>{row.term}</td>
+                        <td>${Number(row.principal).toFixed(2)}</td>
+                        <td>${Number(row.interestAmount).toFixed(2)}</td>
+                        <td>${Number(row.totalDue).toFixed(2)}</td>
+                        <td>{row.status}</td>
+                        <td>
+                          <div
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: "0.35rem",
+                            }}
+                          >
+                            {row.status === "PENDING" && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="primary"
+                                  disabled={loanActionId === row.id}
+                                  onClick={() => {
+                                    setLoanActionId(row.id);
+                                    void api
+                                      .approveLoan(row.id)
+                                      .then(() => {
+                                        setMessage(
+                                          `Loan approved — $${Number(row.principal).toFixed(2)} disbursed`,
+                                        );
+                                        return loadTab("loans");
+                                      })
+                                      .catch((err) =>
+                                        setMessage(
+                                          err instanceof Error
+                                            ? err.message
+                                            : "Approve failed",
+                                        ),
+                                      )
+                                      .finally(() => setLoanActionId(null));
+                                  }}
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={loanActionId === row.id}
+                                  onClick={() => {
+                                    const reason =
+                                      window.prompt(
+                                        "Rejection reason (optional)",
+                                      ) ?? undefined;
+                                    setLoanActionId(row.id);
+                                    void api
+                                      .rejectLoan(row.id, reason)
+                                      .then(() => {
+                                        setMessage("Loan rejected");
+                                        return loadTab("loans");
+                                      })
+                                      .catch((err) =>
+                                        setMessage(
+                                          err instanceof Error
+                                            ? err.message
+                                            : "Reject failed",
+                                        ),
+                                      )
+                                      .finally(() => setLoanActionId(null));
+                                  }}
+                                >
+                                  Reject
+                                </button>
+                              </>
+                            )}
+                            {row.status === "APPROVED" && (
+                              <button
+                                type="button"
+                                disabled={loanActionId === row.id}
+                                onClick={() => {
+                                  if (
+                                    !window.confirm(
+                                      `Mark loan as defaulted ($${Number(row.totalDue).toFixed(2)} due)?`,
+                                    )
+                                  ) {
+                                    return;
+                                  }
+                                  setLoanActionId(row.id);
+                                  void api
+                                    .defaultLoan(row.id)
+                                    .then(() => {
+                                      setMessage("Loan marked defaulted");
+                                      return loadTab("loans");
+                                    })
+                                    .catch((err) =>
+                                      setMessage(
+                                        err instanceof Error
+                                          ? err.message
+                                          : "Default failed",
+                                      ),
+                                    )
+                                    .finally(() => setLoanActionId(null));
+                                }}
+                              >
+                                Mark default
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </>
         )}
 

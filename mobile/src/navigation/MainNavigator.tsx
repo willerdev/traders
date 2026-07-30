@@ -12,6 +12,7 @@ import { TransactionsScreen } from "../screens/wallet/TransactionsScreen";
 import { JournalScreen } from "../screens/JournalScreen";
 import { InvestScreen } from "../screens/InvestScreen";
 import { UnitrustScreen } from "../screens/UnitrustScreen";
+import { LoansScreen } from "../screens/LoansScreen";
 import { MessagesScreen } from "../screens/MessagesScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { MoreScreen } from "../screens/MoreScreen";
@@ -136,6 +137,11 @@ function InvestStackNavigator() {
         name="Unitrust"
         component={UnitrustScreen}
         options={{ title: "Unitrust" }}
+      />
+      <InvestStack.Screen
+        name="Loans"
+        component={LoansScreen}
+        options={{ title: "Loans" }}
       />
       <InvestStack.Screen
         name="ChainEnroll"

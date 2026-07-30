@@ -516,6 +516,42 @@ export class ApiClient {
       ),
   };
 
+  loans = {
+    quote: (term: "DAILY" | "WEEKLY" | "MONTHLY") =>
+      this.request<{
+        term: "DAILY" | "WEEKLY" | "MONTHLY";
+        periodDays: number;
+        dailyEarning: number;
+        projectedEarnings: number;
+        principal: number;
+        interestAmount: number;
+        totalDue: number;
+        eligible: boolean;
+        explanation: string;
+        corpus: number;
+      }>(`/loans/quote?term=${encodeURIComponent(term)}`),
+    list: () =>
+      this.request<
+        Array<{
+          id: string;
+          term: "DAILY" | "WEEKLY" | "MONTHLY";
+          status: string;
+          principal: number;
+          totalDue: number;
+          dueAt: string | null;
+        }>
+      >("/loans"),
+    request: (term: "DAILY" | "WEEKLY" | "MONTHLY") =>
+      this.request("/loans/request", {
+        method: "POST",
+        body: JSON.stringify({ term }),
+      }),
+    cancel: (id: string) =>
+      this.request(`/loans/${id}/cancel`, { method: "POST" }),
+    repay: (id: string) =>
+      this.request(`/loans/${id}/repay`, { method: "POST" }),
+  };
+
   chainEnrollment = {
     get: () =>
       this.request<ChainContractEnrollment>("/blockchain/enrollment"),

@@ -18,6 +18,7 @@ import { RequireAdminPermission } from '../auth/decorators/admin-permission.deco
 import { UploadStorageService } from '../uploads/upload-storage.service';
 import { WalletService } from '../wallet/wallet.service';
 import { UnitrustService } from '../unitrust/unitrust.service';
+import { LoansService } from '../loans/loans.service';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, AdminPermissionGuard)
@@ -28,6 +29,7 @@ export class AdminController {
     private uploadStorage: UploadStorageService,
     private wallet: WalletService,
     private unitrust: UnitrustService,
+    private loans: LoansService,
   ) {}
 
   @Get('session')
@@ -626,6 +628,45 @@ export class AdminController {
   @Get('unitrust')
   listUnitrust(@Query('limit') limit?: string) {
     return this.unitrust.listMembers(limit ? Number(limit) : 50);
+  }
+
+  @Get('loans')
+  @RequireAdminPermission('payout')
+  listLoans(
+    @Query('status') status?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.loans.listAdmin(status, limit ? Number(limit) : 50);
+  }
+
+  @Post('loans/:id/approve')
+  @RequireAdminPermission('payout')
+  approveLoan(
+    @Param('id') id: string,
+    @Request() req: { user: { id: string } },
+    @Body('note') note?: string,
+  ) {
+    return this.loans.approve(id, req.user.id, note);
+  }
+
+  @Post('loans/:id/reject')
+  @RequireAdminPermission('payout')
+  rejectLoan(
+    @Param('id') id: string,
+    @Request() req: { user: { id: string } },
+    @Body('reason') reason?: string,
+  ) {
+    return this.loans.reject(id, req.user.id, reason);
+  }
+
+  @Post('loans/:id/default')
+  @RequireAdminPermission('payout')
+  defaultLoan(
+    @Param('id') id: string,
+    @Request() req: { user: { id: string } },
+    @Body('note') note?: string,
+  ) {
+    return this.loans.markDefaulted(id, req.user.id, note);
   }
 
   @Patch('investors/:userId/yield')

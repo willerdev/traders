@@ -1792,6 +1792,380 @@ export class NotificationService {
     );
   }
 
+  loanRequested(
+    userId: string,
+    data: {
+      loanId: string;
+      term: string;
+      principal: number;
+      interestAmount: number;
+      totalDue: number;
+      projectedEarnings: number;
+      dueAt: string | null;
+    },
+  ) {
+    this.dispatch(this.sendLoanRequestedUser(userId, data), 'Loan requested user');
+    this.dispatch(this.sendLoanRequestedOps(userId, data), 'Loan requested ops');
+  }
+
+  loanCancelled(
+    userId: string,
+    data: { loanId: string; term: string; principal: number },
+  ) {
+    this.dispatch(this.sendLoanCancelledUser(userId, data), 'Loan cancelled user');
+    this.dispatch(this.sendLoanCancelledOps(userId, data), 'Loan cancelled ops');
+  }
+
+  loanApproved(
+    userId: string,
+    data: {
+      loanId: string;
+      term: string;
+      principal: number;
+      interestAmount: number;
+      totalDue: number;
+      dueAt: string | null;
+      balance: number;
+    },
+  ) {
+    this.dispatch(this.sendLoanApprovedUser(userId, data), 'Loan approved user');
+    this.dispatch(this.sendLoanApprovedOps(userId, data), 'Loan approved ops');
+  }
+
+  loanRejected(
+    userId: string,
+    data: { loanId: string; term: string; principal: number; reason: string },
+  ) {
+    this.dispatch(this.sendLoanRejectedUser(userId, data), 'Loan rejected user');
+    this.dispatch(this.sendLoanRejectedOps(userId, data), 'Loan rejected ops');
+  }
+
+  loanRepaid(
+    userId: string,
+    data: {
+      loanId: string;
+      term: string;
+      totalDue: number;
+      balance: number;
+    },
+  ) {
+    this.dispatch(this.sendLoanRepaidUser(userId, data), 'Loan repaid user');
+    this.dispatch(this.sendLoanRepaidOps(userId, data), 'Loan repaid ops');
+  }
+
+  loanDefaulted(
+    userId: string,
+    data: { loanId: string; term: string; totalDue: number },
+  ) {
+    this.dispatch(this.sendLoanDefaultedUser(userId, data), 'Loan defaulted user');
+    this.dispatch(this.sendLoanDefaultedOps(userId, data), 'Loan defaulted ops');
+  }
+
+  private async sendLoanRequestedUser(
+    userId: string,
+    data: {
+      loanId: string;
+      term: string;
+      principal: number;
+      interestAmount: number;
+      totalDue: number;
+      projectedEarnings: number;
+      dueAt: string | null;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Loan request submitted',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>We received your <strong>${this.escape(data.term)}</strong> loan request.</p>
+      <ul style="padding-left:18px;color:#cbd5e1;">
+        <li>Projected earnings: <strong>$${data.projectedEarnings.toFixed(2)}</strong></li>
+        <li>Advance (80%): <strong>$${data.principal.toFixed(2)}</strong></li>
+        <li>Interest (20%): <strong>$${data.interestAmount.toFixed(2)}</strong></li>
+        <li>Total to repay: <strong>$${data.totalDue.toFixed(2)}</strong></li>
+      </ul>
+      <p>You will get an email when an admin approves or rejects it.</p>
+      ${this.email.button(`${this.email.frontendUrl}/loans`, 'View loans')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Loan request submitted — ${data.term} $${data.principal.toFixed(2)}`,
+      html,
+      text: `Loan ${data.term} requested: advance $${data.principal.toFixed(2)}, repay $${data.totalDue.toFixed(2)}.`,
+    });
+  }
+
+  private async sendLoanRequestedOps(
+    userId: string,
+    data: {
+      loanId: string;
+      term: string;
+      principal: number;
+      interestAmount: number;
+      totalDue: number;
+      projectedEarnings: number;
+      dueAt: string | null;
+    },
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, displayName: true },
+    });
+    if (!user) return false;
+    const who = user.email
+      ? `${user.displayName} (${user.email})`
+      : user.displayName;
+    const html = this.email.layout(
+      'Loan approval needed',
+      `<p><strong>${this.escape(who)}</strong> requested a <strong>${this.escape(data.term)}</strong> loan.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">Projected</td><td>$${data.projectedEarnings.toFixed(2)}</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Advance 80%</td><td><strong>$${data.principal.toFixed(2)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Interest 20%</td><td>$${data.interestAmount.toFixed(2)}</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Total due</td><td>$${data.totalDue.toFixed(2)}</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Loan ID</td><td><code>${this.escape(data.loanId)}</code></td></tr>
+      </table>
+      <p>Approve in local-admin → Payouts / Loans.</p>`,
+    );
+    return this.sendOpsAlert({
+      label: `Ops alert: loan request ${data.loanId}`,
+      subject: `[Loan] ${data.term} $${data.principal.toFixed(2)} — ${user.displayName}`,
+      html,
+      text: `Loan ${data.term} from ${who}: advance $${data.principal.toFixed(2)}, repay $${data.totalDue.toFixed(2)}, id ${data.loanId}`,
+    });
+  }
+
+  private async sendLoanCancelledUser(
+    userId: string,
+    data: { loanId: string; term: string; principal: number },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Loan request cancelled',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your <strong>${this.escape(data.term)}</strong> loan request for <strong>$${data.principal.toFixed(2)}</strong> was cancelled.</p>
+      ${this.email.button(`${this.email.frontendUrl}/loans`, 'View loans')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Loan cancelled — ${data.term}`,
+      html,
+      text: `Loan ${data.term} $${data.principal.toFixed(2)} cancelled.`,
+    });
+  }
+
+  private async sendLoanCancelledOps(
+    userId: string,
+    data: { loanId: string; term: string; principal: number },
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, displayName: true },
+    });
+    if (!user) return false;
+    return this.sendOpsAlert({
+      label: `Ops alert: loan cancelled ${data.loanId}`,
+      subject: `[Loan cancelled] ${data.term} — ${user.displayName}`,
+      html: this.email.layout(
+        'Loan cancelled by user',
+        `<p>${this.escape(user.displayName)} cancelled loan <code>${this.escape(data.loanId)}</code> (${this.escape(data.term)} $${data.principal.toFixed(2)}).</p>`,
+      ),
+      text: `Loan cancelled: ${user.displayName} ${data.term} $${data.principal.toFixed(2)} ${data.loanId}`,
+    });
+  }
+
+  private async sendLoanApprovedUser(
+    userId: string,
+    data: {
+      loanId: string;
+      term: string;
+      principal: number;
+      interestAmount: number;
+      totalDue: number;
+      dueAt: string | null;
+      balance: number;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Loan approved — funds credited',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your <strong>${this.escape(data.term)}</strong> loan was approved. <strong>$${data.principal.toFixed(2)} USDT</strong> is in your wallet.</p>
+      <p>Repay <strong>$${data.totalDue.toFixed(2)}</strong> (includes $${data.interestAmount.toFixed(2)} interest)${data.dueAt ? ` by ${this.escape(data.dueAt.slice(0, 10))}` : ''}.</p>
+      <p>Wallet balance: <strong>$${data.balance.toFixed(2)}</strong></p>
+      ${this.email.button(`${this.email.frontendUrl}/loans`, 'Repay loan')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Loan approved — $${data.principal.toFixed(2)} credited`,
+      html,
+      text: `Loan approved: $${data.principal.toFixed(2)} credited. Repay $${data.totalDue.toFixed(2)}.`,
+    });
+  }
+
+  private async sendLoanApprovedOps(
+    userId: string,
+    data: {
+      loanId: string;
+      term: string;
+      principal: number;
+      interestAmount: number;
+      totalDue: number;
+      dueAt: string | null;
+      balance: number;
+    },
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, displayName: true },
+    });
+    if (!user) return false;
+    return this.sendOpsAlert({
+      label: `Ops alert: loan approved ${data.loanId}`,
+      subject: `[Loan approved] $${data.principal.toFixed(2)} — ${user.displayName}`,
+      html: this.email.layout(
+        'Loan disbursed',
+        `<p>Disbursed $${data.principal.toFixed(2)} to ${this.escape(user.displayName)}. Total due $${data.totalDue.toFixed(2)}. Loan <code>${this.escape(data.loanId)}</code>.</p>`,
+      ),
+      text: `Loan approved ${data.loanId}: $${data.principal.toFixed(2)} to ${user.displayName}`,
+    });
+  }
+
+  private async sendLoanRejectedUser(
+    userId: string,
+    data: { loanId: string; term: string; principal: number; reason: string },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Loan request declined',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your <strong>${this.escape(data.term)}</strong> loan request ($${data.principal.toFixed(2)}) was declined.</p>
+      <p>Reason: ${this.escape(data.reason)}</p>
+      ${this.email.button(`${this.email.frontendUrl}/loans`, 'View loans')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Loan declined — ${data.term}`,
+      html,
+      text: `Loan ${data.term} declined: ${data.reason}`,
+    });
+  }
+
+  private async sendLoanRejectedOps(
+    userId: string,
+    data: { loanId: string; term: string; principal: number; reason: string },
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { displayName: true },
+    });
+    if (!user) return false;
+    return this.sendOpsAlert({
+      label: `Ops alert: loan rejected ${data.loanId}`,
+      subject: `[Loan rejected] ${data.term} — ${user.displayName}`,
+      html: this.email.layout(
+        'Loan rejected',
+        `<p>${this.escape(user.displayName)} — ${this.escape(data.term)} $${data.principal.toFixed(2)}. Reason: ${this.escape(data.reason)}</p>`,
+      ),
+      text: `Loan rejected ${data.loanId}: ${data.reason}`,
+    });
+  }
+
+  private async sendLoanRepaidUser(
+    userId: string,
+    data: {
+      loanId: string;
+      term: string;
+      totalDue: number;
+      balance: number;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Loan repaid',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Thanks — your <strong>${this.escape(data.term)}</strong> loan repayment of <strong>$${data.totalDue.toFixed(2)}</strong> is complete.</p>
+      <p>Wallet balance: <strong>$${data.balance.toFixed(2)}</strong></p>
+      ${this.email.button(`${this.email.frontendUrl}/loans`, 'View loans')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Loan repaid — $${data.totalDue.toFixed(2)}`,
+      html,
+      text: `Loan ${data.term} repaid $${data.totalDue.toFixed(2)}.`,
+    });
+  }
+
+  private async sendLoanRepaidOps(
+    userId: string,
+    data: {
+      loanId: string;
+      term: string;
+      totalDue: number;
+      balance: number;
+    },
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { displayName: true, email: true },
+    });
+    if (!user) return false;
+    return this.sendOpsAlert({
+      label: `Ops alert: loan repaid ${data.loanId}`,
+      subject: `[Loan repaid] $${data.totalDue.toFixed(2)} — ${user.displayName}`,
+      html: this.email.layout(
+        'Loan repaid',
+        `<p>${this.escape(user.displayName)} repaid $${data.totalDue.toFixed(2)} (${this.escape(data.term)}). Loan <code>${this.escape(data.loanId)}</code>.</p>`,
+      ),
+      text: `Loan repaid ${data.loanId}: $${data.totalDue.toFixed(2)}`,
+    });
+  }
+
+  private async sendLoanDefaultedUser(
+    userId: string,
+    data: { loanId: string; term: string; totalDue: number },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Loan marked overdue',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your <strong>${this.escape(data.term)}</strong> loan ($${data.totalDue.toFixed(2)} due) was marked as defaulted. Contact support if you need help.</p>
+      ${this.email.button(`${this.email.frontendUrl}/messages`, 'Contact support')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Loan overdue — ${data.term}`,
+      html,
+      text: `Loan ${data.term} marked defaulted. Due $${data.totalDue.toFixed(2)}.`,
+    });
+  }
+
+  private async sendLoanDefaultedOps(
+    userId: string,
+    data: { loanId: string; term: string; totalDue: number },
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { displayName: true },
+    });
+    if (!user) return false;
+    return this.sendOpsAlert({
+      label: `Ops alert: loan defaulted ${data.loanId}`,
+      subject: `[Loan defaulted] $${data.totalDue.toFixed(2)} — ${user.displayName}`,
+      html: this.email.layout(
+        'Loan defaulted',
+        `<p>${this.escape(user.displayName)} — ${this.escape(data.term)} $${data.totalDue.toFixed(2)}. <code>${this.escape(data.loanId)}</code></p>`,
+      ),
+      text: `Loan defaulted ${data.loanId}`,
+    });
+  }
+
   private async sendMomoP2pCompletedUser(
     userId: string,
     data: {

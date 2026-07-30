@@ -1184,6 +1184,24 @@ class ApiClient {
       }),
   };
 
+  loans = {
+    eligibility: () => this.request<LoanEligibility>("/loans/eligibility"),
+    quote: (term: "DAILY" | "WEEKLY" | "MONTHLY") =>
+      this.request<LoanQuote>(
+        `/loans/quote?term=${encodeURIComponent(term)}`,
+      ),
+    list: () => this.request<LoanRow[]>("/loans"),
+    request: (term: "DAILY" | "WEEKLY" | "MONTHLY") =>
+      this.request<LoanRow>("/loans/request", {
+        method: "POST",
+        body: JSON.stringify({ term }),
+      }),
+    cancel: (id: string) =>
+      this.request<LoanRow>(`/loans/${id}/cancel`, { method: "POST" }),
+    repay: (id: string) =>
+      this.request<LoanRow>(`/loans/${id}/repay`, { method: "POST" }),
+  };
+
   evaluations = {
     listPlans: () =>
       this.request<EvaluationPlanCatalog[]>("/evaluations/plans"),
@@ -1795,6 +1813,59 @@ export interface UnitrustStatus {
     creditDate: string;
     creditedAt: string;
   }>;
+}
+
+export interface LoanEligibility {
+  corpus: number;
+  dailyEarning: number;
+  eligible: boolean;
+  minCorpusUsdt: number;
+  minDailyEarningUsdt: number;
+  advancePercent: number;
+  interestPercent: number;
+}
+
+export interface LoanQuote extends LoanEligibility {
+  term: "DAILY" | "WEEKLY" | "MONTHLY";
+  periodDays: number;
+  projectedEarnings: number;
+  principal: number;
+  interestAmount: number;
+  totalDue: number;
+  dueAt: string;
+  explanation: string;
+  availableBalance: number;
+  investorBalance: number;
+  unitrustBalance: number;
+}
+
+export interface LoanRow {
+  id: string;
+  userId: string;
+  term: "DAILY" | "WEEKLY" | "MONTHLY";
+  status:
+    | "PENDING"
+    | "APPROVED"
+    | "REJECTED"
+    | "REPAID"
+    | "DEFAULTED"
+    | "CANCELLED";
+  dailyEarningEstimate: number;
+  periodDays: number;
+  projectedEarnings: number;
+  advancePercent: number;
+  interestPercent: number;
+  principal: number;
+  interestAmount: number;
+  totalDue: number;
+  dueAt: string | null;
+  requestedAt: string;
+  reviewedAt: string | null;
+  approvedAt: string | null;
+  repaidAt: string | null;
+  rejectedReason: string | null;
+  adminNote: string | null;
+  createdAt: string;
 }
 
 export interface InvestorCheckout {

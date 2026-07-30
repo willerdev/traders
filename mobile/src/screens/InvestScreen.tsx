@@ -137,6 +137,11 @@ export function InvestScreen() {
             variant="secondary"
             onPress={() => navigation.navigate("Unitrust")}
           />
+          <PrimaryButton
+            label="Loans (80% earnings advance)"
+            variant="secondary"
+            onPress={() => navigation.navigate("Loans")}
+          />
           <InvestorPolicyBanners
             investmentBalance={status?.investmentBalance ?? 0}
             vipActive={Boolean(status?.vip?.active)}

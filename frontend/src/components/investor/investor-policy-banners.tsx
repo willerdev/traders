@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 /** Investments below this amount auto-stop from the policy date. */
 export const INVESTOR_AUTO_STOP_THRESHOLD_USDT = 500;
 /** Minimum investment to see loan / reinvest-profit eligibility messaging. */
-export const INVESTOR_LOAN_ELIGIBILITY_USDT = 1000;
+export const INVESTOR_LOAN_ELIGIBILITY_USDT = 100;
 export const INVESTOR_AUTO_STOP_DATE_LABEL = "27 July 2026";
 export const INVESTOR_VIP_YIELD_PERCENT = 10;
 
@@ -91,10 +91,16 @@ export function InvestorPolicyBanners({
                 <strong>
                   ${INVESTOR_LOAN_ELIGIBILITY_USDT.toLocaleString()}+
                 </strong>{" "}
-                invested, you can reinvest profit from your investment and borrow
-                up to <strong>80%</strong> of your investment balance — while your
-                capital keeps working and earning. Message Support to learn more or
-                apply.
+                invested, you can borrow an advance on your projected daily,
+                weekly, or monthly earnings (80% advance + 20% interest). Capital
+                keeps earning while the loan is open.{" "}
+                <a
+                  href="/loans"
+                  className="font-semibold text-sky-200 underline underline-offset-2 hover:text-white"
+                >
+                  Request a loan
+                </a>
+                .
               </p>
             </div>
           </div>

@@ -11,6 +11,7 @@ export type Tab =
   | "signals"
   | "kyc"
   | "payouts"
+  | "loans"
   | "tpClaims"
   | "promos"
   | "marketing"
@@ -31,6 +32,7 @@ export const ADMIN_TABS: Tab[] = [
   "users",
   "platform",
   "payouts",
+  "loans",
   "transactions",
   "kyc",
   "marketing",
@@ -86,6 +88,7 @@ export function tabsForPermissions(permissions: AdminPermissions | null): Tab[] 
   if (permissions.kyc) allowed.add("kyc");
   if (permissions.payout) {
     allowed.add("payouts");
+    allowed.add("loans");
     allowed.add("transactions");
   }
   // Staff still get marketing/comms tools when they have hub access
@@ -125,6 +128,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "users", label: "Users", icon: "users" },
   { id: "platform", label: "Investor & depositor", icon: "forecast" },
   { id: "payouts", label: "Payouts", icon: "payouts" },
+  { id: "loans", label: "Loans", icon: "loans" },
   { id: "transactions", label: "Transactions", icon: "transactions" },
   { id: "kyc", label: "KYC", icon: "kyc" },
   { id: "marketing", label: "Email marketing", icon: "marketing" },
@@ -192,6 +196,12 @@ const icons = {
       <rect x="3" y="6" width="18" height="13" rx="2" />
       <path d="M3 10h18" strokeLinecap="round" />
       <path d="M7 15h4" strokeLinecap="round" />
+    </svg>
+  ),
+  loans: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M12 3v18" strokeLinecap="round" />
+      <path d="M8 7h7a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h7" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
   tpClaims: (

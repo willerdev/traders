@@ -767,6 +767,45 @@ export const api = {
         availableBalance: number;
       }>
     >(`/admin/unitrust?limit=${limit}`),
+
+  listLoans: (status?: string, limit = 50) => {
+    const q = new URLSearchParams({ limit: String(limit) });
+    if (status) q.set("status", status);
+    return request<
+      Array<{
+        id: string;
+        term: string;
+        status: string;
+        principal: number;
+        interestAmount: number;
+        totalDue: number;
+        projectedEarnings: number;
+        dailyEarningEstimate: number;
+        dueAt: string | null;
+        requestedAt: string;
+        user: { id: string; email: string | null; displayName: string };
+      }>
+    >(`/admin/loans?${q.toString()}`);
+  },
+
+  approveLoan: (id: string, note?: string) =>
+    request(`/admin/loans/${id}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    }),
+
+  rejectLoan: (id: string, reason?: string) =>
+    request(`/admin/loans/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+
+  defaultLoan: (id: string, note?: string) =>
+    request(`/admin/loans/${id}/default`, {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    }),
+
   enrollInvestor: (data: {
     userId?: string;
     email?: string;

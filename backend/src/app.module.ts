@@ -35,6 +35,7 @@ import { AccountTransferModule } from './account-transfer/account-transfer.modul
 import { SmsModule } from './sms/sms.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
 import { UnitrustModule } from './unitrust/unitrust.module';
+import { LoansModule } from './loans/loans.module';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { UnitrustModule } from './unitrust/unitrust.module';
     WalletModule,
     InvestorModule,
     UnitrustModule,
+    LoansModule,
     EvaluationsModule,
     FlutterwaveModule,
     AccountTransferModule,
