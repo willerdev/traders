@@ -14,6 +14,7 @@ import {
   Settings,
   TrendingUp,
   Wallet,
+  Handshake,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -118,6 +119,13 @@ export function MobileBottomNav() {
   const moreMenuItems = useMemo(
     () =>
       [
+        {
+          href: "/agent",
+          label: "Agent",
+          hint: "MoMo cash-out agent portal",
+          icon: Handshake,
+          match: "/agent",
+        },
         {
           href: mt5Href,
           label: "MT5",

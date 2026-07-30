@@ -12,6 +12,7 @@ import {
   ScrollText,
   TrendingUp,
   Blocks,
+  Handshake,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore, useDashboardStore } from "@/stores/auth";
@@ -31,6 +32,7 @@ const navItems = [
   { href: "/invest", label: "Invest", shortLabel: "Invest", icon: TrendingUp },
   { href: "/unitrust", label: "Unitrust", shortLabel: "Unitrust", icon: ScrollText },
   { href: "/loans", label: "Loans", shortLabel: "Loans", icon: Wallet },
+  { href: "/agent", label: "Agent", shortLabel: "Agent", icon: Handshake },
   { href: "/blockchain", label: "Chain", shortLabel: "Chain", icon: Blocks },
   { href: "/journal", label: "Journal", shortLabel: "Journal", icon: ScrollText },
   { href: "/wallet", label: "Wallet", shortLabel: "Wallet", icon: Wallet },
