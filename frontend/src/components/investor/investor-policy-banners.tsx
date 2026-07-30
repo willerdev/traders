@@ -10,31 +10,50 @@ export const INVESTOR_LOAN_ELIGIBILITY_USDT = 100;
 export const INVESTOR_AUTO_STOP_DATE_LABEL = "27 July 2026";
 export const INVESTOR_VIP_YIELD_PERCENT = 10;
 
+export type MinBalancePolicy = {
+  thresholdUsdt: number;
+  effectiveFrom: string;
+  enforced: boolean;
+  dateReached: boolean;
+  exempt: boolean;
+  blocked: boolean;
+  underThreshold: boolean;
+};
+
 type Props = {
   investmentBalance: number;
   vipActive?: boolean;
   vipDailyYieldPercent?: number;
+  minBalancePolicy?: MinBalancePolicy | null;
   className?: string;
 };
 
 /**
  * Policy notices for active investors:
  * - VIP: elevated default daily yield
- * - Under $500: auto-stop from 27 Jul 2026
- * - $1000+: loan eligibility
+ * - Under $500: auto-stop / not earning when enforced
+ * - Loan eligibility
  */
 export function InvestorPolicyBanners({
   investmentBalance,
   vipActive = false,
   vipDailyYieldPercent = INVESTOR_VIP_YIELD_PERCENT,
+  minBalancePolicy = null,
   className,
 }: Props) {
   const balance = Number(investmentBalance);
   const hasBalance = Number.isFinite(balance) && balance > 0;
+  const threshold =
+    minBalancePolicy?.thresholdUsdt ?? INVESTOR_AUTO_STOP_THRESHOLD_USDT;
 
   const showVip = vipActive;
-  const showAutoStop = hasBalance && balance < INVESTOR_AUTO_STOP_THRESHOLD_USDT;
+  const showAutoStop =
+    hasBalance &&
+    balance < threshold &&
+    !minBalancePolicy?.exempt &&
+    (minBalancePolicy?.enforced !== false);
   const showLoan = hasBalance && balance >= INVESTOR_LOAN_ELIGIBILITY_USDT;
+  const blockedNow = Boolean(minBalancePolicy?.blocked);
 
   if (!showVip && !showAutoStop && !showLoan) return null;
 
@@ -63,15 +82,29 @@ export function InvestorPolicyBanners({
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
             <div className="space-y-1">
               <p className="font-semibold text-amber-100">
-                Minimum investment update
+                {blockedNow
+                  ? "Investment below minimum — not earning"
+                  : "Minimum investment update"}
               </p>
               <p className="text-amber-100/85 leading-relaxed">
-                From <strong>{INVESTOR_AUTO_STOP_DATE_LABEL}</strong>, investments
-                below{" "}
-                <strong>${INVESTOR_AUTO_STOP_THRESHOLD_USDT.toLocaleString()}</strong>{" "}
-                will <strong>automatically stop</strong>. Your current investment is{" "}
-                <strong>${balance.toFixed(2)}</strong>. Top up to at least $
-                {INVESTOR_AUTO_STOP_THRESHOLD_USDT.toLocaleString()} to keep earning.
+                {blockedNow ? (
+                  <>
+                    Your Smart Invest balance is{" "}
+                    <strong>${balance.toFixed(2)}</strong>, below the{" "}
+                    <strong>${threshold.toLocaleString()}</strong> minimum. Daily
+                    yield is paused until you top up to at least $
+                    {threshold.toLocaleString()}.
+                  </>
+                ) : (
+                  <>
+                    From <strong>{INVESTOR_AUTO_STOP_DATE_LABEL}</strong>,
+                    investments below{" "}
+                    <strong>${threshold.toLocaleString()}</strong> will{" "}
+                    <strong>automatically stop</strong> earning. Your current
+                    investment is <strong>${balance.toFixed(2)}</strong>. Top up
+                    to at least ${threshold.toLocaleString()} to keep earning.
+                  </>
+                )}
               </p>
             </div>
           </div>

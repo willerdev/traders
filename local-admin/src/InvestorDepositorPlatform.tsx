@@ -48,6 +48,8 @@ export function InvestorDepositorPlatform({
   const [minDeposit, setMinDeposit] = useState("");
   const [loginOtpEnabled, setLoginOtpEnabled] = useState(false);
   const [investorYieldPaused, setInvestorYieldPaused] = useState(false);
+  const [investorMinBalanceEnforced, setInvestorMinBalanceEnforced] =
+    useState(true);
   const [withdrawalScheduleEnabled, setWithdrawalScheduleEnabled] =
     useState(true);
   const [withdrawalPreferredSchedule, setWithdrawalPreferredSchedule] =
@@ -90,6 +92,7 @@ export function InvestorDepositorPlatform({
     setMinDeposit(String(s.depositorMinDepositUsdt));
     setLoginOtpEnabled(s.loginOtpEnabled);
     setInvestorYieldPaused(Boolean(s.investorYieldPaused));
+    setInvestorMinBalanceEnforced(s.investorMinBalanceEnforced !== false);
     setWithdrawalScheduleEnabled(s.withdrawalScheduleEnabled !== false);
     setWithdrawalPreferredSchedule(
       String(s.withdrawalPreferredSchedule ?? "WEEKLY").toUpperCase() ===
@@ -163,6 +166,7 @@ export function InvestorDepositorPlatform({
       const updated = await api.updateInvestorDepositorSettings({
         investorDailyYieldPercent: Number(investorYield),
         investorYieldPaused,
+        investorMinBalanceEnforced,
         depositorDailyYieldPercent: Number(depositorYield),
         depositorMinDepositUsdt: Number(minDeposit),
         loginOtpEnabled,
@@ -401,6 +405,7 @@ export function InvestorDepositorPlatform({
                 )}
               </div>
               {showSensitiveFinance && (
+              <>
               <label className="platform-toggle" style={{ marginTop: "1rem" }}>
                 <input
                   type="checkbox"
@@ -412,6 +417,23 @@ export function InvestorDepositorPlatform({
                   Pause all investor daily revenue (global)
                 </span>
               </label>
+              <label className="platform-toggle" style={{ marginTop: "0.75rem" }}>
+                <input
+                  type="checkbox"
+                  checked={investorMinBalanceEnforced}
+                  onChange={(e) =>
+                    setInvestorMinBalanceEnforced(e.target.checked)
+                  }
+                />
+                <span className="platform-toggle-track" />
+                <span className="platform-toggle-text">
+                  Enforce $
+                  {settings?.investorMinBalanceUsdt ?? 500} min invest to earn
+                  (from {settings?.investorMinBalanceEffectiveFrom ?? "2026-07-27"}
+                  ). Under-threshold users get no daily yield unless you exempt them.
+                </span>
+              </label>
+              </>
               )}
               <p className="muted" style={{ marginTop: "0.5rem", fontSize: 12 }}>
                 Credits run daily at the platform yield window (shown to users in
@@ -799,6 +821,21 @@ export function InvestorDepositorPlatform({
                                 Yield paused
                               </span>
                             )}
+                            {inv.minBalanceExempt && (
+                              <span className="platform-pill platform-pill-investor">
+                                Min exempt
+                              </span>
+                            )}
+                            {!inv.minBalanceExempt &&
+                              inv.investmentBalance > 0 &&
+                              inv.investmentBalance <
+                                (settings?.investorMinBalanceUsdt ?? 500) &&
+                              settings?.investorMinBalanceEnforced !== false && (
+                                <span className="platform-pill platform-pill-warn">
+                                  Under $
+                                  {settings?.investorMinBalanceUsdt ?? 500}
+                                </span>
+                              )}
                           </div>
                         </td>
                         <td className="platform-money">
@@ -962,6 +999,7 @@ export function InvestorDepositorPlatform({
                           </div>
                         </td>
                         <td>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                           <button
                             type="button"
                             className="platform-btn platform-btn-ghost"
@@ -992,6 +1030,42 @@ export function InvestorDepositorPlatform({
                           >
                             {inv.yieldPaused ? "Resume yield" : "Pause yield"}
                           </button>
+                          <button
+                            type="button"
+                            className="platform-btn platform-btn-ghost"
+                            onClick={() => {
+                              const next = !inv.minBalanceExempt;
+                              void api
+                                .setInvestorMinBalanceExempt(inv.id, next)
+                                .then((res) => {
+                                  setInvestors((prev) =>
+                                    prev.map((row) =>
+                                      row.id === inv.id
+                                        ? {
+                                            ...row,
+                                            minBalanceExempt: res.minBalanceExempt,
+                                          }
+                                        : row,
+                                    ),
+                                  );
+                                  onMessage(
+                                    next
+                                      ? `${inv.displayName} exempt from $500 min — can earn under threshold.`
+                                      : `${inv.displayName} subject to $500 min again.`,
+                                  );
+                                })
+                                .catch((e) =>
+                                  onMessage(
+                                    e instanceof Error ? e.message : "Update failed",
+                                  ),
+                                );
+                            }}
+                          >
+                            {inv.minBalanceExempt
+                              ? "Remove $500 exempt"
+                              : "Exempt $500 min"}
+                          </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

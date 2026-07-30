@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, type InvestorStatus } from "@/lib/api";
 import { InvestorPolicyBanners } from "@/components/investor/investor-policy-banners";
 
 /** Loads investor status and shows policy banners on the main dashboard. */
@@ -10,6 +10,7 @@ export function DashboardInvestorPolicyBanners() {
     balance: number;
     vipActive: boolean;
     vipYield: number;
+    minBalancePolicy: InvestorStatus["minBalancePolicy"] | null;
   } | null>(null);
 
   useEffect(() => {
@@ -25,10 +26,17 @@ export function DashboardInvestorPolicyBanners() {
           vipActive: Boolean(s.vip?.active),
           vipYield:
             s.vip?.benefits?.dailyYieldPercent ?? s.vipDailyYieldPercent ?? 10,
+          minBalancePolicy: s.minBalancePolicy ?? null,
         });
       })
       .catch(() => {
-        if (!cancelled) setState({ balance: 0, vipActive: false, vipYield: 10 });
+        if (!cancelled)
+          setState({
+            balance: 0,
+            vipActive: false,
+            vipYield: 10,
+            minBalancePolicy: null,
+          });
       });
     return () => {
       cancelled = true;
@@ -43,6 +51,7 @@ export function DashboardInvestorPolicyBanners() {
       investmentBalance={state.balance}
       vipActive={state.vipActive}
       vipDailyYieldPercent={state.vipYield}
+      minBalancePolicy={state.minBalancePolicy}
     />
   );
 }

@@ -36,7 +36,15 @@ import {
 } from './investor-vip.util';
 import { FxRatesService } from '../fx/fx-rates.service';
 import { resolvePreferredDisplayCurrency } from '../fx/country-currency.util';
-import { INVESTOR_AUTO_REINVEST_FEE_PERCENT } from '../common/constants';
+import {
+  INVESTOR_AUTO_REINVEST_FEE_PERCENT,
+} from '../common/constants';
+import {
+  INVESTOR_MIN_BALANCE_EFFECTIVE_DATE,
+  INVESTOR_MIN_BALANCE_USDT,
+  isBlockedByInvestorMinBalance,
+  isInvestorMinBalanceDateReached,
+} from './investor-min-balance.util';
 
 @Injectable()
 export class InvestorService {
@@ -225,10 +233,15 @@ export class InvestorService {
             useTwoToOneRr: user.investorSettings.useTwoToOneRr,
             paused: user.investorSettings.paused,
             yieldPaused: user.investorSettings.yieldPaused,
+            minBalanceExempt: user.investorSettings.minBalanceExempt,
             autoReinvestEarnings: user.investorSettings.autoReinvestEarnings,
           }
         : null,
       autoReinvestFeePercent: INVESTOR_AUTO_REINVEST_FEE_PERCENT,
+      minBalancePolicy: await this.resolveMinBalancePolicy(
+        Number(financials.investmentBalance ?? 0),
+        user.investorSettings?.minBalanceExempt ?? false,
+      ),
       recentTrades: user.investorTrades.map((t) => ({
         id: t.id,
         signalId: t.signal.signalId,
@@ -827,6 +840,49 @@ export class InvestorService {
     return { yieldPaused: settings.yieldPaused };
   }
 
+  async setMinBalanceExempt(userId: string, exempt: boolean) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user?.investorActive) {
+      throw new BadRequestException('User is not an active investor');
+    }
+
+    const settings = await this.prisma.investorSettings.upsert({
+      where: { userId },
+      create: { userId, minBalanceExempt: Boolean(exempt) },
+      update: { minBalanceExempt: Boolean(exempt) },
+    });
+
+    return { minBalanceExempt: settings.minBalanceExempt };
+  }
+
+  private async resolveMinBalancePolicy(
+    investmentBalance: number,
+    exempt: boolean,
+  ) {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+      select: { investorMinBalanceEnforced: true },
+    });
+    const enforced = config?.investorMinBalanceEnforced !== false;
+    const dateReached = isInvestorMinBalanceDateReached();
+    const blocked = isBlockedByInvestorMinBalance({
+      enforced,
+      balanceUsdt: investmentBalance,
+      exempt,
+    });
+
+    return {
+      thresholdUsdt: INVESTOR_MIN_BALANCE_USDT,
+      effectiveFrom: INVESTOR_MIN_BALANCE_EFFECTIVE_DATE,
+      enforced,
+      dateReached,
+      exempt,
+      blocked,
+      underThreshold:
+        investmentBalance > 0 && investmentBalance < INVESTOR_MIN_BALANCE_USDT,
+    };
+  }
+
   async setAutoReinvestEarnings(userId: string, autoReinvestEarnings: boolean) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user?.investorActive) {
@@ -1194,6 +1250,14 @@ export class InvestorService {
     let pausedUsers = 0;
     let weekendSkipped = 0;
     let holdSkipped = 0;
+    let minBalanceSkipped = 0;
+
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+      select: { investorMinBalanceEnforced: true },
+    });
+    const minBalanceEnforced = config?.investorMinBalanceEnforced !== false;
+
     for (const user of investors) {
       if (user.investorSettings?.yieldPaused) {
         pausedUsers++;
@@ -1223,6 +1287,17 @@ export class InvestorService {
 
       const baseBalance = Number(user.platformWallet?.investorBalance ?? 0);
       if (baseBalance <= 0 || yieldPercent <= 0) continue;
+
+      if (
+        isBlockedByInvestorMinBalance({
+          enforced: minBalanceEnforced,
+          balanceUsdt: baseBalance,
+          exempt: user.investorSettings?.minBalanceExempt ?? false,
+        })
+      ) {
+        minBalanceSkipped++;
+        continue;
+      }
 
       // Exclude capital allocated within the last 24h (anti last-minute deposit gaming).
       const recentAllocate = await this.prisma.walletTransaction.aggregate({
@@ -1355,7 +1430,7 @@ export class InvestorService {
       credited++;
     }
 
-    return { credited, pausedUsers, weekendSkipped, holdSkipped };
+    return { credited, pausedUsers, weekendSkipped, holdSkipped, minBalanceSkipped };
   }
 
   /** Enrollment + wallet deposits for MT5 investor display. */

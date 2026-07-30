@@ -587,6 +587,7 @@ export class AdminController {
       investorFeeUsdt?: number;
       investorDailyYieldPercent?: number;
       investorYieldPaused?: boolean;
+      investorMinBalanceEnforced?: boolean;
       depositorDailyYieldPercent?: number;
       depositorMinDepositUsdt?: number;
       loginOtpEnabled?: boolean;
@@ -749,6 +750,17 @@ export class AdminController {
     return this.adminService.setInvestorYieldPaused(
       userId,
       body.paused === true,
+    );
+  }
+
+  @Patch('investors/:userId/min-balance-exempt')
+  setInvestorMinBalanceExempt(
+    @Param('userId') userId: string,
+    @Body() body: { exempt: boolean },
+  ) {
+    return this.adminService.setInvestorMinBalanceExempt(
+      userId,
+      body.exempt === true,
     );
   }
 

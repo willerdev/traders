@@ -32,6 +32,10 @@ import {
   INVESTOR_INVESTMENT_MIN,
   listInvestorFeeTiers,
 } from '../investor/investor-fee.util';
+import {
+  INVESTOR_MIN_BALANCE_EFFECTIVE_DATE,
+  INVESTOR_MIN_BALANCE_USDT,
+} from '../investor/investor-min-balance.util';
 
 @Injectable()
 export class AdminService {
@@ -1622,6 +1626,9 @@ export class AdminService {
         config?.investorDailyYieldPercent ?? 8,
       ),
       investorYieldPaused: Boolean(config?.investorYieldPaused),
+      investorMinBalanceEnforced: config?.investorMinBalanceEnforced !== false,
+      investorMinBalanceUsdt: INVESTOR_MIN_BALANCE_USDT,
+      investorMinBalanceEffectiveFrom: INVESTOR_MIN_BALANCE_EFFECTIVE_DATE,
       depositorDailyYieldPercent: Number(config?.depositorDailyYieldPercent ?? 0.5),
       depositorMinDepositUsdt: Number(config?.depositorMinDepositUsdt ?? 50),
       loginOtpEnabled: otpRows[0]?.enabled ?? false,
@@ -1642,6 +1649,7 @@ export class AdminService {
     investorFeeUsdt?: number;
     investorDailyYieldPercent?: number;
     investorYieldPaused?: boolean;
+    investorMinBalanceEnforced?: boolean;
     depositorDailyYieldPercent?: number;
     depositorMinDepositUsdt?: number;
     loginOtpEnabled?: boolean;
@@ -1670,6 +1678,9 @@ export class AdminService {
     }
     if (typeof input.investorYieldPaused === 'boolean') {
       data.investorYieldPaused = input.investorYieldPaused;
+    }
+    if (typeof input.investorMinBalanceEnforced === 'boolean') {
+      data.investorMinBalanceEnforced = input.investorMinBalanceEnforced;
     }
     if (input.depositorDailyYieldPercent != null) {
       if (
@@ -1869,6 +1880,7 @@ export class AdminService {
               riskPercent: true,
               paused: true,
               yieldPaused: true,
+              minBalanceExempt: true,
             },
           },
           platformWallet: {
@@ -1902,6 +1914,7 @@ export class AdminService {
           : null,
         paused: u.investorSettings?.paused ?? false,
         yieldPaused: u.investorSettings?.yieldPaused ?? false,
+        minBalanceExempt: u.investorSettings?.minBalanceExempt ?? false,
         incomeEntries: u._count.investorDailyCredits,
       })),
       count,
@@ -1960,6 +1973,10 @@ export class AdminService {
 
   async setInvestorYieldPaused(userId: string, yieldPaused: boolean) {
     return this.investorService.setYieldPaused(userId, yieldPaused);
+  }
+
+  async setInvestorMinBalanceExempt(userId: string, exempt: boolean) {
+    return this.investorService.setMinBalanceExempt(userId, exempt);
   }
 
   async listInstantWithdrawUsers() {

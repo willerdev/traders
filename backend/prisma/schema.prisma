@@ -991,6 +991,8 @@ model PlatformConfig {
   investorFeeUsdt          Decimal @default(10) @db.Decimal(10, 2)
   investorDailyYieldPercent Decimal @default(8) @db.Decimal(5, 2)
   investorYieldPaused      Boolean @default(false)
+  /// When true (and on/after 27 Jul 2026), Smart Invest balances under $500 do not earn daily yield unless the user is exempt.
+  investorMinBalanceEnforced Boolean @default(true)
   unitrustDailyYieldPercent Decimal @default(5) @db.Decimal(5, 2)
   unitrustYieldPaused      Boolean @default(false)
   unitrustMinDepositUsdt   Decimal @default(100) @db.Decimal(10, 2)
@@ -1074,6 +1076,8 @@ model InvestorSettings {
   useTwoToOneRr             Boolean  @default(true)
   paused                    Boolean  @default(false)
   yieldPaused               Boolean  @default(false)
+  /// Admin override: allow this user to earn even when under the platform min invest balance.
+  minBalanceExempt          Boolean  @default(false)
   /// When true, daily yield is compounded into investment (90%) after a 10% platform fee.
   autoReinvestEarnings      Boolean  @default(false)
   lastHealthAt              DateTime?

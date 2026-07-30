@@ -689,6 +689,7 @@ export const api = {
     investorFeeUsdt?: number;
     investorDailyYieldPercent?: number;
     investorYieldPaused?: boolean;
+    investorMinBalanceEnforced?: boolean;
     depositorDailyYieldPercent?: number;
     depositorMinDepositUsdt?: number;
     loginOtpEnabled?: boolean;
@@ -903,6 +904,14 @@ export const api = {
         body: JSON.stringify({ paused }),
       },
     ),
+  setInvestorMinBalanceExempt: (userId: string, exempt: boolean) =>
+    request<{ minBalanceExempt: boolean }>(
+      `/admin/investors/${encodeURIComponent(userId)}/min-balance-exempt`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ exempt }),
+      },
+    ),
   transferInvestorFunds: (
     userId: string,
     body: { amount: number; direction: "to_investment" | "to_wallet" },
@@ -1080,6 +1089,9 @@ export type InvestorDepositorSettings = {
   investmentMax?: number;
   investorDailyYieldPercent: number;
   investorYieldPaused: boolean;
+  investorMinBalanceEnforced?: boolean;
+  investorMinBalanceUsdt?: number;
+  investorMinBalanceEffectiveFrom?: string;
   depositorDailyYieldPercent: number;
   depositorMinDepositUsdt: number;
   loginOtpEnabled: boolean;
@@ -1102,6 +1114,7 @@ export type InvestorRow = {
   riskPercent: number | null;
   paused: boolean;
   yieldPaused: boolean;
+  minBalanceExempt: boolean;
   incomeEntries: number;
 };
 

@@ -1898,9 +1898,19 @@ export interface InvestorStatus {
     useTwoToOneRr: boolean;
     paused: boolean;
     yieldPaused?: boolean;
+    minBalanceExempt?: boolean;
     autoReinvestEarnings?: boolean;
   } | null;
   autoReinvestFeePercent?: number;
+  minBalancePolicy?: {
+    thresholdUsdt: number;
+    effectiveFrom: string;
+    enforced: boolean;
+    dateReached: boolean;
+    exempt: boolean;
+    blocked: boolean;
+    underThreshold: boolean;
+  };
   recentTrades: Array<{
     id: string;
     signalId: string;

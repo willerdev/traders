@@ -483,6 +483,7 @@ export function InvestHub() {
           status.vipDailyYieldPercent ??
           10
         }
+        minBalancePolicy={status.minBalancePolicy ?? null}
       />
       <div className="flex justify-end">
         <CurrencySwitcher displayCurrency={display} onChanged={refresh} />
