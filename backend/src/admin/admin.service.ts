@@ -2101,6 +2101,7 @@ export class AdminService {
     }
 
     const enabled = Boolean(input.enabled);
+    const wasExempt = Boolean(user.instantWithdrawKycExempt);
     const updated = await this.prisma.user.update({
       where: { id: user.id },
       data: { instantWithdrawKycExempt: enabled },
@@ -2125,6 +2126,10 @@ export class AdminService {
       user.id,
       { email: user.email },
     );
+
+    if (enabled && !wasExempt) {
+      this.notifications.whitelistVerified(user.id);
+    }
 
     return {
       id: updated.id,

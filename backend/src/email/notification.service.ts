@@ -517,6 +517,32 @@ export class NotificationService {
     this.dispatch(this.sendKycApproved(userId), 'KYC approved');
   }
 
+  /** Admin marked whitelist user verified — welcome to the top 1%. */
+  whitelistVerified(userId: string) {
+    this.dispatch(this.sendWhitelistVerified(userId), 'Whitelist verified welcome');
+  }
+
+  private async sendWhitelistVerified(userId: string) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+
+    const html = this.email.layout(
+      'Welcome to the top 1%',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Welcome to the <strong>1%</strong> of successful members on Tradeguard.</p>
+      <p>Your account has been marked <strong>verified</strong>. You can withdraw without completing document KYC, and you keep instant-withdraw privileges.</p>
+      <p>Thank you for being part of this circle — stay consistent, grow your capital, and reach out in Messages if you need anything.</p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'Open wallet')}`,
+    );
+
+    return this.email.send({
+      to: user.email,
+      subject: 'Welcome to the 1% of successful members',
+      html,
+      text: `Hi ${user.name}, welcome to the 1% of successful members on Tradeguard. Your account is verified — you can withdraw without document KYC. Open ${this.email.frontendUrl}/wallet`,
+    });
+  }
+
   private async sendKycApproved(userId: string) {
     const user = await this.userContact(userId);
     if (!user) return false;
