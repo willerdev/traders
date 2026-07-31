@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,12 +10,19 @@ import { BrandMark } from "../components/ui";
 export function PinGate({ children }: { children: React.ReactNode }) {
   const { theme } = useTheme();
   const { ready, hasPin, unlocked, setPin, unlock } = usePin();
-  const [mode, setMode] = useState<"create" | "confirm" | "unlock">("unlock");
+  const [mode, setMode] = useState<"create" | "confirm" | "unlock">("create");
   const [draft, setDraft] = useState("");
   const [pendingCreate, setPendingCreate] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [started, setStarted] = useState(false);
+
+  useEffect(() => {
+    if (!ready || unlocked) return;
+    setMode(hasPin ? "unlock" : "create");
+    setDraft("");
+    setPendingCreate("");
+    setError(null);
+  }, [ready, hasPin, unlocked]);
 
   if (!ready) {
     return (
@@ -27,15 +34,14 @@ export function PinGate({ children }: { children: React.ReactNode }) {
 
   if (unlocked) return <>{children}</>;
 
-  const activeMode = !started ? (hasPin ? "unlock" : "create") : mode;
   const title =
-    activeMode === "unlock"
+    mode === "unlock"
       ? "Enter passcode"
-      : activeMode === "confirm"
+      : mode === "confirm"
         ? "Confirm passcode"
         : "Create a passcode";
   const subtitle =
-    activeMode === "unlock"
+    mode === "unlock"
       ? "Enter your 6-digit PIN to unlock"
       : "Set a 6-digit PIN to unlock the app and confirm withdrawals";
 
@@ -43,19 +49,18 @@ export function PinGate({ children }: { children: React.ReactNode }) {
     setBusy(true);
     setError(null);
     try {
-      if (activeMode === "unlock") {
+      if (mode === "unlock") {
         await unlock(code);
-      } else if (activeMode === "create") {
+      } else if (mode === "create") {
         setPendingCreate(code);
         setDraft("");
         setMode("confirm");
-        setStarted(true);
       } else {
         if (code !== pendingCreate) {
           setError("PINs do not match — try again");
           setDraft("");
-          setMode("create");
           setPendingCreate("");
+          setMode("create");
           return;
         }
         await setPin(code);
@@ -70,7 +75,6 @@ export function PinGate({ children }: { children: React.ReactNode }) {
 
   function pushDigit(d: string) {
     if (busy) return;
-    if (!started) setStarted(true);
     const next = (draft + d).slice(0, 6);
     setDraft(next);
     if (next.length === 6) void onComplete(next);
