@@ -10,10 +10,11 @@ import {
   Text,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useAuth } from "../../stores/auth";
 import { useTheme } from "../../stores/theme";
-import { Field, PrimaryButton } from "../../components/ui";
+import { BrandMark, Field, PrimaryButton } from "../../components/ui";
 import { registerSchema } from "../../lib/schemas";
 import { WEB_APP_URL } from "../../config/env";
 import type { AuthStackParamList } from "../../navigation/types";
@@ -67,16 +68,23 @@ export function RegisterScreen({ navigation }: Props) {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.flex, { backgroundColor: theme.bg }]}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <Text style={[styles.lead, { color: theme.muted }]}>
-          Invite-only registration. After signup you will pay the registration fee (or apply a
-          promo) to reach ACTIVE status.
-        </Text>
-        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.divider }]}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.hero}>
+            <BrandMark size="lg" />
+            <Text style={[styles.lead, { color: theme.muted }]}>
+              Create your account. After signup, pay the registration fee or apply a promo to
+              reach ACTIVE status.
+            </Text>
+          </View>
+
           <Field
             label="Display name"
             value={displayName}
@@ -104,46 +112,50 @@ export function RegisterScreen({ navigation }: Props) {
             placeholder="Required by backend"
             autoCapitalize="characters"
           />
+
           <Pressable
             onPress={() => setAcceptTerms((v) => !v)}
-            style={{
-              flexDirection: "row",
-              gap: 10,
-              marginBottom: 14,
-              alignItems: "flex-start",
-            }}
+            style={styles.termsRow}
           >
             <View
               style={{
-                width: 20,
-                height: 20,
-                borderRadius: 6,
-                borderWidth: 1,
-                borderColor: theme.divider,
+                width: 22,
+                height: 22,
+                borderRadius: 8,
+                borderWidth: 1.5,
+                borderColor: acceptTerms ? theme.primary : theme.divider,
                 backgroundColor: acceptTerms ? theme.primary : "transparent",
                 marginTop: 2,
               }}
             />
-            <Text style={{ color: theme.muted, flex: 1, fontSize: 13, lineHeight: 18 }}>
+            <Text style={{ color: theme.muted, flex: 1, fontSize: 13, lineHeight: 20 }}>
               I accept the{" "}
               <Text
-                style={{ color: theme.primary }}
+                style={{ color: theme.primary, fontWeight: "700" }}
                 onPress={() => void Linking.openURL(`${WEB_APP_URL}/terms`)}
               >
                 Terms & Conditions
-              </Text>{" "}
-              (including preferred withdrawals and vault ROI bands).
+              </Text>
             </Text>
           </Pressable>
-          {error ? <Text style={{ color: theme.error, marginBottom: 12 }}>{error}</Text> : null}
+
+          {error ? <Text style={{ color: theme.error, marginBottom: 16 }}>{error}</Text> : null}
+
           <PrimaryButton
             label={busy ? "Creating…" : "Create account"}
             onPress={() => void handleRegister()}
             disabled={busy || !acceptTerms}
+            loading={busy}
           />
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+
+          <Pressable onPress={() => navigation.navigate("Login")} style={styles.linkWrap}>
+            <Text style={[styles.link, { color: theme.primary }]}>
+              Already have an account? Sign in
+            </Text>
+          </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -151,10 +163,20 @@ function useStyles() {
   return useMemo(
     () =>
       StyleSheet.create({
+        safe: { flex: 1 },
         flex: { flex: 1 },
-        container: { padding: 20, paddingBottom: 40 },
-        lead: { fontSize: 14, lineHeight: 20, marginBottom: 16 },
-        card: { borderRadius: 16, borderWidth: 1, padding: 16 },
+        container: { paddingHorizontal: 28, paddingTop: 24, paddingBottom: 48 },
+        hero: { marginBottom: 32, gap: 12 },
+        lead: { fontSize: 14, lineHeight: 22 },
+        termsRow: {
+          flexDirection: "row",
+          gap: 12,
+          marginBottom: 24,
+          marginTop: 8,
+          alignItems: "flex-start",
+        },
+        linkWrap: { marginTop: 28, alignItems: "center", paddingVertical: 8 },
+        link: { fontSize: 15, fontWeight: "700" },
       }),
     [],
   );

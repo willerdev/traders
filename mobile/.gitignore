@@ -40,6 +40,10 @@ yarn-error.*
 /ios
 /android
 
+# local APK builds
+/build-artifacts/
+*.apk
+
 # local agent
 .claude/
 .expo/

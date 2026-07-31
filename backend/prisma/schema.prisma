@@ -284,6 +284,9 @@ model User {
   instantWithdrawGrantedById String?
   /// When true with instantWithdraw: admin-marked verified — skip KYC for withdrawals.
   instantWithdrawKycExempt Boolean @default(false)
+  /// Bcrypt hash of 6-digit app PIN (unlock + withdraw auth).
+  appPinHash        String?
+  appPinUpdatedAt   DateTime?
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 

@@ -18,7 +18,7 @@ import { useTheme } from "../stores/theme";
 import { Field, ListRow, PrimaryButton, ScreenState, SectionCard } from "../components/ui";
 import { WEB_APP_URL } from "../config/env";
 import type { UserSettings } from "../lib/types";
-import type { MoreStackParamList } from "../navigation/types";
+import type { AccountStackParamList } from "../navigation/types";
 
 const JUMP = [
   { id: "profile", label: "Profile" },
@@ -30,7 +30,7 @@ const JUMP = [
 export function SettingsScreen() {
   const { api, user, logout, refreshDashboard } = useAuth();
   const { theme, mode, setMode } = useTheme();
-  const navigation = useNavigation<NativeStackNavigationProp<MoreStackParamList>>();
+  const navigation = useNavigation<NativeStackNavigationProp<AccountStackParamList>>();
   const scrollRef = useRef<ScrollView>(null);
   const sectionY = useRef<Record<string, number>>({});
   const [settings, setSettings] = useState<UserSettings | null>(null);

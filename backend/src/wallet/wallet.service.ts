@@ -1499,11 +1499,28 @@ export class WalletService {
     });
   }
 
+  private async consumeWithdrawPin(userId: string, pin: string) {
+    if (!/^\d{6}$/.test(pin?.trim() ?? '')) {
+      throw new BadRequestException('PIN must be exactly 6 digits');
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { appPinHash: true },
+    });
+    if (!user?.appPinHash) {
+      throw new BadRequestException(
+        'Set an app PIN in the app before withdrawing with PIN',
+      );
+    }
+    const ok = await bcrypt.compare(pin.trim(), user.appPinHash);
+    if (!ok) throw new BadRequestException('Incorrect PIN');
+  }
+
   async withdraw(
     userId: string,
     amount: number,
     savedWalletId: string,
-    otp: { sessionId: string; code: string },
+    auth: { sessionId?: string; code?: string; pin?: string },
   ) {
     await this.compliance.requireKycForPayout(userId);
 
@@ -1513,13 +1530,17 @@ export class WalletService {
       );
     }
 
-    await this.consumeWithdrawOtp(
-      userId,
-      amount,
-      savedWalletId,
-      otp.sessionId,
-      otp.code,
-    );
+    if (auth?.pin?.trim()) {
+      await this.consumeWithdrawPin(userId, auth.pin);
+    } else {
+      await this.consumeWithdrawOtp(
+        userId,
+        amount,
+        savedWalletId,
+        auth?.sessionId ?? '',
+        auth?.code ?? '',
+      );
+    }
 
     const grossAmount = Math.round(amount * 100) / 100;
     const vipUser = await this.prisma.user.findUnique({

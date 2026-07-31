@@ -12,13 +12,9 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useAuth } from "../stores/auth";
 import { useTheme } from "../stores/theme";
-import {
-  ActionIconButton,
-  MoneyRow,
-  PrimaryButton,
-  SectionCard,
-} from "../components/ui";
+import { BrandMark, MoneyRow, PrimaryButton, SectionCard, VerticalActionCard } from "../components/ui";
 import { InvestorPolicyBanners } from "../components/InvestorPolicyBanners";
+import { useSidebar } from "../components/AppSidebar";
 import { formatMoney, formatUsdt } from "../lib/format";
 import type {
   DisplayCurrencyInfo,
@@ -30,6 +26,7 @@ import type { HomeStackParamList } from "../navigation/types";
 export function HomeScreen() {
   const { user, dashboard, refreshDashboard, api } = useAuth();
   const { theme } = useTheme();
+  const { open } = useSidebar();
   const navigation =
     useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const [refreshing, setRefreshing] = useState(false);
@@ -78,7 +75,7 @@ export function HomeScreen() {
     (navigation.getParent() as any)?.navigate("Wallet", { screen });
   }
 
-  function goTab(tab: "Journal" | "Invest" | "More", screen?: string) {
+  function goTab(tab: "Journal" | "Invest" | "Account", screen?: string) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const parent = navigation.getParent() as any;
     if (screen) parent?.navigate(tab, { screen });
@@ -97,7 +94,12 @@ export function HomeScreen() {
           />
         }
       >
-        <Text style={[styles.brand, { color: theme.primary }]}>Trade Guard</Text>
+        <View style={styles.topRow}>
+          <BrandMark size="sm" />
+          <Pressable onPress={open} hitSlop={10}>
+            <Text style={{ color: theme.primary, fontWeight: "800" }}>Menu</Text>
+          </Pressable>
+        </View>
         <Text style={[styles.hello, { color: theme.text }]}>
           {dashboard?.user.displayName ?? user?.displayName ?? "Trader"}
         </Text>
@@ -123,8 +125,8 @@ export function HomeScreen() {
             <Text
               style={{
                 color: theme.muted,
-                marginBottom: 10,
-                lineHeight: 18,
+                marginBottom: 14,
+                lineHeight: 20,
                 fontSize: 13,
               }}
             >
@@ -132,59 +134,61 @@ export function HomeScreen() {
             </Text>
             <PrimaryButton
               label="Activate now"
-              size="sm"
               onPress={() => navigation.navigate("RegistrationPayment")}
             />
           </SectionCard>
         ) : null}
 
         <SectionCard>
-          <Text style={{ color: theme.muted, fontSize: 12, fontWeight: "600" }}>
+          <Text style={{ color: theme.muted, fontSize: 13, fontWeight: "700" }}>
             Funding balance
           </Text>
-          <Text
-            style={{
-              color: theme.text,
-              fontSize: 28,
-              fontWeight: "800",
-              marginTop: 6,
-            }}
-          >
+          <Text style={[styles.balance, { color: theme.text }]}>
             {formatMoney(available, display)}
           </Text>
           {account ? (
-            <Text style={{ color: theme.muted, marginTop: 8, fontSize: 12 }}>
+            <Text style={{ color: theme.muted, marginTop: 10, fontSize: 13 }}>
               Virtual {account.tier} · {formatUsdt(account.balance)}
             </Text>
           ) : (
-            <Text style={{ color: theme.muted, marginTop: 8, fontSize: 12 }}>
+            <Text style={{ color: theme.muted, marginTop: 10, fontSize: 13 }}>
               Virtual account appears after activation
             </Text>
           )}
-
-          <View style={styles.quickRow}>
-            <ActionIconButton
-              icon="arrow-down-outline"
-              label="Deposit"
-              onPress={() => goWallet("Deposit")}
-            />
-            <ActionIconButton
-              icon="arrow-up-outline"
-              label="Withdraw"
-              onPress={() => goWallet("Withdraw")}
-            />
-            <ActionIconButton
-              icon="trending-up-outline"
-              label="Invest"
-              onPress={() => goTab("Invest")}
-            />
-            <ActionIconButton
-              icon="chatbubbles-outline"
-              label="Support"
-              onPress={() => goTab("More", "MessagesMain")}
-            />
-          </View>
         </SectionCard>
+
+        <Text style={[styles.sectionLabel, { color: theme.text }]}>Quick actions</Text>
+        <VerticalActionCard
+          icon="arrow-down"
+          title="Deposit"
+          subtitle="Add USDT to funding"
+          onPress={() => goWallet("Deposit")}
+        />
+        <VerticalActionCard
+          icon="arrow-up"
+          title="Withdraw"
+          subtitle="Confirm with your app PIN"
+          onPress={() => goWallet("Withdraw")}
+          accent
+        />
+        <VerticalActionCard
+          icon="shield-checkmark"
+          title="Unitrust"
+          subtitle="5% daily · monthly withdraw"
+          onPress={() => goTab("Invest", "Unitrust")}
+        />
+        <VerticalActionCard
+          icon="book-outline"
+          title="Journal"
+          subtitle="Income target & credits"
+          onPress={() => goTab("Journal")}
+        />
+        <VerticalActionCard
+          icon="chatbubbles-outline"
+          title="Support"
+          subtitle="Chat with agents"
+          onPress={() => goTab("Account", "MessagesMain")}
+        />
 
         {account ? (
           <SectionCard title="Virtual account">
@@ -197,23 +201,12 @@ export function HomeScreen() {
           </SectionCard>
         ) : null}
 
-        <SectionCard title="Shortcuts" padded={false}>
-          <Pressable
-            onPress={() => goTab("Journal")}
-            style={[styles.linkRow, { borderBottomColor: theme.divider }]}
-          >
-            <Text style={{ color: theme.text, fontWeight: "600", fontSize: 14 }}>
-              Income journal
-            </Text>
-            <Text style={{ color: theme.primary, fontSize: 13 }}>Open</Text>
-          </Pressable>
-          <Pressable onPress={() => navigation.navigate("Payouts")} style={styles.linkRow}>
-            <Text style={{ color: theme.text, fontWeight: "600", fontSize: 14 }}>
-              Trader payouts
-            </Text>
-            <Text style={{ color: theme.primary, fontSize: 13 }}>Open</Text>
-          </Pressable>
-        </SectionCard>
+        <VerticalActionCard
+          icon="cash-outline"
+          title="Trader payouts"
+          subtitle="Request and track payouts"
+          onPress={() => navigation.navigate("Payouts")}
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -221,26 +214,20 @@ export function HomeScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  content: { padding: 16, paddingBottom: 40 },
-  brand: {
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.7,
-    textTransform: "uppercase",
-  },
-  hello: { fontSize: 26, fontWeight: "800", marginTop: 6, letterSpacing: -0.5 },
-  meta: { marginTop: 4, marginBottom: 16, fontSize: 12 },
-  quickRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 18,
-  },
-  linkRow: {
+  content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 48 },
+  topRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  hello: { fontSize: 28, fontWeight: "900", marginTop: 18, letterSpacing: -0.6 },
+  meta: { marginTop: 6, marginBottom: 24, fontSize: 13 },
+  balance: { fontSize: 34, fontWeight: "900", marginTop: 10, letterSpacing: -1 },
+  sectionLabel: {
+    fontSize: 18,
+    fontWeight: "800",
+    marginBottom: 14,
+    marginTop: 8,
+    letterSpacing: -0.3,
   },
 });

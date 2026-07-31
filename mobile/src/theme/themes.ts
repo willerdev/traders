@@ -13,6 +13,7 @@ export interface AppTheme {
   muted: string;
   primary: string;
   primarySoft: string;
+  primaryMuted: string;
   onPrimary: string;
   success: string;
   danger: string;
@@ -25,47 +26,49 @@ export interface AppTheme {
   iconBtn: string;
 }
 
-/** Aligned with web `frontend/src/app/globals.css` (navy + #2563EB). */
+/** Crypto-wallet dark UI: near-black + neon lime. */
 export const themes: Record<ThemeMode, AppTheme> = {
   dark: {
     mode: "dark",
     label: "Dark",
     isLight: false,
     statusBar: "light",
-    bg: "#121a2e",
-    surface: "#161e30",
-    surfaceAlt: "#1a2438",
+    bg: "#0A0A0A",
+    surface: "#161616",
+    surfaceAlt: "#1F1F1F",
     divider: "rgba(255,255,255,0.08)",
-    text: "#F8FAFC",
-    muted: "#94A3B8",
-    primary: "#2563EB",
-    primarySoft: "rgba(37,99,235,0.16)",
-    onPrimary: "#FFFFFF",
-    success: "#22C55E",
-    danger: "#EF4444",
+    text: "#FFFFFF",
+    muted: "#9CA3AF",
+    primary: "#C8F53A",
+    primarySoft: "rgba(200,245,58,0.14)",
+    primaryMuted: "rgba(200,245,58,0.35)",
+    onPrimary: "#0A0A0A",
+    success: "#C8F53A",
+    danger: "#FF6B8A",
     gold: "#FBBF24",
-    error: "#EF4444",
-    overlay: "rgba(8,12,24,0.78)",
-    inputBg: "#0f1626",
-    tabBar: "#0f1626",
-    tabBarBorder: "rgba(255,255,255,0.08)",
-    iconBtn: "#1a2438",
+    error: "#FF6B8A",
+    overlay: "rgba(0,0,0,0.72)",
+    inputBg: "#121212",
+    tabBar: "#0A0A0A",
+    tabBarBorder: "rgba(255,255,255,0.06)",
+    iconBtn: "#C8F53A",
   },
   light: {
     mode: "light",
     label: "Light",
     isLight: true,
     statusBar: "dark",
-    bg: "#F1F5F9",
+    bg: "#F7F8F4",
     surface: "#FFFFFF",
-    surfaceAlt: "#E8EEF6",
-    divider: "rgba(15,23,42,0.1)",
-    text: "#0F172A",
-    muted: "#64748B",
-    primary: "#2563EB",
-    primarySoft: "rgba(37,99,235,0.1)",
-    onPrimary: "#FFFFFF",
-    success: "#16A34A",
+    surfaceAlt: "#EEF0E8",
+    divider: "rgba(15,23,42,0.08)",
+    text: "#0A0A0A",
+    muted: "#6B7280",
+    primary: "#84CC16",
+    primarySoft: "rgba(132,204,22,0.14)",
+    primaryMuted: "rgba(132,204,22,0.35)",
+    onPrimary: "#0A0A0A",
+    success: "#65A30D",
     danger: "#DC2626",
     gold: "#D97706",
     error: "#DC2626",
@@ -73,6 +76,6 @@ export const themes: Record<ThemeMode, AppTheme> = {
     inputBg: "#FFFFFF",
     tabBar: "#FFFFFF",
     tabBarBorder: "rgba(15,23,42,0.08)",
-    iconBtn: "#E8EEF6",
+    iconBtn: "#84CC16",
   },
 };

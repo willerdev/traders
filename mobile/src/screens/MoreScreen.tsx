@@ -6,7 +6,7 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useTheme } from "../stores/theme";
 import { WEB_APP_URL } from "../config/env";
-import type { MoreStackParamList } from "../navigation/types";
+import type { AccountStackParamList } from "../navigation/types";
 
 type Item = {
   key: string;
@@ -18,9 +18,16 @@ type Item = {
 
 export function MoreScreen() {
   const { theme } = useTheme();
-  const navigation = useNavigation<NativeStackNavigationProp<MoreStackParamList>>();
+  const navigation = useNavigation<NativeStackNavigationProp<AccountStackParamList>>();
 
   const items: Item[] = [
+    {
+      key: "unitrust",
+      title: "Unitrust",
+      hint: "5% daily · monthly withdraw",
+      icon: "shield-checkmark",
+      onPress: () => navigation.navigate("Unitrust"),
+    },
     {
       key: "chain",
       title: "Chain vault",
@@ -110,14 +117,14 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
   },
   sub: { fontSize: 13, paddingHorizontal: 20, marginTop: 4, marginBottom: 8 },
-  content: { padding: 16, gap: 10, paddingBottom: 40 },
+  content: { padding: 20, gap: 16, paddingBottom: 48 },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 14,
     borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
+    borderRadius: 24,
+    padding: 18,
   },
   iconWrap: {
     width: 40,

@@ -9,7 +9,7 @@ import React, {
 import * as SecureStore from "expo-secure-store";
 import { themes, type AppTheme, type ThemeMode } from "../theme/themes";
 
-const THEME_KEY = "trp-mobile-theme";
+const THEME_KEY = "trp-mobile-theme-v3";
 
 type ThemeContextValue = {
   mode: ThemeMode;

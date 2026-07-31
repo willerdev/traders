@@ -30,8 +30,8 @@ export type InvestStackParamList = {
   Loans: undefined;
 };
 
-export type MoreStackParamList = {
-  MoreMain: undefined;
+export type AccountStackParamList = {
+  AccountMain: undefined;
   MessagesMain: undefined;
   SettingsMain: undefined;
   Payouts: undefined;
@@ -39,17 +39,18 @@ export type MoreStackParamList = {
   Kyc: undefined;
   ChainEnroll: undefined;
   SavedWallets: undefined;
+  Unitrust: undefined;
 };
 
 export type MainTabParamList = {
-  Home: undefined;
-  Journal: undefined;
-  Invest: undefined;
+  Home: undefined | { screen?: keyof HomeStackParamList };
   Wallet: undefined | { screen?: keyof WalletStackParamList };
-  More: undefined | { screen?: keyof MoreStackParamList };
+  Journal: undefined;
+  Invest: undefined | { screen?: keyof InvestStackParamList };
+  Account: undefined | { screen?: keyof AccountStackParamList };
 };
 
 export type RootStackParamList = {
   Auth: undefined;
-  Main: undefined;
+  Main: undefined | { screen?: keyof MainTabParamList; params?: object };
 };

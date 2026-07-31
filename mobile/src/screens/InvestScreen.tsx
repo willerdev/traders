@@ -5,7 +5,7 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useAuth } from "../stores/auth";
 import { useTheme } from "../stores/theme";
-import { Field, MoneyRow, PrimaryButton, ScreenState, SectionCard } from "../components/ui";
+import { Field, MoneyRow, PrimaryButton, ScreenState, SectionCard, VerticalActionCard } from "../components/ui";
 import { InvestorPolicyBanners } from "../components/InvestorPolicyBanners";
 import { formatUsdt, fmtDate } from "../lib/format";
 import { dailyCreditTimeShort } from "../lib/daily-credit-time";
@@ -132,16 +132,30 @@ export function InvestScreen() {
           }
         >
           <Text style={[styles.title, { color: theme.text }]}>Invest</Text>
-          <PrimaryButton
-            label="Open Unitrust (5% daily · monthly withdraw)"
-            variant="secondary"
+          <Text style={[styles.sub, { color: theme.muted }]}>
+            Products with daily yield and vault options
+          </Text>
+
+          <VerticalActionCard
+            icon="shield-checkmark"
+            title="Unitrust"
+            subtitle="5% daily · monthly withdraw window"
             onPress={() => navigation.navigate("Unitrust")}
+            accent
           />
-          <PrimaryButton
-            label="Loans (80% earnings advance)"
-            variant="secondary"
+          <VerticalActionCard
+            icon="cash-outline"
+            title="Loans"
+            subtitle="80% earnings advance"
             onPress={() => navigation.navigate("Loans")}
           />
+          <VerticalActionCard
+            icon="cube-outline"
+            title="Chain vault"
+            subtitle="On-chain enroll & launch"
+            onPress={() => navigation.navigate("ChainEnroll")}
+          />
+
           <InvestorPolicyBanners
             investmentBalance={status?.investmentBalance ?? 0}
             vipActive={Boolean(status?.vip?.active)}
@@ -150,11 +164,6 @@ export function InvestScreen() {
               status?.vipDailyYieldPercent ??
               10
             }
-          />
-          <PrimaryButton
-            label="Open Chain vault enroll"
-            variant="secondary"
-            onPress={() => navigation.navigate("ChainEnroll")}
           />
           <SectionCard title="Status">
             <MoneyRow label="Active" value={status?.active ? "Yes" : "No"} />
@@ -228,6 +237,12 @@ export function InvestScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  title: { fontSize: 28, fontWeight: "800", paddingHorizontal: 20, paddingTop: 8, letterSpacing: -0.4 },
-  content: { padding: 20, paddingBottom: 40 },
+  title: {
+    fontSize: 32,
+    fontWeight: "900",
+    letterSpacing: -0.8,
+    marginBottom: 6,
+  },
+  sub: { fontSize: 14, marginBottom: 22, lineHeight: 20 },
+  content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 48 },
 });

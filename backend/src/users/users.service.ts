@@ -3,6 +3,7 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   UpdateProfileDto,
@@ -454,5 +455,80 @@ export class UsersService {
     });
 
     return kyc ?? { status: 'NOT_STARTED' };
+  }
+
+  private assertPinFormat(pin: string) {
+    if (!/^\d{6}$/.test(pin?.trim() ?? '')) {
+      throw new BadRequestException('PIN must be exactly 6 digits');
+    }
+  }
+
+  async getAppPinStatus(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { appPinHash: true, appPinUpdatedAt: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    return {
+      hasPin: Boolean(user.appPinHash),
+      updatedAt: user.appPinUpdatedAt,
+    };
+  }
+
+  async setAppPin(userId: string, pin: string, currentPin?: string) {
+    this.assertPinFormat(pin);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { appPinHash: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    if (user.appPinHash) {
+      if (!currentPin?.trim()) {
+        throw new BadRequestException('Enter your current PIN to change it');
+      }
+      const ok = await bcrypt.compare(currentPin.trim(), user.appPinHash);
+      if (!ok) throw new BadRequestException('Current PIN is incorrect');
+    }
+
+    const appPinHash = await bcrypt.hash(pin.trim(), 10);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { appPinHash, appPinUpdatedAt: new Date() },
+    });
+    return { ok: true, hasPin: true, message: 'App PIN saved' };
+  }
+
+  async clearAppPin(userId: string, currentPin: string) {
+    this.assertPinFormat(currentPin);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { appPinHash: true },
+    });
+    if (!user?.appPinHash) {
+      throw new BadRequestException('No app PIN is set');
+    }
+    const ok = await bcrypt.compare(currentPin.trim(), user.appPinHash);
+    if (!ok) throw new BadRequestException('Current PIN is incorrect');
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { appPinHash: null, appPinUpdatedAt: new Date() },
+    });
+    return { ok: true, hasPin: false, message: 'App PIN removed' };
+  }
+
+  async verifyAppPin(userId: string, pin: string) {
+    this.assertPinFormat(pin);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { appPinHash: true },
+    });
+    if (!user?.appPinHash) {
+      throw new BadRequestException('Set an app PIN before using PIN auth');
+    }
+    const ok = await bcrypt.compare(pin.trim(), user.appPinHash);
+    if (!ok) throw new BadRequestException('Incorrect PIN');
+    return true;
   }
 }

@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,7 +14,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useAuth } from "../../stores/auth";
 import { useTheme } from "../../stores/theme";
 import { WEB_APP_URL } from "../../config/env";
-import { Field, PrimaryButton } from "../../components/ui";
+import { BrandMark, Field, PrimaryButton } from "../../components/ui";
 import { loginSchema } from "../../lib/schemas";
 import type { AuthStackParamList } from "../../navigation/types";
 
@@ -67,16 +66,13 @@ export function LoginScreen({ navigation }: Props) {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <View style={styles.hero}>
-          <Image
-            source={require("../../../assets/logo.png")}
-            style={styles.logo}
-            resizeMode="contain"
-            accessibilityLabel="Trade Guard"
-          />
+          <BrandMark size="lg" />
+          <Text style={[styles.tagline, { color: theme.muted }]}>
+            Sign in to your account
+          </Text>
         </View>
 
-        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.divider }]}>
-          <Text style={[styles.cardTitle, { color: theme.text }]}>Sign in</Text>
+        <View style={styles.form}>
           <Field
             label="Email"
             value={email}
@@ -93,23 +89,27 @@ export function LoginScreen({ navigation }: Props) {
           />
           {error ? <Text style={[styles.error, { color: theme.error }]}>{error}</Text> : null}
           {busy ? (
-            <ActivityIndicator color={theme.primary} style={{ marginVertical: 12 }} />
+            <ActivityIndicator color={theme.primary} style={{ marginVertical: 16 }} />
           ) : (
             <PrimaryButton label="Sign in" onPress={() => void handleLogin()} />
           )}
         </View>
 
-        <Pressable onPress={() => navigation.navigate("Register")} style={styles.linkWrap}>
-          <Text style={[styles.link, { color: theme.primary }]}>New here? Create an account</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => void Linking.openURL(`${WEB_APP_URL}/forgot-password`)}
-          style={styles.linkWrap}
-        >
-          <Text style={[styles.linkMuted, { color: theme.muted }]}>
-            Forgot password? Reset on web
-          </Text>
-        </Pressable>
+        <View style={styles.footer}>
+          <Pressable onPress={() => navigation.navigate("Register")} style={styles.linkWrap}>
+            <Text style={[styles.link, { color: theme.primary }]}>
+              New here? Create an account
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => void Linking.openURL(`${WEB_APP_URL}/forgot-password`)}
+            style={styles.linkWrap}
+          >
+            <Text style={[styles.linkMuted, { color: theme.muted }]}>
+              Forgot password? Reset on web
+            </Text>
+          </Pressable>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -120,14 +120,18 @@ function useStyles() {
     () =>
       StyleSheet.create({
         safe: { flex: 1 },
-        container: { flex: 1, paddingHorizontal: 24, justifyContent: "center" },
-        hero: { alignItems: "center", marginBottom: 28 },
-        logo: { width: 220, height: 220 },
-        card: { borderRadius: 20, borderWidth: 1, padding: 22 },
-        cardTitle: { fontSize: 18, fontWeight: "800", marginBottom: 18 },
+        container: {
+          flex: 1,
+          paddingHorizontal: 28,
+          justifyContent: "center",
+        },
+        hero: { marginBottom: 40, gap: 10 },
+        tagline: { fontSize: 15, fontWeight: "500", marginTop: 4 },
+        form: { gap: 4 },
         error: { marginBottom: 12, fontSize: 13 },
-        linkWrap: { marginTop: 18, alignItems: "center" },
-        link: { fontSize: 14, fontWeight: "700" },
+        footer: { marginTop: 36, gap: 8 },
+        linkWrap: { alignItems: "center", paddingVertical: 6 },
+        link: { fontSize: 15, fontWeight: "700" },
         linkMuted: { fontSize: 13, fontWeight: "600" },
       }),
     [],

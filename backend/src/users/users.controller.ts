@@ -3,6 +3,7 @@ import {
   Get,
   Patch,
   Post,
+  Delete,
   Body,
   UseGuards,
   Request,
@@ -103,5 +104,36 @@ export class UsersController {
   @Post('kyc/retry')
   retryKyc(@Request() req: { user: { id: string } }) {
     return this.usersService.retryKyc(req.user.id);
+  }
+
+  @Get('app-pin')
+  getAppPinStatus(@Request() req: { user: { id: string } }) {
+    return this.usersService.getAppPinStatus(req.user.id);
+  }
+
+  @Post('app-pin')
+  setAppPin(
+    @Request() req: { user: { id: string } },
+    @Body() body: { pin: string; currentPin?: string },
+  ) {
+    return this.usersService.setAppPin(req.user.id, body.pin, body.currentPin);
+  }
+
+  @Post('app-pin/verify')
+  verifyAppPin(
+    @Request() req: { user: { id: string } },
+    @Body() body: { pin: string },
+  ) {
+    return this.usersService.verifyAppPin(req.user.id, body.pin).then(() => ({
+      ok: true,
+    }));
+  }
+
+  @Delete('app-pin')
+  clearAppPin(
+    @Request() req: { user: { id: string } },
+    @Body() body: { currentPin: string },
+  ) {
+    return this.usersService.clearAppPin(req.user.id, body.currentPin);
   }
 }

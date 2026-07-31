@@ -170,13 +170,15 @@ export class WalletController {
     body: {
       amount: number;
       savedWalletId: string;
-      sessionId: string;
-      code: string;
+      sessionId?: string;
+      code?: string;
+      pin?: string;
     },
   ) {
     return this.wallet.withdraw(req.user.id, body.amount, body.savedWalletId, {
       sessionId: body.sessionId,
       code: body.code,
+      pin: body.pin,
     });
   }
 

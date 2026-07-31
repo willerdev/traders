@@ -192,6 +192,23 @@ export class ApiClient {
       }),
     retryKyc: () =>
       this.request<KycRecord>("/users/kyc/retry", { method: "POST" }),
+    appPinStatus: () =>
+      this.request<{ hasPin: boolean; updatedAt: string | null }>("/users/app-pin"),
+    setAppPin: (pin: string, currentPin?: string) =>
+      this.request<{ ok: boolean; hasPin: boolean; message: string }>("/users/app-pin", {
+        method: "POST",
+        body: JSON.stringify({ pin, currentPin }),
+      }),
+    verifyAppPin: (pin: string) =>
+      this.request<{ ok: boolean }>("/users/app-pin/verify", {
+        method: "POST",
+        body: JSON.stringify({ pin }),
+      }),
+    clearAppPin: (currentPin: string) =>
+      this.request<{ ok: boolean; hasPin: boolean; message: string }>("/users/app-pin", {
+        method: "DELETE",
+        body: JSON.stringify({ currentPin }),
+      }),
   };
 
   uploads = {
@@ -334,8 +351,7 @@ export class ApiClient {
     withdraw: (
       amount: number,
       savedWalletId: string,
-      sessionId: string,
-      code: string,
+      auth: { sessionId?: string; code?: string; pin?: string },
     ) =>
       this.request<{
         status: string;
@@ -363,8 +379,7 @@ export class ApiClient {
         body: JSON.stringify({
           amount,
           savedWalletId: savedWalletId.trim(),
-          sessionId: sessionId.trim(),
-          code: code.trim(),
+          ...auth,
         }),
       }),
     momoP2pQuote: (amountUsdt: number) =>

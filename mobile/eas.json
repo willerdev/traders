@@ -14,6 +14,16 @@
         "buildType": "apk"
       }
     },
+    "preview-local": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EAS_BUILD_PROFILE": "preview-local",
+        "EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP": "1"
+      }
+    },
     "production": {
       "autoIncrement": true
     }

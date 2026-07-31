@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -12,6 +13,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useAuth } from "../../stores/auth";
 import { useTheme } from "../../stores/theme";
 import { Chip, Field, PrimaryButton, ScreenState, SectionCard } from "../../components/ui";
+import { PinDots, PinKeypad } from "../../components/PinKeypad";
 import { ProgressTracker } from "../../components/ProgressTracker";
 import { formatUsdt, truncateMiddle } from "../../lib/format";
 import type { SavedWithdrawalWallet, WalletSummary } from "../../lib/types";
@@ -50,10 +52,8 @@ export function WithdrawScreen() {
   const [error, setError] = useState<string | null>(null);
   const [submittedStatus, setSubmittedStatus] = useState<string | null>(null);
   const [submittedNet, setSubmittedNet] = useState<number | null>(null);
-  const [phase, setPhase] = useState<"form" | "otp" | "track">("form");
-  const [otpSessionId, setOtpSessionId] = useState("");
-  const [otpEmail, setOtpEmail] = useState("");
-  const [otpCode, setOtpCode] = useState("");
+  const [phase, setPhase] = useState<"form" | "pin" | "track">("form");
+  const [pinCode, setPinCode] = useState("");
   const [p2pId, setP2pId] = useState<string | null>(null);
   const [p2pUgx, setP2pUgx] = useState<number | null>(null);
   const [momoQuoteUgx, setMomoQuoteUgx] = useState<number | null>(null);
@@ -139,7 +139,7 @@ export function WithdrawScreen() {
       };
     }, [api, isMomo, net]),
   );
-  async function requestOtp() {
+  async function goConfirmPin() {
     if (!Number.isFinite(value) || value <= 0) {
       setError("Enter a valid amount");
       return;
@@ -148,39 +148,24 @@ export function WithdrawScreen() {
       setError("Select a withdrawal address");
       return;
     }
-    setBusy(true);
     setError(null);
-    try {
-      const res = await api.wallet.requestWithdrawOtp(value, selectedId);
-      setOtpSessionId(res.sessionId);
-      setOtpEmail(res.email);
-      setOtpCode("");
-      setPhase("otp");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not send code");
-    } finally {
-      setBusy(false);
-    }
+    setPinCode("");
+    setPhase("pin");
   }
 
-  async function submit() {
-    if (!selectedId || !otpSessionId) {
-      setError("Request a verification code first");
+  async function submitWithPin(code: string) {
+    if (!selectedId) {
+      setError("Select a withdrawal address");
       return;
     }
-    if (otpCode.trim().length < 6) {
-      setError("Enter the 6-digit email code");
+    if (code.trim().length < 6) {
+      setError("Enter your 6-digit PIN");
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      const res = await api.wallet.withdraw(
-        value,
-        selectedId,
-        otpSessionId,
-        otpCode.trim(),
-      );
+      const res = await api.wallet.withdraw(value, selectedId, { pin: code.trim() });
       setSubmittedStatus(res.status);
       setSubmittedNet(res.netPayout);
       if (res.status === "momo_p2p" && res.p2pId) {
@@ -192,10 +177,10 @@ export function WithdrawScreen() {
       }
       setPhase("track");
       setAmount("");
-      setOtpCode("");
-      setOtpSessionId("");
+      setPinCode("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Withdraw failed");
+      setPinCode("");
     } finally {
       setBusy(false);
     }
@@ -267,64 +252,53 @@ export function WithdrawScreen() {
             setSubmittedNet(null);
             setP2pId(null);
             setP2pUgx(null);
-            setOtpSessionId("");
-            setOtpEmail("");
-            setOtpCode("");
+            setPinCode("");
           }}
         />
       </ScrollView>
     );
   }
 
-  if (phase === "otp") {
+  if (phase === "pin") {
     return (
-      <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={styles.content}>
-        <Text style={[styles.stepTitle, { color: theme.text }]}>Email verification</Text>
-        <Text style={{ color: theme.muted, marginBottom: 14, fontSize: 13, lineHeight: 18 }}>
-          We sent a 6-digit code to {otpEmail || "your email"} to confirm withdrawing{" "}
-          {formatUsdt(value)}.
-        </Text>
-        <SectionCard title="Code">
-          <Field
-            label="Verification code"
-            value={otpCode}
-            onChangeText={(t) => setOtpCode(t.replace(/\D/g, "").slice(0, 6))}
-            keyboardType="number-pad"
-            placeholder="6-digit code"
-          />
-        </SectionCard>
-        {error ? (
-          <Text style={{ color: theme.text, marginBottom: 10, fontSize: 12 }}>
-            {error}
+      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <Text style={[styles.stepTitle, { color: theme.text }]}>Confirm with PIN</Text>
+          <Text style={{ color: theme.muted, marginBottom: 8, fontSize: 15, lineHeight: 22 }}>
+            Enter your app PIN to withdraw {formatUsdt(value)}.
           </Text>
-        ) : null}
-        <PrimaryButton
-          label={busy ? "Confirming…" : "Confirm withdrawal"}
-          onPress={() => void submit()}
-          disabled={busy || otpCode.trim().length < 6}
-          size="sm"
-        />
-        <View style={{ height: 8 }} />
-        <PrimaryButton
-          label="Resend code"
-          variant="secondary"
-          size="sm"
-          disabled={busy}
-          onPress={() => void requestOtp()}
-        />
-        <View style={{ height: 8 }} />
-        <PrimaryButton
-          label="Back"
-          variant="secondary"
-          size="sm"
-          disabled={busy}
-          onPress={() => {
-            setPhase("form");
-            setOtpCode("");
-            setError(null);
-          }}
-        />
-      </ScrollView>
+          <PinDots length={6} filled={pinCode.length} />
+          {error ? (
+            <Text style={{ color: theme.error, marginBottom: 12, textAlign: "center" }}>
+              {error}
+            </Text>
+          ) : null}
+          {busy ? <ActivityIndicator color={theme.primary} style={{ marginBottom: 12 }} /> : null}
+        </ScrollView>
+        <View style={{ paddingBottom: 20 }}>
+          <PinKeypad
+            onDigit={(d) => {
+              if (busy) return;
+              const next = (pinCode + d).slice(0, 6);
+              setPinCode(next);
+              if (next.length === 6) void submitWithPin(next);
+            }}
+            onDelete={() => setPinCode((v) => v.slice(0, -1))}
+          />
+          <View style={{ paddingHorizontal: 20, marginTop: 12 }}>
+            <PrimaryButton
+              label="Back"
+              variant="ghost"
+              disabled={busy}
+              onPress={() => {
+                setPhase("form");
+                setPinCode("");
+                setError(null);
+              }}
+            />
+          </View>
+        </View>
+      </View>
     );
   }
 
@@ -337,7 +311,7 @@ export function WithdrawScreen() {
       <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={styles.content}>
         <Text style={[styles.stepTitle, { color: theme.text }]}>Withdraw</Text>
         <Text style={{ color: theme.muted, marginBottom: 14, fontSize: 13, lineHeight: 18 }}>
-          Choose a saved wallet address, enter amount, then confirm with an email code.
+          Choose a saved wallet address, enter amount, then confirm with your app PIN.
         </Text>
 
         <SectionCard>
@@ -459,8 +433,8 @@ export function WithdrawScreen() {
         ) : null}
 
         <PrimaryButton
-          label={busy ? "Sending code…" : "Continue — email code"}
-          onPress={() => void requestOtp()}
+          label={busy ? "…" : "Continue — confirm PIN"}
+          onPress={() => void goConfirmPin()}
           disabled={busy || !selectedId}
           size="sm"
         />
@@ -478,24 +452,24 @@ export function WithdrawScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16, paddingBottom: 48 },
-  stepTitle: { fontSize: 22, fontWeight: "700", marginBottom: 4 },
+  content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 48 },
+  stepTitle: { fontSize: 28, fontWeight: "900", marginBottom: 10, letterSpacing: -0.6 },
   selectedCoin: {
     borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
+    borderRadius: 20,
+    padding: 16,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
   walletRow: {
     borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
+    borderRadius: 20,
+    padding: 16,
   },
   feeRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 4,
+    paddingVertical: 6,
   },
 });
