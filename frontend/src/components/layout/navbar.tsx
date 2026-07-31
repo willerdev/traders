@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ComponentType,
 } from "react";
@@ -264,6 +265,18 @@ function SidebarShell({
   );
   const [query, setQuery] = useState("");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    function onDocClick(e: MouseEvent) {
+      if (!userMenuRef.current?.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [userMenuOpen]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -287,7 +300,7 @@ function SidebarShell({
   return (
     <div
       className={cn(
-        "flex h-full flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl shadow-black/20",
+        "flex h-full flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl shadow-black/20",
         mobile && "rounded-none border-0 shadow-none",
       )}
     >
@@ -363,7 +376,7 @@ function SidebarShell({
         )
       )}
 
-      <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-3">
         {filtered.map((group) => (
           <div key={group.id} className="mb-3">
             {group.label && showLabels && (
@@ -404,70 +417,73 @@ function SidebarShell({
         ))}
       </div>
 
-      <div className="border-t border-[var(--color-border)] p-2">
-        <div className={cn(!showLabels && "flex justify-center")}>
-          <PlatformNotificationsBell />
-        </div>
+      <div
+        ref={userMenuRef}
+        className="relative z-40 shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface)] p-2"
+      >
+        {!userMenuOpen && (
+          <div className={cn(!showLabels && "flex justify-center")}>
+            <PlatformNotificationsBell compact={!showLabels} />
+          </div>
+        )}
 
-        <div className="relative mt-1">
-          {userMenuOpen && (
-            <div className="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl">
-              <Link
-                href="/settings"
-                onClick={() => {
-                  setUserMenuOpen(false);
-                  onNavigate?.();
-                }}
-                className="flex items-center gap-3 px-3 py-2.5 text-sm text-foreground hover:bg-foreground/5"
-              >
-                <Settings className="h-4 w-4 text-muted" />
-                Settings
-              </Link>
-              <button
-                type="button"
-                onClick={() => {
-                  setUserMenuOpen(false);
-                  logout();
-                }}
-                className="flex w-full items-center gap-3 px-3 py-2.5 text-sm text-foreground hover:bg-foreground/5"
-              >
-                <LogOut className="h-4 w-4 text-muted" />
-                Log out
-              </button>
-            </div>
+        {userMenuOpen && (
+          <div className="mb-1 overflow-hidden rounded-xl border border-[var(--color-border)] bg-background shadow-lg">
+            <Link
+              href="/settings"
+              onClick={() => {
+                setUserMenuOpen(false);
+                onNavigate?.();
+              }}
+              className="flex items-center gap-3 px-3 py-2.5 text-sm text-foreground hover:bg-foreground/5"
+            >
+              <Settings className="h-4 w-4 text-muted" />
+              Settings
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                setUserMenuOpen(false);
+                logout();
+              }}
+              className="flex w-full items-center gap-3 px-3 py-2.5 text-sm text-foreground hover:bg-foreground/5"
+            >
+              <LogOut className="h-4 w-4 text-muted" />
+              Log out
+            </button>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => setUserMenuOpen((o) => !o)}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-foreground/5",
+            !showLabels && "justify-center px-0",
           )}
-
-          <button
-            type="button"
-            onClick={() => setUserMenuOpen((o) => !o)}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-foreground/5",
-              !showLabels && "justify-center px-0",
-            )}
-          >
-            <UserAvatar name={displayName} src={avatarUrl} size="sm" />
-            {showLabels && (
-              <>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-foreground">
-                    {displayName}
-                  </span>
-                  {email && (
-                    <span className="block truncate text-[11px] text-muted">
-                      {email}
-                    </span>
-                  )}
+        >
+          <UserAvatar name={displayName} src={avatarUrl} size="sm" />
+          {showLabels && (
+            <>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold text-foreground">
+                  {displayName}
                 </span>
-                <ChevronUp
-                  className={cn(
-                    "h-4 w-4 shrink-0 text-muted transition-transform",
-                    !userMenuOpen && "rotate-180",
-                  )}
-                />
-              </>
-            )}
-          </button>
-        </div>
+                {email && (
+                  <span className="block truncate text-[11px] text-muted">
+                    {email}
+                  </span>
+                )}
+              </span>
+              <ChevronUp
+                className={cn(
+                  "h-4 w-4 shrink-0 text-muted transition-transform",
+                  !userMenuOpen && "rotate-180",
+                )}
+              />
+            </>
+          )}
+        </button>
       </div>
     </div>
   );

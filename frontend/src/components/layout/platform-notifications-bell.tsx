@@ -16,7 +16,12 @@ function fmtTime(iso: string) {
   });
 }
 
-export function PlatformNotificationsBell() {
+export function PlatformNotificationsBell({
+  compact = false,
+}: {
+  /** Icon-only layout (collapsed sidebar). */
+  compact?: boolean;
+}) {
   const { isAuthenticated } = useAuthStore();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<PlatformNotification[]>([]);
@@ -88,7 +93,7 @@ export function PlatformNotificationsBell() {
   if (!isAuthenticated) return null;
 
   return (
-    <div ref={panelRef} className="relative px-2 pb-2">
+    <div ref={panelRef} className="relative w-full">
       <button
         type="button"
         title="Notifications"
@@ -97,33 +102,36 @@ export function PlatformNotificationsBell() {
           void load();
         }}
         className={cn(
-          "relative flex w-full items-center rounded-lg py-2.5 text-sm font-medium text-muted transition-colors hover:bg-foreground/5 hover:text-foreground",
-          "justify-center px-0",
-          "group-hover/sidebar:justify-start group-hover/sidebar:pl-[0.85rem] group-hover/sidebar:pr-3",
-          "group-focus-within/sidebar:justify-start group-focus-within/sidebar:pl-[0.85rem] group-focus-within/sidebar:pr-3",
+          "relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted transition-colors hover:bg-foreground/5 hover:text-foreground",
+          compact && "justify-center px-0",
         )}
       >
-        <Bell className="h-5 w-5 shrink-0" />
-        {unreadCount > 0 && (
-          <span className="absolute left-7 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-white group-hover/sidebar:left-auto group-hover/sidebar:right-2 group-hover/sidebar:top-2">
-            {unreadCount > 9 ? "9+" : unreadCount}
+        <span className="relative shrink-0">
+          <Bell className="h-5 w-5" />
+          {unreadCount > 0 && (
+            <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-white">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
+        </span>
+        {!compact && (
+          <span className="truncate">
+            Notifications
+            {unreadCount > 0 ? ` (${unreadCount})` : ""}
           </span>
         )}
-        <span
-          className={cn(
-            "ml-3 overflow-hidden whitespace-nowrap transition-all duration-300",
-            "max-w-0 opacity-0",
-            "group-hover/sidebar:max-w-[10rem] group-hover/sidebar:opacity-100",
-            "group-focus-within/sidebar:max-w-[10rem] group-focus-within/sidebar:opacity-100",
-          )}
-        >
-          Notifications
-          {unreadCount > 0 ? ` (${unreadCount})` : ""}
-        </span>
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-2 right-2 z-[60] mb-2 max-h-80 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl md:left-full md:bottom-0 md:top-auto md:mb-0 md:ml-2 md:w-80">
+        <div
+          className={cn(
+            "absolute z-[70] max-h-80 overflow-hidden rounded-xl border border-[var(--color-border)] bg-background shadow-2xl",
+            // Desktop: fly out beside the sidebar so it never covers nav items.
+            "bottom-0 left-full ml-2 w-80",
+            // Narrow / mobile drawer: open upward inside the panel.
+            "max-md:bottom-full max-md:left-0 max-md:right-0 max-md:mb-2 max-md:ml-0 max-md:w-auto",
+          )}
+        >
           <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2">
             <p className="text-sm font-semibold text-foreground">Notifications</p>
             {unreadCount > 0 && (
