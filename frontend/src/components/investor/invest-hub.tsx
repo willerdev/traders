@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -58,51 +58,160 @@ const fadeUp = {
   animate: { opacity: 1, y: 0 },
 };
 
-function StatCard({
-  label,
-  value,
-  sub,
-  accent,
-  compactValue = false,
-  delay = 0,
+function PortfolioSummary({
+  balance,
+  enrolledAt,
+  dailyYieldPercent,
+  riskPercent,
+  totalProfit,
+  tradingProfit,
+  walletEarnings,
+  display,
+  vipActive,
+  paused,
+  yieldPaused,
+  autoReinvest,
+  autoReinvestFeePercent,
+  loading,
+  onRefresh,
 }: {
-  label: string;
-  value: string;
-  sub?: ReactNode;
-  accent?: "invest" | "risk" | "profit" | "neutral";
-  compactValue?: boolean;
-  delay?: number;
+  balance: number;
+  enrolledAt?: string | null;
+  dailyYieldPercent: number;
+  riskPercent: number;
+  totalProfit: number;
+  tradingProfit: number;
+  walletEarnings: number;
+  display: InvestorStatus["displayCurrency"];
+  vipActive?: boolean;
+  paused?: boolean;
+  yieldPaused?: boolean;
+  autoReinvest?: boolean;
+  autoReinvestFeePercent?: number;
+  loading?: boolean;
+  onRefresh: () => void;
 }) {
-  const accentClass =
-    accent === "invest"
-      ? "from-indigo-600/30 via-indigo-900/20 to-transparent border-indigo-500/30"
-      : accent === "risk"
-        ? "from-cyan-600/25 via-cyan-900/15 to-transparent border-cyan-500/25"
-        : accent === "profit"
-          ? "from-emerald-600/25 via-emerald-900/15 to-transparent border-emerald-500/25"
-          : "from-white/5 to-transparent border-white/10";
+  const localCurrency = isLocalCurrencyDisplay(display);
+  const profitPositive = totalProfit >= 0;
 
   return (
     <motion.div
       {...fadeUp}
-      transition={{ duration: 0.4, delay }}
-      className={cn(
-        "rounded-2xl border bg-gradient-to-br p-4",
-        accentClass,
-      )}
+      className="xl:col-span-12 xl:row-start-1 overflow-hidden rounded-2xl border border-white/10 bg-[var(--color-surface)]"
     >
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
-        {label}
-      </p>
-      <p
-        className={cn(
-          "mt-1 font-bold tracking-tight text-white",
-          compactValue ? "text-lg xl:text-xl" : "text-2xl",
-        )}
-      >
-        {value}
-      </p>
-      {sub && <p className="mt-1 text-xs text-gray-500">{sub}</p>}
+      <div className="relative px-5 pb-5 pt-5 sm:px-6">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-primary/15 to-transparent"
+        />
+        <div className="relative flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+              Portfolio
+            </p>
+            <p
+              className={cn(
+                "mt-2 font-bold tracking-tight text-white",
+                localCurrency ? "text-3xl sm:text-4xl" : "text-4xl sm:text-5xl",
+              )}
+            >
+              {formatMoney(balance, display)}
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-muted">
+              <span>
+                {enrolledAt
+                  ? `Enrolled ${new Date(enrolledAt).toLocaleDateString()}`
+                  : "Active investor"}
+              </span>
+              {vipActive && (
+                <span className="rounded-md bg-amber-400/20 px-1.5 py-0.5 text-xs font-semibold text-amber-100">
+                  VIP
+                </span>
+              )}
+              {paused && (
+                <span className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-xs text-amber-200">
+                  Trading paused
+                </span>
+              )}
+              {yieldPaused && (
+                <span className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-xs text-amber-200">
+                  Yield paused
+                </span>
+              )}
+              {autoReinvest && (
+                <span className="rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-xs text-emerald-200">
+                  Auto-reinvest
+                </span>
+              )}
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="shrink-0 text-muted hover:bg-foreground/5 hover:text-foreground"
+            onClick={onRefresh}
+            disabled={loading}
+            aria-label="Refresh investment status"
+          >
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid border-t border-white/10 sm:grid-cols-3">
+        <div className="border-b border-white/10 px-5 py-4 sm:border-b-0 sm:border-r sm:px-6">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+            Daily yield
+          </p>
+          <p className="mt-1.5 text-2xl font-bold text-white">
+            {dailyYieldPercent}%
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-muted">
+            {autoReinvest ? (
+              <>
+                Auto-reinvest on ({autoReinvestFeePercent ?? 10}% fee)
+              </>
+            ) : (
+              <>
+                Credited to wallet{" "}
+                <DailyCreditTimeText
+                  country={display?.derivedFromCountry}
+                  variant="short"
+                />
+              </>
+            )}
+          </p>
+        </div>
+        <div className="border-b border-white/10 px-5 py-4 sm:border-b-0 sm:border-r sm:px-6">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+            Risk per trade
+          </p>
+          <p className="mt-1.5 text-2xl font-bold text-white">{riskPercent}%</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted">
+            1:2 reward-risk on MT5
+          </p>
+        </div>
+        <div className="px-5 py-4 sm:px-6">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+            Total profit
+          </p>
+          <p
+            className={cn(
+              "mt-1.5 font-bold tracking-tight",
+              profitPositive ? "text-emerald-400" : "text-red-400",
+              localCurrency ? "text-xl sm:text-2xl" : "text-2xl",
+            )}
+          >
+            {profitPositive ? "+" : ""}
+            {formatMoney(totalProfit, display)}
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-muted">
+            Trading {formatMoney(tradingProfit, display)} · Wallet{" "}
+            {formatMoney(walletEarnings, display)}
+          </p>
+        </div>
+      </div>
     </motion.div>
   );
 }
@@ -465,7 +574,6 @@ export function InvestHub() {
     );
   }
 
-  const profitPositive = status.totalProfit >= 0;
   const riskPercent = status.settings?.riskPercent ?? 2;
   const display = status.displayCurrency;
   const vip = status.vip;
@@ -489,103 +597,23 @@ export function InvestHub() {
         <CurrencySwitcher displayCurrency={display} onChanged={refresh} />
       </div>
       <div className="space-y-5 xl:grid xl:grid-cols-12 xl:items-start xl:gap-5 xl:space-y-0">
-      <motion.div
-        {...fadeUp}
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 via-indigo-800 to-[#1e3a8a] p-5 shadow-lg shadow-indigo-900/30 xl:col-span-7 xl:row-start-1 xl:h-full xl:min-h-44"
-      >
-        <div className="absolute -right-10 -top-10 h-36 w-36 rounded-full bg-white/10 blur-2xl" />
-        <div className="relative flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-medium text-indigo-200">Your investment</p>
-            <p
-              className={cn(
-                "mt-1 font-bold tracking-tight text-white",
-                localCurrency
-                  ? "text-2xl sm:text-3xl"
-                  : "text-3xl sm:text-4xl",
-              )}
-            >
-              {formatMoney(
-                status.investmentBalance ?? status.investmentDeposited,
-                display,
-              )}
-            </p>
-            <p className="mt-2 text-sm text-indigo-200/80">
-              {status.enrolledAt
-                ? `Enrolled ${new Date(status.enrolledAt).toLocaleDateString()}`
-                : "Active investor"}
-              {vip?.active && (
-                <span className="ml-2 rounded bg-amber-400/25 px-1.5 py-0.5 text-xs font-semibold text-amber-100">
-                  VIP
-                </span>
-              )}
-              {status.settings?.paused && (
-                <span className="ml-2 rounded bg-amber-500/20 px-1.5 py-0.5 text-xs text-amber-200">
-                  Trading paused
-                </span>
-              )}
-              {status.settings?.yieldPaused && (
-                <span className="ml-2 rounded bg-amber-500/20 px-1.5 py-0.5 text-xs text-amber-200">
-                  Yield paused
-                </span>
-              )}
-              {status.settings?.autoReinvestEarnings && (
-                <span className="ml-2 rounded bg-emerald-500/20 px-1.5 py-0.5 text-xs text-emerald-200">
-                  Auto-reinvest
-                </span>
-              )}
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="shrink-0 text-white/80 hover:bg-white/10 hover:text-white"
-            onClick={() => void refresh()}
-            disabled={loading}
-          >
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-          </Button>
-        </div>
-      </motion.div>
-
-      <div className="grid gap-3 sm:grid-cols-3 xl:col-span-5 xl:row-start-1 xl:h-full">
-        <StatCard
-          label="Investment balance"
-          value={formatMoney(status.investmentBalance ?? 0, display)}
-          sub={
-            status.settings?.autoReinvestEarnings
-              ? `${status.dailyYieldPercent}% daily · auto-reinvest on (${status.autoReinvestFeePercent ?? 10}% fee)`
-              : (
-                  <>
-                    {status.dailyYieldPercent}% daily · credited to wallet{" "}
-                    <DailyCreditTimeText
-                      country={display?.derivedFromCountry}
-                      variant="short"
-                    />
-                  </>
-                )
-          }
-          accent="invest"
-          compactValue={localCurrency}
-          delay={0.05}
-        />
-        <StatCard
-          label="Risk per trade"
-          value={`${riskPercent}%`}
-          sub="1:2 reward-risk on MT5"
-          accent="risk"
-          delay={0.1}
-        />
-        <StatCard
-          label="Total profit"
-          value={`${profitPositive ? "+" : ""}${formatMoney(status.totalProfit, display)}`}
-          sub={`Trading ${formatMoney(status.tradingProfit, display)} · Wallet ${formatMoney(status.walletEarnings, display)}`}
-          accent="profit"
-          compactValue={localCurrency}
-          delay={0.15}
-        />
-      </div>
+      <PortfolioSummary
+        balance={status.investmentBalance ?? status.investmentDeposited ?? 0}
+        enrolledAt={status.enrolledAt}
+        dailyYieldPercent={status.dailyYieldPercent}
+        riskPercent={riskPercent}
+        totalProfit={status.totalProfit}
+        tradingProfit={status.tradingProfit}
+        walletEarnings={status.walletEarnings}
+        display={display}
+        vipActive={Boolean(vip?.active)}
+        paused={Boolean(status.settings?.paused)}
+        yieldPaused={Boolean(status.settings?.yieldPaused)}
+        autoReinvest={Boolean(status.settings?.autoReinvestEarnings)}
+        autoReinvestFeePercent={status.autoReinvestFeePercent}
+        loading={loading}
+        onRefresh={() => void refresh()}
+      />
 
       <motion.div
         {...fadeUp}
