@@ -96,7 +96,7 @@ export function LoansScreen() {
           <Text style={[styles.title, { color: theme.text }]}>Loans</Text>
           <Text style={{ color: theme.muted, marginBottom: 12, fontSize: 13 }}>
             80% advance on projected earnings · 20% interest · admin approval ·
-            emails on every step
+            while open you may only withdraw the loan advance until repaid
           </Text>
 
           <View style={styles.terms}>

@@ -1010,6 +1010,8 @@ model PlatformConfig {
   investorAutoStopAnnouncedAt DateTime?
   /// Set after the $1000+ loan eligibility email is broadcast once.
   investorLoanEligibilityAnnouncedAt DateTime?
+  /// Set after active-borrower withdraw-restriction email is broadcast once.
+  activeLoanWithdrawPolicyAnnouncedAt DateTime?
   /// Set after the trader-program sunset email is broadcast once.
   traderProgramSunsetAnnouncedAt DateTime?
   /// Preferred withdrawal cadence: WEEKLY (Sunday UTC) or MONTHLY (1st UTC).
@@ -1175,6 +1177,8 @@ model Loan {
   interestPercent      Decimal    @default(20) @db.Decimal(5, 2)
   /// Amount disbursed to wallet on approval (80% of projected).
   principal            Decimal    @db.Decimal(12, 2)
+  /// USDT withdrawn against this loan while APPROVED (capped at principal).
+  withdrawnAgainstLoan Decimal    @default(0) @db.Decimal(12, 2)
   /// Interest owed (20% of principal).
   interestAmount       Decimal    @db.Decimal(12, 2)
   /// principal + interestAmount

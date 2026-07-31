@@ -748,6 +748,18 @@ export const api = {
       body: JSON.stringify({ force }),
     }),
 
+  broadcastActiveLoanWithdrawPolicy: (force = false) =>
+    request<{
+      skipped: boolean;
+      announcedAt?: string;
+      total: number;
+      sent: number;
+      failed: number;
+    }>("/admin/notifications/active-loan-withdraw-policy", {
+      method: "POST",
+      body: JSON.stringify({ force }),
+    }),
+
   broadcastTraderProgramSunset: (force = false) =>
     request<{
       skipped: boolean;

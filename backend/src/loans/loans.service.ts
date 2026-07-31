@@ -56,6 +56,7 @@ export class LoansService {
     advancePercent: { toString(): string } | number;
     interestPercent: { toString(): string } | number;
     principal: { toString(): string } | number;
+    withdrawnAgainstLoan?: { toString(): string } | number;
     interestAmount: { toString(): string } | number;
     totalDue: { toString(): string } | number;
     dueAt: Date | null;
@@ -67,6 +68,8 @@ export class LoansService {
     adminNote: string | null;
     createdAt: Date;
   }) {
+    const principal = Number(loan.principal);
+    const withdrawn = Number(loan.withdrawnAgainstLoan ?? 0);
     return {
       id: loan.id,
       userId: loan.userId,
@@ -77,7 +80,12 @@ export class LoansService {
       projectedEarnings: Number(loan.projectedEarnings),
       advancePercent: Number(loan.advancePercent),
       interestPercent: Number(loan.interestPercent),
-      principal: Number(loan.principal),
+      principal,
+      withdrawnAgainstLoan: withdrawn,
+      withdrawableLoanRemaining: Math.max(
+        0,
+        Math.round((principal - withdrawn) * 100) / 100,
+      ),
       interestAmount: Number(loan.interestAmount),
       totalDue: Number(loan.totalDue),
       dueAt: loan.dueAt?.toISOString() ?? null,

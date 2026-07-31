@@ -2151,6 +2151,7 @@ export class NotificationService {
       'Loan approved — funds credited',
       `<p>Hi ${this.escape(user.name)},</p>
       <p>Your <strong>${this.escape(data.term)}</strong> loan was approved. <strong>$${data.principal.toFixed(2)} USDT</strong> is in your wallet.</p>
+      <p><strong>Important:</strong> until you repay this loan, you may only withdraw the loan advance (up to $${data.principal.toFixed(2)}). Other wallet funds stay locked until the loan is repaid.</p>
       <p>Repay <strong>$${data.totalDue.toFixed(2)}</strong> (includes $${data.interestAmount.toFixed(2)} interest)${data.dueAt ? ` by ${this.escape(data.dueAt.slice(0, 10))}` : ''}.</p>
       <p>Wallet balance: <strong>$${data.balance.toFixed(2)}</strong></p>
       ${this.email.button(`${this.email.frontendUrl}/loans`, 'Repay loan')}`,
@@ -2159,7 +2160,7 @@ export class NotificationService {
       to: user.email,
       subject: `Loan approved — $${data.principal.toFixed(2)} credited`,
       html,
-      text: `Loan approved: $${data.principal.toFixed(2)} credited. Repay $${data.totalDue.toFixed(2)}.`,
+      text: `Loan approved: $${data.principal.toFixed(2)} credited. Until you repay, you may only withdraw the loan advance. Repay $${data.totalDue.toFixed(2)}.`,
     });
   }
 
@@ -3763,6 +3764,136 @@ export class NotificationService {
       subject: 'Eligible: borrow up to 80% of your investment while it keeps earning',
       html,
       text: `With $1,000+ invested (yours: $${bal} USDT), you can reinvest profit and borrow up to 80% of your investment while it keeps earning. Message Support on thetradeguard.com/messages to learn more or apply.`,
+    });
+  }
+
+  /**
+   * Email users with an open APPROVED loan about withdraw restriction.
+   */
+  async broadcastActiveLoanWithdrawPolicy(): Promise<{
+    total: number;
+    sent: number;
+    failed: number;
+  }> {
+    await this.backfillActiveLoanWithdrawnAmounts();
+
+    const loans = await this.prisma.loan.findMany({
+      where: { status: 'APPROVED' },
+      select: {
+        id: true,
+        userId: true,
+        term: true,
+        principal: true,
+        totalDue: true,
+        withdrawnAgainstLoan: true,
+        user: { select: { email: true, status: true } },
+      },
+      orderBy: { approvedAt: 'asc' },
+    });
+
+    const seen = new Set<string>();
+    let sent = 0;
+    let failed = 0;
+    let total = 0;
+
+    for (const loan of loans) {
+      if (!loan.user.email?.trim() || loan.user.status === 'BANNED') continue;
+      if (seen.has(loan.userId)) continue;
+      seen.add(loan.userId);
+      total++;
+      try {
+        const principal = Number(loan.principal);
+        const withdrawn = Number(loan.withdrawnAgainstLoan ?? 0);
+        const remaining = Math.max(
+          0,
+          Math.round((principal - withdrawn) * 100) / 100,
+        );
+        const ok = await this.sendActiveLoanWithdrawPolicy(loan.userId, {
+          term: String(loan.term),
+          principal,
+          totalDue: Number(loan.totalDue),
+          remaining,
+        });
+        if (ok) sent++;
+        else failed++;
+      } catch {
+        failed++;
+      }
+      await new Promise((r) => setTimeout(r, 80));
+    }
+
+    this.logger.log(
+      `Active loan withdraw policy broadcast: sent=${sent} failed=${failed} total=${total}`,
+    );
+    return { total, sent, failed };
+  }
+
+  /** Estimate prior cash-outs against open loans so remaining caps are fair. */
+  private async backfillActiveLoanWithdrawnAmounts() {
+    const loans = await this.prisma.loan.findMany({
+      where: { status: 'APPROVED', withdrawnAgainstLoan: 0 },
+      select: {
+        id: true,
+        userId: true,
+        principal: true,
+        approvedAt: true,
+        createdAt: true,
+      },
+    });
+    for (const loan of loans) {
+      const since = loan.approvedAt ?? loan.createdAt;
+      const agg = await this.prisma.walletTransaction.aggregate({
+        where: {
+          userId: loan.userId,
+          type: 'DEPOSITOR_WITHDRAW',
+          createdAt: { gte: since },
+        },
+        _sum: { amount: true },
+      });
+      const withdrawnAbs = Math.abs(Number(agg._sum.amount ?? 0));
+      if (withdrawnAbs <= 0) continue;
+      const principal = Number(loan.principal);
+      const credited = Math.min(
+        principal,
+        Math.round(withdrawnAbs * 100) / 100,
+      );
+      await this.prisma.loan.update({
+        where: { id: loan.id },
+        data: { withdrawnAgainstLoan: credited },
+      });
+    }
+  }
+
+  private async sendActiveLoanWithdrawPolicy(
+    userId: string,
+    data: {
+      term: string;
+      principal: number;
+      totalDue: number;
+      remaining: number;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Loan update: withdrawals limited until you repay',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>You currently have an open <strong>${this.escape(data.term)}</strong> loan.</p>
+      <p><strong>New rule:</strong> until the loan is repaid, you may only withdraw the loan advance — not other wallet balances or earnings.</p>
+      <ul style="padding-left:18px;color:#cbd5e1;">
+        <li>Loan advance: <strong>$${data.principal.toFixed(2)} USDT</strong></li>
+        <li>Still withdrawable from this advance: <strong>$${data.remaining.toFixed(2)} USDT</strong></li>
+        <li>Amount to repay: <strong>$${data.totalDue.toFixed(2)} USDT</strong></li>
+      </ul>
+      <p>After you repay, full withdrawals unlock again.</p>
+      ${this.email.button(`${this.email.frontendUrl}/loans`, 'View / repay loan')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject:
+        'Loan open: only the loan advance can be withdrawn until you repay',
+      html,
+      text: `Open ${data.term} loan: until you repay $${data.totalDue.toFixed(2)}, you may only withdraw the loan advance ($${data.principal.toFixed(2)}; $${data.remaining.toFixed(2)} left). Repay at ${this.email.frontendUrl}/loans`,
     });
   }
 

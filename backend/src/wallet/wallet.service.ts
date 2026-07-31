@@ -530,6 +530,7 @@ export class WalletService {
       withdrawalNextPreferredWindowAt: scheduleQuote.nextPreferredWindowAt,
       withdrawalPreferredWindowLabel: scheduleQuote.preferredWindowLabel,
       vipActive,
+      activeLoanWithdraw: await this.getActiveLoanWithdrawGate(userId),
       activePlan: activePlan
         ? {
             id: activePlan.id,
@@ -1322,6 +1323,7 @@ export class WalletService {
     }
 
     const grossAmount = Math.round(amount * 100) / 100;
+    await this.assertLoanWithdrawAllowed(userId, grossAmount);
     await this.assertWithdrawAmountValid(grossAmount, user);
 
     const savedWallet = await this.savedWithdrawalWallets.getForWithdraw(
@@ -1499,6 +1501,64 @@ export class WalletService {
     });
   }
 
+  private async getActiveLoanWithdrawGate(userId: string): Promise<{
+    loanId: string;
+    principal: number;
+    withdrawn: number;
+    remaining: number;
+    totalDue: number;
+  } | null> {
+    const loan = await this.prisma.loan.findFirst({
+      where: { userId, status: 'APPROVED' },
+      orderBy: { approvedAt: 'desc' },
+      select: {
+        id: true,
+        principal: true,
+        withdrawnAgainstLoan: true,
+        totalDue: true,
+      },
+    });
+    if (!loan) return null;
+    const principal = Number(loan.principal);
+    const withdrawn = Number(loan.withdrawnAgainstLoan ?? 0);
+    const remaining = Math.max(0, Math.round((principal - withdrawn) * 100) / 100);
+    return {
+      loanId: loan.id,
+      principal,
+      withdrawn,
+      remaining,
+      totalDue: Number(loan.totalDue),
+    };
+  }
+
+  private async assertLoanWithdrawAllowed(userId: string, amount: number) {
+    const gate = await this.getActiveLoanWithdrawGate(userId);
+    if (!gate) return;
+    if (gate.remaining <= 0) {
+      throw new BadRequestException(
+        `You have an open loan (repay $${gate.totalDue.toFixed(2)}). The loan advance has already been withdrawn — repay the loan before withdrawing other wallet funds.`,
+      );
+    }
+    if (amount > gate.remaining + 1e-9) {
+      throw new BadRequestException(
+        `While your loan is open you may only withdraw the loan advance. Remaining withdrawable from this loan: $${gate.remaining.toFixed(2)} USDT (of $${gate.principal.toFixed(2)}). Repay $${gate.totalDue.toFixed(2)} to unlock full withdrawals.`,
+      );
+    }
+  }
+
+  private async recordLoanWithdraw(userId: string, amount: number) {
+    const gate = await this.getActiveLoanWithdrawGate(userId);
+    if (!gate || amount <= 0) return;
+    const next = Math.min(
+      gate.principal,
+      Math.round((gate.withdrawn + amount) * 100) / 100,
+    );
+    await this.prisma.loan.update({
+      where: { id: gate.loanId },
+      data: { withdrawnAgainstLoan: next },
+    });
+  }
+
   private async consumeWithdrawPin(userId: string, pin: string) {
     if (!/^\d{6}$/.test(pin?.trim() ?? '')) {
       throw new BadRequestException('PIN must be exactly 6 digits');
@@ -1543,6 +1603,7 @@ export class WalletService {
     }
 
     const grossAmount = Math.round(amount * 100) / 100;
+    await this.assertLoanWithdrawAllowed(userId, grossAmount);
     const vipUser = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -1658,6 +1719,8 @@ export class WalletService {
         },
       });
     });
+
+    await this.recordLoanWithdraw(userId, grossAmount);
 
     if (instantWithdraw && !isMomo) {
       try {

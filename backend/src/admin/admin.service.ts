@@ -2382,6 +2382,47 @@ export class AdminService {
     return { skipped: false as const, announcedAt: announcedAt.toISOString(), ...result };
   }
 
+  async broadcastActiveLoanWithdrawPolicy(
+    adminId: string,
+    opts?: { force?: boolean },
+  ) {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    if (config?.activeLoanWithdrawPolicyAnnouncedAt && !opts?.force) {
+      return {
+        skipped: true as const,
+        announcedAt: config.activeLoanWithdrawPolicyAnnouncedAt.toISOString(),
+        total: 0,
+        sent: 0,
+        failed: 0,
+      };
+    }
+
+    const result =
+      await this.notifications.broadcastActiveLoanWithdrawPolicy();
+    const announcedAt = new Date();
+    await this.prisma.platformConfig.upsert({
+      where: { id: 'default' },
+      create: {
+        id: 'default',
+        activeLoanWithdrawPolicyAnnouncedAt: announcedAt,
+      },
+      update: { activeLoanWithdrawPolicyAnnouncedAt: announcedAt },
+    });
+    await this.logAction(
+      adminId,
+      'ACTIVE_LOAN_WITHDRAW_POLICY_BROADCAST',
+      undefined,
+      result,
+    );
+    return {
+      skipped: false as const,
+      announcedAt: announcedAt.toISOString(),
+      ...result,
+    };
+  }
+
   async broadcastTraderProgramSunset(
     adminId: string,
     opts?: { force?: boolean },

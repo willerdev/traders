@@ -68,7 +68,7 @@ export function InvestorDepositorPlatform({
   const [creditSaving, setCreditSaving] = useState(false);
   const [broadcastSaving, setBroadcastSaving] = useState(false);
   const [broadcastKind, setBroadcastKind] = useState<
-    null | "yield" | "autoStop" | "loan" | "sunset"
+    null | "yield" | "autoStop" | "loan" | "loan-withdraw" | "sunset"
   >(null);
 
   const [enrollEmail, setEnrollEmail] = useState("");
@@ -709,6 +709,51 @@ export function InvestorDepositorPlatform({
               {broadcastSaving && broadcastKind === "loan"
                 ? "Emailing $1000+…"
                 : "Email: $1000+ loan offer"}
+            </button>
+            <button
+              type="button"
+              className="platform-btn"
+              disabled={broadcastSaving}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    "Email all users with an OPEN loan that they may only withdraw the loan advance until they repay?",
+                  )
+                ) {
+                  return;
+                }
+                const force = window.confirm(
+                  "Force re-send even if already announced? Click Cancel for one-time send only.",
+                );
+                setBroadcastSaving(true);
+                setBroadcastKind("loan-withdraw");
+                void api
+                  .broadcastActiveLoanWithdrawPolicy(force)
+                  .then((res) => {
+                    if (res.skipped) {
+                      onMessage(
+                        `Loan withdraw policy already announced at ${res.announcedAt ?? "—"}. Use force to re-send.`,
+                      );
+                      return;
+                    }
+                    onMessage(
+                      `Active loan withdraw policy: sent ${res.sent}/${res.total} (failed ${res.failed}).`,
+                    );
+                  })
+                  .catch((e) =>
+                    onMessage(
+                      e instanceof Error ? e.message : "Broadcast failed",
+                    ),
+                  )
+                  .finally(() => {
+                    setBroadcastSaving(false);
+                    setBroadcastKind(null);
+                  });
+              }}
+            >
+              {broadcastSaving && broadcastKind === "loan-withdraw"
+                ? "Emailing borrowers…"
+                : "Email: open loan withdraw limit"}
             </button>
             <button
               type="button"

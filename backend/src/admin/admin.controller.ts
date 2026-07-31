@@ -890,6 +890,16 @@ export class AdminController {
     );
   }
 
+  @Post('notifications/active-loan-withdraw-policy')
+  broadcastActiveLoanWithdrawPolicy(
+    @Request() req: { user: { id: string } },
+    @Body() body?: { force?: boolean },
+  ) {
+    return this.adminService.broadcastActiveLoanWithdrawPolicy(req.user.id, {
+      force: Boolean(body?.force),
+    });
+  }
+
   @Post('notifications/trader-program-sunset')
   broadcastTraderProgramSunset(
     @Request() req: { user: { id: string } },

@@ -101,7 +101,8 @@ export function LoansHub() {
         <p className="mt-2 text-sm text-gray-400">
           Daily / weekly / monthly based on your Smart Invest + Unitrust daily
           yield. You receive 80% in advance and repay with 20% interest on that
-          advance. KYC required. Admin must approve.
+          advance. KYC required. Admin must approve. While the loan is open you
+          may only withdraw the loan advance — repay to unlock other withdrawals.
         </p>
         {quote && (
           <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
