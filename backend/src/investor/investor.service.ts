@@ -1300,15 +1300,19 @@ export class InvestorService {
       }
 
       // Exclude capital allocated within the last 24h (anti last-minute deposit gaming).
-      const recentAllocate = await this.prisma.walletTransaction.aggregate({
-        where: {
-          userId: user.id,
-          type: 'INVESTOR_ALLOCATE',
-          createdAt: { gte: holdSince },
-        },
-        _sum: { amount: true },
-      });
-      const recentAllocated = Math.abs(Number(recentAllocate._sum.amount ?? 0));
+      // Instant-withdraw whitelist investors earn on new capital immediately.
+      let recentAllocated = 0;
+      if (!user.instantWithdraw) {
+        const recentAllocate = await this.prisma.walletTransaction.aggregate({
+          where: {
+            userId: user.id,
+            type: 'INVESTOR_ALLOCATE',
+            createdAt: { gte: holdSince },
+          },
+          _sum: { amount: true },
+        });
+        recentAllocated = Math.abs(Number(recentAllocate._sum.amount ?? 0));
+      }
       const eligibleBalance =
         Math.round(Math.max(0, baseBalance - recentAllocated) * 100) / 100;
       if (eligibleBalance <= 0) {

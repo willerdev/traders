@@ -1005,7 +1005,10 @@ export class WalletService {
     const now = new Date();
     const activePlans = await this.prisma.depositorPlan.findMany({
       where: { status: DepositorPlanStatus.ACTIVE },
-      include: { credits: true },
+      include: {
+        credits: true,
+        user: { select: { instantWithdraw: true } },
+      },
     });
 
     let credited = 0;
@@ -1016,12 +1019,18 @@ export class WalletService {
       }
 
       // Full 24h periods only — no same-day credit after deposit (anti-gaming).
+      // Instant-withdraw whitelist depositors can earn from day 1 without waiting 24h.
       const msPerDay = 24 * 60 * 60 * 1000;
       const elapsedDays = Math.floor(
         (now.getTime() - plan.startAt.getTime()) / msPerDay,
       );
-      const dayIndex = Math.min(elapsedDays, PLAN_DAYS);
+      let dayIndex = Math.min(elapsedDays, PLAN_DAYS);
       const creditedDays = new Set(plan.credits.map((c) => c.dayIndex));
+      const whitelistSkipHold = Boolean(plan.user?.instantWithdraw);
+
+      if (whitelistSkipHold && dayIndex < 1 && now > plan.startAt) {
+        dayIndex = 1;
+      }
 
       if (dayIndex < 1 || creditedDays.has(dayIndex)) continue;
 

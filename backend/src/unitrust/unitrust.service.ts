@@ -330,15 +330,19 @@ export class UnitrustService {
       const baseBalance = Number(user.platformWallet?.unitrustBalance ?? 0);
       if (baseBalance <= 0 || yieldPercent <= 0) continue;
 
-      const recentAllocate = await this.prisma.walletTransaction.aggregate({
-        where: {
-          userId: user.id,
-          type: 'UNITRUST_ALLOCATE',
-          createdAt: { gte: holdSince },
-        },
-        _sum: { amount: true },
-      });
-      const recentAllocated = Math.abs(Number(recentAllocate._sum.amount ?? 0));
+      // Whitelist investors skip the 24h new-capital hold.
+      let recentAllocated = 0;
+      if (!user.instantWithdraw) {
+        const recentAllocate = await this.prisma.walletTransaction.aggregate({
+          where: {
+            userId: user.id,
+            type: 'UNITRUST_ALLOCATE',
+            createdAt: { gte: holdSince },
+          },
+          _sum: { amount: true },
+        });
+        recentAllocated = Math.abs(Number(recentAllocate._sum.amount ?? 0));
+      }
       const eligibleBalance =
         Math.round(Math.max(0, baseBalance - recentAllocated) * 100) / 100;
       if (eligibleBalance <= 0) {
