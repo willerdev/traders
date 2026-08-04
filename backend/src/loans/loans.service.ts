@@ -379,6 +379,12 @@ export class LoansService {
       },
     });
 
+    // Open loans cannot compound — turn off auto-reinvest immediately.
+    await this.prisma.investorSettings.updateMany({
+      where: { userId: loan.userId, autoReinvestEarnings: true },
+      data: { autoReinvestEarnings: false },
+    });
+
     const bal = await this.wallet.getOrCreateWallet(loan.userId);
     this.notifications.loanApproved(loan.userId, {
       loanId,
@@ -438,5 +444,181 @@ export class LoansService {
       totalDue: Number(loan.totalDue),
     });
     return this.serialize(updated);
+  }
+
+  /**
+   * Strip post-approval investment/unitrust compounding for users with open loans:
+   * net wallet→investment allocates since approval, plus leftover wallet earnings,
+   * and force auto-reinvest off.
+   */
+  async clawbackApprovedLoanReinvestGains() {
+    const loans = await this.prisma.loan.findMany({
+      where: { status: 'APPROVED' },
+      orderBy: { approvedAt: 'asc' },
+    });
+
+    const results: Array<{
+      userId: string;
+      loanId: string;
+      email: string | null;
+      netReinvested: number;
+      autoReinvestFeeClawback: number;
+      investmentBefore: number;
+      investmentAfter: number;
+      availableBefore: number;
+      availableAfter: number;
+      unitrustBefore: number;
+      unitrustAfter: number;
+    }> = [];
+
+    for (const loan of loans) {
+      const since = loan.approvedAt ?? loan.reviewedAt ?? loan.createdAt;
+      const user = await this.prisma.user.findUnique({
+        where: { id: loan.userId },
+        select: {
+          email: true,
+          platformWallet: true,
+          investorSettings: { select: { autoReinvestEarnings: true } },
+        },
+      });
+      if (!user?.platformWallet) continue;
+
+      const [allocateAgg, redeemAgg, unitrustAllocAgg, unitrustRedeemAgg, reinvestFeeAgg] =
+        await Promise.all([
+          this.prisma.walletTransaction.aggregate({
+            where: {
+              userId: loan.userId,
+              type: 'INVESTOR_ALLOCATE',
+              createdAt: { gte: since },
+            },
+            _sum: { amount: true },
+          }),
+          this.prisma.walletTransaction.aggregate({
+            where: {
+              userId: loan.userId,
+              type: 'INVESTOR_REDEEM',
+              createdAt: { gte: since },
+            },
+            _sum: { amount: true },
+          }),
+          this.prisma.walletTransaction.aggregate({
+            where: {
+              userId: loan.userId,
+              type: 'UNITRUST_ALLOCATE',
+              createdAt: { gte: since },
+            },
+            _sum: { amount: true },
+          }),
+          this.prisma.walletTransaction.aggregate({
+            where: {
+              userId: loan.userId,
+              type: 'UNITRUST_REDEEM',
+              createdAt: { gte: since },
+            },
+            _sum: { amount: true },
+          }),
+          this.prisma.walletTransaction.aggregate({
+            where: {
+              userId: loan.userId,
+              type: 'INVESTOR_REINVEST_FEE',
+              createdAt: { gte: since },
+            },
+            _sum: { amount: true },
+          }),
+        ]);
+
+      // ALLOCATE amounts are negative; REDEEM positive.
+      const allocated = Math.abs(Number(allocateAgg._sum.amount ?? 0));
+      const redeemed = Math.abs(Number(redeemAgg._sum.amount ?? 0));
+      const netInvestorReinvested = this.round2(Math.max(0, allocated - redeemed));
+
+      const unitrustAllocated = Math.abs(Number(unitrustAllocAgg._sum.amount ?? 0));
+      const unitrustRedeemed = Math.abs(Number(unitrustRedeemAgg._sum.amount ?? 0));
+      const netUnitrustReinvested = this.round2(
+        Math.max(0, unitrustAllocated - unitrustRedeemed),
+      );
+
+      // Auto-reinvest compounds into investment without a separate ALLOCATE row —
+      // earnings rows are positive; fee rows negative. Net compound ≈ earnings
+      // that say auto-reinvested. Approximate via fee: fee is 10% of earning, so
+      // compounded = fee / 0.1 * 0.9 = fee * 9 when fee was taken.
+      const reinvestFees = Math.abs(Number(reinvestFeeAgg._sum.amount ?? 0));
+      const autoCompounded = this.round2(reinvestFees * 9);
+
+      const investmentBefore = Number(user.platformWallet.investorBalance ?? 0);
+      const availableBefore = Number(user.platformWallet.availableBalance ?? 0);
+      const unitrustBefore = Number(user.platformWallet.unitrustBalance ?? 0);
+
+      const stripInvestment = this.round2(
+        Math.min(investmentBefore, netInvestorReinvested + autoCompounded),
+      );
+      const stripUnitrust = this.round2(
+        Math.min(unitrustBefore, netUnitrustReinvested),
+      );
+      // Leave wallet available alone — loan withdraw rules already gate it.
+      // Block further wallet→investment / auto-reinvest instead.
+      const stripAvailable = 0;
+
+      const investmentAfter = this.round2(investmentBefore - stripInvestment);
+      const unitrustAfter = this.round2(unitrustBefore - stripUnitrust);
+      const availableAfter = availableBefore;
+
+      if (
+        stripInvestment > 0 ||
+        stripUnitrust > 0 ||
+        stripAvailable > 0 ||
+        user.investorSettings?.autoReinvestEarnings
+      ) {
+        await this.prisma.$transaction([
+          this.prisma.platformWallet.update({
+            where: { userId: loan.userId },
+            data: {
+              investorBalance: investmentAfter,
+              unitrustBalance: unitrustAfter,
+              availableBalance: availableAfter,
+            },
+          }),
+          this.prisma.investorSettings.updateMany({
+            where: { userId: loan.userId },
+            data: { autoReinvestEarnings: false },
+          }),
+          ...(stripInvestment + stripUnitrust + stripAvailable > 0
+            ? [
+                this.prisma.walletTransaction.create({
+                  data: {
+                    userId: loan.userId,
+                    amount: -(stripInvestment + stripUnitrust + stripAvailable),
+                    type: 'ADJUSTMENT',
+                    referenceId: loan.id,
+                    description: `Loan policy: removed post-loan reinvest/earnings (invest −$${stripInvestment.toFixed(2)}, unitrust −$${stripUnitrust.toFixed(2)}, wallet −$${stripAvailable.toFixed(2)})`,
+                    balanceAfter: availableAfter,
+                  },
+                }),
+              ]
+            : []),
+        ]);
+      }
+
+      results.push({
+        userId: loan.userId,
+        loanId: loan.id,
+        email: user.email,
+        netReinvested: this.round2(
+          netInvestorReinvested + autoCompounded + netUnitrustReinvested,
+        ),
+        autoReinvestFeeClawback: reinvestFees,
+        investmentBefore,
+        investmentAfter,
+        availableBefore,
+        availableAfter,
+        unitrustBefore,
+        unitrustAfter,
+      });
+    }
+
+    this.logger.log(
+      `Loan reinvest clawback: ${results.length} open loan(s) processed`,
+    );
+    return { count: results.length, results };
   }
 }

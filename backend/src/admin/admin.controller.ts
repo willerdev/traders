@@ -678,6 +678,12 @@ export class AdminController {
     return this.loans.markDefaulted(id, req.user.id, note);
   }
 
+  @Post('loans/clawback-reinvest')
+  @RequireAdminPermission('payout')
+  clawbackLoanReinvest() {
+    return this.loans.clawbackApprovedLoanReinvestGains();
+  }
+
   @Get('cash-agents')
   @RequireAdminPermission('payout')
   listCashAgents(

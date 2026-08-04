@@ -686,7 +686,9 @@ export function InvestHub() {
           </div>
           <Button
             type="button"
-            disabled={transferLoading}
+            disabled={
+              transferLoading || Boolean(status.reinvestBlocked)
+            }
             onClick={() => {
               const amount = Number(transferAmount);
               setTransferLoading(true);
@@ -729,6 +731,12 @@ export function InvestHub() {
           </Button>
         </div>
         {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+        {status.reinvestBlocked && (
+          <p className="mt-2 text-sm text-amber-400/90">
+            {status.reinvestBlockedReason ??
+              "Open loan — wallet → investment and auto-reinvest are paused until you repay."}
+          </p>
+        )}
         <div className="mt-4 border-t border-white/10 pt-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -736,9 +744,11 @@ export function InvestHub() {
                 Auto-reinvest (compounding)
               </h4>
               <p className="mt-1 text-xs text-gray-500">
-                {status.settings?.autoReinvestEarnings
-                  ? `On — ${status.autoReinvestFeePercent ?? 10}% of each daily earning is charged as a fee; the remaining 90% compounds into your investment.`
-                  : `Off — daily earnings go to your wallet. Enable to compound: ${status.autoReinvestFeePercent ?? 10}% fee on the full daily return, 90% added to investment.`}
+                {status.reinvestBlocked
+                  ? "Unavailable while you have an open loan. Daily earnings still credit to your wallet."
+                  : status.settings?.autoReinvestEarnings
+                    ? `On — ${status.autoReinvestFeePercent ?? 10}% of each daily earning is charged as a fee; the remaining 90% compounds into your investment.`
+                    : `Off — daily earnings go to your wallet. Enable to compound: ${status.autoReinvestFeePercent ?? 10}% fee on the full daily return, 90% added to investment.`}
               </p>
             </div>
             <Button
@@ -747,7 +757,7 @@ export function InvestHub() {
               variant={
                 status.settings?.autoReinvestEarnings ? "secondary" : "default"
               }
-              disabled={reinvestLoading}
+              disabled={reinvestLoading || Boolean(status.reinvestBlocked)}
               onClick={() => {
                 const next = !status.settings?.autoReinvestEarnings;
                 setReinvestLoading(true);

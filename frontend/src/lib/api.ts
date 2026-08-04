@@ -1902,6 +1902,8 @@ export interface InvestorStatus {
     autoReinvestEarnings?: boolean;
   } | null;
   autoReinvestFeePercent?: number;
+  reinvestBlocked?: boolean;
+  reinvestBlockedReason?: string | null;
   minBalancePolicy?: {
     thresholdUsdt: number;
     effectiveFrom: string;

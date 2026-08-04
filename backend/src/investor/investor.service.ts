@@ -45,6 +45,10 @@ import {
   isBlockedByInvestorMinBalance,
   isInvestorMinBalanceDateReached,
 } from './investor-min-balance.util';
+import {
+  hasApprovedLoan,
+  LOAN_REINVEST_BLOCKED_MESSAGE,
+} from '../loans/active-loan.util';
 
 @Injectable()
 export class InvestorService {
@@ -197,6 +201,7 @@ export class InvestorService {
       country: user.profile?.country,
     });
     const displayCurrency = await this.fxRates.buildDisplayCurrency(resolved);
+    const reinvestBlocked = await hasApprovedLoan(this.prisma, userId);
 
     return {
       active: user.investorActive,
@@ -238,6 +243,10 @@ export class InvestorService {
           }
         : null,
       autoReinvestFeePercent: INVESTOR_AUTO_REINVEST_FEE_PERCENT,
+      reinvestBlocked,
+      reinvestBlockedReason: reinvestBlocked
+        ? LOAN_REINVEST_BLOCKED_MESSAGE
+        : null,
       minBalancePolicy: await this.resolveMinBalancePolicy(
         Number(financials.investmentBalance ?? 0),
         user.investorSettings?.minBalanceExempt ?? false,
@@ -889,6 +898,10 @@ export class InvestorService {
       throw new BadRequestException('Enroll in the investor program first');
     }
 
+    if (autoReinvestEarnings && (await hasApprovedLoan(this.prisma, userId))) {
+      throw new BadRequestException(LOAN_REINVEST_BLOCKED_MESSAGE);
+    }
+
     const settings = await this.prisma.investorSettings.upsert({
       where: { userId },
       create: { userId, autoReinvestEarnings: Boolean(autoReinvestEarnings) },
@@ -923,6 +936,13 @@ export class InvestorService {
     if (!user) throw new NotFoundException('User not found');
     if (!user.investorActive) {
       throw new BadRequestException('User must be enrolled in the investor program');
+    }
+
+    if (
+      direction === 'to_investment' &&
+      (await hasApprovedLoan(this.prisma, userId))
+    ) {
+      throw new BadRequestException(LOAN_REINVEST_BLOCKED_MESSAGE);
     }
 
     const wallet = await this.walletService.getOrCreateWallet(userId);
@@ -1327,7 +1347,10 @@ export class InvestorService {
       const wallet = await this.walletService.getOrCreateWallet(user.id);
       const availableBalance = Number(wallet.availableBalance);
       const investmentBalance = Number(wallet.investorBalance ?? 0);
-      const autoReinvest = Boolean(user.investorSettings?.autoReinvestEarnings);
+      const loanBlocksReinvest = await hasApprovedLoan(this.prisma, user.id);
+      const autoReinvest =
+        Boolean(user.investorSettings?.autoReinvestEarnings) &&
+        !loanBlocksReinvest;
 
       const holdNote =
         recentAllocated > 0

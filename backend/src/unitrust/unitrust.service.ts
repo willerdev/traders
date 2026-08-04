@@ -13,6 +13,10 @@ import {
   UNITRUST_MIN_DEPOSIT_DEFAULT,
   UNITRUST_YIELD_MIN_DEPOSIT_AGE_MS,
 } from './unitrust.constants';
+import {
+  hasApprovedLoan,
+  LOAN_REINVEST_BLOCKED_MESSAGE,
+} from '../loans/active-loan.util';
 
 @Injectable()
 export class UnitrustService {
@@ -150,6 +154,10 @@ export class UnitrustService {
    * No enrollment fee — full amount goes into the unitrust corpus.
    */
   async enrollFromWallet(userId: string, amountRaw: number) {
+    if (await hasApprovedLoan(this.prisma, userId)) {
+      throw new BadRequestException(LOAN_REINVEST_BLOCKED_MESSAGE);
+    }
+
     const minDeposit = await this.minDeposit();
     const amount = Math.round(Number(amountRaw) * 100) / 100;
     if (!Number.isFinite(amount) || amount < minDeposit) {
