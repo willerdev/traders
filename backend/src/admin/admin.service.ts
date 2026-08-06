@@ -172,6 +172,77 @@ export class AdminService {
     };
   }
 
+  /**
+   * Read-only capital allocation engine snapshot.
+   * Total funds = sum of all platform wallet buckets; split 40/40/20;
+   * profit = max(0, 10% of total − traderShare paid UTC today).
+   */
+  async getEngine() {
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+
+    const sums = await this.prisma.platformWallet.aggregate({
+      _sum: {
+        availableBalance: true,
+        lockedBalance: true,
+        investorBalance: true,
+        unitrustBalance: true,
+      },
+    });
+
+    const available = Number(sums._sum.availableBalance ?? 0);
+    const locked = Number(sums._sum.lockedBalance ?? 0);
+    const investor = Number(sums._sum.investorBalance ?? 0);
+    const unitrust = Number(sums._sum.unitrustBalance ?? 0);
+    const totalFundsUsdt = round2(available + locked + investor + unitrust);
+
+    const contractBudgetUsdt = round2(totalFundsUsdt * 0.4);
+    const tradingFundsUsdt = round2(totalFundsUsdt * 0.4);
+    const reserveFundsUsdt = round2(
+      totalFundsUsdt - contractBudgetUsdt - tradingFundsUsdt,
+    );
+
+    const now = new Date();
+    const dayStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const dayEnd = new Date(dayStart);
+    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+
+    const paidAgg = await this.prisma.payout.aggregate({
+      where: {
+        status: 'PAID',
+        processedAt: { gte: dayStart, lt: dayEnd },
+      },
+      _sum: { traderShare: true },
+    });
+    const paidToUsersTodayUsdt = round2(Number(paidAgg._sum.traderShare ?? 0));
+    const dailyRevenueUsdt = round2(totalFundsUsdt * 0.1);
+    const profitFundsUsdt = round2(
+      Math.max(0, dailyRevenueUsdt - paidToUsersTodayUsdt),
+    );
+
+    return {
+      totalFundsUsdt,
+      asOf: now.toISOString(),
+      breakdown: {
+        availableBalanceUsdt: round2(available),
+        lockedBalanceUsdt: round2(locked),
+        investorBalanceUsdt: round2(investor),
+        unitrustBalanceUsdt: round2(unitrust),
+      },
+      split: {
+        contractBudgetUsdt,
+        tradingFundsUsdt,
+        reserveFundsUsdt,
+      },
+      profit: {
+        dailyRevenueUsdt,
+        paidToUsersTodayUsdt,
+        profitFundsUsdt,
+      },
+    };
+  }
+
   async getPaymentForecast() {
     const now = new Date();
     const projection = await this.getPaymentProjection();
@@ -810,6 +881,7 @@ export class AdminService {
         kyc: true,
         virtualAccount: true,
         platformWallet: true,
+        investorSettings: true,
         payments: {
           orderBy: { createdAt: 'desc' },
           take: 10,
@@ -872,6 +944,19 @@ export class AdminService {
       createdAt: user.createdAt.toISOString(),
       updatedAt: user.updatedAt.toISOString(),
       emailAssessment: assessEmail(user.email),
+      investorActive: Boolean(user.investorActive),
+      investorVipActive: Boolean(user.investorVipActive),
+      investorVipExpiresAt: user.investorVipExpiresAt?.toISOString() ?? null,
+      investor: {
+        active: Boolean(user.investorActive),
+        investmentBalance: Number(pw?.investorBalance ?? 0),
+        yieldPaused: Boolean(user.investorSettings?.yieldPaused),
+        minBalanceExempt: Boolean(user.investorSettings?.minBalanceExempt),
+        dailyYieldPercent:
+          user.investorSettings?.dailyYieldPercent != null
+            ? Number(user.investorSettings.dailyYieldPercent)
+            : null,
+      },
       profile: user.profile
         ? {
             ...user.profile,
@@ -892,6 +977,7 @@ export class AdminService {
       platformWallet: {
         availableBalance: Number(pw?.availableBalance ?? 0),
         lockedBalance: Number(pw?.lockedBalance ?? 0),
+        investorBalance: Number(pw?.investorBalance ?? 0),
         updatedAt: pw?.updatedAt?.toISOString() ?? null,
       },
       virtualAccount: va

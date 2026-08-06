@@ -45,6 +45,11 @@ export class AdminController {
     return this.adminService.getOverview();
   }
 
+  @Get('engine')
+  getEngine() {
+    return this.adminService.getEngine();
+  }
+
   @Get('presence/live')
   getLivePresence() {
     return this.adminService.getLivePresence();

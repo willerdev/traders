@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 export type Tab =
   | "overview"
+  | "engine"
   | "paymentForecast"
   | "live"
   | "users"
@@ -31,6 +32,7 @@ type NavItem = { id: Tab; label: string; icon: keyof typeof icons };
 /** Visible admin tabs — investment ops + users/comms; no trading queues. */
 export const ADMIN_TABS: Tab[] = [
   "overview",
+  "engine",
   "users",
   "platform",
   "payouts",
@@ -131,6 +133,7 @@ export function resolveTabForPermissions(
 
 const NAV_ITEMS: NavItem[] = [
   { id: "overview", label: "Overview", icon: "overview" },
+  { id: "engine", label: "Engine", icon: "engine" },
   { id: "users", label: "Users", icon: "users" },
   { id: "platform", label: "Investor & depositor", icon: "forecast" },
   { id: "payouts", label: "Payouts", icon: "payouts" },
@@ -149,6 +152,16 @@ const icons = {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
       <path d="M3 3v18h18" strokeLinecap="round" />
       <path d="M7 16l4-4 4 4 5-6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  engine: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <circle cx="12" cy="12" r="3" />
+      <path
+        d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"
+        strokeLinecap="round"
+      />
+      <path d="M7 12h10" strokeLinecap="round" />
     </svg>
   ),
   forecast: (

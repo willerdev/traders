@@ -144,6 +144,7 @@ export const api = {
     ),
 
   overview: () => request<Record<string, unknown>>("/admin/overview"),
+  engine: () => request<EngineSnapshot>("/admin/engine"),
   livePresence: () => request<LivePresenceSnapshot>("/admin/presence/live"),
   paymentForecast: () => request<PaymentForecast>("/admin/payment-forecast"),
   users: (params?: {
@@ -1296,7 +1297,18 @@ export type AdminUserDetail = {
   platformWallet?: {
     availableBalance: number;
     lockedBalance: number;
+    investorBalance?: number;
     updatedAt: string | null;
+  } | null;
+  investorActive?: boolean;
+  investorVipActive?: boolean;
+  investorVipExpiresAt?: string | null;
+  investor?: {
+    active: boolean;
+    investmentBalance: number;
+    yieldPaused: boolean;
+    minBalanceExempt: boolean;
+    dailyYieldPercent: number | null;
   } | null;
   profile: {
     firstName: string | null;
@@ -1854,6 +1866,27 @@ export type MarketingAudienceInfo = {
   description: string;
   count: number;
   recipients: MarketingRecipient[];
+};
+
+export type EngineSnapshot = {
+  totalFundsUsdt: number;
+  asOf: string;
+  breakdown?: {
+    availableBalanceUsdt: number;
+    lockedBalanceUsdt: number;
+    investorBalanceUsdt: number;
+    unitrustBalanceUsdt: number;
+  };
+  split: {
+    contractBudgetUsdt: number;
+    tradingFundsUsdt: number;
+    reserveFundsUsdt: number;
+  };
+  profit: {
+    dailyRevenueUsdt: number;
+    paidToUsersTodayUsdt: number;
+    profitFundsUsdt: number;
+  };
 };
 
 export type MarketingSchedule = {
