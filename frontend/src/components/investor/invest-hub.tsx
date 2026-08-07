@@ -745,7 +745,8 @@ export function InvestHub() {
               </h4>
               <p className="mt-1 text-xs text-gray-500">
                 {status.reinvestBlocked
-                  ? "Unavailable while you have an open loan. Daily earnings still credit to your wallet."
+                  ? status.reinvestBlockedReason ??
+                    "Reinvesting revenue is disabled. Daily earnings stay in your wallet."
                   : status.settings?.autoReinvestEarnings
                     ? `On — ${status.autoReinvestFeePercent ?? 10}% of each daily earning is charged as a fee; the remaining 90% compounds into your investment.`
                     : `Off — daily earnings go to your wallet. Enable to compound: ${status.autoReinvestFeePercent ?? 10}% fee on the full daily return, 90% added to investment.`}
