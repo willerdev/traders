@@ -23,6 +23,8 @@ export type Tab =
   | "sms"
   | "referrals"
   | "platform"
+  | "deriv"
+  | "contractBlockchain"
   | "mt5Copy"
   | "mt5Sync"
   | "hub";
@@ -35,6 +37,8 @@ export const ADMIN_TABS: Tab[] = [
   "engine",
   "users",
   "platform",
+  "deriv",
+  "contractBlockchain",
   "payouts",
   "whitelist",
   "loans",
@@ -136,6 +140,8 @@ const NAV_ITEMS: NavItem[] = [
   { id: "engine", label: "Engine", icon: "engine" },
   { id: "users", label: "Users", icon: "users" },
   { id: "platform", label: "Investor & depositor", icon: "forecast" },
+  { id: "deriv", label: "Deriv", icon: "deriv" },
+  { id: "contractBlockchain", label: "Contract blockchain", icon: "contract" },
   { id: "payouts", label: "Payouts", icon: "payouts" },
   { id: "whitelist", label: "Whitelist", icon: "whitelist" },
   { id: "loans", label: "Loans", icon: "loans" },
@@ -162,6 +168,19 @@ const icons = {
         strokeLinecap="round"
       />
       <path d="M7 12h10" strokeLinecap="round" />
+    </svg>
+  ),
+  deriv: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M4 8h16v8H4z" strokeLinejoin="round" />
+      <path d="M8 12h.01M12 12h4" strokeLinecap="round" />
+      <path d="M7 8V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2" strokeLinecap="round" />
+    </svg>
+  ),
+  contract: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M12 3l7 4v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V7l7-4z" strokeLinejoin="round" />
+      <path d="M9.5 12h5M12 9.5v5" strokeLinecap="round" />
     </svg>
   ),
   forecast: (

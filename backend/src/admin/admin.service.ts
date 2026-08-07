@@ -1693,6 +1693,257 @@ export class AdminService {
     });
   }
 
+  private maskSecret(value: string | null | undefined): string {
+    const v = (value ?? '').trim();
+    if (!v) return '';
+    if (v.length <= 8) return '••••••••';
+    return `${'•'.repeat(Math.min(12, v.length - 4))}${v.slice(-4)}`;
+  }
+
+  async getDerivSettings() {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    const endpoint =
+      config?.derivEndpoint?.trim() ||
+      'wss://ws.derivws.com/websockets/v3';
+    const appId = config?.derivAppId?.trim() || '';
+    return {
+      appId,
+      apiTokenMasked: this.maskSecret(config?.derivApiToken),
+      hasApiToken: Boolean(config?.derivApiToken?.trim()),
+      endpoint,
+      oauthRedirectUrl: config?.derivOAuthRedirectUrl?.trim() || '',
+      enabled: Boolean(config?.derivEnabled),
+      notes: config?.derivNotes ?? '',
+      /** Ready-to-use WebSocket URL once appId is set. */
+      websocketUrl: appId
+        ? `${endpoint.replace(/\?.*$/, '')}?app_id=${encodeURIComponent(appId)}`
+        : endpoint,
+      docsUrl: 'https://developers.deriv.com/docs/websockets',
+    };
+  }
+
+  async updateDerivSettings(input: {
+    appId?: string;
+    apiToken?: string;
+    endpoint?: string;
+    oauthRedirectUrl?: string;
+    enabled?: boolean;
+    notes?: string;
+  }) {
+    const data: Record<string, string | boolean | null> = {};
+    if (input.appId !== undefined) {
+      data.derivAppId = input.appId.trim() || null;
+    }
+    if (input.apiToken !== undefined) {
+      const token = input.apiToken.trim();
+      // Ignore masked placeholder resubmits from the admin UI.
+      if (!token.includes('•')) {
+        data.derivApiToken = token || null;
+      }
+    }
+    if (input.endpoint !== undefined) {
+      const endpoint = input.endpoint.trim();
+      data.derivEndpoint =
+        endpoint || 'wss://ws.derivws.com/websockets/v3';
+    }
+    if (input.oauthRedirectUrl !== undefined) {
+      data.derivOAuthRedirectUrl = input.oauthRedirectUrl.trim() || null;
+    }
+    if (typeof input.enabled === 'boolean') {
+      data.derivEnabled = input.enabled;
+    }
+    if (input.notes !== undefined) {
+      data.derivNotes = input.notes.trim() || null;
+    }
+    if (Object.keys(data).length === 0) {
+      return this.getDerivSettings();
+    }
+    await this.prisma.platformConfig.upsert({
+      where: { id: 'default' },
+      create: { id: 'default', ...data },
+      update: data,
+    });
+    return this.getDerivSettings();
+  }
+
+  async getContractBlockchainSettings() {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    const envAddress = (
+      process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
+      process.env.DEMO_VAULT_ADDRESS ||
+      process.env.CONTRACT_ADDRESS ||
+      ''
+    ).trim();
+    const envChainId = Number(
+      process.env.POLYGON_AMOY_CHAIN_ID ||
+        process.env.BNB_CHAIN_ID ||
+        process.env.NEXT_PUBLIC_CHAIN_ID ||
+        80002,
+    );
+    const envRpc =
+      process.env.POLYGON_AMOY_RPC ||
+      process.env.BNB_TESTNET_RPC ||
+      process.env.BLOCKCHAIN_RPC_URL ||
+      process.env.NEXT_PUBLIC_RPC_URL ||
+      'https://polygon-amoy-bor-rpc.publicnode.com';
+    const envExplorer =
+      process.env.POLYGON_AMOY_EXPLORER ||
+      process.env.BNB_EXPLORER_URL ||
+      process.env.NEXT_PUBLIC_EXPLORER_URL ||
+      'https://amoy.polygonscan.com';
+
+    const contractAddress = config?.contractAddress?.trim() || envAddress;
+    const chainId =
+      config?.contractChainId != null
+        ? Number(config.contractChainId)
+        : envChainId;
+    const rpcUrl = config?.contractRpcUrl?.trim() || envRpc;
+    const explorerUrl = config?.contractExplorerUrl?.trim() || envExplorer;
+    const configured = Boolean(
+      contractAddress &&
+        contractAddress.startsWith('0x') &&
+        contractAddress.length >= 42,
+    );
+
+    return {
+      contractAddress: config?.contractAddress?.trim() || '',
+      chainId: config?.contractChainId ?? null,
+      networkLabel: config?.contractNetworkLabel?.trim() || '',
+      networkKind: config?.contractNetworkKind?.trim() || '',
+      abi: config?.contractAbi ?? '',
+      rpcUrl: config?.contractRpcUrl?.trim() || '',
+      adminWallet: config?.contractAdminWallet?.trim() || '',
+      explorerUrl: config?.contractExplorerUrl?.trim() || '',
+      remixRef: config?.contractRemixRef?.trim() || '',
+      notes: config?.contractNotes ?? '',
+      /** Effective values (DB overrides env). */
+      effective: {
+        contractAddress,
+        chainId,
+        rpcUrl,
+        explorerUrl,
+        networkLabel:
+          config?.contractNetworkLabel?.trim() ||
+          (chainId === 80002
+            ? 'Polygon Amoy'
+            : chainId === 97
+              ? 'BNB Testnet'
+              : chainId === 56
+                ? 'BNB Smart Chain'
+                : chainId === 1
+                  ? 'Ethereum'
+                  : `Chain ${chainId}`),
+        configured,
+      },
+      remixUrl: 'https://remix.ethereum.org/',
+      envFallback: {
+        contractAddress: envAddress,
+        chainId: envChainId,
+        rpcUrl: envRpc,
+        explorerUrl: envExplorer,
+      },
+    };
+  }
+
+  async updateContractBlockchainSettings(input: {
+    contractAddress?: string;
+    chainId?: number | null;
+    networkLabel?: string;
+    networkKind?: string;
+    abi?: string;
+    rpcUrl?: string;
+    adminWallet?: string;
+    explorerUrl?: string;
+    remixRef?: string;
+    notes?: string;
+  }) {
+    const data: Record<string, string | number | null> = {};
+
+    if (input.contractAddress !== undefined) {
+      const address = input.contractAddress.trim();
+      if (
+        address &&
+        (!address.startsWith('0x') || address.length < 42)
+      ) {
+        throw new BadRequestException(
+          'Contract address must be a 0x… hex address',
+        );
+      }
+      data.contractAddress = address || null;
+    }
+    if (input.chainId !== undefined) {
+      if (
+        input.chainId !== null &&
+        (!Number.isFinite(input.chainId) || input.chainId <= 0)
+      ) {
+        throw new BadRequestException('chainId must be a positive integer');
+      }
+      data.contractChainId =
+        input.chainId != null && Number.isFinite(input.chainId)
+          ? Math.trunc(input.chainId)
+          : null;
+    }
+    if (input.networkLabel !== undefined) {
+      data.contractNetworkLabel = input.networkLabel.trim() || null;
+    }
+    if (input.networkKind !== undefined) {
+      data.contractNetworkKind = input.networkKind.trim() || null;
+    }
+    if (input.abi !== undefined) {
+      const abi = input.abi.trim();
+      if (abi) {
+        try {
+          const parsed = JSON.parse(abi);
+          if (!Array.isArray(parsed) && typeof parsed !== 'object') {
+            throw new Error('ABI must be a JSON array or object');
+          }
+        } catch {
+          throw new BadRequestException('ABI must be valid JSON');
+        }
+      }
+      data.contractAbi = abi || null;
+    }
+    if (input.rpcUrl !== undefined) {
+      data.contractRpcUrl = input.rpcUrl.trim() || null;
+    }
+    if (input.adminWallet !== undefined) {
+      const wallet = input.adminWallet.trim();
+      if (
+        wallet &&
+        (!wallet.startsWith('0x') || wallet.length < 42)
+      ) {
+        throw new BadRequestException(
+          'Admin/owner wallet must be a 0x… hex address',
+        );
+      }
+      data.contractAdminWallet = wallet || null;
+    }
+    if (input.explorerUrl !== undefined) {
+      data.contractExplorerUrl = input.explorerUrl.trim() || null;
+    }
+    if (input.remixRef !== undefined) {
+      data.contractRemixRef = input.remixRef.trim() || null;
+    }
+    if (input.notes !== undefined) {
+      data.contractNotes = input.notes.trim() || null;
+    }
+
+    if (Object.keys(data).length === 0) {
+      return this.getContractBlockchainSettings();
+    }
+
+    await this.prisma.platformConfig.upsert({
+      where: { id: 'default' },
+      create: { id: 'default', ...data },
+      update: data,
+    });
+    return this.getContractBlockchainSettings();
+  }
+
   async getInvestorDepositorSettings() {
     await this.ensureLoginOtpColumn();
     await this.ensureWithdrawalScheduleColumns();

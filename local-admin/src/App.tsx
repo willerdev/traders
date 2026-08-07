@@ -53,6 +53,8 @@ import { SmsPanel } from "./SmsPanel";
 import { ProductAgentPanel } from "./ProductAgentPanel";
 import { ComposeEmailPanel } from "./ComposeEmailPanel";
 import { EnginePanel } from "./EnginePanel";
+import { DerivPanel } from "./DerivPanel";
+import { ContractBlockchainPanel } from "./ContractBlockchainPanel";
 
 function badgeClass(status: string) {
   return `badge ${status.toLowerCase()}`;
@@ -747,6 +749,12 @@ export default function App() {
         await loadUsersPage(userPage, userSearch);
       } else if (active === "transactions") {
         /* TransactionsPanel loads its own data */
+      } else if (active === "engine") {
+        /* EnginePanel is self-contained */
+      } else if (active === "deriv") {
+        /* DerivPanel is self-contained */
+      } else if (active === "contractBlockchain") {
+        /* ContractBlockchainPanel is self-contained */
       } else if (active === "messages") {
         const res = await api.messageThreads();
         setMessageThreads(res.items);
@@ -4900,6 +4908,12 @@ export default function App() {
         {tab === "sms" && <SmsPanel onMessage={setMessage} />}
 
         {tab === "engine" && <EnginePanel onMessage={setMessage} />}
+
+        {tab === "deriv" && <DerivPanel onMessage={setMessage} />}
+
+        {tab === "contractBlockchain" && (
+          <ContractBlockchainPanel onMessage={setMessage} />
+        )}
 
         {tab === "composeEmail" && <ComposeEmailPanel onMessage={setMessage} />}
 

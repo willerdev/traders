@@ -1023,6 +1023,26 @@ model PlatformConfig {
   /// Set after the withdrawal schedule / early-exit policy email is broadcast once.
   withdrawalScheduleAnnouncedAt DateTime?
 
+  /// Deriv WebSocket API — admin-configured credentials for programmatic access.
+  derivAppId             String?
+  derivApiToken          String?
+  derivEndpoint          String?  @default("wss://ws.derivws.com/websockets/v3")
+  derivOAuthRedirectUrl  String?
+  derivEnabled           Boolean  @default(false)
+  derivNotes             String?  @db.Text
+
+  /// Launch / vault contract config (Remix deploy) — preferred over env when set.
+  contractAddress        String?
+  contractChainId        Int?
+  contractNetworkLabel   String?
+  contractNetworkKind    String?
+  contractAbi            String?  @db.Text
+  contractRpcUrl         String?
+  contractAdminWallet    String?
+  contractExplorerUrl    String?
+  contractRemixRef       String?
+  contractNotes          String?  @db.Text
+
   @@map("platform_config")
 }
 

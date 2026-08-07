@@ -935,3 +935,87 @@ export class UpdateStaffPermissionsDto {
   @IsBoolean()
   canManageCopy?: boolean;
 }
+
+export class UpdateDerivSettingsDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  appId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  apiToken?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  endpoint?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  oauthRedirectUrl?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  notes?: string;
+}
+
+export class UpdateContractBlockchainSettingsDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  contractAddress?: string;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @Type(() => Number)
+  @IsNumber()
+  chainId?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  networkLabel?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  networkKind?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500_000)
+  abi?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  rpcUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  adminWallet?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  explorerUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  remixRef?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  notes?: string;
+}

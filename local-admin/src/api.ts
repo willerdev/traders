@@ -713,6 +713,45 @@ export const api = {
       },
     ),
 
+  derivSettings: () =>
+    request<DerivSettings>("/admin/platform/deriv-settings"),
+  updateDerivSettings: (data: {
+    appId?: string;
+    apiToken?: string;
+    endpoint?: string;
+    oauthRedirectUrl?: string;
+    enabled?: boolean;
+    notes?: string;
+  }) =>
+    request<DerivSettings>("/admin/platform/deriv-settings", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
+  contractBlockchainSettings: () =>
+    request<ContractBlockchainSettings>(
+      "/admin/platform/contract-blockchain-settings",
+    ),
+  updateContractBlockchainSettings: (data: {
+    contractAddress?: string;
+    chainId?: number | null;
+    networkLabel?: string;
+    networkKind?: string;
+    abi?: string;
+    rpcUrl?: string;
+    adminWallet?: string;
+    explorerUrl?: string;
+    remixRef?: string;
+    notes?: string;
+  }) =>
+    request<ContractBlockchainSettings>(
+      "/admin/platform/contract-blockchain-settings",
+      {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      },
+    ),
+
   broadcastYieldHoldPolicy: (force = false) =>
     request<{
       skipped: boolean;
@@ -1128,6 +1167,46 @@ export type InvestorDepositorSettings = {
   withdrawalPreferredSchedule?: "WEEKLY" | "MONTHLY" | string;
   withdrawalOffSchedulePenaltyPercent?: number;
   walletWithdrawalFeeUsdt?: number;
+};
+
+export type DerivSettings = {
+  appId: string;
+  apiTokenMasked: string;
+  hasApiToken: boolean;
+  endpoint: string;
+  oauthRedirectUrl: string;
+  enabled: boolean;
+  notes: string;
+  websocketUrl: string;
+  docsUrl: string;
+};
+
+export type ContractBlockchainSettings = {
+  contractAddress: string;
+  chainId: number | null;
+  networkLabel: string;
+  networkKind: string;
+  abi: string;
+  rpcUrl: string;
+  adminWallet: string;
+  explorerUrl: string;
+  remixRef: string;
+  notes: string;
+  effective: {
+    contractAddress: string;
+    chainId: number;
+    rpcUrl: string;
+    explorerUrl: string;
+    networkLabel: string;
+    configured: boolean;
+  };
+  remixUrl: string;
+  envFallback: {
+    contractAddress: string;
+    chainId: number;
+    rpcUrl: string;
+    explorerUrl: string;
+  };
 };
 
 export type InvestorRow = {
