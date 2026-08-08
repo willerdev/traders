@@ -13,6 +13,7 @@ import { InvestorService } from '../investor/investor.service';
 import { UnitrustService } from '../unitrust/unitrust.service';
 import { AbuseHunterService } from './abuse-hunter.service';
 import { AccountTransferService } from '../account-transfer/account-transfer.service';
+import { ChainEnrollmentService } from '../blockchain/chain-enrollment.service';
 
 @Injectable()
 export class PlatformJobsService implements OnModuleInit {
@@ -29,6 +30,7 @@ export class PlatformJobsService implements OnModuleInit {
     private unitrustService: UnitrustService,
     private abuseHunter: AbuseHunterService,
     private accountTransfers: AccountTransferService,
+    private chainEnrollment: ChainEnrollmentService,
   ) {}
 
   async onModuleInit() {
@@ -235,7 +237,9 @@ export class PlatformJobsService implements OnModuleInit {
               : ''),
         );
       } else if (result.skipped === 'global_pause') {
-        this.logger.warn('Investor daily earnings skipped — global yield pause');
+        this.logger.warn(
+          'Investor daily earnings skipped — global yield pause',
+        );
       }
     } catch (err) {
       this.logger.error(
@@ -257,11 +261,32 @@ export class PlatformJobsService implements OnModuleInit {
               : ''),
         );
       } else if (result.skipped === 'global_pause') {
-        this.logger.warn('Unitrust daily earnings skipped — global yield pause');
+        this.logger.warn(
+          'Unitrust daily earnings skipped — global yield pause',
+        );
       }
     } catch (err) {
       this.logger.error(
         `Unitrust earnings job failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  /** Daily at 16:10 Africa/Kampala — accrue locked blockchain wallet profit. */
+  @Cron('10 16 * * *', { timeZone: 'Africa/Kampala' })
+  async blockchainVaultDailyProfitJob() {
+    try {
+      const result = await this.chainEnrollment.creditDailyVaultProfits();
+      if (result.credited > 0) {
+        this.logger.log(
+          `Blockchain wallet daily profits credited: ${result.credited}/${result.checked}`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Blockchain wallet profit job failed: ${
+          err instanceof Error ? err.message : err
+        }`,
       );
     }
   }

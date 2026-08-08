@@ -13,7 +13,12 @@ import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../stores/auth";
 import { useTheme } from "../stores/theme";
-import { Field, PrimaryButton, ScreenState, SectionCard } from "../components/ui";
+import {
+  Field,
+  PrimaryButton,
+  ScreenState,
+  SectionCard,
+} from "../components/ui";
 import { LivenessScanner } from "../components/LivenessScanner";
 import { formatUsdt } from "../lib/format";
 import { WEB_APP_URL } from "../config/env";
@@ -72,7 +77,9 @@ export function ChainEnrollScreen() {
     try {
       setEnrollment(await api.chainEnrollment.get());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load enrollment");
+      setError(
+        err instanceof Error ? err.message : "Failed to load enrollment",
+      );
     } finally {
       setLoading(false);
     }
@@ -184,7 +191,10 @@ export function ChainEnrollScreen() {
     setError(null);
     try {
       setEnrollment(await api.chainEnrollment.activate(amount));
-      Alert.alert("Launched", "Contract activated. You can deposit on web Chain dashboard for on-chain settlement.");
+      Alert.alert(
+        "Launched",
+        "Contract activated. You can deposit on web Chain dashboard for on-chain settlement.",
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Activation failed");
     } finally {
@@ -279,7 +289,11 @@ export function ChainEnrollScreen() {
             >
               <Text
                 style={{
-                  color: active ? theme.primary : done ? "#34D399" : theme.muted,
+                  color: active
+                    ? theme.primary
+                    : done
+                      ? "#34D399"
+                      : theme.muted,
                   fontSize: 12,
                   fontWeight: "700",
                 }}
@@ -309,18 +323,25 @@ export function ChainEnrollScreen() {
         <View style={{ gap: 12 }}>
           <Text style={[styles.h1, { color: theme.text }]}>On-chain vault</Text>
           <Text style={{ color: theme.muted, lineHeight: 20 }}>
-            Agree → verify ID & liveness → approval → deposit. Dashboard stays empty
-            until you are approved and fund the vault.
+            Agree → verify ID & liveness → approval → deposit. Dashboard stays
+            empty until you are approved and fund the vault.
           </Text>
           <SectionCard title="Indicative yield bands">
             <Text style={{ color: theme.text, lineHeight: 20 }}>
               ${t.minDepositUsd.toLocaleString()}–$
-              {t.midTierMaxUsd.toLocaleString()}: {t.midTierYieldPercent}%
-              {"\n"}Above ${t.midTierMaxUsd.toLocaleString()}:{" "}
-              {t.highTierYieldPercent}%
-              {"\n"}Withdraw fee: {t.withdrawFeePercent}%
+              {t.midTierMaxUsd.toLocaleString()}: {t.midTierYieldPercent}%{"\n"}
+              Above ${t.midTierMaxUsd.toLocaleString()}:{" "}
+              {t.highTierYieldPercent}%{"\n"}Withdraw fee:{" "}
+              {t.withdrawFeePercent}%
             </Text>
-            <Text style={{ color: theme.muted, marginTop: 10, lineHeight: 18, fontSize: 13 }}>
+            <Text
+              style={{
+                color: theme.muted,
+                marginTop: 10,
+                lineHeight: 18,
+                fontSize: 13,
+              }}
+            >
               {t.yieldDisclaimer ||
                 "Percentages are indicative and may change with deposit size, available funds, market conditions, and past user behavior."}
             </Text>
@@ -356,7 +377,8 @@ export function ChainEnrollScreen() {
           <Text style={[styles.h1, { color: theme.text }]}>
             Identity verification
           </Text>
-          {enrollment.status === "KYC_REJECTED" && enrollment.rejectionReason ? (
+          {enrollment.status === "KYC_REJECTED" &&
+          enrollment.rejectionReason ? (
             <Text style={{ color: theme.error }}>
               Rejected: {enrollment.rejectionReason}
             </Text>
@@ -385,7 +407,9 @@ export function ChainEnrollScreen() {
                 </View>
               </SectionCard>
               <SectionCard title="Document">
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                <View
+                  style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
+                >
                   {(
                     [
                       ["NATIONAL_ID", "National ID"],
@@ -414,7 +438,9 @@ export function ChainEnrollScreen() {
                   onChangeText={setDocumentNumber}
                   autoCapitalize="characters"
                 />
-                <Text style={{ color: theme.muted, fontSize: 12, marginTop: 8 }}>
+                <Text
+                  style={{ color: theme.muted, fontSize: 12, marginTop: 8 }}
+                >
                   {documentType === "PASSPORT"
                     ? "Upload passport data page only. Keep corners visible, no glare."
                     : "Upload front and back. Full card visible, readable name/photo."}
@@ -469,18 +495,18 @@ export function ChainEnrollScreen() {
             {enrollment.status === "KYC_PENDING"
               ? "Under review"
               : enrollment.status === "APPROVED"
-                ? "Approved — deposit to launch"
+                ? "Approved — fund blockchain wallet"
                 : enrollment.status === "ACTIVE"
-                  ? "Contract active"
+                  ? "Blockchain wallet active"
                   : "Dashboard"}
           </Text>
           <Text style={{ color: theme.muted, lineHeight: 20 }}>
             {enrollment.status === "KYC_PENDING"
               ? "Balances stay empty until approval."
               : enrollment.status === "APPROVED"
-                ? `Deposit at least ${formatUsdt(t.minDepositUsd)} to launch. Rates are indicative.`
+                ? `Transfer at least ${formatUsdt(t.minDepositUsd)} from your platform wallet. Principal and profits lock for five days.`
                 : enrollment.status === "ACTIVE"
-                  ? `Yield band ${enrollment.yieldPercent ?? "—"}%. Withdrawals: ${enrollment.withdrawFeePercent}% fee.`
+                  ? `Daily rate ${enrollment.yieldPercent ?? "—"}%. Principal and profits share a five-day lock.`
                   : ""}
           </Text>
           <View style={styles.nullGrid}>
@@ -490,14 +516,26 @@ export function ChainEnrollScreen() {
                   key={label}
                   style={[
                     styles.nullCard,
-                    { borderColor: theme.divider, backgroundColor: theme.surface },
+                    {
+                      borderColor: theme.divider,
+                      backgroundColor: theme.surface,
+                    },
                   ]}
                 >
-                  <Text style={{ color: theme.muted, fontSize: 11 }}>{label}</Text>
-                  <Text style={{ color: theme.muted, fontSize: 22, fontWeight: "700" }}>
+                  <Text style={{ color: theme.muted, fontSize: 11 }}>
+                    {label}
+                  </Text>
+                  <Text
+                    style={{
+                      color: theme.muted,
+                      fontSize: 22,
+                      fontWeight: "700",
+                    }}
+                  >
                     {enrollment.status === "ACTIVE" && label === "Yield rate"
                       ? `${enrollment.yieldPercent ?? "—"}%`
-                      : enrollment.status === "ACTIVE" && label === "Withdrawals"
+                      : enrollment.status === "ACTIVE" &&
+                          label === "Withdrawals"
                         ? `${enrollment.withdrawFeePercent}%`
                         : "—"}
                   </Text>
@@ -506,32 +544,46 @@ export function ChainEnrollScreen() {
             )}
           </View>
           {enrollment.status === "ACTIVE" ? (
-            <SectionCard title="Live vault">
-              <Text style={{ color: theme.muted, fontSize: 13, lineHeight: 19, marginBottom: 10 }}>
-                Full deposit, rewards, and withdraw tools run on the web vault
-                dashboard after launch.
+            <SectionCard title="Blockchain wallet">
+              <Text
+                style={{
+                  color: theme.muted,
+                  fontSize: 13,
+                  lineHeight: 19,
+                  marginBottom: 10,
+                }}
+              >
+                View balances, profit history, lock time, transfers, and
+                withdrawals in the web blockchain wallet.
               </Text>
               <PrimaryButton
-                label="Open live vault on web"
-                onPress={() => void Linking.openURL(`${WEB_APP_URL}/blockchain`)}
+                label="Open blockchain wallet on web"
+                onPress={() =>
+                  void Linking.openURL(`${WEB_APP_URL}/blockchain`)
+                }
                 size="sm"
               />
             </SectionCard>
           ) : null}
           {enrollment.status === "APPROVED" ? (
-            <SectionCard title="Launch deposit">
+            <SectionCard title="Transfer from platform wallet">
               <Field
                 label="Amount (USDT)"
                 value={deposit}
                 onChangeText={setDeposit}
                 keyboardType="numeric"
               />
-              <Text style={{ color: theme.muted, fontSize: 12, marginBottom: 8 }}>
-                Indicative {t.midTierYieldPercent}% / {t.highTierYieldPercent}% ·{" "}
-                {t.withdrawFeePercent}% withdraw fee
+              <Text
+                style={{ color: theme.muted, fontSize: 12, marginBottom: 8 }}
+              >
+                Five-day principal + profit lock · indicative{" "}
+                {t.midTierYieldPercent}% / {t.highTierYieldPercent}% daily ·{" "}
+                {t.withdrawFeePercent}% withdrawal fee
               </Text>
               <PrimaryButton
-                label={busy ? "…" : `Launch · ${formatUsdt(Number(deposit) || 0)}`}
+                label={
+                  busy ? "…" : `Transfer · ${formatUsdt(Number(deposit) || 0)}`
+                }
                 onPress={() => void activate()}
                 disabled={busy || Number(deposit) < t.minDepositUsd}
               />

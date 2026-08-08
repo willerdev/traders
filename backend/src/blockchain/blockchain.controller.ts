@@ -130,6 +130,30 @@ export class BlockchainController {
     );
   }
 
+  @Get('enrollment/vault')
+  vaultStatus(@Request() req: AuthedRequest) {
+    return this.enrollment.getVaultStatus(req.user.id);
+  }
+
+  @Post('enrollment/vault/fund')
+  fundVault(@Request() req: AuthedRequest, @Body() body: { amount?: number }) {
+    return this.enrollment.transferFromPlatformWallet(
+      req.user.id,
+      Number(body.amount) || 0,
+    );
+  }
+
+  @Post('enrollment/vault/withdraw')
+  withdrawVault(
+    @Request() req: AuthedRequest,
+    @Body() body: { amount?: number },
+  ) {
+    return this.enrollment.withdrawToPlatformWallet(
+      req.user.id,
+      body.amount == null ? undefined : Number(body.amount),
+    );
+  }
+
   @Get('enrollment/pending')
   @Roles(UserRole.ADMIN)
   pendingEnrollments(@Query('limit') limit?: string) {

@@ -318,10 +318,7 @@ export class NotificationService {
     });
   }
 
-  tpClaimRejected(
-    userId: string,
-    data: { symbol: string; reason: string },
-  ) {
+  tpClaimRejected(userId: string, data: { symbol: string; reason: string }) {
     this.dispatch(this.sendTpClaimRejected(userId, data), 'TP claim rejected');
   }
 
@@ -335,7 +332,10 @@ export class NotificationService {
       breakevenPrice?: number;
     },
   ) {
-    this.dispatch(this.sendTp1ClaimAvailable(userId, data), 'TP1 claim available');
+    this.dispatch(
+      this.sendTp1ClaimAvailable(userId, data),
+      'TP1 claim available',
+    );
   }
 
   private async sendTp1ClaimAvailable(
@@ -519,7 +519,10 @@ export class NotificationService {
 
   /** Admin marked whitelist user verified — welcome to the top 1%. */
   whitelistVerified(userId: string) {
-    this.dispatch(this.sendWhitelistVerified(userId), 'Whitelist verified welcome');
+    this.dispatch(
+      this.sendWhitelistVerified(userId),
+      'Whitelist verified welcome',
+    );
   }
 
   private async sendWhitelistVerified(userId: string) {
@@ -626,10 +629,7 @@ export class NotificationService {
     );
   }
 
-  private async sendChainContractKycRejected(
-    userId: string,
-    reason: string,
-  ) {
+  private async sendChainContractKycRejected(userId: string, reason: string) {
     const user = await this.userContact(userId);
     if (!user) return false;
     const safeReason = this.escape(reason);
@@ -646,6 +646,116 @@ export class NotificationService {
       subject: 'Blockchain KYC update — please resubmit',
       html,
       text: `Blockchain KYC rejected: ${reason}. Resubmit at ${this.email.frontendUrl}/blockchain.`,
+    });
+  }
+
+  chainVaultFunded(
+    userId: string,
+    data: { amount: number; lockedUntil: string },
+  ) {
+    this.dispatch(
+      this.sendChainVaultFunded(userId, data),
+      'Blockchain wallet funded',
+    );
+  }
+
+  private async sendChainVaultFunded(
+    userId: string,
+    data: { amount: number; lockedUntil: string },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const unlockDate = new Date(data.lockedUntil).toLocaleString('en-US', {
+      timeZone: 'Africa/Kampala',
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+    const html = this.email.layout(
+      'Blockchain wallet funded',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p><strong>$${data.amount.toFixed(2)} USDT</strong> moved from your platform wallet into your blockchain wallet.</p>
+      <p>Your principal and all profit are locked for five days, until <strong>${this.escape(unlockDate)} (Kampala time)</strong>.</p>
+      <p>Daily profit is shown in Blockchain and emailed after each credit. You can withdraw principal and profit back to your platform wallet after unlock.</p>
+      ${this.email.button(`${this.email.frontendUrl}/blockchain`, 'View blockchain wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Blockchain wallet funded — $${data.amount.toFixed(2)} locked for 5 days`,
+      html,
+      text: `$${data.amount.toFixed(2)} USDT moved to your blockchain wallet. Principal and profit unlock ${unlockDate} Kampala time.`,
+    });
+  }
+
+  chainVaultDailyProfit(
+    userId: string,
+    data: {
+      amount: number;
+      yieldPercent: number;
+      principal: number;
+      lockedUntil: string;
+    },
+  ) {
+    this.dispatch(
+      this.sendChainVaultDailyProfit(userId, data),
+      'Blockchain daily profit',
+    );
+  }
+
+  private async sendChainVaultDailyProfit(
+    userId: string,
+    data: {
+      amount: number;
+      yieldPercent: number;
+      principal: number;
+      lockedUntil: string;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Blockchain daily profit credited',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your blockchain wallet earned <strong>$${data.amount.toFixed(2)} USDT</strong> at the current ${data.yieldPercent}% daily rate on $${data.principal.toFixed(2)} principal.</p>
+      <p>The profit is held in your blockchain wallet and follows the same five-day lock as your principal.</p>
+      ${this.email.button(`${this.email.frontendUrl}/blockchain`, 'View profit history')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Blockchain daily profit — $${data.amount.toFixed(2)} USDT`,
+      html,
+      text: `Blockchain daily profit: $${data.amount.toFixed(2)} USDT at ${data.yieldPercent}% on $${data.principal.toFixed(2)} principal.`,
+    });
+  }
+
+  chainVaultWithdrawn(
+    userId: string,
+    data: { gross: number; fee: number; net: number; walletBalance: number },
+  ) {
+    this.dispatch(
+      this.sendChainVaultWithdrawn(userId, data),
+      'Blockchain wallet withdrawn',
+    );
+  }
+
+  private async sendChainVaultWithdrawn(
+    userId: string,
+    data: { gross: number; fee: number; net: number; walletBalance: number },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Blockchain withdrawal complete',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>You withdrew <strong>$${data.gross.toFixed(2)} USDT</strong> from your blockchain wallet.</p>
+      <p>Fee: <strong>$${data.fee.toFixed(2)}</strong> · Credited to platform wallet: <strong>$${data.net.toFixed(2)} USDT</strong>.</p>
+      <p>Platform wallet balance: <strong>$${data.walletBalance.toFixed(2)} USDT</strong>.</p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'Open platform wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Blockchain withdrawal complete — $${data.net.toFixed(2)} credited`,
+      html,
+      text: `Blockchain withdrawal: $${data.gross.toFixed(2)} gross, $${data.fee.toFixed(2)} fee, $${data.net.toFixed(2)} credited to platform wallet.`,
     });
   }
 
@@ -671,7 +781,12 @@ export class NotificationService {
   ) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { email: true, displayName: true, createdAt: true, registrationPaid: true },
+      select: {
+        email: true,
+        displayName: true,
+        createdAt: true,
+        registrationPaid: true,
+      },
     });
     if (!user) return false;
 
@@ -1007,7 +1122,10 @@ export class NotificationService {
       pending?: boolean;
     },
   ) {
-    this.dispatch(this.sendCopyTradeBlocked(toEmail, data), 'Copy trade blocked');
+    this.dispatch(
+      this.sendCopyTradeBlocked(toEmail, data),
+      'Copy trade blocked',
+    );
   }
 
   copyPoolHealthDegraded(
@@ -1037,7 +1155,10 @@ export class NotificationService {
       volume: number | null;
     },
   ) {
-    this.dispatch(this.sendCopyBreakevenHit(toEmail, data), 'Copy breakeven hit');
+    this.dispatch(
+      this.sendCopyBreakevenHit(toEmail, data),
+      'Copy breakeven hit',
+    );
   }
 
   copyTakeProfitHit(
@@ -1355,7 +1476,9 @@ export class NotificationService {
     const adjustments = data.pairAdjustments
       .map((line) => `<li>${this.escape(line)}</li>`)
       .join('');
-    const statusLabel = data.pending ? 'Pending limit on MT5 Copy' : 'Live on MT5 Copy';
+    const statusLabel = data.pending
+      ? 'Pending limit on MT5 Copy'
+      : 'Live on MT5 Copy';
 
     const html = this.email.layout(
       'API signal → MT5 Copy trade',
@@ -1451,8 +1574,7 @@ export class NotificationService {
     const to = toEmail.trim().toLowerCase();
     if (!to) return false;
 
-    const volumeLabel =
-      data.volume != null ? `${data.volume} lots` : '—';
+    const volumeLabel = data.volume != null ? `${data.volume} lots` : '—';
 
     const html = this.email.layout(
       'Copy trade — breakeven (TP1) hit',
@@ -1491,10 +1613,8 @@ export class NotificationService {
     const to = toEmail.trim().toLowerCase();
     if (!to) return false;
 
-    const volumeLabel =
-      data.volume != null ? `${data.volume} lots` : '—';
-    const entryLabel =
-      data.entryPrice != null ? String(data.entryPrice) : '—';
+    const volumeLabel = data.volume != null ? `${data.volume} lots` : '—';
+    const entryLabel = data.entryPrice != null ? String(data.entryPrice) : '—';
 
     const html = this.email.layout(
       'Copy trade — take profit hit',
@@ -1637,11 +1757,7 @@ export class NotificationService {
     });
   }
 
-  staffHubRolesGranted(
-    userId: string,
-    roles: string[],
-    hubUrl: string,
-  ) {
+  staffHubRolesGranted(userId: string, roles: string[], hubUrl: string) {
     if (roles.length === 0) return;
     this.dispatch(
       this.sendStaffHubRolesGranted(userId, roles, hubUrl),
@@ -1980,7 +2096,10 @@ export class NotificationService {
       note: string | null;
     },
   ) {
-    this.dispatch(this.sendCashAgentAppliedOps(agentId, data), 'Cash agent applied');
+    this.dispatch(
+      this.sendCashAgentAppliedOps(agentId, data),
+      'Cash agent applied',
+    );
     if (data.email?.trim()) {
       this.dispatch(
         this.sendCashAgentAppliedUser(data.email.trim(), data.displayName),
@@ -2022,16 +2141,28 @@ export class NotificationService {
       dueAt: string | null;
     },
   ) {
-    this.dispatch(this.sendLoanRequestedUser(userId, data), 'Loan requested user');
-    this.dispatch(this.sendLoanRequestedOps(userId, data), 'Loan requested ops');
+    this.dispatch(
+      this.sendLoanRequestedUser(userId, data),
+      'Loan requested user',
+    );
+    this.dispatch(
+      this.sendLoanRequestedOps(userId, data),
+      'Loan requested ops',
+    );
   }
 
   loanCancelled(
     userId: string,
     data: { loanId: string; term: string; principal: number },
   ) {
-    this.dispatch(this.sendLoanCancelledUser(userId, data), 'Loan cancelled user');
-    this.dispatch(this.sendLoanCancelledOps(userId, data), 'Loan cancelled ops');
+    this.dispatch(
+      this.sendLoanCancelledUser(userId, data),
+      'Loan cancelled user',
+    );
+    this.dispatch(
+      this.sendLoanCancelledOps(userId, data),
+      'Loan cancelled ops',
+    );
   }
 
   loanApproved(
@@ -2046,7 +2177,10 @@ export class NotificationService {
       balance: number;
     },
   ) {
-    this.dispatch(this.sendLoanApprovedUser(userId, data), 'Loan approved user');
+    this.dispatch(
+      this.sendLoanApprovedUser(userId, data),
+      'Loan approved user',
+    );
     this.dispatch(this.sendLoanApprovedOps(userId, data), 'Loan approved ops');
   }
 
@@ -2054,7 +2188,10 @@ export class NotificationService {
     userId: string,
     data: { loanId: string; term: string; principal: number; reason: string },
   ) {
-    this.dispatch(this.sendLoanRejectedUser(userId, data), 'Loan rejected user');
+    this.dispatch(
+      this.sendLoanRejectedUser(userId, data),
+      'Loan rejected user',
+    );
     this.dispatch(this.sendLoanRejectedOps(userId, data), 'Loan rejected ops');
   }
 
@@ -2075,8 +2212,14 @@ export class NotificationService {
     userId: string,
     data: { loanId: string; term: string; totalDue: number },
   ) {
-    this.dispatch(this.sendLoanDefaultedUser(userId, data), 'Loan defaulted user');
-    this.dispatch(this.sendLoanDefaultedOps(userId, data), 'Loan defaulted ops');
+    this.dispatch(
+      this.sendLoanDefaultedUser(userId, data),
+      'Loan defaulted user',
+    );
+    this.dispatch(
+      this.sendLoanDefaultedOps(userId, data),
+      'Loan defaulted ops',
+    );
   }
 
   private async sendLoanRequestedUser(
@@ -2461,10 +2604,7 @@ export class NotificationService {
     });
   }
 
-  private async sendCashAgentApproved(
-    agentId: string,
-    data: { code: string },
-  ) {
+  private async sendCashAgentApproved(agentId: string, data: { code: string }) {
     const agent = await this.prisma.cashAgent.findUnique({
       where: { id: agentId },
     });
@@ -2606,10 +2746,9 @@ export class NotificationService {
   ) {
     const user = await this.userContact(userId);
     if (!user) return false;
-    const noteLine =
-      data.note?.trim()
-        ? `<p style="color:#94a3b8;font-size:14px;">Note: ${this.escape(data.note.trim())}</p>`
-        : '';
+    const noteLine = data.note?.trim()
+      ? `<p style="color:#94a3b8;font-size:14px;">Note: ${this.escape(data.note.trim())}</p>`
+      : '';
     const html = this.email.layout(
       'Admin deposit received',
       `<p>Hi ${this.escape(user.name)},</p>
@@ -2649,7 +2788,8 @@ export class NotificationService {
         `${data.paidCount} subscription reward${data.paidCount === 1 ? '' : 's'}`,
       );
     }
-    const breakdown = parts.length > 0 ? parts.join(' and ') : 'referral rewards';
+    const breakdown =
+      parts.length > 0 ? parts.join(' and ') : 'referral rewards';
     const html = this.email.layout(
       'Referral reward paid',
       `<p>Hi ${this.escape(user.name)},</p>
@@ -3252,10 +3392,9 @@ export class NotificationService {
     const feeLine = complimentary
       ? `<p>Enrollment fee: <strong>waived</strong> (complimentary activation).</p>`
       : `<p>Enrollment fee: <strong>$${data.feeUsdt.toFixed(2)} USDT</strong> (charged from your wallet).</p>`;
-    const noteLine =
-      data.note?.trim()
-        ? `<p style="color:#94a3b8;font-size:14px;">Note: ${this.escape(data.note.trim())}</p>`
-        : '';
+    const noteLine = data.note?.trim()
+      ? `<p style="color:#94a3b8;font-size:14px;">Note: ${this.escape(data.note.trim())}</p>`
+      : '';
     const html = this.email.layout(
       'You have been enrolled as an investor',
       `<p>Hi ${this.escape(user.name)},</p>
@@ -3680,8 +3819,7 @@ export class NotificationService {
       to: user.email,
       subject: 'New rule: deposits earn yield only after 24 hours',
       html,
-      text:
-        'New rule: deposits and investment allocations earn daily yield only after they have been in place for at least 24 hours. Existing capital older than 24 hours is unaffected. See thetradeguard.com/invest',
+      text: 'New rule: deposits and investment allocations earn daily yield only after they have been in place for at least 24 hours. Existing capital older than 24 hours is unaffected. See thetradeguard.com/invest',
     });
   }
 
@@ -3748,7 +3886,8 @@ export class NotificationService {
     );
     return this.email.send({
       to: user.email,
-      subject: 'Action needed: investments under $500 auto-stop from 27 July 2026',
+      subject:
+        'Action needed: investments under $500 auto-stop from 27 July 2026',
       html,
       text: `From 27 July 2026, investments below $500 will automatically stop. Your current investment is $${bal} USDT. Top up to at least $500 on thetradeguard.com/invest to keep earning.`,
     });
@@ -3782,7 +3921,10 @@ export class NotificationService {
     for (const user of users) {
       try {
         const balance = Number(user.platformWallet?.investorBalance ?? 0);
-        const ok = await this.sendInvestorLoanEligibilityPolicy(user.id, balance);
+        const ok = await this.sendInvestorLoanEligibilityPolicy(
+          user.id,
+          balance,
+        );
         if (ok) sent++;
         else failed++;
       } catch {
@@ -3822,7 +3964,8 @@ export class NotificationService {
     );
     return this.email.send({
       to: user.email,
-      subject: 'Eligible: borrow up to 80% of your investment while it keeps earning',
+      subject:
+        'Eligible: borrow up to 80% of your investment while it keeps earning',
       html,
       text: `With $1,000+ invested (yours: $${bal} USDT), you can reinvest profit and borrow up to 80% of your investment while it keeps earning. Message Support on thetradeguard.com/messages to learn more or apply.`,
     });

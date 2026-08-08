@@ -10,6 +10,7 @@ import { InvestorModule } from '../investor/investor.module';
 import { UnitrustModule } from '../unitrust/unitrust.module';
 import { AbuseHunterService } from './abuse-hunter.service';
 import { AccountTransferModule } from '../account-transfer/account-transfer.module';
+import { BlockchainModule } from '../blockchain/blockchain.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { AccountTransferModule } from '../account-transfer/account-transfer.modu
     InvestorModule,
     UnitrustModule,
     AccountTransferModule,
+    BlockchainModule,
   ],
   providers: [PlatformJobsService, AbuseHunterService],
 })

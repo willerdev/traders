@@ -1,7 +1,5 @@
 "use client";
 
-import { BlockchainDashboard } from "@/components/blockchain/blockchain-dashboard";
-import { BlockchainProvider } from "@/hooks/use-blockchain";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import {
   ContractEnrollFlow,
@@ -28,19 +26,8 @@ function BlockchainGate() {
     );
   }
 
-  if (!enrollment.canAccessLiveDashboard) {
-    return (
-      <ContractEnrollFlow enrollment={enrollment} onUpdated={setEnrollment} />
-    );
-  }
-
   return (
-    <BlockchainProvider>
-      <BlockchainDashboard
-        enrollment={enrollment}
-        onEnrollmentChange={setEnrollment}
-      />
-    </BlockchainProvider>
+    <ContractEnrollFlow enrollment={enrollment} onUpdated={setEnrollment} />
   );
 }
 

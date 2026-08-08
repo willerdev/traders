@@ -6,9 +6,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Check,
   FileText,
+  LockKeyhole,
   Loader2,
   ScanLine,
   ShieldCheck,
+  Wallet,
   Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import {
   api,
   type ChainContractEnrollment,
+  type ChainVaultStatus,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -222,9 +225,9 @@ function PhaseTerms({
           On-chain vault contract
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-400">
-          Enroll once, complete identity + liveness, then deposit after approval.
-          The contract only launches when your KYC is approved and you fund the
-          vault — until then your dashboard stays empty.
+          Enroll once, complete identity + liveness, then deposit after
+          approval. The contract only launches when your KYC is approved and you
+          fund the vault — until then your dashboard stays empty.
         </p>
       </div>
 
@@ -270,14 +273,10 @@ function PhaseTerms({
           </li>
           <li>
             Indicative yield bands:{" "}
-            <strong className="text-gray-200">
-              {t.midTierYieldPercent}%
-            </strong>{" "}
+            <strong className="text-gray-200">{t.midTierYieldPercent}%</strong>{" "}
             for ${t.minDepositUsd.toLocaleString()}–$
             {t.midTierMaxUsd.toLocaleString()};{" "}
-            <strong className="text-gray-200">
-              {t.highTierYieldPercent}%
-            </strong>{" "}
+            <strong className="text-gray-200">{t.highTierYieldPercent}%</strong>{" "}
             above ${t.midTierMaxUsd.toLocaleString()}.
           </li>
           <li>
@@ -286,9 +285,7 @@ function PhaseTerms({
           </li>
           <li>
             Every withdrawal deducts{" "}
-            <strong className="text-gray-200">
-              {t.withdrawFeePercent}%
-            </strong>{" "}
+            <strong className="text-gray-200">{t.withdrawFeePercent}%</strong>{" "}
             of the withdrawn amount.
           </li>
           <li>
@@ -575,6 +572,87 @@ export function ContractNullDashboard({
   enrollment: ChainContractEnrollment;
 }) {
   const t = enrollment.terms;
+  const [vault, setVault] = useState<ChainVaultStatus | null>(null);
+  const [transferAmount, setTransferAmount] = useState("2000");
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [loadingVault, setLoadingVault] = useState(
+    enrollment.status === "APPROVED" || enrollment.status === "ACTIVE",
+  );
+  const [action, setAction] = useState<"fund" | "withdraw" | null>(null);
+  const [vaultError, setVaultError] = useState("");
+  const [vaultMessage, setVaultMessage] = useState("");
+
+  const loadVault = useCallback(async () => {
+    if (enrollment.status !== "APPROVED" && enrollment.status !== "ACTIVE") {
+      return;
+    }
+    try {
+      setVault(await api.chainEnrollment.vault());
+    } catch (error) {
+      setVaultError(
+        error instanceof Error
+          ? error.message
+          : "Could not load blockchain wallet",
+      );
+    } finally {
+      setLoadingVault(false);
+    }
+  }, [enrollment.status]);
+
+  useEffect(() => {
+    // Initial remote data fetch belongs to this lifecycle synchronization.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadVault();
+  }, [loadVault]);
+
+  async function fundVault() {
+    const amount = Number(transferAmount);
+    setAction("fund");
+    setVaultError("");
+    setVaultMessage("");
+    try {
+      const next = await api.chainEnrollment.fundVault(amount);
+      setVault(next);
+      setVaultMessage(
+        `$${amount.toFixed(2)} moved into the blockchain wallet and locked for five days.`,
+      );
+    } catch (error) {
+      setVaultError(error instanceof Error ? error.message : "Transfer failed");
+    } finally {
+      setAction(null);
+    }
+  }
+
+  async function withdrawVault() {
+    const amount = withdrawAmount.trim() ? Number(withdrawAmount) : undefined;
+    setAction("withdraw");
+    setVaultError("");
+    setVaultMessage("");
+    try {
+      const next = await api.chainEnrollment.withdrawVault(amount);
+      setVault(next);
+      setWithdrawAmount("");
+      setVaultMessage("Unlocked funds were returned to your platform wallet.");
+    } catch (error) {
+      setVaultError(
+        error instanceof Error ? error.message : "Withdrawal failed",
+      );
+    } finally {
+      setAction(null);
+    }
+  }
+
+  const transfer = Number(transferAmount);
+  const firstTransfer = !vault || vault.principalBalance <= 0;
+  const transferValid =
+    Number.isFinite(transfer) &&
+    transfer > 0 &&
+    transfer <= (vault?.platformWalletBalance ?? 0) &&
+    (!firstTransfer ||
+      transfer >= (vault?.minimumInitialTransfer ?? t.minDepositUsd));
+  const unlockLabel = vault?.lockedUntil
+    ? new Date(vault.lockedUntil).toLocaleString()
+    : "Not funded";
 
   return (
     <div className="space-y-6">
@@ -585,8 +663,8 @@ export function ContractNullDashboard({
         <h1 className="mt-2 text-2xl font-bold text-white">
           {enrollment.status === "KYC_PENDING"
             ? "Under review"
-            : enrollment.status === "APPROVED"
-              ? "Approved — deposit to launch"
+            : enrollment.status === "APPROVED" || enrollment.status === "ACTIVE"
+              ? "Blockchain wallet"
               : enrollment.status === "KYC_REJECTED"
                 ? "Verification rejected"
                 : "Awaiting activation"}
@@ -594,32 +672,35 @@ export function ContractNullDashboard({
         <p className="mt-2 max-w-xl text-sm text-gray-400">
           {enrollment.status === "KYC_PENDING"
             ? "Your documents and liveness are with the team. Balances, yield, and activity stay empty until approval."
-            : enrollment.status === "APPROVED"
-              ? "KYC passed. Choose a verified funding route below. Smart Invest records every daily credit in the platform and sends an email after each earning."
+            : enrollment.status === "APPROVED" || enrollment.status === "ACTIVE"
+              ? "Transfer funds from your platform wallet. Principal and every profit credit remain locked together for five days before withdrawal."
               : "Complete verification to continue."}
         </p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-4">
         {[
-          { label: "Vault balance", value: "—" },
           {
-            label: "Daily yield",
-            value:
-              enrollment.status === "APPROVED"
-                ? `${t.midTierYieldPercent}%–${t.highTierYieldPercent}%`
-                : "—",
+            label: "Principal",
+            value: vault ? `$${vault.principalBalance.toFixed(2)}` : "—",
           },
           {
-            label: "Credit visibility",
-            value: enrollment.status === "APPROVED" ? "Platform + email" : "—",
+            label: "Locked profit",
+            value: vault ? `$${vault.profitBalance.toFixed(2)}` : "—",
           },
           {
-            label: "Withdrawals",
-            value:
-              enrollment.status === "APPROVED"
-                ? `${t.withdrawFeePercent}% fee`
-                : "—",
+            label: "Daily rate",
+            value: vault
+              ? `${vault.yieldPercent}%`
+              : `${t.midTierYieldPercent}%–${t.highTierYieldPercent}%`,
+          },
+          {
+            label: "Unlock",
+            value: vault?.totalBalance
+              ? vault.unlocked
+                ? "Available"
+                : unlockLabel
+              : "—",
           },
         ].map((card) => (
           <div
@@ -634,39 +715,145 @@ export function ContractNullDashboard({
         ))}
       </div>
 
-      {enrollment.status === "APPROVED" && (
+      {(enrollment.status === "APPROVED" || enrollment.status === "ACTIVE") && (
         <div className="rounded-2xl border border-primary/25 bg-primary/5 p-5 space-y-4">
-          <p className="text-sm font-semibold text-white">Choose how to deposit</p>
+          <div className="flex items-center gap-2">
+            <LockKeyhole className="h-4 w-4 text-primary" />
+            <p className="text-sm font-semibold text-white">
+              Five-day principal + profit lock
+            </p>
+          </div>
           <p className="text-xs text-gray-400">
-            Approval unlocks the platform’s verified deposit routes. Smart Invest
-            supports USDT checkout or funds already held in your platform wallet.
-            New allocations enter a 24-hour hold before earning.
+            Every transfer starts or resets a five-day lock on the complete
+            blockchain wallet. Neither principal nor profit can leave before{" "}
+            {unlockLabel}. Withdrawals carry the configured{" "}
+            {vault?.withdrawFeePercent ?? t.withdrawFeePercent}% fee.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-              <p className="font-semibold text-white">Smart Invest</p>
+              <p className="font-semibold text-white">Transfer from wallet</p>
               <p className="mt-1 text-xs leading-relaxed text-gray-400">
-                Deposit USDT on TRC20, BEP20, or ERC20, or pay from your platform
-                wallet. See balance, daily yield, and returns history in one place.
+                Platform wallet available: $
+                {(vault?.platformWalletBalance ?? 0).toFixed(2)} USDT. The first
+                transfer must be at least $
+                {(
+                  vault?.minimumInitialTransfer ?? t.minDepositUsd
+                ).toLocaleString()}
+                .
               </p>
-              <Button asChild className="mt-4">
-                <Link href="/invest">Open Smart Invest</Link>
-              </Button>
+              <div className="mt-4 space-y-3">
+                <Input
+                  type="number"
+                  min={
+                    firstTransfer
+                      ? (vault?.minimumInitialTransfer ?? t.minDepositUsd)
+                      : 0.01
+                  }
+                  step="0.01"
+                  value={transferAmount}
+                  onChange={(event) => setTransferAmount(event.target.value)}
+                />
+                <Button
+                  disabled={!vault || !transferValid || action !== null}
+                  onClick={() => void fundVault()}
+                  className="w-full"
+                >
+                  {action === "fund" && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+                  Transfer and lock
+                </Button>
+                <Button asChild variant="ghost" className="w-full">
+                  <Link href="/wallet">
+                    <Wallet className="h-4 w-4" />
+                    Add funds to platform wallet
+                  </Link>
+                </Button>
+              </div>
             </div>
             <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-              <p className="font-semibold text-white">Fund platform wallet</p>
+              <p className="font-semibold text-white">Withdraw after unlock</p>
               <p className="mt-1 text-xs leading-relaxed text-gray-400">
-                Deposit USDT to your wallet first, then move the amount you choose
-                into Smart Invest.
+                Available blockchain balance: $
+                {(vault?.totalBalance ?? 0).toFixed(2)} USDT. Leave amount empty
+                to withdraw everything.
               </p>
-              <Button asChild variant="secondary" className="mt-4">
-                <Link href="/wallet">Open wallet deposits</Link>
-              </Button>
+              <div className="mt-4 space-y-3">
+                <Input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  placeholder="Full balance"
+                  value={withdrawAmount}
+                  onChange={(event) => setWithdrawAmount(event.target.value)}
+                />
+                <Button
+                  variant="secondary"
+                  disabled={
+                    !vault ||
+                    !vault.unlocked ||
+                    vault.totalBalance <= 0 ||
+                    action !== null
+                  }
+                  onClick={() => void withdrawVault()}
+                  className="w-full"
+                >
+                  {action === "withdraw" && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+                  Return to platform wallet
+                </Button>
+              </div>
+              {!vault?.unlocked && (vault?.totalBalance ?? 0) > 0 && (
+                <p className="mt-3 text-xs text-amber-300">
+                  Locked until {unlockLabel}
+                </p>
+              )}
             </div>
           </div>
+          {vaultMessage && (
+            <p className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
+              {vaultMessage}
+            </p>
+          )}
+          {vaultError && (
+            <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+              {vaultError}
+            </p>
+          )}
+          {loadingVault && (
+            <p className="flex items-center gap-2 text-xs text-gray-400">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Loading blockchain wallet…
+            </p>
+          )}
+          {(vault?.recentCredits.length ?? 0) > 0 && (
+            <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+              <p className="text-sm font-semibold text-white">
+                Daily profit history
+              </p>
+              <div className="mt-3 divide-y divide-white/10">
+                {vault?.recentCredits.map((credit) => (
+                  <div
+                    key={credit.id}
+                    className="flex items-center justify-between gap-3 py-2 text-xs"
+                  >
+                    <span className="text-gray-400">
+                      {new Date(credit.creditDate).toLocaleDateString()} ·{" "}
+                      {credit.yieldPercent}% on ${credit.baseBalance.toFixed(2)}
+                    </span>
+                    <strong className="text-emerald-300">
+                      +${credit.amount.toFixed(2)}
+                    </strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <p className="text-xs text-gray-500">
-            Each successful Smart Invest daily credit is written to your returns
-            history and sent to your registered email address.
+            Daily profit is added to the locked blockchain balance and emailed
+            to your registered address. A new transfer restarts the five-day
+            lock for the full balance.
           </p>
         </div>
       )}
@@ -732,9 +919,7 @@ export function ContractEnrollFlow({ enrollment, onUpdated }: Props) {
       {phase === 2 && (
         <PhaseKyc enrollment={enrollment} onSubmitted={onUpdated} />
       )}
-      {phase === 3 && (
-        <ContractNullDashboard enrollment={enrollment} />
-      )}
+      {phase === 3 && <ContractNullDashboard enrollment={enrollment} />}
     </div>
   );
 }
@@ -759,6 +944,8 @@ export function useChainEnrollment() {
   }, []);
 
   useEffect(() => {
+    // Initial remote data fetch belongs to this lifecycle synchronization.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [refresh]);
 

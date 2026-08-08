@@ -220,23 +220,36 @@ class ApiClient {
   }
 
   auth = {
-    register: (data: { email: string; password: string; displayName: string; acceptTerms: boolean; referralCode?: string }) =>
-      this.request("/auth/register", { method: "POST", body: JSON.stringify(data) }),
+    register: (data: {
+      email: string;
+      password: string;
+      displayName: string;
+      acceptTerms: boolean;
+      referralCode?: string;
+    }) =>
+      this.request("/auth/register", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
     login: (data: { email: string; password: string }) =>
-      this.request<LoginResponse>(
-        "/auth/login",
-        { method: "POST", body: JSON.stringify(data) },
-      ),
+      this.request<LoginResponse>("/auth/login", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
     verifyLoginOtp: (data: { loginSessionId: string; code: string }) =>
       this.request<{ accessToken: string; user: Record<string, unknown> }>(
         "/auth/login/verify-otp",
         { method: "POST", body: JSON.stringify(data) },
       ),
     resendLoginOtp: (data: { loginSessionId: string }) =>
-      this.request<{ loginSessionId: string; message: string; expiresIn: number }>(
-        "/auth/login/resend-otp",
-        { method: "POST", body: JSON.stringify(data) },
-      ),
+      this.request<{
+        loginSessionId: string;
+        message: string;
+        expiresIn: number;
+      }>("/auth/login/resend-otp", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
     forgotPassword: (email: string) =>
       this.request<{ message: string }>("/auth/forgot-password", {
         method: "POST",
@@ -247,7 +260,11 @@ class ApiClient {
         method: "POST",
         body: JSON.stringify({ token, password }),
       }),
-    walletLogin: (data: { walletAddress: string; signature: string; message: string }) =>
+    walletLogin: (data: {
+      walletAddress: string;
+      signature: string;
+      message: string;
+    }) =>
       this.request<{ accessToken: string; user: Record<string, unknown> }>(
         "/auth/wallet",
         { method: "POST", body: JSON.stringify(data) },
@@ -329,8 +346,7 @@ class ApiClient {
   };
 
   chainEnrollment = {
-    get: () =>
-      this.request<ChainContractEnrollment>("/blockchain/enrollment"),
+    get: () => this.request<ChainContractEnrollment>("/blockchain/enrollment"),
     acceptTerms: () =>
       this.request<ChainContractEnrollment>(
         "/blockchain/enrollment/accept-terms",
@@ -346,13 +362,21 @@ class ApiClient {
         body: JSON.stringify(data),
       }),
     activate: (depositUsd: number) =>
-      this.request<ChainContractEnrollment>(
-        "/blockchain/enrollment/activate",
-        {
-          method: "POST",
-          body: JSON.stringify({ depositUsd }),
-        },
-      ),
+      this.request<ChainContractEnrollment>("/blockchain/enrollment/activate", {
+        method: "POST",
+        body: JSON.stringify({ depositUsd }),
+      }),
+    vault: () => this.request<ChainVaultStatus>("/blockchain/enrollment/vault"),
+    fundVault: (amount: number) =>
+      this.request<ChainVaultStatus>("/blockchain/enrollment/vault/fund", {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+      }),
+    withdrawVault: (amount?: number) =>
+      this.request<ChainVaultStatus>("/blockchain/enrollment/vault/withdraw", {
+        method: "POST",
+        body: JSON.stringify(amount == null ? {} : { amount }),
+      }),
     validateDocument: (data: {
       country?: string;
       documentType: "PASSPORT" | "NATIONAL_ID" | "DRIVERS_LICENSE";
@@ -476,23 +500,30 @@ class ApiClient {
         method: "POST",
       }),
     partialClose: (signalId: string, volume: number) =>
-      this.request<{ status: string; signalId: string; volume: number; message?: string }>(
-        `/signals/${signalId}/partial-close`,
-        { method: "POST", body: JSON.stringify({ volume }) },
-      ),
+      this.request<{
+        status: string;
+        signalId: string;
+        volume: number;
+        message?: string;
+      }>(`/signals/${signalId}/partial-close`, {
+        method: "POST",
+        body: JSON.stringify({ volume }),
+      }),
     updateStops: (
       signalId: string,
       stops: { stopLoss?: number; takeProfit?: number },
     ) =>
-      this.request<UpdateSetupStopsResult>(`/signals/${signalId}/update-stops`, {
-        method: "POST",
-        body: JSON.stringify(stops),
-      }),
+      this.request<UpdateSetupStopsResult>(
+        `/signals/${signalId}/update-stops`,
+        {
+          method: "POST",
+          body: JSON.stringify(stops),
+        },
+      ),
     metaApiAccounts: () =>
       this.request<MetaApiAccountsResult>("/signals/metaapi/accounts"),
     mt5Terminal: () => this.request<UserMt5Terminal>("/signals/mt5/terminal"),
-    mt5Quotes: () =>
-      this.request<UserMt5QuotesResult>("/signals/mt5/quotes"),
+    mt5Quotes: () => this.request<UserMt5QuotesResult>("/signals/mt5/quotes"),
     mt5BatchQuotes: (symbols: string[]) => {
       const q = new URLSearchParams({
         symbols: symbols.join(","),
@@ -640,7 +671,9 @@ class ApiClient {
       if (params?.since) q.set("since", params.since);
       if (params?.external_id) q.set("external_id", params.external_id);
       const qs = q.toString();
-      return this.request<HubSignalList>(`/signals/hub/list${qs ? `?${qs}` : ""}`);
+      return this.request<HubSignalList>(
+        `/signals/hub/list${qs ? `?${qs}` : ""}`,
+      );
     },
     positions: () => this.request<HubPositions>("/signals/hub/positions"),
     closePosition: (ticket: number) =>
@@ -790,9 +823,7 @@ class ApiClient {
 
   public = {
     recentPayouts: (limit = 12) =>
-      this.request<PublicPayoutFeed>(
-        `/public/recent-payouts?limit=${limit}`,
-      ),
+      this.request<PublicPayoutFeed>(`/public/recent-payouts?limit=${limit}`),
   };
 
   payments = {
@@ -1041,14 +1072,19 @@ class ApiClient {
         amountUgx: number;
         fetchedAt: string;
         source: string;
-      }>(`/wallet/momo-p2p/quote?amountUsdt=${encodeURIComponent(String(amountUsdt))}`),
+      }>(
+        `/wallet/momo-p2p/quote?amountUsdt=${encodeURIComponent(String(amountUsdt))}`,
+      ),
     momoP2pList: () => this.request<MomoP2pWithdrawal[]>("/wallet/momo-p2p"),
     momoP2pGet: (id: string) =>
       this.request<MomoP2pWithdrawal>(`/wallet/momo-p2p/${id}`),
     momoP2pConfirmReceived: (id: string) =>
-      this.request<MomoP2pWithdrawal>(`/wallet/momo-p2p/${id}/confirm-received`, {
-        method: "POST",
-      }),
+      this.request<MomoP2pWithdrawal>(
+        `/wallet/momo-p2p/${id}/confirm-received`,
+        {
+          method: "POST",
+        },
+      ),
     requestWithdrawOtp: (amount: number, savedWalletId: string) =>
       this.request<{
         sessionId: string;
@@ -1125,7 +1161,11 @@ class ApiClient {
         expiresAt: string | null;
         feeUsdt: number;
         walletBalance: number;
-        benefits: { weekendEarnings: boolean; zeroWithdrawalFee: boolean; dailyYieldPercent?: number };
+        benefits: {
+          weekendEarnings: boolean;
+          zeroWithdrawalFee: boolean;
+          dailyYieldPercent?: number;
+        };
       }>("/investor/vip/status"),
     vipUpgrade: () =>
       this.request<{
@@ -1231,9 +1271,7 @@ class ApiClient {
   loans = {
     eligibility: () => this.request<LoanEligibility>("/loans/eligibility"),
     quote: (term: "DAILY" | "WEEKLY" | "MONTHLY") =>
-      this.request<LoanQuote>(
-        `/loans/quote?term=${encodeURIComponent(term)}`,
-      ),
+      this.request<LoanQuote>(`/loans/quote?term=${encodeURIComponent(term)}`),
     list: () => this.request<LoanRow[]>("/loans"),
     request: (term: "DAILY" | "WEEKLY" | "MONTHLY") =>
       this.request<LoanRow>("/loans/request", {
@@ -1324,8 +1362,9 @@ class ApiClient {
       try {
         return await this.request<EvaluationMineResponse>("/evaluations/mine");
       } catch {
-        const history =
-          await this.request<EvaluationEnrollment[]>("/evaluations/history");
+        const history = await this.request<EvaluationEnrollment[]>(
+          "/evaluations/history",
+        );
         const items = history.filter((row) => row.status !== "PENDING");
         return { selectedEnrollmentId: null, items };
       }
@@ -1448,7 +1487,8 @@ class ApiClient {
         method: "POST",
         body: JSON.stringify({ reason }),
       }),
-    pendingPayouts: () => this.request<AdminPayoutItem[]>("/admin/payouts/pending"),
+    pendingPayouts: () =>
+      this.request<AdminPayoutItem[]>("/admin/payouts/pending"),
     approvePayout: (payoutId: string) =>
       this.request(`/admin/payouts/${payoutId}/approve`, { method: "POST" }),
   };
@@ -2291,7 +2331,7 @@ export interface ChainContractEnrollment {
   activatedAt: string | null;
   yieldPercent: number | null;
   withdrawFeePercent: number;
-    canAccessLiveDashboard: boolean;
+  canAccessLiveDashboard: boolean;
   showNullDashboard: boolean;
   canDeposit: boolean;
   canCancelRestart?: boolean;
@@ -2303,6 +2343,29 @@ export interface ChainContractEnrollment {
     withdrawFeePercent: number;
     yieldDisclaimer?: string;
   };
+}
+
+export interface ChainVaultStatus {
+  enrollmentStatus: "APPROVED" | "ACTIVE";
+  platformWalletBalance: number;
+  principalBalance: number;
+  profitBalance: number;
+  totalBalance: number;
+  yieldPercent: number;
+  lockDays: number;
+  lockedUntil: string | null;
+  unlocked: boolean;
+  secondsUntilUnlock: number;
+  withdrawFeePercent: number;
+  minimumInitialTransfer: number;
+  recentCredits: Array<{
+    id: string;
+    amount: number;
+    yieldPercent: number;
+    baseBalance: number;
+    creditDate: string;
+    createdAt: string;
+  }>;
 }
 
 export interface LeaderboardEntry {
