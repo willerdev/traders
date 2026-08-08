@@ -267,6 +267,28 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
+  blockchainKycList: (offset = 0, status?: string) =>
+    request<{
+      items: BlockchainKycRow[];
+      count: number;
+      counts: {
+        pending: number;
+        approved: number;
+        rejected: number;
+        active: number;
+      };
+    }>(
+      `/admin/kyc/blockchain?limit=50&offset=${offset}${status ? `&status=${encodeURIComponent(status)}` : ""}`,
+    ),
+  approveBlockchainKyc: (userId: string) =>
+    request(`/admin/kyc/blockchain/${encodeURIComponent(userId)}/approve`, {
+      method: "POST",
+    }),
+  rejectBlockchainKyc: (userId: string, reason: string) =>
+    request(`/admin/kyc/blockchain/${encodeURIComponent(userId)}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
   approvePayout: (
     payoutId: string,
     settlement?: "gateway" | "external",
@@ -1543,6 +1565,32 @@ export type KycRow = {
   submittedAt?: string | null;
   reviewedAt?: string | null;
   user: { id?: string; displayName: string; email: string | null };
+};
+
+export type BlockchainKycRow = {
+  id: string;
+  userId: string;
+  status:
+    | "KYC_PENDING"
+    | "KYC_REJECTED"
+    | "APPROVED"
+    | "ACTIVE"
+    | "TERMS_ACCEPTED"
+    | "NOT_STARTED";
+  country: string | null;
+  documentType: string | null;
+  documentNumber: string | null;
+  documentFrontUrl: string | null;
+  documentBackUrl: string | null;
+  livenessSelfieUrl: string | null;
+  livenessPassedAt: string | null;
+  rejectionReason: string | null;
+  kycSubmittedAt: string | null;
+  approvedAt: string | null;
+  activatedAt: string | null;
+  yieldPercent: number | null;
+  email: string | null;
+  displayName: string;
 };
 
 export type PayoutRow = {

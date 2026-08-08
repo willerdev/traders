@@ -571,35 +571,10 @@ function PhaseKyc({
 
 export function ContractNullDashboard({
   enrollment,
-  onActivated,
 }: {
   enrollment: ChainContractEnrollment;
-  onActivated?: (e: ChainContractEnrollment) => void;
 }) {
-  const [deposit, setDeposit] = useState("2000");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const t = enrollment.terms;
-  const amount = Number(deposit);
-  const previewYield =
-    Number.isFinite(amount) && amount >= t.minDepositUsd
-      ? amount <= t.midTierMaxUsd
-        ? t.midTierYieldPercent
-        : t.highTierYieldPercent
-      : null;
-
-  async function activate() {
-    setLoading(true);
-    setError("");
-    try {
-      const next = await api.chainEnrollment.activate(amount);
-      onActivated?.(next);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not activate");
-    } finally {
-      setLoading(false);
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -620,7 +595,7 @@ export function ContractNullDashboard({
           {enrollment.status === "KYC_PENDING"
             ? "Your documents and liveness are with the team. Balances, yield, and activity stay empty until approval."
             : enrollment.status === "APPROVED"
-              ? "KYC passed. Deposit at least $2,000 USDT to launch your vault contract. Live stats appear after activation."
+              ? "KYC passed. Choose a verified funding route below. Smart Invest records every daily credit in the platform and sends an email after each earning."
               : "Complete verification to continue."}
         </p>
       </div>
@@ -628,16 +603,31 @@ export function ContractNullDashboard({
       <div className="grid gap-3 sm:grid-cols-4">
         {[
           { label: "Vault balance", value: "—" },
-          { label: "Yield rate", value: "—" },
-          { label: "Rewards", value: "—" },
-          { label: "Withdrawals", value: "—" },
+          {
+            label: "Daily yield",
+            value:
+              enrollment.status === "APPROVED"
+                ? `${t.midTierYieldPercent}%–${t.highTierYieldPercent}%`
+                : "—",
+          },
+          {
+            label: "Credit visibility",
+            value: enrollment.status === "APPROVED" ? "Platform + email" : "—",
+          },
+          {
+            label: "Withdrawals",
+            value:
+              enrollment.status === "APPROVED"
+                ? `${t.withdrawFeePercent}% fee`
+                : "—",
+          },
         ].map((card) => (
           <div
             key={card.label}
             className="rounded-xl border border-dashed border-white/10 bg-black/20 px-4 py-5"
           >
             <p className="text-xs text-gray-500">{card.label}</p>
-            <p className="mt-2 text-2xl font-semibold tabular-nums text-gray-600">
+            <p className="mt-2 text-xl font-semibold tabular-nums text-gray-300">
               {card.value}
             </p>
           </div>
@@ -646,40 +636,38 @@ export function ContractNullDashboard({
 
       {enrollment.status === "APPROVED" && (
         <div className="rounded-2xl border border-primary/25 bg-primary/5 p-5 space-y-4">
-          <p className="text-sm font-semibold text-white">Launch deposit</p>
+          <p className="text-sm font-semibold text-white">Choose how to deposit</p>
           <p className="text-xs text-gray-400">
-            ${t.minDepositUsd.toLocaleString()}–$
-            {t.midTierMaxUsd.toLocaleString()} → indicative {t.midTierYieldPercent}% ·
-            above ${t.midTierMaxUsd.toLocaleString()} → indicative{" "}
-            {t.highTierYieldPercent}% · withdrawals: {t.withdrawFeePercent}% fee.
-            Rates may change with funds and past behavior.
+            Approval unlocks the platform’s verified deposit routes. Smart Invest
+            supports USDT checkout or funds already held in your platform wallet.
+            New allocations enter a 24-hour hold before earning.
           </p>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="flex-1 space-y-2">
-              <Label>Deposit amount (USDT)</Label>
-              <Input
-                type="number"
-                min={t.minDepositUsd}
-                step={100}
-                value={deposit}
-                onChange={(e) => setDeposit(e.target.value)}
-              />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+              <p className="font-semibold text-white">Smart Invest</p>
+              <p className="mt-1 text-xs leading-relaxed text-gray-400">
+                Deposit USDT on TRC20, BEP20, or ERC20, or pay from your platform
+                wallet. See balance, daily yield, and returns history in one place.
+              </p>
+              <Button asChild className="mt-4">
+                <Link href="/invest">Open Smart Invest</Link>
+              </Button>
             </div>
-            <Button
-              disabled={
-                loading ||
-                !Number.isFinite(amount) ||
-                amount < t.minDepositUsd
-              }
-              onClick={() => void activate()}
-              className="gap-2"
-            >
-              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              Launch contract
-              {previewYield != null ? ` · ${previewYield}%` : ""}
-            </Button>
+            <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+              <p className="font-semibold text-white">Fund platform wallet</p>
+              <p className="mt-1 text-xs leading-relaxed text-gray-400">
+                Deposit USDT to your wallet first, then move the amount you choose
+                into Smart Invest.
+              </p>
+              <Button asChild variant="secondary" className="mt-4">
+                <Link href="/wallet">Open wallet deposits</Link>
+              </Button>
+            </div>
           </div>
-          {error && <p className="text-sm text-danger">{error}</p>}
+          <p className="text-xs text-gray-500">
+            Each successful Smart Invest daily credit is written to your returns
+            history and sent to your registered email address.
+          </p>
         </div>
       )}
     </div>
@@ -745,10 +733,7 @@ export function ContractEnrollFlow({ enrollment, onUpdated }: Props) {
         <PhaseKyc enrollment={enrollment} onSubmitted={onUpdated} />
       )}
       {phase === 3 && (
-        <ContractNullDashboard
-          enrollment={enrollment}
-          onActivated={onUpdated}
-        />
+        <ContractNullDashboard enrollment={enrollment} />
       )}
     </div>
   );

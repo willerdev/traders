@@ -588,6 +588,67 @@ export class NotificationService {
     });
   }
 
+  chainContractKycApproved(userId: string) {
+    this.dispatch(
+      this.sendChainContractKycApproved(userId),
+      'Blockchain contract KYC approved',
+    );
+  }
+
+  private async sendChainContractKycApproved(userId: string) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+
+    const html = this.email.layout(
+      'Blockchain verification approved',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your blockchain contract identity verification has been <strong>approved</strong>.</p>
+      <p>You can now choose how to fund your account:</p>
+      <ul>
+        <li><strong>Smart Invest:</strong> deposit with USDT or use your platform wallet. Daily earnings appear in the platform and are emailed after each credit.</li>
+        <li><strong>Platform wallet:</strong> deposit USDT first, then allocate it to Smart Invest.</li>
+      </ul>
+      <p>New investment allocations begin earning after the platform's 24-hour holding period.</p>
+      ${this.email.button(`${this.email.frontendUrl}/blockchain`, 'View deposit options')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Blockchain KYC approved — choose a deposit option',
+      html,
+      text: `Your blockchain KYC was approved. Choose a deposit option at ${this.email.frontendUrl}/blockchain. Smart Invest daily earnings appear in the platform and are emailed after each credit.`,
+    });
+  }
+
+  chainContractKycRejected(userId: string, reason: string) {
+    this.dispatch(
+      this.sendChainContractKycRejected(userId, reason),
+      'Blockchain contract KYC rejected',
+    );
+  }
+
+  private async sendChainContractKycRejected(
+    userId: string,
+    reason: string,
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const safeReason = this.escape(reason);
+    const html = this.email.layout(
+      'Blockchain verification needs resubmission',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your blockchain contract KYC submission could not be approved.</p>
+      <p><strong>Reason:</strong> ${safeReason}</p>
+      <p>Open Blockchain, correct the documents, and submit again.</p>
+      ${this.email.button(`${this.email.frontendUrl}/blockchain`, 'Resubmit verification')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Blockchain KYC update — please resubmit',
+      html,
+      text: `Blockchain KYC rejected: ${reason}. Resubmit at ${this.email.frontendUrl}/blockchain.`,
+    });
+  }
+
   accountActivated(userId: string) {
     this.dispatch(this.sendAccountActivated(userId), 'Account activated');
     this.dispatch(

@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { KycAiService } from './kyc-ai.service';
+import { NotificationService } from '../email/notification.service';
 
 export const CHAIN_CONTRACT_MIN_USD = 2000;
 export const CHAIN_CONTRACT_TIER_CUTOFF_USD = 5000;
@@ -33,6 +34,7 @@ export class ChainEnrollmentService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly kycAi: KycAiService,
+    private readonly notifications: NotificationService,
   ) {}
 
   async getEnrollment(userId: string) {
@@ -206,6 +208,7 @@ export class ChainEnrollmentService {
         rejectionReason: null,
       },
     });
+    this.notifications.chainContractKycApproved(userId);
     return this.toDto(row);
   }
 
@@ -224,6 +227,10 @@ export class ChainEnrollmentService {
         rejectionReason: reason.trim() || 'Rejected',
       },
     });
+    this.notifications.chainContractKycRejected(
+      userId,
+      row.rejectionReason ?? 'Rejected',
+    );
     return this.toDto(row);
   }
 
@@ -275,6 +282,79 @@ export class ChainEnrollmentService {
       email: r.user.email,
       displayName: r.user.displayName,
     }));
+  }
+
+  async listForAdmin(
+    input: {
+      status?: ChainContractEnrollmentStatus;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ) {
+    await this.ensureTable();
+    const limit = Math.min(100, Math.max(1, input.limit ?? 50));
+    const offset = Math.max(0, input.offset ?? 0);
+    const where =
+      input.status === 'APPROVED'
+        ? {
+            status: {
+              in: [
+                'APPROVED',
+                'ACTIVE',
+              ] as ChainContractEnrollmentStatus[],
+            },
+          }
+        : input.status
+          ? { status: input.status }
+      : {
+          status: {
+            in: [
+              'KYC_PENDING',
+              'KYC_REJECTED',
+              'APPROVED',
+              'ACTIVE',
+            ] as ChainContractEnrollmentStatus[],
+          },
+        };
+    const [rows, count, grouped] = await Promise.all([
+      this.prisma.chainContractEnrollment.findMany({
+        where,
+        include: {
+          user: { select: { id: true, email: true, displayName: true } },
+        },
+        orderBy: { kycSubmittedAt: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      this.prisma.chainContractEnrollment.count({ where }),
+      this.prisma.chainContractEnrollment.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+      }),
+    ]);
+
+    const counts = {
+      pending: 0,
+      approved: 0,
+      rejected: 0,
+      active: 0,
+    };
+    for (const group of grouped) {
+      if (group.status === 'KYC_PENDING') counts.pending = group._count._all;
+      if (group.status === 'APPROVED') counts.approved = group._count._all;
+      if (group.status === 'KYC_REJECTED') counts.rejected = group._count._all;
+      if (group.status === 'ACTIVE') counts.active = group._count._all;
+    }
+
+    return {
+      items: rows.map((row) => ({
+        ...this.toDto(row),
+        email: row.user.email,
+        displayName: row.user.displayName,
+      })),
+      count,
+      counts,
+    };
   }
 
   private toDto(row: {

@@ -8,6 +8,7 @@ import {
   hubAccessFromLoginUser,
   type AdminSession,
   type KycRow,
+  type BlockchainKycRow,
   type PayoutRow,
   type SignalRow,
   type UserRow,
@@ -349,6 +350,16 @@ export default function App() {
   const [copyMirrorLoadingId, setCopyMirrorLoadingId] = useState<string | null>(null);
   const [tp1ApproveLoadingId, setTp1ApproveLoadingId] = useState<string | null>(null);
   const [kycQueue, setKycQueue] = useState<KycRow[]>([]);
+  const [blockchainKycQueue, setBlockchainKycQueue] = useState<
+    BlockchainKycRow[]
+  >([]);
+  const [blockchainKycCount, setBlockchainKycCount] = useState(0);
+  const [blockchainKycCounts, setBlockchainKycCounts] = useState({
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    active: 0,
+  });
   const [kycCount, setKycCount] = useState(0);
   const [kycPage, setKycPage] = useState(0);
   const [kycStatusFilter, setKycStatusFilter] = useState<
@@ -769,13 +780,30 @@ export default function App() {
         setSignals(res.items);
         setSignalCount(res.count);
       } else if (active === "kyc") {
-        const res = await api.kycList(
-          kycPage * KYC_PAGE_SIZE,
-          kycStatusFilter === "all" ? undefined : kycStatusFilter,
-        );
+        const blockchainStatus =
+          kycStatusFilter === "PENDING"
+            ? "KYC_PENDING"
+            : kycStatusFilter === "REJECTED"
+              ? "KYC_REJECTED"
+              : kycStatusFilter === "APPROVED"
+                ? "APPROVED"
+                : undefined;
+        const [res, blockchainRes] = await Promise.all([
+          api.kycList(
+            kycPage * KYC_PAGE_SIZE,
+            kycStatusFilter === "all" ? undefined : kycStatusFilter,
+          ),
+          api.blockchainKycList(
+            kycPage * KYC_PAGE_SIZE,
+            blockchainStatus,
+          ),
+        ]);
         setKycQueue(res.items);
         setKycCount(res.count);
         setKycCounts(res.counts);
+        setBlockchainKycQueue(blockchainRes.items);
+        setBlockchainKycCount(blockchainRes.count);
+        setBlockchainKycCounts(blockchainRes.counts);
       } else if (active === "payouts") {
         const [
           payoutsRes,
@@ -1296,6 +1324,48 @@ export default function App() {
       await loadTab("kyc");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "KYC rejection failed");
+    } finally {
+      setKycActionUserId(null);
+    }
+  }
+
+  async function approveBlockchainKyc(userId: string) {
+    setKycActionUserId(userId);
+    setMessage("");
+    try {
+      await api.approveBlockchainKyc(userId);
+      setMessage(
+        "Blockchain KYC approved. Deposit options were emailed to the user.",
+      );
+      await loadTab("kyc");
+    } catch (err) {
+      setMessage(
+        err instanceof Error ? err.message : "Blockchain KYC approval failed",
+      );
+    } finally {
+      setKycActionUserId(null);
+    }
+  }
+
+  async function rejectBlockchainKyc(userId: string, reason: string) {
+    setKycActionUserId(userId);
+    setMessage("");
+    try {
+      await api.rejectBlockchainKyc(
+        userId,
+        reason.trim() || "Documents unclear",
+      );
+      setMessage("Blockchain KYC rejected and resubmission email sent");
+      setRejectReason((prev) => {
+        const next = { ...prev };
+        delete next[`blockchain:${userId}`];
+        return next;
+      });
+      await loadTab("kyc");
+    } catch (err) {
+      setMessage(
+        err instanceof Error ? err.message : "Blockchain KYC rejection failed",
+      );
     } finally {
       setKycActionUserId(null);
     }
@@ -2534,7 +2604,7 @@ export default function App() {
           <>
             <div className="toolbar toolbar-wrap">
               <h2>
-                KYC submissions ({kycCount})
+                KYC submissions ({kycCount + blockchainKycCount})
                 {kycStatusFilter !== "all" ? ` · ${kycStatusFilter}` : ""}
               </h2>
               <div className="toolbar-actions">
@@ -2547,7 +2617,14 @@ export default function App() {
                   }}
                 >
                   All (
-                  {kycCounts.pending + kycCounts.approved + kycCounts.rejected})
+                  {kycCounts.pending +
+                    kycCounts.approved +
+                    kycCounts.rejected +
+                    blockchainKycCounts.pending +
+                    blockchainKycCounts.approved +
+                    blockchainKycCounts.rejected +
+                    blockchainKycCounts.active}
+                  )
                 </button>
                 <button
                   type="button"
@@ -2557,7 +2634,7 @@ export default function App() {
                     setKycPage(0);
                   }}
                 >
-                  Pending ({kycCounts.pending})
+                  Pending ({kycCounts.pending + blockchainKycCounts.pending})
                 </button>
                 <button
                   type="button"
@@ -2567,7 +2644,11 @@ export default function App() {
                     setKycPage(0);
                   }}
                 >
-                  Approved ({kycCounts.approved})
+                  Approved (
+                  {kycCounts.approved +
+                    blockchainKycCounts.approved +
+                    blockchainKycCounts.active}
+                  )
                 </button>
                 <button
                   type="button"
@@ -2577,9 +2658,154 @@ export default function App() {
                     setKycPage(0);
                   }}
                 >
-                  Rejected ({kycCounts.rejected})
+                  Rejected ({kycCounts.rejected + blockchainKycCounts.rejected})
                 </button>
               </div>
+            </div>
+            <div className="toolbar toolbar-wrap" style={{ marginTop: "1rem" }}>
+              <div>
+                <h3 style={{ margin: 0 }}>Blockchain contract KYC</h3>
+                <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                  Review identity and liveness submitted from the Blockchain
+                  enrollment flow. Approval emails the user verified deposit
+                  options and directs them to Smart Invest, where daily credits
+                  appear in-platform and by email.
+                </p>
+              </div>
+              <span className="badge">
+                {blockchainKycCounts.pending} pending ·{" "}
+                {blockchainKycCounts.approved} approved ·{" "}
+                {blockchainKycCounts.active} active
+              </span>
+            </div>
+            <div className="kyc-grid" style={{ marginBottom: "1.5rem" }}>
+              {blockchainKycQueue.length === 0 ? (
+                <p className="muted">No blockchain KYC submissions in this view</p>
+              ) : (
+                blockchainKycQueue.map((item) => {
+                  const busy = kycActionUserId === item.userId;
+                  const isPending = item.status === "KYC_PENDING";
+                  const reasonKey = `blockchain:${item.userId}`;
+                  return (
+                    <div key={`blockchain:${item.id}`} className="kyc-card">
+                      <p>
+                        <strong>{item.displayName}</strong> —{" "}
+                        {item.email ?? "No email"} ·{" "}
+                        <span className={badgeClass(item.status.toLowerCase())}>
+                          BLOCKCHAIN · {item.status.replace(/_/g, " ")}
+                        </span>
+                      </p>
+                      <p className="muted">
+                        {item.country || "Country not provided"} ·{" "}
+                        {item.documentType ?? "Document"}
+                        {item.documentNumber ? ` · ${item.documentNumber}` : ""}
+                        {item.kycSubmittedAt
+                          ? ` · Submitted ${fmtDate(item.kycSubmittedAt)}`
+                          : ""}
+                        {item.approvedAt
+                          ? ` · Approved ${fmtDate(item.approvedAt)}`
+                          : ""}
+                      </p>
+                      {item.rejectionReason && (
+                        <p className="muted" style={{ color: "#f87171" }}>
+                          Rejection reason: {item.rejectionReason}
+                        </p>
+                      )}
+                      {(item.documentFrontUrl ||
+                        item.documentBackUrl ||
+                        item.livenessSelfieUrl) && (
+                        <div
+                          style={{
+                            margin: "0.5rem 0",
+                            display: "flex",
+                            gap: "0.5rem",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          {item.documentFrontUrl && (
+                            <AdminImage
+                              src={item.documentFrontUrl}
+                              alt="Blockchain ID front"
+                            />
+                          )}
+                          {item.documentBackUrl && (
+                            <AdminImage
+                              src={item.documentBackUrl}
+                              alt="Blockchain ID back"
+                            />
+                          )}
+                          {item.livenessSelfieUrl && (
+                            <AdminImage
+                              src={item.livenessSelfieUrl}
+                              alt="Blockchain liveness selfie"
+                            />
+                          )}
+                        </div>
+                      )}
+                      {isPending ? (
+                        <>
+                          <input
+                            placeholder="Rejection reason (required when denying)"
+                            value={rejectReason[reasonKey] || ""}
+                            onChange={(e) =>
+                              setRejectReason({
+                                ...rejectReason,
+                                [reasonKey]: e.target.value,
+                              })
+                            }
+                            style={{
+                              width: "100%",
+                              marginBottom: "0.5rem",
+                              padding: "0.5rem",
+                              borderRadius: 6,
+                              border: "1px solid #334155",
+                              background: "#0b0f14",
+                              color: "#e8eaed",
+                            }}
+                          />
+                          <div className="row-actions">
+                            <button
+                              type="button"
+                              className="primary"
+                              disabled={busy}
+                              onClick={() =>
+                                void approveBlockchainKyc(item.userId)
+                              }
+                            >
+                              {busy ? "…" : "Approve & email deposit options"}
+                            </button>
+                            <button
+                              type="button"
+                              className="danger"
+                              disabled={busy || !rejectReason[reasonKey]?.trim()}
+                              onClick={() =>
+                                void rejectBlockchainKyc(
+                                  item.userId,
+                                  rejectReason[reasonKey] || "",
+                                )
+                              }
+                            >
+                              {busy ? "…" : "Deny & request resubmission"}
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="row-actions">
+                          <button
+                            type="button"
+                            onClick={() => setUserDetailId(item.userId)}
+                          >
+                            View user
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <div className="toolbar">
+              <h3 style={{ margin: 0 }}>Standard payout KYC</h3>
             </div>
             <div className="kyc-grid">
               {kycQueue.length === 0 ? (

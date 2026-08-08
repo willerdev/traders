@@ -20,6 +20,8 @@ import { WalletService } from '../wallet/wallet.service';
 import { UnitrustService } from '../unitrust/unitrust.service';
 import { LoansService } from '../loans/loans.service';
 import { CashAgentsService } from '../cash-agents/cash-agents.service';
+import { ChainEnrollmentService } from '../blockchain/chain-enrollment.service';
+import { ChainContractEnrollmentStatus } from '@prisma/client';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, AdminPermissionGuard)
@@ -32,6 +34,7 @@ export class AdminController {
     private unitrust: UnitrustService,
     private loans: LoansService,
     private cashAgents: CashAgentsService,
+    private chainEnrollment: ChainEnrollmentService,
   ) {}
 
   @Get('session')
@@ -99,6 +102,44 @@ export class AdminController {
     return this.adminService.rejectKyc(
       userId,
       req.user.id,
+      dto.reason?.trim() || 'Documents unclear',
+    );
+  }
+
+  @Get('kyc/blockchain')
+  @RequireAdminPermission('kyc')
+  listBlockchainKyc(
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+    @Query('status') status?: ChainContractEnrollmentStatus,
+  ) {
+    const allowed = new Set<ChainContractEnrollmentStatus>([
+      'KYC_PENDING',
+      'KYC_REJECTED',
+      'APPROVED',
+      'ACTIVE',
+    ]);
+    return this.chainEnrollment.listForAdmin({
+      limit: limit ? Number(limit) : 50,
+      offset: offset ? Number(offset) : 0,
+      status: status && allowed.has(status) ? status : undefined,
+    });
+  }
+
+  @Post('kyc/blockchain/:userId/approve')
+  @RequireAdminPermission('kyc')
+  approveBlockchainKyc(@Param('userId') userId: string) {
+    return this.chainEnrollment.approve(userId);
+  }
+
+  @Post('kyc/blockchain/:userId/reject')
+  @RequireAdminPermission('kyc')
+  rejectBlockchainKyc(
+    @Param('userId') userId: string,
+    @Body() dto: AdminRejectReasonDto,
+  ) {
+    return this.chainEnrollment.reject(
+      userId,
       dto.reason?.trim() || 'Documents unclear',
     );
   }

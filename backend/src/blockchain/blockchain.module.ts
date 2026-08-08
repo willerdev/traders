@@ -4,8 +4,10 @@ import { BlockchainService } from './blockchain.service';
 import { ChainSyncService } from './chain-sync.service';
 import { ChainEnrollmentService } from './chain-enrollment.service';
 import { KycAiService } from './kyc-ai.service';
+import { EmailModule } from '../email/email.module';
 
 @Module({
+  imports: [EmailModule],
   controllers: [BlockchainController],
   providers: [
     BlockchainService,

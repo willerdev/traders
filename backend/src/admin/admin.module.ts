@@ -18,6 +18,7 @@ import { UnitrustModule } from '../unitrust/unitrust.module';
 import { LoansModule } from '../loans/loans.module';
 import { CashAgentsModule } from '../cash-agents/cash-agents.module';
 import { AdminPermissionGuard } from '../auth/guards/admin-permission.guard';
+import { BlockchainModule } from '../blockchain/blockchain.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { AdminPermissionGuard } from '../auth/guards/admin-permission.guard';
     UnitrustModule,
     LoansModule,
     CashAgentsModule,
+    BlockchainModule,
   ],
   controllers: [AdminController],
   providers: [AdminService, AdminPermissionGuard],
