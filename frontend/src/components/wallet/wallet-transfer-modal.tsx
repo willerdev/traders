@@ -219,7 +219,7 @@ export function WalletTransferModal({
               <div className="flex gap-2">
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="secondary"
                   className="flex-1"
                   disabled={loading}
                   onClick={() => {

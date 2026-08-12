@@ -229,11 +229,11 @@ export class WalletController {
   @UseGuards(JwtAuthGuard)
   confirmTransfer(
     @Request() req: { user: { id: string } },
-    @Body() body: { sessionId?: string; code?: string },
+    @Body() body: { sessionId?: string; otpId?: string; code?: string },
   ) {
     return this.wallet.confirmTransfer(
       req.user.id,
-      body.sessionId ?? '',
+      body.sessionId ?? body.otpId ?? '',
       body.code ?? '',
     );
   }

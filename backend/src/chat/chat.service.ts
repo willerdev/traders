@@ -185,6 +185,35 @@ export class ChatService {
     return this.mapConversation(created.id, userId);
   }
 
+  async startConversation(
+    userId: string,
+    recipientEmailRaw: string,
+    firstMessage?: string,
+  ) {
+    const conversation = await this.startByEmail(userId, recipientEmailRaw);
+    const body = String(firstMessage ?? '').trim();
+    if (body) {
+      await this.sendMessage(userId, conversation.id, body);
+      return this.mapConversation(conversation.id, userId);
+    }
+    return conversation;
+  }
+
+  async getConversation(userId: string, conversationId: string) {
+    return this.mapConversation(conversationId, userId);
+  }
+
+  async markRead(userId: string, conversationId: string) {
+    await this.assertParticipant(conversationId, userId);
+    await this.prisma.chatParticipant.update({
+      where: {
+        conversationId_userId: { conversationId, userId },
+      },
+      data: { lastReadAt: new Date() },
+    });
+    return { ok: true as const };
+  }
+
   async listInbox(userId: string): Promise<ChatConversationView[]> {
     const parts = await this.prisma.chatParticipant.findMany({
       where: { userId },

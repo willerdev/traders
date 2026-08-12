@@ -21,6 +21,17 @@ import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { syncApiAuthToken, useAuthStore } from "@/stores/auth";
 import { Loader2, RefreshCw } from "lucide-react";
 
+function walletTxTypeLabel(type: string) {
+  switch (type) {
+    case "TRANSFER_OUT":
+      return "Transfer out";
+    case "TRANSFER_IN":
+      return "Transfer in";
+    default:
+      return type.replaceAll("_", " ").toLowerCase();
+  }
+}
+
 export default function WalletPage() {
   const { ready } = useRequireAuth();
   const token = useAuthStore((s) => s.token);
@@ -268,6 +279,7 @@ export default function WalletPage() {
                   <div className="min-w-0">
                     <p className="truncate text-sm text-white">{tx.description}</p>
                     <p className="text-[10px] text-gray-500">
+                      {walletTxTypeLabel(tx.type)} ·{" "}
                       {new Date(tx.createdAt).toLocaleString()}
                     </p>
                   </div>

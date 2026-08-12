@@ -797,27 +797,39 @@ class ApiClient {
   };
 
   chat = {
-    inbox: () => this.request<ChatConversation[]>("/chat"),
+    inbox: () => this.request<ChatConversation[]>("/chat/conversations"),
     unreadCount: () =>
       this.request<{ count: number }>("/chat/unread-count"),
-    start: (email: string) =>
-      this.request<ChatConversation>("/chat/start", {
+    get: (conversationId: string) =>
+      this.request<ChatConversation>(
+        `/chat/conversations/${encodeURIComponent(conversationId)}`,
+      ),
+    start: (email: string, body?: string) =>
+      this.request<ChatConversation>("/chat/conversations", {
         method: "POST",
-        body: JSON.stringify({ email: email.trim() }),
+        body: JSON.stringify({
+          recipientEmail: email.trim(),
+          ...(body?.trim() ? { body: body.trim() } : {}),
+        }),
       }),
     messages: (conversationId: string, since?: string) => {
       const qs = since ? `?since=${encodeURIComponent(since)}` : "";
       return this.request<{ messages: PeerChatMessage[] }>(
-        `/chat/${encodeURIComponent(conversationId)}/messages${qs}`,
+        `/chat/conversations/${encodeURIComponent(conversationId)}/messages${qs}`,
       );
     },
     send: (conversationId: string, body: string) =>
       this.request<PeerChatMessage>(
-        `/chat/${encodeURIComponent(conversationId)}/messages`,
+        `/chat/conversations/${encodeURIComponent(conversationId)}/messages`,
         {
           method: "POST",
           body: JSON.stringify({ body }),
         },
+      ),
+    markRead: (conversationId: string) =>
+      this.request<{ ok: boolean }>(
+        `/chat/conversations/${encodeURIComponent(conversationId)}/read`,
+        { method: "POST" },
       ),
   };
 

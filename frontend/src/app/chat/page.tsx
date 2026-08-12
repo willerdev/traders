@@ -46,7 +46,8 @@ function PeerChatInner() {
   const [messages, setMessages] = useState<PeerChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [startEmail, setStartEmail] = useState("");
-  const [showStart, setShowStart] = useState(false);
+  const [startBody, setStartBody] = useState("");
+  const [showStart, setShowStart] = useState(!initialId);
   const [inboxLoading, setInboxLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -149,9 +150,14 @@ function PeerChatInner() {
       setError("Enter a valid email");
       return;
     }
+    const firstMessage = startBody.trim();
+    if (!firstMessage) {
+      setError("Write a first message to start the chat");
+      return;
+    }
     setStarting(true);
     try {
-      const convo = await api.chat.start(email);
+      const convo = await api.chat.start(email, firstMessage);
       setInbox((prev) => {
         const others = prev.filter((c) => c.id !== convo.id);
         return [convo, ...others];
@@ -159,6 +165,7 @@ function PeerChatInner() {
       setActiveId(convo.id);
       setShowStart(false);
       setStartEmail("");
+      setStartBody("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start chat");
     } finally {
@@ -215,12 +222,17 @@ function PeerChatInner() {
           <p className="mb-2 text-sm text-slate-300">
             Start a conversation with a trader&apos;s account email
           </p>
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-col gap-2">
             <Input
               type="email"
               placeholder="trader@email.com"
               value={startEmail}
               onChange={(e) => setStartEmail(e.target.value)}
+            />
+            <Input
+              placeholder="First message…"
+              value={startBody}
+              onChange={(e) => setStartBody(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") void startChat();
               }}
@@ -239,7 +251,7 @@ function PeerChatInner() {
               </Button>
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
                 onClick={() => setShowStart(false)}
               >
                 Cancel
