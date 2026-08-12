@@ -796,6 +796,31 @@ class ApiClient {
       this.request<{ count: number }>("/messages/unread-count"),
   };
 
+  chat = {
+    inbox: () => this.request<ChatConversation[]>("/chat"),
+    unreadCount: () =>
+      this.request<{ count: number }>("/chat/unread-count"),
+    start: (email: string) =>
+      this.request<ChatConversation>("/chat/start", {
+        method: "POST",
+        body: JSON.stringify({ email: email.trim() }),
+      }),
+    messages: (conversationId: string, since?: string) => {
+      const qs = since ? `?since=${encodeURIComponent(since)}` : "";
+      return this.request<{ messages: PeerChatMessage[] }>(
+        `/chat/${encodeURIComponent(conversationId)}/messages${qs}`,
+      );
+    },
+    send: (conversationId: string, body: string) =>
+      this.request<PeerChatMessage>(
+        `/chat/${encodeURIComponent(conversationId)}/messages`,
+        {
+          method: "POST",
+          body: JSON.stringify({ body }),
+        },
+      ),
+  };
+
   leaderboard = {
     get: (week?: number, year?: number) => {
       const params = new URLSearchParams();
@@ -1099,6 +1124,35 @@ class ApiClient {
           amount,
           savedWalletId: savedWalletId.trim(),
         }),
+      }),
+    requestTransferOtp: (recipientEmail: string, amount: number) =>
+      this.request<{
+        sessionId: string;
+        email: string;
+        amount: number;
+        recipientEmail: string;
+        recipientName: string;
+        message: string;
+        expiresIn: number;
+      }>("/wallet/transfer/request-otp", {
+        method: "POST",
+        body: JSON.stringify({
+          recipientEmail: recipientEmail.trim(),
+          amount,
+        }),
+      }),
+    confirmTransfer: (sessionId: string, code: string) =>
+      this.request<{
+        status: string;
+        amount: number;
+        recipientEmail: string;
+        recipientName: string;
+        balance: number;
+        referenceId: string;
+        message: string;
+      }>("/wallet/transfer/confirm", {
+        method: "POST",
+        body: JSON.stringify({ sessionId, code }),
       }),
     withdrawalWallets: () =>
       this.request<SavedWithdrawalWallet[]>("/wallet/withdrawal-wallets"),
@@ -2340,6 +2394,7 @@ export interface ChainContractEnrollment {
     midTierMaxUsd: number;
     midTierYieldPercent: number;
     highTierYieldPercent: number;
+    enrollmentFeePercent: number;
     withdrawFeePercent: number;
     yieldDisclaimer?: string;
   };
@@ -2357,6 +2412,7 @@ export interface ChainVaultStatus {
   unlocked: boolean;
   secondsUntilUnlock: number;
   withdrawFeePercent: number;
+  enrollmentFeePercent: number;
   minimumInitialTransfer: number;
   recentCredits: Array<{
     id: string;
@@ -2494,6 +2550,34 @@ export interface DirectMessage {
   createdAt: string;
   fromAdmin: boolean;
   isAgent: boolean;
+}
+
+export interface PeerChatMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  senderName: string;
+  body: string;
+  createdAt: string;
+  mine: boolean;
+}
+
+export interface ChatConversation {
+  id: string;
+  peer: {
+    id: string;
+    displayName: string;
+    email: string | null;
+  };
+  lastMessage: {
+    id: string;
+    body: string;
+    createdAt: string;
+    senderId: string;
+  } | null;
+  unreadCount: number;
+  updatedAt: string;
+  createdAt: string;
 }
 
 export interface DirectMessageThread {

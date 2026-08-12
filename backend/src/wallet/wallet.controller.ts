@@ -212,6 +212,32 @@ export class WalletController {
     return this.wallet.confirmMomoP2pReceived(req.user.id, id);
   }
 
+  @Post('transfer/request-otp')
+  @UseGuards(JwtAuthGuard)
+  requestTransferOtp(
+    @Request() req: { user: { id: string } },
+    @Body() body: { recipientEmail?: string; amount?: number },
+  ) {
+    return this.wallet.requestTransferOtp(
+      req.user.id,
+      body.recipientEmail ?? '',
+      Number(body.amount),
+    );
+  }
+
+  @Post('transfer/confirm')
+  @UseGuards(JwtAuthGuard)
+  confirmTransfer(
+    @Request() req: { user: { id: string } },
+    @Body() body: { sessionId?: string; code?: string },
+  ) {
+    return this.wallet.confirmTransfer(
+      req.user.id,
+      body.sessionId ?? '',
+      body.code ?? '',
+    );
+  }
+
   @Get('withdrawal-wallets')
   @UseGuards(JwtAuthGuard)
   listWithdrawalWallets(@Request() req: { user: { id: string } }) {

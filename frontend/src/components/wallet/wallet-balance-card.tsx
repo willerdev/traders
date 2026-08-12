@@ -7,7 +7,7 @@ import {
   isLocalCurrencyDisplay,
   type DisplayCurrency,
 } from "@/lib/utils";
-import { ArrowDownLeft, ArrowUpRight, Settings } from "lucide-react";
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Settings } from "lucide-react";
 import Link from "next/link";
 
 type WalletBalanceCardProps = {
@@ -17,6 +17,7 @@ type WalletBalanceCardProps = {
   displayCurrency?: DisplayCurrency | null;
   onWithdraw: () => void;
   onDeposit: () => void;
+  onTransfer: () => void;
 };
 
 export function WalletBalanceCard({
@@ -26,6 +27,7 @@ export function WalletBalanceCard({
   displayCurrency,
   onWithdraw,
   onDeposit,
+  onTransfer,
 }: WalletBalanceCardProps) {
   const changePct =
     totalDeposited > 0 ? (totalEarned / totalDeposited) * 100 : 0;
@@ -39,6 +41,7 @@ export function WalletBalanceCard({
   const actions = [
     { label: "Withdraw", icon: ArrowUpRight, onClick: onWithdraw },
     { label: "Deposit", icon: ArrowDownLeft, onClick: onDeposit },
+    { label: "Transfer", icon: ArrowLeftRight, onClick: onTransfer },
   ] as const;
 
   return (
@@ -83,7 +86,7 @@ export function WalletBalanceCard({
         </Link>
       </div>
 
-      <div className="relative mt-6 grid grid-cols-2 gap-2">
+      <div className="relative mt-6 grid grid-cols-3 gap-2">
         {actions.map(({ label, icon: Icon, onClick }) => (
           <button
             key={label}

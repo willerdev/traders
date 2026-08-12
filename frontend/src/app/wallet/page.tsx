@@ -7,6 +7,7 @@ import { api, type WalletLedgerItem, type WalletSummary } from "@/lib/api";
 import { WalletBalanceCard } from "@/components/wallet/wallet-balance-card";
 import { WalletDepositModal } from "@/components/wallet/wallet-deposit-modal";
 import { WalletWithdrawModal } from "@/components/wallet/wallet-withdraw-modal";
+import { WalletTransferModal } from "@/components/wallet/wallet-transfer-modal";
 import { WalletWithdrawFeeNotice } from "@/components/wallet/wallet-withdraw-fee-notice";
 import { WalletSavedWithdrawalWallets } from "@/components/wallet/wallet-saved-withdrawal-wallets";
 import { CurrencySwitcher } from "@/components/currency-switcher";
@@ -29,6 +30,7 @@ export default function WalletPage() {
   const [error, setError] = useState<string | null>(null);
   const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   const localCurrency = isLocalCurrencyDisplay(summary?.displayCurrency);
 
   const refresh = useCallback(async () => {
@@ -142,6 +144,7 @@ export default function WalletPage() {
               displayCurrency={summary.displayCurrency}
               onWithdraw={() => setWithdrawOpen(true)}
               onDeposit={() => setDepositOpen(true)}
+              onTransfer={() => setTransferOpen(true)}
             />
           </div>
         )}
@@ -309,6 +312,12 @@ export default function WalletPage() {
               }
             : undefined
         }
+        onComplete={() => void refresh()}
+      />
+      <WalletTransferModal
+        open={transferOpen}
+        onClose={() => setTransferOpen(false)}
+        availableBalance={summary?.availableBalance ?? 0}
         onComplete={() => void refresh()}
       />
     </div>

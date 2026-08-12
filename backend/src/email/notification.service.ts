@@ -133,6 +133,38 @@ export class NotificationService {
     return this.sendWithdrawalOtp(email, code, details);
   }
 
+  walletTransferOtp(
+    email: string,
+    code: string,
+    details: {
+      amount: number;
+      recipientEmail: string;
+      recipientName: string;
+    },
+  ) {
+    return this.sendWalletTransferOtp(email, code, details);
+  }
+
+  walletTransferReceived(
+    userId: string,
+    data: { amount: number; fromName: string; fromEmail: string | null },
+  ) {
+    this.dispatch(
+      this.sendWalletTransferReceived(userId, data),
+      'Wallet transfer received',
+    );
+  }
+
+  peerChatMessage(
+    userId: string,
+    data: { fromName: string; preview: string; conversationId: string },
+  ) {
+    this.dispatch(
+      this.sendPeerChatMessage(userId, data),
+      'Peer chat message',
+    );
+  }
+
   /** Email ops + admins about a platform-level issue (broker limits, quotas). */
   async adminSystemAlert(subject: string, bodyLines: string[]) {
     const html = this.email.layout(
@@ -233,6 +265,87 @@ export class NotificationService {
       subject: `${code} — confirm your ${amountLabel} withdrawal`,
       html,
       text: `Your withdrawal code is ${code}. Amount: ${amountLabel} → ${details.walletLabel} (${details.network}) ${masked}. Expires in 10 minutes.`,
+    });
+  }
+
+  private async sendWalletTransferOtp(
+    email: string,
+    code: string,
+    details: {
+      amount: number;
+      recipientEmail: string;
+      recipientName: string;
+    },
+  ) {
+    const to = email.trim().toLowerCase();
+    const amountLabel = `$${Number(details.amount).toFixed(2)} USDT`;
+    const html = this.email.layout(
+      'Confirm your wallet transfer',
+      `<p>You requested an internal transfer from TraderRank Pro:</p>
+      <ul style="color:#cbd5e1;padding-left:1.2rem;">
+        <li><strong>Amount:</strong> ${amountLabel}</li>
+        <li><strong>To:</strong> ${this.escape(details.recipientName)} (${this.escape(details.recipientEmail)})</li>
+      </ul>
+      <p>Enter this code to authorize the transfer:</p>
+      <p style="font-size:32px;font-weight:700;letter-spacing:0.35em;color:#ffffff;margin:16px 0;">${code}</p>
+      <p style="color:#94a3b8;font-size:14px;">This code expires in 10 minutes. If you did not request a transfer, secure your account and ignore this email.</p>`,
+    );
+    return this.email.send({
+      to,
+      subject: `${code} — confirm your ${amountLabel} transfer`,
+      html,
+      text: `Your transfer code is ${code}. Amount: ${amountLabel} → ${details.recipientName} (${details.recipientEmail}). Expires in 10 minutes.`,
+    });
+  }
+
+  private async sendWalletTransferReceived(
+    userId: string,
+    data: { amount: number; fromName: string; fromEmail: string | null },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const fromLabel = data.fromEmail
+      ? `${data.fromName} (${data.fromEmail})`
+      : data.fromName;
+    const html = this.email.layout(
+      'You received a wallet transfer',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p><strong>$${data.amount.toFixed(2)} USDT</strong> was transferred to your platform wallet from <strong>${this.escape(fromLabel)}</strong>.</p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'Open wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Received $${data.amount.toFixed(2)} USDT wallet transfer`,
+      html,
+      text: `You received $${data.amount.toFixed(2)} USDT from ${fromLabel}. Open ${this.email.frontendUrl}/wallet`,
+    });
+  }
+
+  private async sendPeerChatMessage(
+    userId: string,
+    data: { fromName: string; preview: string; conversationId: string },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const preview =
+      data.preview.length > 160
+        ? `${data.preview.slice(0, 157)}…`
+        : data.preview;
+    const html = this.email.layout(
+      'New private message',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p><strong>${this.escape(data.fromName)}</strong> sent you a message:</p>
+      <p style="color:#cbd5e1;">${this.escape(preview)}</p>
+      ${this.email.button(
+        `${this.email.frontendUrl}/chat?c=${encodeURIComponent(data.conversationId)}`,
+        'Open chat',
+      )}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `New message from ${data.fromName}`,
+      html,
+      text: `${data.fromName}: ${preview}\nOpen ${this.email.frontendUrl}/chat?c=${data.conversationId}`,
     });
   }
 
@@ -651,7 +764,13 @@ export class NotificationService {
 
   chainVaultFunded(
     userId: string,
-    data: { amount: number; lockedUntil: string },
+    data: {
+      amount: number;
+      lockedUntil: string;
+      fee?: number;
+      gross?: number;
+      feePercent?: number;
+    },
   ) {
     this.dispatch(
       this.sendChainVaultFunded(userId, data),
@@ -661,7 +780,13 @@ export class NotificationService {
 
   private async sendChainVaultFunded(
     userId: string,
-    data: { amount: number; lockedUntil: string },
+    data: {
+      amount: number;
+      lockedUntil: string;
+      fee?: number;
+      gross?: number;
+      feePercent?: number;
+    },
   ) {
     const user = await this.userContact(userId);
     if (!user) return false;

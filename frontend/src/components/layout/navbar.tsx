@@ -16,6 +16,7 @@ import {
   Settings,
   LogOut,
   MessageCircle,
+  MessagesSquare,
   LineChart,
   ScrollText,
   TrendingUp,
@@ -156,10 +157,17 @@ const NAV_GROUPS: NavGroup[] = [
       },
       {
         href: "/messages",
-        label: "Messages",
-        shortLabel: "Chat",
+        label: "Support",
+        shortLabel: "Support",
         icon: MessageCircle,
-        keywords: "support chat",
+        keywords: "support chat agent",
+      },
+      {
+        href: "/chat",
+        label: "Chat",
+        shortLabel: "Chat",
+        icon: MessagesSquare,
+        keywords: "private peer chat messages",
       },
       {
         href: "/settings",

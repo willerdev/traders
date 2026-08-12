@@ -1893,6 +1893,253 @@ export class WalletService {
     };
   }
 
+  async requestTransferOtp(fromUserId: string, recipientEmailRaw: string, amountRaw: number) {
+    const amount = Math.round(Number(amountRaw) * 100) / 100;
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Transfer amount must be positive');
+    }
+
+    const recipientEmail = String(recipientEmailRaw ?? '')
+      .trim()
+      .toLowerCase();
+    if (!recipientEmail || !recipientEmail.includes('@')) {
+      throw new BadRequestException('Enter a valid recipient email');
+    }
+
+    const fromUser = await this.prisma.user.findUnique({
+      where: { id: fromUserId },
+      select: { email: true, status: true, displayName: true },
+    });
+    if (!fromUser?.email?.trim()) {
+      throw new BadRequestException(
+        'Add an email address to your account to send transfers',
+      );
+    }
+    if (fromUser.status === 'BANNED' || fromUser.status === 'SUSPENDED') {
+      throw new BadRequestException('Account cannot send transfers');
+    }
+
+    const toUser = await this.prisma.user.findFirst({
+      where: { email: { equals: recipientEmail, mode: 'insensitive' } },
+      select: { id: true, email: true, displayName: true, status: true },
+    });
+    if (!toUser?.email) {
+      throw new NotFoundException('No user found with that email');
+    }
+    if (toUser.id === fromUserId) {
+      throw new BadRequestException('You cannot transfer to yourself');
+    }
+    if (toUser.status === 'BANNED' || toUser.status === 'SUSPENDED') {
+      throw new BadRequestException('Recipient account cannot receive transfers');
+    }
+
+    const platformWallet = await this.getOrCreateWallet(fromUserId);
+    if (Number(platformWallet.availableBalance) < amount) {
+      throw new BadRequestException('Insufficient available balance');
+    }
+
+    const recent = await this.prisma.walletTransferOtp.findFirst({
+      where: { fromUserId, usedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (
+      recent &&
+      Date.now() - recent.createdAt.getTime() < WITHDRAW_OTP_RESEND_COOLDOWN_MS
+    ) {
+      const waitSec = Math.ceil(
+        (WITHDRAW_OTP_RESEND_COOLDOWN_MS -
+          (Date.now() - recent.createdAt.getTime())) /
+          1000,
+      );
+      throw new BadRequestException(
+        `Wait ${waitSec}s before requesting another transfer code`,
+      );
+    }
+
+    await this.prisma.walletTransferOtp.updateMany({
+      where: { fromUserId, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    const email = fromUser.email.trim().toLowerCase();
+    const code = String(randomInt(100000, 999999));
+    const codeHash = await bcrypt.hash(code, 10);
+    const session = await this.prisma.walletTransferOtp.create({
+      data: {
+        fromUserId,
+        toUserId: toUser.id,
+        toEmail: toUser.email.trim().toLowerCase(),
+        email,
+        codeHash,
+        amount,
+        expiresAt: new Date(Date.now() + WITHDRAW_OTP_TTL_MS),
+      },
+    });
+
+    const emailSent = await this.notifications.walletTransferOtp(email, code, {
+      amount,
+      recipientEmail: toUser.email.trim().toLowerCase(),
+      recipientName: toUser.displayName,
+    });
+    if (!emailSent) {
+      await this.prisma.walletTransferOtp.update({
+        where: { id: session.id },
+        data: { usedAt: new Date() },
+      });
+      throw new ServiceUnavailableException(
+        'Could not send verification email. Try again shortly.',
+      );
+    }
+
+    return {
+      sessionId: session.id,
+      email,
+      amount,
+      recipientEmail: toUser.email.trim().toLowerCase(),
+      recipientName: toUser.displayName,
+      message: 'Check your email for a 6-digit transfer code',
+      expiresIn: WITHDRAW_OTP_TTL_MS / 1000,
+    };
+  }
+
+  async confirmTransfer(fromUserId: string, sessionId: string, code: string) {
+    if (!sessionId?.trim() || !code?.trim()) {
+      throw new BadRequestException(
+        'Enter the email verification code to transfer',
+      );
+    }
+
+    const session = await this.prisma.walletTransferOtp.findUnique({
+      where: { id: sessionId.trim() },
+    });
+    if (!session || session.fromUserId !== fromUserId || session.usedAt) {
+      throw new BadRequestException('Invalid or expired transfer code session');
+    }
+    if (session.expiresAt.getTime() < Date.now()) {
+      throw new BadRequestException(
+        'Transfer code expired — request a new one',
+      );
+    }
+    if (session.attempts >= WITHDRAW_OTP_MAX_ATTEMPTS) {
+      throw new BadRequestException('Too many attempts — request a new code');
+    }
+
+    const valid = await bcrypt.compare(code.trim(), session.codeHash);
+    if (!valid) {
+      await this.prisma.walletTransferOtp.update({
+        where: { id: session.id },
+        data: { attempts: { increment: 1 } },
+      });
+      throw new BadRequestException('Incorrect transfer code');
+    }
+
+    const amount = Math.round(Number(session.amount) * 100) / 100;
+    const referenceId = `transfer_${session.id}`;
+    const [toUser, fromUser] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: session.toUserId },
+        select: { id: true, email: true, displayName: true, status: true },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: fromUserId },
+        select: { displayName: true, email: true },
+      }),
+    ]);
+    if (!toUser || toUser.status === 'BANNED' || toUser.status === 'SUSPENDED') {
+      throw new BadRequestException('Recipient account cannot receive transfers');
+    }
+
+    await this.prisma.platformWallet.upsert({
+      where: { userId: fromUserId },
+      create: { userId: fromUserId },
+      update: {},
+    });
+    await this.prisma.platformWallet.upsert({
+      where: { userId: toUser.id },
+      create: { userId: toUser.id },
+      update: {},
+    });
+
+    const fromLabel = fromUser?.displayName ?? 'A user';
+    const fromEmail = fromUser?.email?.trim().toLowerCase() ?? null;
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const debited = await tx.platformWallet.updateMany({
+        where: { userId: fromUserId, availableBalance: { gte: amount } },
+        data: { availableBalance: { decrement: amount } },
+      });
+      if (debited.count !== 1) {
+        throw new BadRequestException('Insufficient available balance');
+      }
+      await tx.platformWallet.update({
+        where: { userId: toUser.id },
+        data: { availableBalance: { increment: amount } },
+      });
+
+      const [fromWallet, toWallet] = await Promise.all([
+        tx.platformWallet.findUniqueOrThrow({ where: { userId: fromUserId } }),
+        tx.platformWallet.findUniqueOrThrow({ where: { userId: toUser.id } }),
+      ]);
+
+      await tx.walletTransaction.create({
+        data: {
+          userId: fromUserId,
+          amount: -amount,
+          type: 'TRANSFER_OUT',
+          referenceId,
+          description: `Transfer to ${toUser.displayName} (${session.toEmail}) — $${amount.toFixed(2)} USDT`,
+          balanceAfter: fromWallet.availableBalance,
+        },
+      });
+      await tx.walletTransaction.create({
+        data: {
+          userId: toUser.id,
+          amount,
+          type: 'TRANSFER_IN',
+          referenceId,
+          description: fromEmail
+            ? `Transfer from ${fromLabel} (${fromEmail}) — $${amount.toFixed(2)} USDT`
+            : `Transfer from ${fromLabel} — $${amount.toFixed(2)} USDT`,
+          balanceAfter: toWallet.availableBalance,
+        },
+      });
+      await tx.walletTransfer.create({
+        data: {
+          fromUserId,
+          toUserId: toUser.id,
+          amount,
+          referenceId,
+          status: 'COMPLETED',
+        },
+      });
+      await tx.walletTransferOtp.update({
+        where: { id: session.id },
+        data: { usedAt: new Date() },
+      });
+
+      return {
+        amount,
+        recipientEmail: session.toEmail,
+        recipientName: toUser.displayName,
+        balance: Number(fromWallet.availableBalance),
+        recipientBalance: Number(toWallet.availableBalance),
+        referenceId,
+      };
+    });
+
+    this.notifications.walletTransferReceived(toUser.id, {
+      amount,
+      fromName: fromLabel,
+      fromEmail,
+    });
+
+    return {
+      status: 'completed' as const,
+      ...result,
+      message: `Sent $${amount.toFixed(2)} USDT to ${result.recipientEmail}`,
+    };
+  }
+
   private isoWeekYear(date: Date): { weekNumber: number; year: number } {
     const d = new Date(
       Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),

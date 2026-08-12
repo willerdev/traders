@@ -15,6 +15,7 @@ import { UploadsModule } from './uploads/uploads.module';
 import { TradesModule } from './trades/trades.module';
 import { AdminModule } from './admin/admin.module';
 import { MessagesModule } from './messages/messages.module';
+import { ChatModule } from './chat/chat.module';
 import { EmailModule } from './email/email.module';
 import { PlatformModule } from './platform/platform.module';
 import { PlatformNotificationsModule } from './platform-notifications/platform-notifications.module';
@@ -58,6 +59,7 @@ import { CashAgentsModule } from './cash-agents/cash-agents.module';
     TradesModule,
     AdminModule,
     MessagesModule,
+    ChatModule,
     PlatformModule,
     PlatformNotificationsModule,
     FeedsModule,
