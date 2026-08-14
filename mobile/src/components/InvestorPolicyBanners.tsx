@@ -41,7 +41,8 @@ export function InvestorPolicyBanners({
             <Text style={[styles.title, { color: theme.text }]}>VIP privilege</Text>
             <Text style={[styles.copy, { color: theme.muted }]}>
               As a VIP investor you earn {vipDailyYieldPercent}% daily on your investment by
-              default, plus weekend earnings and $0 withdrawal fees while VIP is active.
+              default, plus $0 withdrawal fees while VIP is active. Yield does not credit on
+              Saturday or Sunday.
             </Text>
           </View>
         </View>

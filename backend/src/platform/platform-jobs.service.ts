@@ -14,6 +14,7 @@ import { UnitrustService } from '../unitrust/unitrust.service';
 import { AbuseHunterService } from './abuse-hunter.service';
 import { AccountTransferService } from '../account-transfer/account-transfer.service';
 import { ChainEnrollmentService } from '../blockchain/chain-enrollment.service';
+import { isKampalaWeekend } from '../common/kampala-weekend.util';
 
 @Injectable()
 export class PlatformJobsService implements OnModuleInit {
@@ -236,6 +237,10 @@ export class PlatformJobsService implements OnModuleInit {
               ? ` (${result.holdSkipped} under 24h hold)`
               : ''),
         );
+      } else if (result.weekendSkipped) {
+        this.logger.log(
+          `Investor daily earnings skipped — weekend (${result.weekendSkipped} investor(s))`,
+        );
       } else if (result.skipped === 'global_pause') {
         this.logger.warn(
           'Investor daily earnings skipped — global yield pause',
@@ -276,6 +281,12 @@ export class PlatformJobsService implements OnModuleInit {
   @Cron('10 16 * * *', { timeZone: 'Africa/Kampala' })
   async blockchainVaultDailyProfitJob() {
     try {
+      if (isKampalaWeekend()) {
+        this.logger.log(
+          'Blockchain wallet daily profits skipped — weekend (Kampala)',
+        );
+        return;
+      }
       const result = await this.chainEnrollment.creditDailyVaultProfits();
       if (result.credited > 0) {
         this.logger.log(

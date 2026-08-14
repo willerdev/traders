@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletService } from '../wallet/wallet.service';
 import { NotificationService } from '../email/notification.service';
+import { isKampalaWeekend } from '../common/kampala-weekend.util';
 import {
   UNITRUST_DAILY_YIELD_PERCENT_DEFAULT,
   UNITRUST_MAX_DEPOSIT,
@@ -316,6 +317,10 @@ export class UnitrustService {
     }
 
     const today = this.kampalaToday();
+    if (isKampalaWeekend()) {
+      this.logger.log('Unitrust daily yield skipped — weekend (Kampala)');
+      return { credited: 0, holdSkipped: 0, skipped: 'weekend' as const };
+    }
     const yieldPercent = await this.dailyYieldPercent();
     const holdSince = new Date(Date.now() - UNITRUST_YIELD_MIN_DEPOSIT_AGE_MS);
 

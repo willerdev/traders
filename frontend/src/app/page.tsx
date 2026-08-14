@@ -292,7 +292,7 @@ export default function HomePage() {
                     <span className="text-2xl text-primary">%</span>
                   </p>
                   <p className="mt-1 text-sm text-gray-500">
-                    VIP up to 10% · weekends included
+                    VIP up to 10% · weekdays only
                   </p>
                 </div>
               </div>
@@ -337,7 +337,7 @@ export default function HomePage() {
             </p>
           </div>
           <p className="max-w-[10rem] text-right text-xs text-gray-500">
-            VIP 10% · weekends · $0 withdraw fee
+            VIP 10% · weekdays · $0 withdraw fee
           </p>
         </div>
       </div>

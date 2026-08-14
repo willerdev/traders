@@ -34,6 +34,7 @@ import {
   nextVipExpiry,
   resolveInvestorDailyYieldPercent,
 } from './investor-vip.util';
+import { isKampalaWeekend } from '../common/kampala-weekend.util';
 import { FxRatesService } from '../fx/fx-rates.service';
 import { resolvePreferredDisplayCurrency } from '../fx/country-currency.util';
 import {
@@ -216,7 +217,7 @@ export class InvestorService {
         expiresAt: user.investorVipExpiresAt?.toISOString() ?? null,
         feeUsdt: INVESTOR_VIP_FEE_USDT,
         benefits: {
-          weekendEarnings: true,
+          weekendEarnings: false,
           zeroWithdrawalFee: true,
           dailyYieldPercent: INVESTOR_VIP_DAILY_YIELD_PERCENT,
         },
@@ -1049,25 +1050,6 @@ export class InvestorService {
     return new Date(Date.UTC(y, m - 1, d));
   }
 
-  /** 0 = Sunday … 6 = Saturday in Africa/Kampala. */
-  private kampalaDayOfWeek(date: Date): number {
-    const fmt = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'Africa/Kampala',
-      weekday: 'short',
-    });
-    const day = fmt.format(date);
-    const map: Record<string, number> = {
-      Sun: 0,
-      Mon: 1,
-      Tue: 2,
-      Wed: 3,
-      Thu: 4,
-      Fri: 5,
-      Sat: 6,
-    };
-    return map[day] ?? date.getUTCDay();
-  }
-
   async getVipStatus(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -1090,7 +1072,7 @@ export class InvestorService {
       feeWaived,
       walletBalance: Number(user.platformWallet?.availableBalance ?? 0),
       benefits: {
-        weekendEarnings: true,
+        weekendEarnings: false,
         zeroWithdrawalFee: true,
         dailyYieldPercent: INVESTOR_VIP_DAILY_YIELD_PERCENT,
       },
@@ -1266,8 +1248,7 @@ export class InvestorService {
     }
 
     const today = this.kampalaToday();
-    const dow = this.kampalaDayOfWeek(today);
-    const isWeekend = dow === 0 || dow === 6;
+    const isWeekend = isKampalaWeekend();
     const platformYield = await this.platformInvestorDailyYield();
     const holdSince = new Date(
       Date.now() - InvestorService.YIELD_MIN_DEPOSIT_AGE_MS,
@@ -1296,7 +1277,7 @@ export class InvestorService {
         continue;
       }
 
-      if (isWeekend && !isInvestorVipActive(user)) {
+      if (isWeekend) {
         weekendSkipped++;
         continue;
       }
@@ -1398,7 +1379,7 @@ export class InvestorService {
               amount: earningAmount,
               type: 'INVESTOR_EARNING',
               referenceId: user.id,
-              description: `Investor daily earning ${yieldPercent}% on $${eligibleBalance.toFixed(2)} — $${earningAmount.toFixed(2)} USDT auto-reinvested ($${feeAmount.toFixed(2)} ${INVESTOR_AUTO_REINVEST_FEE_PERCENT}% fee, $${reinvestAmount.toFixed(2)} compounded)${isWeekend ? ' (VIP weekend)' : ''}${holdNote}`,
+            description: `Investor daily earning ${yieldPercent}% on $${eligibleBalance.toFixed(2)} — $${earningAmount.toFixed(2)} USDT auto-reinvested ($${feeAmount.toFixed(2)} ${INVESTOR_AUTO_REINVEST_FEE_PERCENT}% fee, $${reinvestAmount.toFixed(2)} compounded)${holdNote}`,
               balanceAfter: availableBalance,
             },
           }),
@@ -1451,7 +1432,7 @@ export class InvestorService {
             amount: earningAmount,
             type: 'INVESTOR_EARNING',
             referenceId: user.id,
-            description: `Investor daily earning ${yieldPercent}% on $${eligibleBalance.toFixed(2)} investment — $${earningAmount.toFixed(2)} USDT${isWeekend ? ' (VIP weekend)' : ''}${holdNote}`,
+            description: `Investor daily earning ${yieldPercent}% on $${eligibleBalance.toFixed(2)} investment — $${earningAmount.toFixed(2)} USDT${holdNote}`,
             balanceAfter: newWalletBalance,
           },
         }),

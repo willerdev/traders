@@ -22,7 +22,7 @@ const PRODUCTS = [
     how: [
       "Deposit USDT to your wallet, then allocate into Smart Invest.",
       "Daily yield credits after a 24-hour hold on new allocations.",
-      "VIP unlocks a higher daily rate, weekend earnings, and $0 withdraw fees.",
+      "VIP unlocks a higher daily rate and $0 withdraw fees. Yield does not credit on Saturday or Sunday.",
       "Optional auto-reinvest compounds most of each day’s return back into capital.",
     ],
     start: [

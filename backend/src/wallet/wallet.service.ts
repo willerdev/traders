@@ -14,6 +14,7 @@ import {
   NowPaymentsApiError,
   NowPaymentsService,
 } from '../payments/nowpayments.service';
+import { isKampalaWeekend } from '../common/kampala-weekend.util';
 import {
   isPublicHttpsUrl,
   resolvePublicApiBaseUrl,
@@ -1003,6 +1004,11 @@ export class WalletService {
   }
 
   async creditDailyEarnings() {
+    if (isKampalaWeekend()) {
+      this.logger.log('Depositor daily yield skipped — weekend (Kampala)');
+      return { credited: 0, skipped: 'weekend' as const };
+    }
+
     const now = new Date();
     const activePlans = await this.prisma.depositorPlan.findMany({
       where: { status: DepositorPlanStatus.ACTIVE },

@@ -25,7 +25,7 @@ const RULES = [
   {
     icon: Crown,
     title: "VIP upgrade",
-    body: "VIP ($20/month) raises default daily yield to 10%, unlocks weekend earnings, and removes wallet withdrawal fees while active.",
+    body: "VIP ($20/month) raises default daily yield to 10% and removes wallet withdrawal fees while active. Daily yield does not credit on Saturday or Sunday.",
   },
   {
     icon: Lock,
