@@ -282,6 +282,10 @@ model User {
   investorVipActive              Boolean    @default(false)
   investorVipExpiresAt           DateTime?
   investorVipRemindedAt          DateTime?
+  /// Elite tier: instant withdraw anytime, no fees/penalties, free self-serve reinvest.
+  investorVvipActive             Boolean    @default(false)
+  investorVvipGrantedAt          DateTime?
+  investorVvipGrantedById        String?
   depositorActive                Boolean    @default(false)
   unitrustActive                 Boolean    @default(false)
   unitrustEnrolledAt             DateTime?
