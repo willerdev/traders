@@ -36,6 +36,10 @@ import { FxRatesService } from '../fx/fx-rates.service';
 import { BinanceC2cService } from '../fx/binance-c2c.service';
 import { resolvePreferredDisplayCurrency } from '../fx/country-currency.util';
 import { isInvestorVipActive } from '../investor/investor-vip.util';
+import {
+  isInvestorVvipActive,
+  vvipWithdrawFeeQuote,
+} from '../investor/investor-vvip.util';
 import { PayoutService } from '../payouts/payout.service';
 import { randomInt } from 'crypto';
 import * as bcrypt from 'bcrypt';
@@ -487,9 +491,14 @@ export class WalletService {
 
     const vipUser = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { investorVipActive: true, investorVipExpiresAt: true },
+      select: {
+        investorVipActive: true,
+        investorVipExpiresAt: true,
+        investorVvipActive: true,
+      },
     });
-    const vipActive = isInvestorVipActive(vipUser ?? {});
+    const vvipActive = isInvestorVvipActive(vipUser ?? {});
+    const vipActive = isInvestorVipActive(vipUser ?? {}) || vvipActive;
     const processingFeeUsdt = vipActive
       ? 0
       : Number(config?.walletWithdrawalFeeUsdt ?? WALLET_WITHDRAWAL_FEE_USD);
@@ -531,6 +540,7 @@ export class WalletService {
       withdrawalNextPreferredWindowAt: scheduleQuote.nextPreferredWindowAt,
       withdrawalPreferredWindowLabel: scheduleQuote.preferredWindowLabel,
       vipActive,
+      vvipActive,
       activeLoanWithdraw: await this.getActiveLoanWithdrawGate(userId),
       activePlan: activePlan
         ? {
@@ -1317,6 +1327,7 @@ export class WalletService {
         status: true,
         investorVipActive: true,
         investorVipExpiresAt: true,
+        investorVvipActive: true,
       },
     });
     if (!user?.email?.trim()) {
@@ -1406,31 +1417,51 @@ export class WalletService {
     };
   }
 
-  private async assertWithdrawAmountValid(
+  private quoteUserWithdrawFees(
     grossAmount: number,
     vipUser: {
       investorVipActive?: boolean | null;
       investorVipExpiresAt?: Date | null;
+      investorVvipActive?: boolean | null;
     },
+    config: Awaited<ReturnType<WalletService['getPlatformConfig']>>,
   ) {
-    const config = await this.getPlatformConfig();
-    const processingFee = isInvestorVipActive(vipUser)
-      ? 0
-      : Number(config?.walletWithdrawalFeeUsdt ?? WALLET_WITHDRAWAL_FEE_USD);
-    const scheduleEnabled = config?.withdrawalScheduleEnabled !== false;
     const preferredSchedule = normalizePreferredSchedule(
       config?.withdrawalPreferredSchedule,
     );
     const offSchedulePenaltyPercent = Number(
       config?.withdrawalOffSchedulePenaltyPercent ?? 8,
     );
-    const quote = quoteWithdrawalFees({
+    if (isInvestorVvipActive(vipUser)) {
+      return vvipWithdrawFeeQuote({
+        grossUsdt: grossAmount,
+        preferredSchedule,
+        offSchedulePenaltyPercent,
+      });
+    }
+    const processingFee = isInvestorVipActive(vipUser)
+      ? 0
+      : Number(config?.walletWithdrawalFeeUsdt ?? WALLET_WITHDRAWAL_FEE_USD);
+    const scheduleEnabled = config?.withdrawalScheduleEnabled !== false;
+    return quoteWithdrawalFees({
       grossUsdt: grossAmount,
       processingFeeUsdt: processingFee,
       scheduleEnabled,
       preferredSchedule,
       offSchedulePenaltyPercent,
     });
+  }
+
+  private async assertWithdrawAmountValid(
+    grossAmount: number,
+    vipUser: {
+      investorVipActive?: boolean | null;
+      investorVipExpiresAt?: Date | null;
+      investorVvipActive?: boolean | null;
+    },
+  ) {
+    const config = await this.getPlatformConfig();
+    const quote = this.quoteUserWithdrawFees(grossAmount, vipUser, config);
     const fee = quote.totalFeesUsdt;
     const netPayout = quote.netPayoutUsdt;
     const processingFeeOnly = quote.processingFeeUsdt;
@@ -1616,27 +1647,14 @@ export class WalletService {
         investorVipActive: true,
         investorVipExpiresAt: true,
         instantWithdraw: true,
+        investorVvipActive: true,
       },
     });
-    const instantWithdraw = Boolean(vipUser?.instantWithdraw);
+    const vvipActive = isInvestorVvipActive(vipUser ?? {});
+    const instantWithdraw =
+      Boolean(vipUser?.instantWithdraw) || vvipActive;
     const config = await this.getPlatformConfig();
-    const processingFee = isInvestorVipActive(vipUser ?? {})
-      ? 0
-      : Number(config?.walletWithdrawalFeeUsdt ?? WALLET_WITHDRAWAL_FEE_USD);
-    const scheduleEnabled = config?.withdrawalScheduleEnabled !== false;
-    const preferredSchedule = normalizePreferredSchedule(
-      config?.withdrawalPreferredSchedule,
-    );
-    const offSchedulePenaltyPercent = Number(
-      config?.withdrawalOffSchedulePenaltyPercent ?? 8,
-    );
-    const quote = quoteWithdrawalFees({
-      grossUsdt: grossAmount,
-      processingFeeUsdt: processingFee,
-      scheduleEnabled,
-      preferredSchedule,
-      offSchedulePenaltyPercent,
-    });
+    const quote = this.quoteUserWithdrawFees(grossAmount, vipUser ?? {}, config);
     const fee = quote.totalFeesUsdt;
     const netPayout = quote.netPayoutUsdt;
     const processingFeeOnly = quote.processingFeeUsdt;
@@ -1675,7 +1693,9 @@ export class WalletService {
     const { weekNumber, year } = this.isoWeekYear(new Date());
 
     const feeLabel =
-      penaltyUsdt > 0
+      vvipActive
+        ? 'VVIP $0 fee · anytime'
+        : penaltyUsdt > 0
         ? `$${processingFeeOnly.toFixed(2)} fee + $${penaltyUsdt.toFixed(2)} off-schedule penalty (${quote.penaltyPercent}%)`
         : processingFeeOnly > 0
           ? `$${processingFeeOnly.toFixed(2)} fee`

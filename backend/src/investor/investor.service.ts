@@ -34,6 +34,7 @@ import {
   nextVipExpiry,
   resolveInvestorDailyYieldPercent,
 } from './investor-vip.util';
+import { isInvestorVvipActive } from './investor-vvip.util';
 import { isKampalaWeekend } from '../common/kampala-weekend.util';
 import { FxRatesService } from '../fx/fx-rates.service';
 import { resolvePreferredDisplayCurrency } from '../fx/country-currency.util';
@@ -188,6 +189,7 @@ export class InvestorService {
     });
     const platformDailyYield = Number(config?.investorDailyYieldPercent ?? 8);
     const vipActive = isInvestorVipActive(user);
+    const vvipActive = isInvestorVvipActive(user);
     const effectiveDailyYield = resolveInvestorDailyYieldPercent({
       vipActive,
       settingsYieldPercent:
@@ -204,10 +206,12 @@ export class InvestorService {
     });
     const displayCurrency = await this.fxRates.buildDisplayCurrency(resolved);
     const loanBlocksReinvest = await hasApprovedLoan(this.prisma, userId);
-    const reinvestBlocked = true;
-    const reinvestBlockedReason = loanBlocksReinvest
-      ? LOAN_REINVEST_BLOCKED_MESSAGE
-      : REVENUE_REINVEST_BLOCKED_MESSAGE;
+    const reinvestBlocked = !vvipActive;
+    const reinvestBlockedReason = vvipActive
+      ? null
+      : loanBlocksReinvest
+        ? LOAN_REINVEST_BLOCKED_MESSAGE
+        : REVENUE_REINVEST_BLOCKED_MESSAGE;
 
     return {
       active: user.investorActive,
@@ -220,6 +224,16 @@ export class InvestorService {
           weekendEarnings: false,
           zeroWithdrawalFee: true,
           dailyYieldPercent: INVESTOR_VIP_DAILY_YIELD_PERCENT,
+        },
+      },
+      vvip: {
+        active: vvipActive,
+        grantedAt: user.investorVvipGrantedAt?.toISOString() ?? null,
+        benefits: {
+          instantWithdrawAnytime: true,
+          zeroWithdrawalFee: true,
+          noOffSchedulePenalty: true,
+          freeSelfServeReinvest: true,
         },
       },
       feeUsdt: feeTiers[0]?.fee ?? 10,
@@ -949,7 +963,9 @@ export class InvestorService {
 
     if (direction === 'to_investment') {
       const allowed =
-        Boolean(opts?.adminId) || Boolean(opts?.allowCapitalAllocate);
+        Boolean(opts?.adminId) ||
+        Boolean(opts?.allowCapitalAllocate) ||
+        isInvestorVvipActive(user);
       if (!allowed) {
         throw new BadRequestException(REVENUE_REINVEST_BLOCKED_MESSAGE);
       }
@@ -986,7 +1002,9 @@ export class InvestorService {
             referenceId: opts?.adminId ? `admin_${opts.adminId}` : userId,
             description: opts?.adminId
               ? `Admin moved $${rounded.toFixed(2)} USDT from wallet to investment`
-              : `Moved $${rounded.toFixed(2)} USDT from wallet to investment`,
+              : isInvestorVvipActive(user)
+                ? `VVIP reinvest — moved $${rounded.toFixed(2)} USDT from wallet to investment (no fee)`
+                : `Moved $${rounded.toFixed(2)} USDT from wallet to investment`,
             balanceAfter: nextAvailable,
           },
         }),
@@ -1315,7 +1333,7 @@ export class InvestorService {
       // Exclude capital allocated within the last 24h (anti last-minute deposit gaming).
       // Instant-withdraw whitelist investors earn on new capital immediately.
       let recentAllocated = 0;
-      if (!user.instantWithdraw) {
+      if (!user.instantWithdraw && !isInvestorVvipActive(user)) {
         const recentAllocate = await this.prisma.walletTransaction.aggregate({
           where: {
             userId: user.id,

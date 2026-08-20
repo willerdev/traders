@@ -904,6 +904,40 @@ export class AdminController {
     });
   }
 
+  @Get('vvip-users')
+  @RequireAdminPermission('payout')
+  listVvipUsers() {
+    return this.adminService.listVvipUsers();
+  }
+
+  @Post('vvip-users')
+  @RequireAdminPermission('payout')
+  addVvipUser(
+    @Request() req: { user: { id: string } },
+    @Body() body: { userId?: string; email?: string; notify?: boolean },
+  ) {
+    return this.adminService.setVvip(req.user.id, {
+      userId: body.userId,
+      email: body.email,
+      enabled: true,
+      notify: body.notify,
+    });
+  }
+
+  @Post('vvip-users/remove')
+  @RequireAdminPermission('payout')
+  removeVvipUser(
+    @Request() req: { user: { id: string } },
+    @Body() body: { userId?: string; email?: string },
+  ) {
+    return this.adminService.setVvip(req.user.id, {
+      userId: body.userId,
+      email: body.email,
+      enabled: false,
+      notify: false,
+    });
+  }
+
   @Get('income-journal')
   getIncomeJournal(
     @Query('limit') limit?: string,

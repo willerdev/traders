@@ -638,6 +638,67 @@ export class NotificationService {
     );
   }
 
+  investorVvipActivated(userId: string) {
+    this.dispatch(this.sendInvestorVvipActivated(userId), 'VVIP activated');
+    this.dispatch(
+      this.sendInvestorVvipActivatedAdmin(userId),
+      'VVIP activated admin copy',
+    );
+  }
+
+  private async sendInvestorVvipActivated(userId: string) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+
+    const html = this.email.layout(
+      'Welcome to VVIP',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your account has been upgraded to <strong>VVIP</strong> on Tradeguard.</p>
+      <ul style="margin:16px 0;padding-left:20px;color:#cbd5e1;">
+        <li><strong>Instant withdrawals</strong> — no admin approval; sent automatically to your saved wallet</li>
+        <li><strong>Anytime</strong> — withdraw any day, any hour with <strong>$0</strong> processing fee and no off-schedule penalty</li>
+        <li><strong>Free reinvest</strong> — move wallet balance into Smart Invest anytime from Invest with no commission</li>
+      </ul>
+      <p style="color:#94a3b8;font-size:14px;">Use Wallet to withdraw and Invest to reinvest. Message Support if you need help.</p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'Open wallet')}`,
+    );
+
+    return this.email.send({
+      to: user.email,
+      subject: 'Your VVIP privileges are active',
+      html,
+      text: `Hi ${user.name}, your Tradeguard account is now VVIP: instant withdrawals anytime with $0 fees, and free self-serve reinvest from wallet to Smart Invest. Open ${this.email.frontendUrl}/wallet`,
+    });
+  }
+
+  private async sendInvestorVvipActivatedAdmin(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, displayName: true },
+    });
+    if (!user) return false;
+
+    const userLine = user.email
+      ? `${this.escape(user.displayName)} (${this.escape(user.email)})`
+      : this.escape(user.displayName);
+
+    const html = this.email.layout(
+      'VVIP member activated',
+      `<p>A user was granted <strong>VVIP</strong> privileges.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">User</td><td style="padding:6px 0;"><strong>${userLine}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Privileges</td><td style="padding:6px 0;">Instant withdraw anytime · $0 fees · free self-serve reinvest</td></tr>
+      </table>`,
+    );
+
+    return this.sendOpsAlert({
+      label: 'VVIP activated admin',
+      subject: `[VVIP] ${user.displayName} — privileges activated`,
+      html,
+      text: `VVIP activated for ${user.displayName} (${user.email ?? 'no email'}). Instant withdraw anytime, $0 fees, free reinvest.`,
+    });
+  }
+
   private async sendWhitelistVerified(userId: string) {
     const user = await this.userContact(userId);
     if (!user) return false;
@@ -766,10 +827,10 @@ export class NotificationService {
     userId: string,
     data: {
       amount: number;
-      lockedUntil: string;
       fee?: number;
       gross?: number;
       feePercent?: number;
+      lockedUntil: string;
     },
   ) {
     this.dispatch(
@@ -782,10 +843,10 @@ export class NotificationService {
     userId: string,
     data: {
       amount: number;
-      lockedUntil: string;
       fee?: number;
       gross?: number;
       feePercent?: number;
+      lockedUntil: string;
     },
   ) {
     const user = await this.userContact(userId);
@@ -795,10 +856,18 @@ export class NotificationService {
       dateStyle: 'medium',
       timeStyle: 'short',
     });
+    const fee = Number(data.fee ?? 0);
+    const gross = Number(data.gross ?? data.amount + fee);
+    const feePercent = Number(data.feePercent ?? 10);
+    const feeLine =
+      fee > 0
+        ? `<p>Enrollment fee: <strong>$${fee.toFixed(2)} USDT</strong> (${feePercent}% of $${gross.toFixed(2)}). Net invested: <strong>$${data.amount.toFixed(2)} USDT</strong>.</p>`
+        : '';
     const html = this.email.layout(
       'Blockchain wallet funded',
       `<p>Hi ${this.escape(user.name)},</p>
-      <p><strong>$${data.amount.toFixed(2)} USDT</strong> moved from your platform wallet into your blockchain wallet.</p>
+      <p><strong>$${gross.toFixed(2)} USDT</strong> left your platform wallet for blockchain investment.</p>
+      ${feeLine}
       <p>Your principal and all profit are locked for five days, until <strong>${this.escape(unlockDate)} (Kampala time)</strong>.</p>
       <p>Daily profit is shown in Blockchain and emailed after each credit. You can withdraw principal and profit back to your platform wallet after unlock.</p>
       ${this.email.button(`${this.email.frontendUrl}/blockchain`, 'View blockchain wallet')}`,
@@ -807,7 +876,7 @@ export class NotificationService {
       to: user.email,
       subject: `Blockchain wallet funded — $${data.amount.toFixed(2)} locked for 5 days`,
       html,
-      text: `$${data.amount.toFixed(2)} USDT moved to your blockchain wallet. Principal and profit unlock ${unlockDate} Kampala time.`,
+      text: `$${gross.toFixed(2)} USDT moved from platform wallet (${feePercent}% fee $${fee.toFixed(2)}; $${data.amount.toFixed(2)} invested). Principal and profit unlock ${unlockDate} Kampala time.`,
     });
   }
 
@@ -3333,8 +3402,8 @@ export class NotificationService {
         ? `<p>Auto-reinvest: <strong>$${data.reinvestAmount.toFixed(2)} USDT</strong> compounded into investment after a <strong>${data.feePercent ?? 10}%</strong> fee ($${data.feeAmount.toFixed(2)} USDT).</p>`
         : '';
     const footerNote = data.autoReinvested
-      ? `<p style="color:#94a3b8;font-size:14px;">Auto-reinvest is on. Turn it off anytime on Invest if you want earnings in your wallet instead.</p>`
-      : `<p style="color:#94a3b8;font-size:14px;">Earnings are credited to your wallet. You can move funds into investment anytime from Invest, or enable auto-reinvest for compounding.</p>`;
+      ? `<p style="color:#94a3b8;font-size:14px;">This earning was applied to your investment balance by platform accounting.</p>`
+      : `<p style="color:#94a3b8;font-size:14px;">Earnings are credited to your wallet. Compounding and auto-reinvest are not available.</p>`;
     const html = this.email.layout(
       data.autoReinvested
         ? 'Investor daily earning auto-reinvested'
@@ -3373,7 +3442,7 @@ export class NotificationService {
       <p>Your <strong>VIP</strong> investor badge is active.</p>
       <p>You paid <strong>$${data.feeUsdt.toFixed(2)} USDT</strong> for 30 days (expires <strong>${this.escape(expires)}</strong>).</p>
       <ul>
-        <li>Weekend daily earnings</li>
+        <li>Higher default daily yield (10%)</li>
         <li>$0 wallet withdrawal fee</li>
       </ul>
       ${this.email.button(`${this.email.frontendUrl}/dashboard?tab=invest`, 'View Invest')}`,
@@ -3382,7 +3451,7 @@ export class NotificationService {
       to: user.email,
       subject: `VIP activated — expires ${expires}`,
       html,
-      text: `VIP investor activated until ${expires}. Weekend earnings + $0 withdrawal fee.`,
+      text: `VIP investor activated until ${expires}. Higher daily yield + $0 withdrawal fee. No yield on Saturday or Sunday.`,
     });
   }
 
@@ -3397,7 +3466,7 @@ export class NotificationService {
       'VIP expiring soon',
       `<p>Hi ${this.escape(user.name)},</p>
       <p>Your VIP investor badge expires on <strong>${this.escape(expires)}</strong>.</p>
-      <p>Renew for <strong>$${data.feeUsdt.toFixed(2)} USDT</strong> from your wallet to keep weekend earnings and $0 withdrawal fees.</p>
+      <p>Renew for <strong>$${data.feeUsdt.toFixed(2)} USDT</strong> from your wallet to keep higher daily yield and $0 withdrawal fees.</p>
       ${this.email.button(`${this.email.frontendUrl}/dashboard?tab=invest`, 'Renew VIP')}`,
     );
     return this.email.send({
@@ -3949,7 +4018,7 @@ export class NotificationService {
   }
 
   /**
-   * Email investors with investment balance under $500 about the 27 Jul 2026 auto-stop.
+   * Email investors with investment balance under $750 about pause / possible ban risk.
    */
   async broadcastInvestorAutoStopPolicy(): Promise<{
     total: number;
@@ -3961,7 +4030,7 @@ export class NotificationService {
         email: { not: null },
         status: { not: 'BANNED' },
         platformWallet: {
-          investorBalance: { gt: 0, lt: 500 },
+          investorBalance: { gt: 0, lt: 750 },
         },
       },
       select: {
@@ -3986,7 +4055,7 @@ export class NotificationService {
     }
 
     this.logger.log(
-      `Investor auto-stop broadcast: sent=${sent} failed=${failed} total=${users.length}`,
+      `Investor under-$750 reminder broadcast: sent=${sent} failed=${failed} total=${users.length}`,
     );
     return { total: users.length, sent, failed };
   }
@@ -3996,25 +4065,23 @@ export class NotificationService {
     if (!user) return false;
     const bal = Number.isFinite(balance) ? balance.toFixed(2) : '0.00';
     const html = this.email.layout(
-      'Minimum investment update',
+      'Action required: Smart Invest under $750',
       `<p>Hi ${this.escape(user.name)},</p>
-      <p>We are updating Smart Invest to keep the program healthy for everyone.</p>
-      <p><strong>From 27 July 2026, investments below $500 will automatically stop.</strong></p>
-      <p>Your current investment balance is <strong>$${bal} USDT</strong>.</p>
+      <p>Your Smart Invest balance is currently <strong>$${bal} USDT</strong>, which is below the platform minimum of <strong>$750 USDT</strong>.</p>
+      <p><strong>Accounts below $750 may have investment yield paused, and continued non-compliance can lead to account restriction or ban.</strong></p>
       <ul style="padding-left:18px;color:#cbd5e1;">
-        <li>Top up so your investment is at least <strong>$500</strong> to keep earning.</li>
-        <li>If your balance stays under $500 after that date, investment will auto-stop.</li>
-        <li>You can manage deposits and allocations anytime from Invest.</li>
+        <li>Top up so your investment is at least <strong>$750 USDT</strong> to keep earning.</li>
+        <li>Or withdraw your balance if you do not want to meet the minimum.</li>
+        <li>Daily earnings stay in your wallet — compounding / auto-reinvest is not available.</li>
       </ul>
-      <p>Questions? Reply in Support on the platform — Agent or a human admin can help.</p>
-      ${this.email.button(`${this.email.frontendUrl}/invest`, 'Top up on Invest')}`,
+      <p>Please act soon to avoid yield pause or further account action.</p>
+      ${this.email.button(`${this.email.frontendUrl}/invest`, 'Open Smart Invest')}`,
     );
     return this.email.send({
       to: user.email,
-      subject:
-        'Action needed: investments under $500 auto-stop from 27 July 2026',
+      subject: 'Reminder: Smart Invest under $750 — yield may pause or account may be restricted',
       html,
-      text: `From 27 July 2026, investments below $500 will automatically stop. Your current investment is $${bal} USDT. Top up to at least $500 on thetradeguard.com/invest to keep earning.`,
+      text: `Your Smart Invest balance is $${bal} USDT, below the $750 minimum. Yield may be paused and continued non-compliance can lead to restriction or ban. Top up to at least $750 on ${this.email.frontendUrl}/invest, or withdraw. Compounding is not available.`,
     });
   }
 
@@ -4077,12 +4144,12 @@ export class NotificationService {
     const html = this.email.layout(
       'You may be eligible for an investment loan',
       `<p>Hi ${this.escape(user.name)},</p>
-      <p>Because your Smart Invest balance is <strong>$1,000 or more</strong>, you are eligible for our new investment loan program.</p>
+      <p>Because your Smart Invest balance is <strong>$1,000 or more</strong>, you are eligible for our investment loan program.</p>
       <p>Your current investment: <strong>$${bal} USDT</strong> (illustrative borrow capacity up to <strong>$${borrowMax} USDT</strong> — 80%).</p>
       <ul style="padding-left:18px;color:#cbd5e1;">
-        <li>Reinvest profit from your investment into growing your position.</li>
         <li>Borrow up to <strong>80%</strong> of your investment balance.</li>
         <li>Your investment <strong>keeps working and earning</strong> while the loan is active.</li>
+        <li>Daily earnings credit to your wallet — compounding is not available.</li>
       </ul>
       <p>This is an eligibility notice — approval and terms are confirmed by our team. Open Support on the platform to ask Agent or an admin about applying.</p>
       ${this.email.button(`${this.email.frontendUrl}/messages`, 'Message Support')}`,
@@ -4092,7 +4159,7 @@ export class NotificationService {
       subject:
         'Eligible: borrow up to 80% of your investment while it keeps earning',
       html,
-      text: `With $1,000+ invested (yours: $${bal} USDT), you can reinvest profit and borrow up to 80% of your investment while it keeps earning. Message Support on thetradeguard.com/messages to learn more or apply.`,
+      text: `With $1,000+ invested (yours: $${bal} USDT), you may borrow up to 80% of your investment while it keeps earning. Compounding is not available. Message Support on ${this.email.frontendUrl}/messages to learn more or apply.`,
     });
   }
 

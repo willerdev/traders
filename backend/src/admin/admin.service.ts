@@ -2351,6 +2351,104 @@ export class AdminService {
     };
   }
 
+  async listVvipUsers() {
+    const users = await this.prisma.user.findMany({
+      where: { investorVvipActive: true },
+      orderBy: { investorVvipGrantedAt: 'desc' },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        investorVvipGrantedAt: true,
+        investorVvipGrantedById: true,
+        investorActive: true,
+        platformWallet: {
+          select: { availableBalance: true, investorBalance: true },
+        },
+      },
+    });
+
+    return {
+      items: users.map((u) => ({
+        id: u.id,
+        email: u.email,
+        displayName: u.displayName,
+        investorActive: u.investorActive,
+        walletBalance: Number(u.platformWallet?.availableBalance ?? 0),
+        investmentBalance: Number(u.platformWallet?.investorBalance ?? 0),
+        grantedAt: u.investorVvipGrantedAt?.toISOString() ?? null,
+        grantedById: u.investorVvipGrantedById,
+      })),
+      count: users.length,
+    };
+  }
+
+  async setVvip(
+    adminId: string,
+    input: { userId?: string; email?: string; enabled: boolean; notify?: boolean },
+  ) {
+    const email = input.email?.trim().toLowerCase();
+    const user = input.userId
+      ? await this.prisma.user.findUnique({ where: { id: input.userId } })
+      : email
+        ? await this.prisma.user.findFirst({
+            where: { email: { equals: email, mode: 'insensitive' } },
+          })
+        : null;
+
+    if (!user) {
+      throw new NotFoundException(
+        'User not found — provide a valid userId or email',
+      );
+    }
+
+    const enabled = Boolean(input.enabled);
+    const wasActive = Boolean(user.investorVvipActive);
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        investorVvipActive: enabled,
+        investorVvipGrantedAt: enabled ? new Date() : null,
+        investorVvipGrantedById: enabled ? adminId : null,
+      },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        investorVvipActive: true,
+        investorVvipGrantedAt: true,
+        investorVvipGrantedById: true,
+        investorActive: true,
+        platformWallet: {
+          select: { availableBalance: true, investorBalance: true },
+        },
+      },
+    });
+
+    await this.logAction(
+      adminId,
+      enabled ? 'VVIP_GRANTED' : 'VVIP_REVOKED',
+      user.id,
+      { email: user.email },
+    );
+
+    if (enabled && !wasActive && input.notify !== false) {
+      this.notifications.investorVvipActivated(user.id);
+    }
+
+    return {
+      id: updated.id,
+      email: updated.email,
+      displayName: updated.displayName,
+      investorVvipActive: updated.investorVvipActive,
+      grantedAt: updated.investorVvipGrantedAt?.toISOString() ?? null,
+      grantedById: updated.investorVvipGrantedById,
+      investorActive: updated.investorActive,
+      walletBalance: Number(updated.platformWallet?.availableBalance ?? 0),
+      investmentBalance: Number(updated.platformWallet?.investorBalance ?? 0),
+    };
+  }
+
   async setInstantWithdraw(
     adminId: string,
     input: { userId?: string; email?: string; enabled: boolean },
