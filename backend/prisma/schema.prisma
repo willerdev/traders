@@ -1126,6 +1126,8 @@ model PlatformConfig {
   walletWithdrawalFeeUsdt             Decimal   @default(3) @db.Decimal(10, 2)
   /// Set after the withdrawal schedule / early-exit policy email is broadcast once.
   withdrawalScheduleAnnouncedAt       DateTime?
+  /// Set after the Airfarming launch email to Smart Invest alumni is broadcast once.
+  airfarmingLaunchAnnouncedAt         DateTime?
 
   /// Deriv WebSocket API — admin-configured credentials for programmatic access.
   derivAppId            String?
