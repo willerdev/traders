@@ -2,6 +2,24 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from './email.service';
 
+type AirfarmingApplicationEmailData = {
+  fullName: string;
+  email: string;
+  age: number;
+  location: string;
+  plannedInvestmentUsd: number;
+  withdrawPreference: string;
+};
+
+function airfarmingWithdrawLabel(pref: string): string {
+  const map: Record<string, string> = {
+    WEEKLY: 'Weekly',
+    MONTHLY: 'Monthly',
+    YEARLY: 'Yearly',
+  };
+  return map[pref] ?? pref;
+}
+
 @Injectable()
 export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
@@ -902,16 +920,22 @@ export class NotificationService {
     this.dispatch(this.sendAirfarmingDropPaid(userId, data), 'Airfarming drop paid');
   }
 
-  airfarmingApplicationSubmitted(userId: string) {
+  airfarmingApplicationSubmitted(
+    userId: string,
+    data: AirfarmingApplicationEmailData,
+  ) {
     this.dispatch(
-      this.sendAirfarmingApplicationSubmitted(userId),
+      this.sendAirfarmingApplicationSubmitted(userId, data),
       'Airfarming application submitted',
     );
   }
 
-  airfarmingApplicationSubmittedAdmin(userId: string) {
+  airfarmingApplicationSubmittedAdmin(
+    userId: string,
+    data: AirfarmingApplicationEmailData,
+  ) {
     this.dispatch(
-      this.sendAirfarmingApplicationSubmittedAdmin(userId),
+      this.sendAirfarmingApplicationSubmittedAdmin(userId, data),
       'Airfarming application admin',
     );
   }
@@ -930,39 +954,52 @@ export class NotificationService {
     );
   }
 
-  private async sendAirfarmingApplicationSubmitted(userId: string) {
+  private async sendAirfarmingApplicationSubmitted(
+    userId: string,
+    data: AirfarmingApplicationEmailData,
+  ) {
     const user = await this.userContact(userId);
     if (!user) return false;
     const html = this.email.layout(
       'Airfarming application received',
-      `<p>Hi ${this.escape(user.name)},</p>
+      `<p>Hi ${this.escape(data.fullName)},</p>
       <p>We received your <strong>Airfarming</strong> enrollment application.</p>
-      <p style="color:#94a3b8;font-size:14px;">Our team will review it shortly. You will be emailed when you are approved to allocate funds and receive drops.</p>`,
+      <ul style="color:#94a3b8;font-size:14px;padding-left:20px;line-height:1.6;">
+        <li>Planned investment: <strong style="color:#e8eaed;">$${data.plannedInvestmentUsd.toFixed(2)} USDT</strong></li>
+        <li>Preferred withdraw cadence: <strong style="color:#e8eaed;">${this.escape(airfarmingWithdrawLabel(data.withdrawPreference))}</strong></li>
+        <li>Location: ${this.escape(data.location)}</li>
+      </ul>
+      <p style="color:#94a3b8;font-size:14px;">Our team will review your application. <strong>Once approved, you will receive an email for every Airfarming activity</strong> — drops credited, float moves, and weekly floor progress.</p>`,
     );
     return this.email.send({
-      to: user.email,
+      to: data.email,
       subject: 'Airfarming application received',
       html,
-      text: 'Your Airfarming application was received and is pending review.',
+      text: `Airfarming application received. Planned investment $${data.plannedInvestmentUsd.toFixed(2)}. Once approved you will be emailed about every activity.`,
     });
   }
 
-  private async sendAirfarmingApplicationSubmittedAdmin(userId: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { displayName: true, email: true },
-    });
-    if (!user) return false;
+  private async sendAirfarmingApplicationSubmittedAdmin(
+    userId: string,
+    data: AirfarmingApplicationEmailData,
+  ) {
     const html = this.email.layout(
       'Airfarming application pending',
-      `<p><strong>${this.escape(user.displayName)}</strong> (${this.escape(user.email ?? '')}) applied for Airfarming enrollment.</p>
-      <p>Review in admin: approve or reject the application before they can allocate.</p>`,
+      `<p><strong>${this.escape(data.fullName)}</strong> applied for Airfarming.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">Email</td><td>${this.escape(data.email)}</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Age</td><td>${data.age}</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Location</td><td>${this.escape(data.location)}</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Planned invest</td><td>$${data.plannedInvestmentUsd.toFixed(2)} USDT</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Withdraw</td><td>${this.escape(airfarmingWithdrawLabel(data.withdrawPreference))}</td></tr>
+      </table>
+      <p>Approve or reject before they can allocate.</p>`,
     );
     return this.sendOpsAlert({
       label: 'Airfarming application',
-      subject: `[Airfarming] Application — ${user.displayName}`,
+      subject: `[Airfarming] Application — ${data.fullName}`,
       html,
-      text: `${user.displayName} (${user.email}) applied for Airfarming.`,
+      text: `${data.fullName} (${data.email}) applied — $${data.plannedInvestmentUsd.toFixed(2)}, ${data.withdrawPreference} withdraw, ${data.location}.`,
     });
   }
 
@@ -974,6 +1011,7 @@ export class NotificationService {
       `<p>Hi ${this.escape(user.name)},</p>
       <p>Your <strong>Airfarming</strong> application was <strong>approved</strong>.</p>
       <p>You can now commit cash from your wallet and start receiving scheduled yield drops.</p>
+      <p style="color:#94a3b8;font-size:14px;">You will receive an email for <strong>every Airfarming activity</strong> — each drop, catch-up credit, and important account updates.</p>
       ${this.email.button(`${this.email.frontendUrl}/airfarming`, 'Open Airfarming')}`,
     );
     return this.email.send({

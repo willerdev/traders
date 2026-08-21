@@ -29,6 +29,7 @@ import {
   utcWeekEndExclusive,
   utcWeekStart,
 } from './airfarming-week.util';
+import { AirfarmingApplyInput } from './airfarming-apply.dto';
 
 type BandRow = {
   bandIndex: number;
@@ -116,6 +117,12 @@ export class AirfarmingService implements OnModuleInit {
       appliedAt: Date;
       approvedAt: Date | null;
       rejectionReason: string | null;
+      fullName?: string;
+      email?: string;
+      age?: number;
+      location?: string;
+      plannedInvestmentUsd?: Prisma.Decimal | number;
+      withdrawPreference?: string;
     } | null,
   ) {
     if (!row) {
@@ -126,6 +133,7 @@ export class AirfarmingService implements OnModuleInit {
         rejectionReason: null as string | null,
         canApply: true,
         canAllocate: false,
+        application: null,
       };
     }
     return {
@@ -135,6 +143,17 @@ export class AirfarmingService implements OnModuleInit {
       rejectionReason: row.rejectionReason,
       canApply: row.status === AirfarmingEnrollmentStatus.REJECTED,
       canAllocate: row.status === AirfarmingEnrollmentStatus.APPROVED,
+      application:
+        row.fullName != null
+          ? {
+              fullName: row.fullName,
+              email: row.email ?? '',
+              age: row.age ?? 0,
+              location: row.location ?? '',
+              plannedInvestmentUsd: this.num(row.plannedInvestmentUsd),
+              withdrawPreference: row.withdrawPreference ?? 'WEEKLY',
+            }
+          : null,
     };
   }
 
@@ -150,7 +169,7 @@ export class AirfarmingService implements OnModuleInit {
     return enrollment;
   }
 
-  async apply(userId: string) {
+  async apply(userId: string, input: AirfarmingApplyInput) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
     if (this.isUserBlocked(user.status)) {
@@ -168,25 +187,58 @@ export class AirfarmingService implements OnModuleInit {
       throw new BadRequestException('Your Airfarming application is already pending review');
     }
 
+    const now = new Date();
     const enrollment = await this.prisma.airfarmingEnrollment.upsert({
       where: { userId },
-      create: { userId, status: AirfarmingEnrollmentStatus.PENDING },
+      create: {
+        userId,
+        status: AirfarmingEnrollmentStatus.PENDING,
+        fullName: input.fullName,
+        email: input.email,
+        age: input.age,
+        location: input.location,
+        plannedInvestmentUsd: input.plannedInvestmentUsd,
+        withdrawPreference: input.withdrawPreference,
+        termsAcceptedAt: now,
+      },
       update: {
         status: AirfarmingEnrollmentStatus.PENDING,
-        appliedAt: new Date(),
+        appliedAt: now,
         reviewedAt: null,
         reviewedById: null,
         approvedAt: null,
         rejectionReason: null,
+        fullName: input.fullName,
+        email: input.email,
+        age: input.age,
+        location: input.location,
+        plannedInvestmentUsd: input.plannedInvestmentUsd,
+        withdrawPreference: input.withdrawPreference,
+        termsAcceptedAt: now,
       },
     });
 
-    this.notifications.airfarmingApplicationSubmitted(userId);
-    this.notifications.airfarmingApplicationSubmittedAdmin(userId);
+    this.notifications.airfarmingApplicationSubmitted(userId, {
+      fullName: input.fullName,
+      email: input.email,
+      age: input.age,
+      location: input.location,
+      plannedInvestmentUsd: input.plannedInvestmentUsd,
+      withdrawPreference: input.withdrawPreference,
+    });
+    this.notifications.airfarmingApplicationSubmittedAdmin(userId, {
+      fullName: input.fullName,
+      email: input.email,
+      age: input.age,
+      location: input.location,
+      plannedInvestmentUsd: input.plannedInvestmentUsd,
+      withdrawPreference: input.withdrawPreference,
+    });
 
     return {
       enrollment: this.enrollmentView(enrollment),
-      message: 'Application submitted — you will be notified when reviewed.',
+      message:
+        'Application submitted. Once approved, you will be emailed about every Airfarming activity — drops, float moves, and weekly progress.',
     };
   }
 

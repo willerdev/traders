@@ -4,8 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { api, type AirfarmingStatus } from "@/lib/api";
+import {
+  api,
+  type AirfarmingApplyPayload,
+  type AirfarmingStatus,
+} from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
+import { useAuthStore } from "@/stores/auth";
 import { Loader2 } from "lucide-react";
 
 function formatCountdown(seconds: number): string {
@@ -27,6 +32,7 @@ const PHASE_LABELS: Record<string, string> = {
 };
 
 export function AirfarmingHub() {
+  const user = useAuthStore((s) => s.user);
   const [status, setStatus] = useState<AirfarmingStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -34,6 +40,19 @@ export function AirfarmingHub() {
   const [message, setMessage] = useState("");
   const [amount, setAmount] = useState("");
   const [deallocAmount, setDeallocAmount] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [age, setAge] = useState("");
+  const [location, setLocation] = useState("");
+  const [plannedInvestment, setPlannedInvestment] = useState("");
+  const [withdrawPreference, setWithdrawPreference] =
+    useState<AirfarmingApplyPayload["withdrawPreference"]>("WEEKLY");
+  const [acceptTerms, setAcceptTerms] = useState(false);
+
+  useEffect(() => {
+    if (user?.displayName && !fullName) setFullName(user.displayName);
+    if (user?.email && !email) setEmail(user.email);
+  }, [user, fullName, email]);
 
   const load = useCallback(async () => {
     setError("");
@@ -53,12 +72,21 @@ export function AirfarmingHub() {
     return () => clearInterval(t);
   }, [load]);
 
-  async function apply() {
+  async function submitApplication() {
     setBusy(true);
     setError("");
     setMessage("");
     try {
-      const res = await api.airfarming.apply();
+      const payload: AirfarmingApplyPayload = {
+        fullName: fullName.trim(),
+        email: email.trim(),
+        age: Number(age),
+        location: location.trim(),
+        plannedInvestmentUsd: Number(plannedInvestment),
+        withdrawPreference,
+        acceptTerms,
+      };
+      const res = await api.airfarming.apply(payload);
       setMessage(res.message);
       await load();
     } catch (e) {
@@ -131,10 +159,28 @@ export function AirfarmingHub() {
             guarantee.
           </p>
           {enrollment.status === "PENDING" && (
-            <p className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-              Your application is <strong>pending review</strong>. We will email
-              you when it is approved.
-            </p>
+            <div className="mt-4 space-y-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+              <p>
+                Your application is <strong>pending review</strong>.
+              </p>
+              {enrollment.application && (
+                <ul className="list-inside list-disc space-y-1 text-amber-100/90">
+                  <li>
+                    Planned investment:{" "}
+                    {formatCurrency(enrollment.application.plannedInvestmentUsd)}
+                  </li>
+                  <li>
+                    Withdraw preference:{" "}
+                    {enrollment.application.withdrawPreference.toLowerCase()}
+                  </li>
+                  <li>Location: {enrollment.application.location}</li>
+                </ul>
+              )}
+              <p className="text-amber-100/80">
+                Once approved, you will be emailed about every Airfarming
+                activity — drops, float moves, and weekly progress.
+              </p>
+            </div>
           )}
           {enrollment.status === "REJECTED" && (
             <p className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -146,17 +192,133 @@ export function AirfarmingHub() {
             </p>
           )}
           {enrollment.canApply && (
-            <Button
-              className="mt-5"
-              disabled={busy || status?.globallyPaused}
-              onClick={() => void apply()}
+            <form
+              className="mt-6 space-y-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void submitApplication();
+              }}
             >
-              {busy ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                "Apply for Airfarming"
-              )}
-            </Button>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">
+                    Full name
+                  </label>
+                  <Input
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Your legal name"
+                    required
+                    minLength={2}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">
+                    Email
+                  </label>
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">Age</label>
+                  <Input
+                    type="number"
+                    min={18}
+                    max={120}
+                    value={age}
+                    onChange={(e) => setAge(e.target.value)}
+                    placeholder="18+"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">
+                    Location
+                  </label>
+                  <Input
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    placeholder="City, country"
+                    required
+                    minLength={2}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">
+                    Amount you plan to invest (USDT)
+                  </label>
+                  <Input
+                    type="number"
+                    min={1}
+                    step="0.01"
+                    value={plannedInvestment}
+                    onChange={(e) => setPlannedInvestment(e.target.value)}
+                    placeholder="1000"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">
+                    How you want to withdraw
+                  </label>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
+                    value={withdrawPreference}
+                    onChange={(e) =>
+                      setWithdrawPreference(
+                        e.target.value as AirfarmingApplyPayload["withdrawPreference"],
+                      )
+                    }
+                  >
+                    <option value="WEEKLY">Weekly</option>
+                    <option value="MONTHLY">Monthly</option>
+                    <option value="YEARLY">Yearly</option>
+                  </select>
+                </div>
+              </div>
+
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-gray-300">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={acceptTerms}
+                  onChange={(e) => setAcceptTerms(e.target.checked)}
+                  required
+                />
+                <span>
+                  I agree to the Airfarming terms: I will respect the schedule
+                  and commitments I set, and I will not invest money I cannot
+                  afford to lose. I understand Airfarming involves risk and
+                  that yield is not guaranteed beyond the stated weekly floor
+                  mechanics.
+                </span>
+              </label>
+
+              <Button
+                type="submit"
+                disabled={
+                  busy ||
+                  status?.globallyPaused ||
+                  !acceptTerms ||
+                  !fullName.trim() ||
+                  !email.trim() ||
+                  !location.trim() ||
+                  !age ||
+                  !plannedInvestment
+                }
+              >
+                {busy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Submit Airfarming application"
+                )}
+              </Button>
+            </form>
           )}
         </div>
         {error && <p className="text-sm text-red-400">{error}</p>}

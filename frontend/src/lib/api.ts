@@ -1336,10 +1336,10 @@ class ApiClient {
 
   airfarming = {
     status: () => this.request<AirfarmingStatus>("/airfarming/status"),
-    apply: () =>
+    apply: (payload: AirfarmingApplyPayload) =>
       this.request<{ enrollment: AirfarmingEnrollmentView; message: string }>(
         "/airfarming/apply",
-        { method: "POST" },
+        { method: "POST", body: JSON.stringify(payload) },
       ),
     allocate: (amount: number) =>
       this.request<AirfarmingStatus>("/airfarming/allocate", {
@@ -2075,6 +2075,16 @@ export interface UnitrustStatus {
   }>;
 }
 
+export interface AirfarmingApplyPayload {
+  fullName: string;
+  email: string;
+  age: number;
+  location: string;
+  plannedInvestmentUsd: number;
+  withdrawPreference: "WEEKLY" | "MONTHLY" | "YEARLY";
+  acceptTerms: boolean;
+}
+
 export interface AirfarmingEnrollmentView {
   status: "NOT_APPLIED" | "PENDING" | "APPROVED" | "REJECTED";
   appliedAt: string | null;
@@ -2082,6 +2092,14 @@ export interface AirfarmingEnrollmentView {
   rejectionReason: string | null;
   canApply: boolean;
   canAllocate: boolean;
+  application: {
+    fullName: string;
+    email: string;
+    age: number;
+    location: string;
+    plannedInvestmentUsd: number;
+    withdrawPreference: string;
+  } | null;
 }
 
 export interface AirfarmingStatus {
