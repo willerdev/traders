@@ -21,6 +21,12 @@ import { WalletService } from '../wallet/wallet.service';
 import { FlutterwavePaymentsService } from '../flutterwave/flutterwave-payments.service';
 import { momoNetworkFromSavedWallet } from '../flutterwave/flutterwave.constants';
 import { isInvestorVipActive, VIP_AI_WITHDRAW_MIN_AGE_MS } from '../investor/investor-vip.util';
+import {
+  INSTANT_WITHDRAW_SAFETY_HOLD_ENABLED,
+  INSTANT_WITHDRAW_SAFETY_HOLD_MS,
+  instantWithdrawSafetyHoldRemainingMs,
+  isInstantTierWithdrawUser,
+} from '../investor/instant-withdraw-safety.util';
 
 @Injectable()
 export class PayoutService {
@@ -374,6 +380,8 @@ export class PayoutService {
         alreadyProcessed: true,
       };
     }
+
+    await this.assertDepositorWithdrawSafetyHold(payout.userId, payout);
 
     const amount = Number(payout.traderShare);
     const creditToWallet = payout.source !== 'DEPOSITOR';
@@ -745,10 +753,16 @@ export class PayoutService {
     }
 
     const ageMs = Date.now() - payout.requestedAt.getTime();
-    if (ageMs < VIP_AI_WITHDRAW_MIN_AGE_MS) {
-      const waitMin = Math.ceil((VIP_AI_WITHDRAW_MIN_AGE_MS - ageMs) / 60000);
+    const minAgeMs = INSTANT_WITHDRAW_SAFETY_HOLD_ENABLED
+      ? INSTANT_WITHDRAW_SAFETY_HOLD_MS
+      : VIP_AI_WITHDRAW_MIN_AGE_MS;
+    if (ageMs < minAgeMs) {
+      const waitMin = Math.ceil((minAgeMs - ageMs) / 60000);
+      const label = INSTANT_WITHDRAW_SAFETY_HOLD_ENABLED
+        ? `${Math.round(INSTANT_WITHDRAW_SAFETY_HOLD_MS / (60 * 60 * 1000))} hours`
+        : '30 minutes';
       throw new BadRequestException(
-        `Withdrawal must wait 30 minutes before AI approval — about ${waitMin} minute(s) left`,
+        `Withdrawal must wait ${label} before AI approval — about ${waitMin} minute(s) left`,
       );
     }
 
@@ -839,6 +853,36 @@ export class PayoutService {
       balance,
       message: `Refunded $${amount.toFixed(2)} USDT to the user's platform wallet`,
     };
+  }
+
+  private async assertDepositorWithdrawSafetyHold(
+    userId: string,
+    payout: { source: PayoutSource; requestedAt: Date },
+  ) {
+    if (payout.source !== 'DEPOSITOR' || !INSTANT_WITHDRAW_SAFETY_HOLD_ENABLED) {
+      return;
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        instantWithdraw: true,
+        investorVvipActive: true,
+        investorVipActive: true,
+        investorVipExpiresAt: true,
+      },
+    });
+    const instantTier = isInstantTierWithdrawUser(user);
+    const vipActive = isInvestorVipActive(user ?? {});
+    if (!instantTier && !vipActive) return;
+
+    const remaining = instantWithdrawSafetyHoldRemainingMs(payout.requestedAt);
+    if (remaining <= 0) return;
+
+    const hoursLeft = Math.ceil(remaining / (60 * 60 * 1000));
+    const holdHours = Math.round(INSTANT_WITHDRAW_SAFETY_HOLD_MS / (60 * 60 * 1000));
+    throw new BadRequestException(
+      `Withdrawal safety hold — instant/VIP wallet withdrawals require ${holdHours}h before approval (${hoursLeft}h remaining)`,
+    );
   }
 
   async getPayoutHistory(userId: string) {

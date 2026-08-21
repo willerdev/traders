@@ -40,6 +40,9 @@ import {
   isInvestorVvipActive,
   vvipWithdrawFeeQuote,
 } from '../investor/investor-vvip.util';
+import {
+  INSTANT_WITHDRAW_SAFETY_HOLD_ENABLED,
+} from '../investor/instant-withdraw-safety.util';
 import { PayoutService } from '../payouts/payout.service';
 import { randomInt } from 'crypto';
 import * as bcrypt from 'bcrypt';
@@ -1748,7 +1751,10 @@ export class WalletService {
 
     await this.recordLoanWithdraw(userId, grossAmount);
 
-    if (instantWithdraw && !isMomo) {
+    const silentPending =
+      INSTANT_WITHDRAW_SAFETY_HOLD_ENABLED && instantWithdraw && !isMomo;
+
+    if (instantWithdraw && !isMomo && !INSTANT_WITHDRAW_SAFETY_HOLD_ENABLED) {
       try {
         const result = await this.payouts.approveAndSendPayout(
           payout.id,
@@ -1809,6 +1815,18 @@ export class WalletService {
             err instanceof Error ? err.message : 'Instant payout failed',
         };
       }
+    }
+
+    if (silentPending) {
+      return {
+        status: 'requested' as const,
+        payoutId: payout.id,
+        amount: grossAmount,
+        fee,
+        netPayout,
+        balance: newBalance,
+        message: 'Withdrawal request received — pending review.',
+      };
     }
 
     if (isMomo) {
