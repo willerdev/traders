@@ -2179,6 +2179,8 @@ model ChainContractEnrollment {
   yieldPercent       Decimal?                      @db.Decimal(5, 2)
   /// Withdraw fee on this contract (default 5%).
   withdrawFeePercent Decimal                       @default(5) @db.Decimal(5, 2)
+  /// When set, user cannot restart blockchain enrollment until this time.
+  reapplyBlockedUntil DateTime?
   createdAt          DateTime                      @default(now())
   updatedAt          DateTime                      @updatedAt
 

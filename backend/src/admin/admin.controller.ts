@@ -144,6 +144,22 @@ export class AdminController {
     );
   }
 
+  @Post('kyc/blockchain/:userId/close-missed-deposit')
+  @RequireAdminPermission('kyc')
+  closeBlockchainMissedDeposit(
+    @Param('userId') userId: string,
+    @Request() req: { user: { id: string } },
+    @Body() dto: AdminRejectReasonDto & { reapplyDays?: number },
+  ) {
+    return this.chainEnrollment.closeForMissedDeposit(userId, {
+      adminId: req.user.id,
+      reapplyDays: dto.reapplyDays ?? 10,
+      reason:
+        dto.reason?.trim() ||
+        'Enrollment closed — required deposit was not received within the allotted time.',
+    });
+  }
+
   @Get('users')
   listUsers(
     @Query('limit') limit?: string,

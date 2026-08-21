@@ -821,6 +821,46 @@ export class NotificationService {
     );
   }
 
+  chainContractEnrollmentClosed(
+    userId: string,
+    data: { reason: string; reapplyBlockedUntil: string; adminId?: string },
+  ) {
+    this.dispatch(
+      this.sendChainContractEnrollmentClosed(userId, data),
+      'Blockchain enrollment closed',
+    );
+  }
+
+  private async sendChainContractEnrollmentClosed(
+    userId: string,
+    data: { reason: string; reapplyBlockedUntil: string; adminId?: string },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const reapplyLabel = new Date(data.reapplyBlockedUntil).toLocaleString(
+      'en-GB',
+      {
+        timeZone: 'Africa/Kampala',
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      },
+    );
+    const html = this.email.layout(
+      'Blockchain enrollment closed',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your <strong>blockchain contract enrollment</strong> has been closed. Your Smart Invest and wallet accounts are <strong>not affected</strong> — only the on-chain program.</p>
+      <p><strong>Reason:</strong> ${this.escape(data.reason)}</p>
+      <p style="color:#94a3b8;font-size:14px;">You may start a new blockchain application after <strong>${this.escape(reapplyLabel)}</strong> (Africa/Kampala). Until then, the blockchain deposit option will stay unavailable.</p>
+      <p style="color:#64748b;font-size:13px;">Minimum deposit when you re-apply: $2,000 USDT (plus enrollment fee).</p>`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Blockchain enrollment closed — re-apply after 10 days',
+      html,
+      text: `Blockchain enrollment closed: ${data.reason}. Re-apply after ${reapplyLabel}. Smart Invest and wallet are unchanged.`,
+    });
+  }
+
   private async sendChainContractKycRejected(userId: string, reason: string) {
     const user = await this.userContact(userId);
     if (!user) return false;

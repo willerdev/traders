@@ -96,6 +96,8 @@ export class ChainEnrollmentService {
     const existing = await this.prisma.chainContractEnrollment.findUnique({
       where: { userId },
     });
+    this.assertReapplyAllowed(existing);
+
     if (
       existing &&
       (existing.status === 'KYC_PENDING' ||
@@ -137,6 +139,7 @@ export class ChainEnrollmentService {
     const existing = await this.prisma.chainContractEnrollment.findUnique({
       where: { userId },
     });
+    this.assertReapplyAllowed(existing);
     if (!existing?.termsAcceptedAt) {
       throw new BadRequestException('Accept contract terms before KYC');
     }
@@ -617,6 +620,77 @@ export class ChainEnrollmentService {
     return this.toDto(row);
   }
 
+  /** Close approved/active enrollment when required deposit was not made in time. */
+  async closeForMissedDeposit(
+    userId: string,
+    opts?: { reapplyDays?: number; reason?: string; adminId?: string },
+  ) {
+    await this.ensureTable();
+    const reapplyDays = Math.max(1, opts?.reapplyDays ?? 10);
+    const reason =
+      opts?.reason?.trim() ||
+      'Enrollment closed — required deposit was not received within the allotted time.';
+    const blockedUntil = new Date(
+      Date.now() + reapplyDays * 24 * 60 * 60 * 1000,
+    );
+
+    const [existing, position] = await Promise.all([
+      this.prisma.chainContractEnrollment.findUnique({ where: { userId } }),
+      this.prisma.chainVaultPosition.findUnique({ where: { userId } }),
+    ]);
+    if (!existing || existing.status === 'NOT_STARTED') {
+      throw new BadRequestException('No blockchain enrollment to close');
+    }
+    const vaultBalance =
+      Number(position?.principalBalance ?? 0) +
+      Number(position?.profitBalance ?? 0);
+    if (vaultBalance > 0) {
+      throw new BadRequestException(
+        'Withdraw blockchain vault funds before closing enrollment',
+      );
+    }
+
+    const row = await this.prisma.chainContractEnrollment.update({
+      where: { userId },
+      data: {
+        status: 'KYC_REJECTED',
+        rejectionReason: reason,
+        reapplyBlockedUntil: blockedUntil,
+        approvedAt: null,
+        activatedAt: null,
+        yieldPercent: null,
+      },
+    });
+
+    this.notifications.chainContractEnrollmentClosed(userId, {
+      reason,
+      reapplyBlockedUntil: blockedUntil.toISOString(),
+      adminId: opts?.adminId,
+    });
+
+    return this.toDto(row);
+  }
+
+  private assertReapplyAllowed(
+    enrollment: {
+      reapplyBlockedUntil: Date | null;
+    } | null,
+  ) {
+    if (
+      enrollment?.reapplyBlockedUntil &&
+      enrollment.reapplyBlockedUntil.getTime() > Date.now()
+    ) {
+      const label = enrollment.reapplyBlockedUntil.toLocaleString('en-GB', {
+        timeZone: 'Africa/Kampala',
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      });
+      throw new BadRequestException(
+        `Blockchain enrollment is closed — you may re-apply after ${label} (Africa/Kampala)`,
+      );
+    }
+  }
+
   /** Wipe enrollment and return to phase 1 (terms). */
   async cancelAndRestart(userId: string) {
     await this.ensureTable();
@@ -624,6 +698,7 @@ export class ChainEnrollmentService {
       this.prisma.chainContractEnrollment.findUnique({ where: { userId } }),
       this.prisma.chainVaultPosition.findUnique({ where: { userId } }),
     ]);
+    this.assertReapplyAllowed(existing);
     if (!existing || existing.status === 'NOT_STARTED') {
       return this.getEnrollment(userId);
     }
@@ -653,6 +728,7 @@ export class ChainEnrollmentService {
         approvedAt: null,
         activatedAt: null,
         yieldPercent: null,
+        reapplyBlockedUntil: null,
         withdrawFeePercent: CHAIN_CONTRACT_WITHDRAW_FEE_PERCENT,
       },
     });
@@ -762,6 +838,7 @@ export class ChainEnrollmentService {
     kycSubmittedAt: Date | null;
     approvedAt: Date | null;
     activatedAt: Date | null;
+    reapplyBlockedUntil?: Date | null;
     yieldPercent: { toString(): string } | number | null;
     withdrawFeePercent: { toString(): string } | number;
   }) {
@@ -792,6 +869,7 @@ export class ChainEnrollmentService {
       livenessSelfieUrl: row.livenessSelfieUrl,
       livenessPassedAt: row.livenessPassedAt?.toISOString() ?? null,
       rejectionReason: row.rejectionReason,
+      reapplyBlockedUntil: row.reapplyBlockedUntil?.toISOString() ?? null,
       kycSubmittedAt: row.kycSubmittedAt?.toISOString() ?? null,
       approvedAt: row.approvedAt?.toISOString() ?? null,
       activatedAt: row.activatedAt?.toISOString() ?? null,
@@ -802,7 +880,9 @@ export class ChainEnrollmentService {
       canAccessLiveDashboard,
       showNullDashboard,
       canDeposit: status === 'APPROVED',
-      canCancelRestart: status !== 'NOT_STARTED',
+      canCancelRestart:
+        status !== 'NOT_STARTED' &&
+        !(row.reapplyBlockedUntil && row.reapplyBlockedUntil.getTime() > Date.now()),
       terms: {
         minDepositUsd: CHAIN_CONTRACT_MIN_USD,
         midTierMaxUsd: CHAIN_CONTRACT_TIER_CUTOFF_USD,
