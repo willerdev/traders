@@ -627,7 +627,7 @@ export function InvestorDepositorPlatform({
               onClick={() => {
                 if (
                   !window.confirm(
-                    "Email investors with investment under $500 about auto-stop from 27 July 2026?",
+                    "Email investors with investment under $750 that yield may pause and accounts may be restricted?",
                   )
                 ) {
                   return;
@@ -642,12 +642,12 @@ export function InvestorDepositorPlatform({
                   .then((res) => {
                     if (res.skipped) {
                       onMessage(
-                        `Auto-stop already announced at ${res.announcedAt ?? "—"}. Use force to re-send.`,
+                        `Under-$750 reminder already announced at ${res.announcedAt ?? "—"}. Use force to re-send.`,
                       );
                       return;
                     }
                     onMessage(
-                      `Auto-stop emails (<$500): sent ${res.sent}/${res.total} (failed ${res.failed}).`,
+                      `Under-$750 reminder emails: sent ${res.sent}/${res.total} (failed ${res.failed}).`,
                     );
                   })
                   .catch((e) =>
@@ -662,8 +662,8 @@ export function InvestorDepositorPlatform({
               }}
             >
               {broadcastSaving && broadcastKind === "autoStop"
-                ? "Emailing under $500…"
-                : "Email: under $500 auto-stop"}
+                ? "Emailing under $750…"
+                : "Email: under $750 reminder"}
             </button>
             <button
               type="button"
@@ -802,11 +802,11 @@ export function InvestorDepositorPlatform({
             </button>
           </div>
           <p className="muted" style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}>
-            Templates: under-$500 gets the 27 Jul 2026 auto-stop notice; $1,000+
-            gets the loan eligibility notice (reinvest profit + borrow up to 80%
-            while capital keeps earning). Audiences are filtered by investment
-            balance automatically. The trader/prop sunset email goes to every
-            non-banned user with an email address.
+            Templates: under-$750 gets the yield-pause / restriction reminder; $1,000+
+            gets the loan eligibility notice (borrow up to 80% while capital keeps
+            earning — compounding is not promoted). Audiences are filtered by
+            investment balance automatically. The trader/prop sunset email goes to
+            every non-banned user with an email address.
           </p>
         </div>
       )}
@@ -868,7 +868,7 @@ export function InvestorDepositorPlatform({
                             )}
                             {inv.minBalanceExempt && (
                               <span className="platform-pill platform-pill-investor">
-                                Min exempt
+                                Below-min yield OK
                               </span>
                             )}
                             {!inv.minBalanceExempt &&
@@ -1095,8 +1095,8 @@ export function InvestorDepositorPlatform({
                                   );
                                   onMessage(
                                     next
-                                      ? `${inv.displayName} exempt from $500 min — can earn under threshold.`
-                                      : `${inv.displayName} subject to $500 min again.`,
+                                      ? `${inv.displayName} allowed to earn daily yield below the minimum.`
+                                      : `${inv.displayName} subject to the minimum again.`,
                                   );
                                 })
                                 .catch((e) =>
@@ -1107,8 +1107,8 @@ export function InvestorDepositorPlatform({
                             }}
                           >
                             {inv.minBalanceExempt
-                              ? "Remove $500 exempt"
-                              : "Exempt $500 min"}
+                              ? "Remove below-min yield"
+                              : "Allow below-min yield"}
                           </button>
                           </div>
                         </td>

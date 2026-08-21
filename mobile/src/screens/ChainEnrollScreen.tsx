@@ -331,7 +331,8 @@ export function ChainEnrollScreen() {
               ${t.minDepositUsd.toLocaleString()}–$
               {t.midTierMaxUsd.toLocaleString()}: {t.midTierYieldPercent}%{"\n"}
               Above ${t.midTierMaxUsd.toLocaleString()}:{" "}
-              {t.highTierYieldPercent}%{"\n"}Withdraw fee:{" "}
+              {t.highTierYieldPercent}%{"\n"}Enrollment fee:{" "}
+              {t.enrollmentFeePercent ?? 10}%{"\n"}Withdraw fee:{" "}
               {t.withdrawFeePercent}%
             </Text>
             <Text
@@ -361,6 +362,7 @@ export function ChainEnrollScreen() {
             />
             <Text style={{ color: theme.text, flex: 1, lineHeight: 18 }}>
               I agree to vault terms, indicative yield bands,{" "}
+              {t.enrollmentFeePercent ?? 10}% enrollment fee,{" "}
               {t.withdrawFeePercent}% withdrawal fee, and platform Terms.
             </Text>
           </Pressable>
@@ -504,9 +506,9 @@ export function ChainEnrollScreen() {
             {enrollment.status === "KYC_PENDING"
               ? "Balances stay empty until approval."
               : enrollment.status === "APPROVED"
-                ? `Transfer at least ${formatUsdt(t.minDepositUsd)} from your platform wallet. Principal and profits lock for five days.`
+                ? `Transfer at least ${formatUsdt(t.minDepositUsd)} from your platform wallet. Principal and profits lock for five business days.`
                 : enrollment.status === "ACTIVE"
-                  ? `Daily rate ${enrollment.yieldPercent ?? "—"}%. Principal and profits share a five-day lock.`
+                  ? `Daily rate ${enrollment.yieldPercent ?? "—"}%. Principal and profits share a five business-day lock.`
                   : ""}
           </Text>
           <View style={styles.nullGrid}>
@@ -576,9 +578,10 @@ export function ChainEnrollScreen() {
               <Text
                 style={{ color: theme.muted, fontSize: 12, marginBottom: 8 }}
               >
-                Five-day principal + profit lock · indicative{" "}
-                {t.midTierYieldPercent}% / {t.highTierYieldPercent}% daily ·{" "}
-                {t.withdrawFeePercent}% withdrawal fee
+                Five-day principal + profit lock · {t.enrollmentFeePercent ?? 10}
+                % enrollment fee · indicative {t.midTierYieldPercent}% /{" "}
+                {t.highTierYieldPercent}% daily · {t.withdrawFeePercent}%
+                withdrawal fee
               </Text>
               <PrimaryButton
                 label={

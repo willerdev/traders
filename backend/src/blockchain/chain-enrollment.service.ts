@@ -8,14 +8,40 @@ import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { KycAiService } from './kyc-ai.service';
 import { NotificationService } from '../email/notification.service';
+import { addKampalaWeekdays, isKampalaWeekend } from '../common/kampala-weekend.util';
 
 export const CHAIN_CONTRACT_MIN_USD = 2000;
 export const CHAIN_CONTRACT_TIER_CUTOFF_USD = 5000;
 export const CHAIN_CONTRACT_YIELD_MID = 10;
 export const CHAIN_CONTRACT_YIELD_HIGH = 15;
 export const CHAIN_CONTRACT_WITHDRAW_FEE_PERCENT = 5;
+/** Platform fee taken from each blockchain vault funding transfer. */
+export const CHAIN_ENROLLMENT_FEE_PERCENT = 10;
 export const CHAIN_VAULT_LOCK_DAYS = 5;
-const CHAIN_VAULT_LOCK_MS = CHAIN_VAULT_LOCK_DAYS * 24 * 60 * 60 * 1000;
+
+export function chainVaultLockedUntil(from: Date = new Date()): Date {
+  return addKampalaWeekdays(from, CHAIN_VAULT_LOCK_DAYS);
+}
+
+export function chainEnrollmentFeeForAmount(grossUsd: number): {
+  gross: number;
+  fee: number;
+  net: number;
+} {
+  const gross = Math.round(Number(grossUsd) * 100) / 100;
+  if (!Number.isFinite(gross) || gross <= 0) {
+    throw new BadRequestException('Transfer amount must be positive');
+  }
+  const fee =
+    Math.round(((gross * CHAIN_ENROLLMENT_FEE_PERCENT) / 100) * 100) / 100;
+  const net = Math.round((gross - fee) * 100) / 100;
+  if (net <= 0) {
+    throw new BadRequestException(
+      'Transfer must be greater than the 10% enrollment fee',
+    );
+  }
+  return { gross, fee, net };
+}
 
 export function yieldPercentForDeposit(amountUsd: number): number {
   if (amountUsd < CHAIN_CONTRACT_MIN_USD) {
@@ -215,6 +241,7 @@ export class ChainEnrollmentService {
       withdrawFeePercent: Number(
         enrollment.withdrawFeePercent ?? CHAIN_CONTRACT_WITHDRAW_FEE_PERCENT,
       ),
+      enrollmentFeePercent: CHAIN_ENROLLMENT_FEE_PERCENT,
       minimumInitialTransfer: CHAIN_CONTRACT_MIN_USD,
       recentCredits: credits.map((credit) => ({
         id: credit.id,
@@ -229,17 +256,14 @@ export class ChainEnrollmentService {
 
   async transferFromPlatformWallet(userId: string, rawAmount: number) {
     await this.ensureTable();
-    const amount = Math.round(Number(rawAmount) * 100) / 100;
-    if (!Number.isFinite(amount) || amount <= 0) {
-      throw new BadRequestException('Transfer amount must be positive');
-    }
+    const { gross, fee, net } = chainEnrollmentFeeForAmount(rawAmount);
     await this.prisma.platformWallet.upsert({
       where: { userId },
       create: { userId },
       update: {},
     });
 
-    const lockUntil = new Date(Date.now() + CHAIN_VAULT_LOCK_MS);
+    const lockUntil = chainVaultLockedUntil(new Date());
     const reference = `chain_allocate_${randomUUID()}`;
     await this.prisma.$transaction(
       async (tx) => {
@@ -259,38 +283,41 @@ export class ChainEnrollmentService {
           where: { userId },
         });
         const currentPrincipal = Number(position?.principalBalance ?? 0);
-        const newPrincipal =
-          Math.round((currentPrincipal + amount) * 100) / 100;
-        if (currentPrincipal <= 0 && newPrincipal < CHAIN_CONTRACT_MIN_USD) {
+        if (currentPrincipal <= 0 && gross < CHAIN_CONTRACT_MIN_USD) {
           throw new BadRequestException(
-            `Minimum first blockchain transfer is $${CHAIN_CONTRACT_MIN_USD.toLocaleString()} USDT`,
+            `Minimum first blockchain transfer is $${CHAIN_CONTRACT_MIN_USD.toLocaleString()} USDT (before the ${CHAIN_ENROLLMENT_FEE_PERCENT}% enrollment fee)`,
           );
         }
-        const yieldPercent = yieldPercentForDeposit(newPrincipal);
+        const newPrincipal = Math.round((currentPrincipal + net) * 100) / 100;
+        const yieldPercent = yieldPercentForDeposit(
+          Math.max(newPrincipal, CHAIN_CONTRACT_MIN_USD),
+        );
 
         const wallet = await tx.platformWallet.findUnique({
           where: { userId },
         });
         const currentAvailable = Number(wallet?.availableBalance ?? 0);
         const debited = await tx.platformWallet.updateMany({
-          where: { userId, availableBalance: { gte: amount } },
-          data: { availableBalance: { decrement: amount } },
+          where: { userId, availableBalance: { gte: gross } },
+          data: { availableBalance: { decrement: gross } },
         });
         if (debited.count !== 1) {
-          throw new BadRequestException('Insufficient platform wallet balance');
+          throw new BadRequestException(
+            `Insufficient platform wallet balance — need $${gross.toFixed(2)} USDT (includes ${CHAIN_ENROLLMENT_FEE_PERCENT}% enrollment fee)`,
+          );
         }
 
-        const nextPosition = await tx.chainVaultPosition.upsert({
+        await tx.chainVaultPosition.upsert({
           where: { userId },
           create: {
             userId,
-            principalBalance: amount,
+            principalBalance: net,
             profitBalance: 0,
             yieldPercent,
             lockedUntil: lockUntil,
           },
           update: {
-            principalBalance: { increment: amount },
+            principalBalance: { increment: net },
             yieldPercent,
             lockedUntil: lockUntil,
           },
@@ -307,7 +334,7 @@ export class ChainEnrollmentService {
           data: {
             userId,
             wallet: `platform-wallet:${userId}`,
-            amount,
+            amount: net,
             hash: reference,
             status: 'SUCCESS',
           },
@@ -315,11 +342,21 @@ export class ChainEnrollmentService {
         await tx.walletTransaction.create({
           data: {
             userId,
-            amount: -amount,
+            amount: -fee,
+            type: 'CHAIN_ENROLLMENT_FEE',
+            referenceId: reference,
+            description: `Blockchain enrollment fee ${CHAIN_ENROLLMENT_FEE_PERCENT}% — $${fee.toFixed(2)} USDT on $${gross.toFixed(2)} transfer`,
+            balanceAfter: currentAvailable - fee,
+          },
+        });
+        await tx.walletTransaction.create({
+          data: {
+            userId,
+            amount: -net,
             type: 'CHAIN_ALLOCATE',
             referenceId: reference,
-            description: `Transferred $${amount.toFixed(2)} USDT to blockchain wallet; principal and profits locked until ${lockUntil.toISOString()}`,
-            balanceAfter: currentAvailable - amount,
+            description: `Transferred $${net.toFixed(2)} USDT to blockchain wallet after $${fee.toFixed(2)} fee; principal and profits locked until ${lockUntil.toISOString()}`,
+            balanceAfter: currentAvailable - gross,
           },
         });
         await tx.chainNotification.create({
@@ -327,18 +364,19 @@ export class ChainEnrollmentService {
             userId,
             type: 'vault_funded',
             title: 'Blockchain wallet funded',
-            message: `$${amount.toFixed(2)} USDT transferred from platform wallet. Funds and profits unlock after ${CHAIN_VAULT_LOCK_DAYS} days.`,
+            message: `$${gross.toFixed(2)} USDT from platform wallet: $${fee.toFixed(2)} enrollment fee, $${net.toFixed(2)} locked for ${CHAIN_VAULT_LOCK_DAYS} business days.`,
             severity: 'success',
           },
         });
-
-        return nextPosition;
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
 
     this.notifications.chainVaultFunded(userId, {
-      amount,
+      amount: net,
+      fee,
+      gross,
+      feePercent: CHAIN_ENROLLMENT_FEE_PERCENT,
       lockedUntil: lockUntil.toISOString(),
     });
     return this.getVaultStatus(userId);
@@ -452,6 +490,9 @@ export class ChainEnrollmentService {
 
   async creditDailyVaultProfits() {
     await this.ensureTable();
+    if (isKampalaWeekend()) {
+      return { credited: 0, checked: 0, skipped: 'weekend' as const };
+    }
     const creditDate = this.kampalaToday();
     const positions = await this.prisma.chainVaultPosition.findMany({
       where: { principalBalance: { gt: 0 } },
@@ -767,6 +808,7 @@ export class ChainEnrollmentService {
         midTierMaxUsd: CHAIN_CONTRACT_TIER_CUTOFF_USD,
         midTierYieldPercent: CHAIN_CONTRACT_YIELD_MID,
         highTierYieldPercent: CHAIN_CONTRACT_YIELD_HIGH,
+        enrollmentFeePercent: CHAIN_ENROLLMENT_FEE_PERCENT,
         withdrawFeePercent: CHAIN_CONTRACT_WITHDRAW_FEE_PERCENT,
         yieldDisclaimer:
           'Displayed percentages are indicative starting bands. Actual yield may change based on deposit size, available funds, market conditions, and past user behavior on the platform.',

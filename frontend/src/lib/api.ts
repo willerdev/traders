@@ -1334,6 +1334,25 @@ class ApiClient {
       }),
   };
 
+  airfarming = {
+    status: () => this.request<AirfarmingStatus>("/airfarming/status"),
+    apply: () =>
+      this.request<{ enrollment: AirfarmingEnrollmentView; message: string }>(
+        "/airfarming/apply",
+        { method: "POST" },
+      ),
+    allocate: (amount: number) =>
+      this.request<AirfarmingStatus>("/airfarming/allocate", {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+      }),
+    deallocate: (amount: number) =>
+      this.request<AirfarmingStatus>("/airfarming/deallocate", {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+      }),
+  };
+
   loans = {
     eligibility: () => this.request<LoanEligibility>("/loans/eligibility"),
     quote: (term: "DAILY" | "WEEKLY" | "MONTHLY") =>
@@ -2053,6 +2072,50 @@ export interface UnitrustStatus {
     baseBalance: number;
     creditDate: string;
     creditedAt: string;
+  }>;
+}
+
+export interface AirfarmingEnrollmentView {
+  status: "NOT_APPLIED" | "PENDING" | "APPROVED" | "REJECTED";
+  appliedAt: string | null;
+  approvedAt: string | null;
+  rejectionReason: string | null;
+  canApply: boolean;
+  canAllocate: boolean;
+}
+
+export interface AirfarmingStatus {
+  active: boolean;
+  enrollment: AirfarmingEnrollmentView;
+  cashWalletUsd: number;
+  airfarmingWalletUsd: number;
+  committedUsd: number;
+  phase: string;
+  globallyPaused: boolean;
+  week: {
+    weekStart: string;
+    investmentUsd: number;
+    yieldUsd: number;
+    floorRate: number;
+    floorTargetUsd: number;
+    floorRemainingUsd: number;
+    progressPct: number;
+  } | null;
+  nextDrop: {
+    id: string;
+    dueAt: string;
+    minBalance: number;
+    maxBalance: number;
+    percent: number;
+    secondsRemaining: number;
+  } | null;
+  history: Array<{
+    id: string;
+    dueAt: string;
+    status: string;
+    source: string;
+    profitAmount: number | null;
+    percent: number;
   }>;
 }
 

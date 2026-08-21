@@ -36,6 +36,7 @@ import { AccountTransferModule } from './account-transfer/account-transfer.modul
 import { SmsModule } from './sms/sms.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
 import { UnitrustModule } from './unitrust/unitrust.module';
+import { AirfarmingModule } from './airfarming/airfarming.module';
 import { LoansModule } from './loans/loans.module';
 import { CashAgentsModule } from './cash-agents/cash-agents.module';
 
@@ -73,6 +74,7 @@ import { CashAgentsModule } from './cash-agents/cash-agents.module';
     WalletModule,
     InvestorModule,
     UnitrustModule,
+    AirfarmingModule,
     LoansModule,
     CashAgentsModule,
     EvaluationsModule,

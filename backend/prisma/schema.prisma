@@ -141,6 +141,8 @@ enum WalletTxType {
   UNITRUST_ALLOCATE
   UNITRUST_REDEEM
   UNITRUST_EARNING
+  AIRFARMING_EARNING
+  AIRFARMING_FLOOR_CATCHUP
   LOAN_DISBURSE
   LOAN_REPAY
   CHAIN_ALLOCATE
@@ -161,6 +163,37 @@ enum DepositorPlanStatus {
   ACTIVE
   COMPLETED
   CANCELLED
+}
+
+enum AirfarmingDropStatus {
+  SCHEDULED
+  PAID
+  MISSED
+}
+
+enum AirfarmingTransferDirection {
+  TO_AIRFARMING
+  TO_CASH
+}
+
+enum AirfarmingTransferReason {
+  USER_MANUAL
+  IDLE_PARK
+  DROP_PREP
+  POST_DROP_RETURN
+  SYSTEM
+}
+
+enum AirfarmingDropSource {
+  NATURAL
+  FLOOR_BOOST
+  WEEK_FLOOR_CATCHUP
+}
+
+enum AirfarmingEnrollmentStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum InvestorTradeStatus {
@@ -289,6 +322,8 @@ model User {
   depositorActive                Boolean    @default(false)
   unitrustActive                 Boolean    @default(false)
   unitrustEnrolledAt             DateTime?
+  airfarmingActive               Boolean    @default(false)
+  airfarmingEnrolledAt           DateTime?
   instantWithdraw                Boolean    @default(false)
   instantWithdrawGrantedAt       DateTime?
   instantWithdrawGrantedById     String?
@@ -307,6 +342,11 @@ model User {
   investorTrades               InvestorTrade[]
   investorDailyCredits         InvestorDailyCredit[]
   unitrustDailyCredits         UnitrustDailyCredit[]
+  airfarmingWallet             AirfarmingWallet?
+  airfarmingState              AirfarmingState?
+  airfarmingEnrollment         AirfarmingEnrollment?
+  airfarmingDrops              AirfarmingDrop[]
+  airfarmingTransfers          AirfarmingTransfer[]
   loans                        Loan[]
   cashAgent                    CashAgent?
   signals                      Signal[]
@@ -1237,6 +1277,125 @@ model UnitrustDailyCredit {
   @@unique([userId, creditDate])
   @@index([userId, creditDate])
   @@map("unitrust_daily_credits")
+}
+
+/// Airfarming working balance — only non-zero during drop prep/settle windows.
+model AirfarmingWallet {
+  userId    String   @id
+  balance   Decimal  @default(0) @db.Decimal(18, 2)
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("airfarming_wallets")
+}
+
+/// Per-user weekly commitment, yield tracking, and float preferences.
+model AirfarmingState {
+  userId            String   @id
+  weekStart         DateTime @db.Date
+  /// Highest committed allocation this UTC week (inclusive floor baseline).
+  weekInvestmentUsd Decimal  @default(0) @db.Decimal(18, 2)
+  /// Running net yield credited this UTC week.
+  weekYieldUsd      Decimal  @default(0) @db.Decimal(18, 2)
+  /// User's current committed capital (idle in cash until float prep).
+  committedUsd      Decimal  @default(0) @db.Decimal(18, 2)
+  autoFloatEnabled  Boolean  @default(true)
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("airfarming_state")
+}
+
+/// Application gate — users must be approved before allocating to Airfarming.
+model AirfarmingEnrollment {
+  userId          String                     @id
+  status          AirfarmingEnrollmentStatus @default(PENDING)
+  appliedAt       DateTime                   @default(now())
+  reviewedAt      DateTime?
+  reviewedById    String?
+  approvedAt      DateTime?
+  rejectionReason String?
+  updatedAt       DateTime                   @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, appliedAt])
+  @@map("airfarming_enrollments")
+}
+
+model AirfarmingDrop {
+  id                         String               @id @default(cuid())
+  userId                     String
+  weekStart                  DateTime             @db.Date
+  dropIndex                  Int
+  dueAt                      DateTime
+  percent                    Decimal              @db.Decimal(8, 4)
+  minBalance                 Decimal              @db.Decimal(18, 2)
+  maxBalance                 Decimal              @db.Decimal(18, 2)
+  bandIndex                  Int
+  status                     AirfarmingDropStatus @default(SCHEDULED)
+  source                     AirfarmingDropSource @default(NATURAL)
+  eligibleBalance            Decimal?             @db.Decimal(18, 2)
+  profitAmount               Decimal?             @db.Decimal(18, 2)
+  paidAt                     DateTime?
+  eligibilitySnapshotAt      DateTime?
+  eligibilitySnapshotBalance Decimal?             @db.Decimal(18, 2)
+  floatPreparedAt            DateTime?
+  createdAt                  DateTime             @default(now())
+  updatedAt                  DateTime             @updatedAt
+
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transfers AirfarmingTransfer[]
+
+  @@unique([userId, weekStart, dropIndex])
+  @@index([status, dueAt])
+  @@index([userId, weekStart])
+  @@map("airfarming_drops")
+}
+
+model AirfarmingDropBand {
+  bandIndex   Int      @id
+  label       String
+  minBalance  Decimal  @db.Decimal(18, 2)
+  maxBalance  Decimal  @db.Decimal(18, 2)
+  percent     Decimal  @db.Decimal(8, 4)
+  active      Boolean  @default(true)
+  updatedAt   DateTime @updatedAt
+
+  @@map("airfarming_drop_bands")
+}
+
+model AirfarmingPlatformSettings {
+  id                      String   @id @default("default")
+  maxPercent              Decimal  @default(57.9) @db.Decimal(8, 4)
+  maxProfitPerDrop        Decimal  @default(5000) @db.Decimal(18, 2)
+  weeklyYieldFloorRate    Decimal  @default(0.5) @db.Decimal(8, 4)
+  dropIntervalHours       Int[]    @default([2, 3, 5])
+  eligibilitySnapshotHours Int     @default(24)
+  floatPrepHours          Int      @default(24)
+  platformFeeRate         Decimal  @default(0.1) @db.Decimal(8, 4)
+  globallyPaused          Boolean  @default(false)
+  updatedAt               DateTime @updatedAt
+
+  @@map("airfarming_platform_settings")
+}
+
+model AirfarmingTransfer {
+  id            String                      @id @default(cuid())
+  userId        String
+  amount        Decimal                     @db.Decimal(18, 2)
+  direction     AirfarmingTransferDirection
+  reason        AirfarmingTransferReason
+  relatedDropId String?
+  createdAt     DateTime                    @default(now())
+
+  user User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  drop AirfarmingDrop? @relation(fields: [relatedDropId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@map("airfarming_transfers")
 }
 
 /// Earnings-advance loan: 80% of projected period earnings, 20% interest on principal.

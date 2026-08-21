@@ -284,6 +284,13 @@ function PhaseTerms({
               "These percentages are indicative and may change depending on deposit size, available funds, market conditions, and your past behavior on the platform."}
           </li>
           <li>
+            Each new blockchain investment transfer charges a{" "}
+            <strong className="text-gray-200">
+              {t.enrollmentFeePercent ?? 10}%
+            </strong>{" "}
+            enrollment fee; the remaining balance locks as principal.
+          </li>
+          <li>
             Every withdrawal deducts{" "}
             <strong className="text-gray-200">{t.withdrawFeePercent}%</strong>{" "}
             of the withdrawn amount.
@@ -311,7 +318,8 @@ function PhaseTerms({
         />
         <span>
           I have read and agree to the on-chain vault contract terms, yield
-          tiers, {t.withdrawFeePercent}% withdrawal fee, and the platform Terms
+          tiers, {t.enrollmentFeePercent ?? 10}% enrollment fee,{" "}
+          {t.withdrawFeePercent}% withdrawal fee, and the platform Terms
           &amp; Conditions.
         </span>
       </label>
@@ -607,6 +615,9 @@ export function ContractNullDashboard({
 
   async function fundVault() {
     const amount = Number(transferAmount);
+    const feePercent = vault?.enrollmentFeePercent ?? t.enrollmentFeePercent ?? 10;
+    const fee = Math.round(((amount * feePercent) / 100) * 100) / 100;
+    const net = Math.round((amount - fee) * 100) / 100;
     setAction("fund");
     setVaultError("");
     setVaultMessage("");
@@ -614,7 +625,7 @@ export function ContractNullDashboard({
       const next = await api.chainEnrollment.fundVault(amount);
       setVault(next);
       setVaultMessage(
-        `$${amount.toFixed(2)} moved into the blockchain wallet and locked for five days.`,
+        `$${amount.toFixed(2)} transferred: $${fee.toFixed(2)} enrollment fee, $${net.toFixed(2)} locked for five business days.`,
       );
     } catch (error) {
       setVaultError(error instanceof Error ? error.message : "Transfer failed");
@@ -644,6 +655,16 @@ export function ContractNullDashboard({
 
   const transfer = Number(transferAmount);
   const firstTransfer = !vault || vault.principalBalance <= 0;
+  const enrollmentFeePercent =
+    vault?.enrollmentFeePercent ?? t.enrollmentFeePercent ?? 10;
+  const enrollmentFee =
+    Number.isFinite(transfer) && transfer > 0
+      ? Math.round(((transfer * enrollmentFeePercent) / 100) * 100) / 100
+      : 0;
+  const netInvested =
+    Number.isFinite(transfer) && transfer > 0
+      ? Math.round((transfer - enrollmentFee) * 100) / 100
+      : 0;
   const transferValid =
     Number.isFinite(transfer) &&
     transfer > 0 &&
@@ -673,7 +694,7 @@ export function ContractNullDashboard({
           {enrollment.status === "KYC_PENDING"
             ? "Your documents and liveness are with the team. Balances, yield, and activity stay empty until approval."
             : enrollment.status === "APPROVED" || enrollment.status === "ACTIVE"
-              ? "Transfer funds from your platform wallet. Principal and every profit credit remain locked together for five days before withdrawal."
+              ? "Transfer funds from your platform wallet. Principal and every profit credit remain locked together for five business days (weekends excluded) before withdrawal."
               : "Complete verification to continue."}
         </p>
       </div>
@@ -724,7 +745,7 @@ export function ContractNullDashboard({
             </p>
           </div>
           <p className="text-xs text-gray-400">
-            Every transfer starts or resets a five-day lock on the complete
+            Every transfer starts or resets a five business-day lock on the complete
             blockchain wallet. Neither principal nor profit can leave before{" "}
             {unlockLabel}. Withdrawals carry the configured{" "}
             {vault?.withdrawFeePercent ?? t.withdrawFeePercent}% fee.
@@ -734,8 +755,10 @@ export function ContractNullDashboard({
               <p className="font-semibold text-white">Transfer from wallet</p>
               <p className="mt-1 text-xs leading-relaxed text-gray-400">
                 Platform wallet available: $
-                {(vault?.platformWalletBalance ?? 0).toFixed(2)} USDT. The first
-                transfer must be at least $
+                {(vault?.platformWalletBalance ?? 0).toFixed(2)} USDT. Each
+                transfer charges a {enrollmentFeePercent}% enrollment fee; the
+                remaining {100 - enrollmentFeePercent}% locks as principal. The
+                first transfer must be at least $
                 {(
                   vault?.minimumInitialTransfer ?? t.minDepositUsd
                 ).toLocaleString()}
@@ -753,6 +776,12 @@ export function ContractNullDashboard({
                   value={transferAmount}
                   onChange={(event) => setTransferAmount(event.target.value)}
                 />
+                {transfer > 0 && (
+                  <p className="text-xs text-gray-400">
+                    Fee ${enrollmentFee.toFixed(2)} · Net invested $
+                    {netInvested.toFixed(2)}
+                  </p>
+                )}
                 <Button
                   disabled={!vault || !transferValid || action !== null}
                   onClick={() => void fundVault()}
@@ -852,7 +881,7 @@ export function ContractNullDashboard({
           )}
           <p className="text-xs text-gray-500">
             Daily profit is added to the locked blockchain balance and emailed
-            to your registered address. A new transfer restarts the five-day
+            to your registered address. A new transfer restarts the five business-day
             lock for the full balance.
           </p>
         </div>

@@ -868,13 +868,13 @@ export class NotificationService {
       `<p>Hi ${this.escape(user.name)},</p>
       <p><strong>$${gross.toFixed(2)} USDT</strong> left your platform wallet for blockchain investment.</p>
       ${feeLine}
-      <p>Your principal and all profit are locked for five days, until <strong>${this.escape(unlockDate)} (Kampala time)</strong>.</p>
+      <p>Your principal and all profit are locked for five business days (weekends excluded), until <strong>${this.escape(unlockDate)} (Kampala time)</strong>.</p>
       <p>Daily profit is shown in Blockchain and emailed after each credit. You can withdraw principal and profit back to your platform wallet after unlock.</p>
       ${this.email.button(`${this.email.frontendUrl}/blockchain`, 'View blockchain wallet')}`,
     );
     return this.email.send({
       to: user.email,
-      subject: `Blockchain wallet funded — $${data.amount.toFixed(2)} locked for 5 days`,
+      subject: `Blockchain wallet funded — $${data.amount.toFixed(2)} locked for 5 business days`,
       html,
       text: `$${gross.toFixed(2)} USDT moved from platform wallet (${feePercent}% fee $${fee.toFixed(2)}; $${data.amount.toFixed(2)} invested). Principal and profit unlock ${unlockDate} Kampala time.`,
     });
@@ -895,6 +895,139 @@ export class NotificationService {
     );
   }
 
+  airfarmingDropPaid(
+    userId: string,
+    data: { amount: number; source: string; percent?: number },
+  ) {
+    this.dispatch(this.sendAirfarmingDropPaid(userId, data), 'Airfarming drop paid');
+  }
+
+  airfarmingApplicationSubmitted(userId: string) {
+    this.dispatch(
+      this.sendAirfarmingApplicationSubmitted(userId),
+      'Airfarming application submitted',
+    );
+  }
+
+  airfarmingApplicationSubmittedAdmin(userId: string) {
+    this.dispatch(
+      this.sendAirfarmingApplicationSubmittedAdmin(userId),
+      'Airfarming application admin',
+    );
+  }
+
+  airfarmingApplicationApproved(userId: string) {
+    this.dispatch(
+      this.sendAirfarmingApplicationApproved(userId),
+      'Airfarming application approved',
+    );
+  }
+
+  airfarmingApplicationRejected(userId: string, reason: string) {
+    this.dispatch(
+      this.sendAirfarmingApplicationRejected(userId, reason),
+      'Airfarming application rejected',
+    );
+  }
+
+  private async sendAirfarmingApplicationSubmitted(userId: string) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Airfarming application received',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>We received your <strong>Airfarming</strong> enrollment application.</p>
+      <p style="color:#94a3b8;font-size:14px;">Our team will review it shortly. You will be emailed when you are approved to allocate funds and receive drops.</p>`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Airfarming application received',
+      html,
+      text: 'Your Airfarming application was received and is pending review.',
+    });
+  }
+
+  private async sendAirfarmingApplicationSubmittedAdmin(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { displayName: true, email: true },
+    });
+    if (!user) return false;
+    const html = this.email.layout(
+      'Airfarming application pending',
+      `<p><strong>${this.escape(user.displayName)}</strong> (${this.escape(user.email ?? '')}) applied for Airfarming enrollment.</p>
+      <p>Review in admin: approve or reject the application before they can allocate.</p>`,
+    );
+    return this.sendOpsAlert({
+      label: 'Airfarming application',
+      subject: `[Airfarming] Application — ${user.displayName}`,
+      html,
+      text: `${user.displayName} (${user.email}) applied for Airfarming.`,
+    });
+  }
+
+  private async sendAirfarmingApplicationApproved(userId: string) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Airfarming enrollment approved',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your <strong>Airfarming</strong> application was <strong>approved</strong>.</p>
+      <p>You can now commit cash from your wallet and start receiving scheduled yield drops.</p>
+      ${this.email.button(`${this.email.frontendUrl}/airfarming`, 'Open Airfarming')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Airfarming enrollment approved',
+      html,
+      text: 'Your Airfarming application was approved. Open the Airfarming page to allocate funds.',
+    });
+  }
+
+  private async sendAirfarmingApplicationRejected(userId: string, reason: string) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Airfarming application update',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your Airfarming application could not be approved at this time.</p>
+      <p><strong>Reason:</strong> ${this.escape(reason)}</p>
+      <p style="color:#94a3b8;font-size:14px;">You may submit a new application from the Airfarming page if your situation changes.</p>
+      ${this.email.button(`${this.email.frontendUrl}/airfarming`, 'Airfarming')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Airfarming application — please reapply later',
+      html,
+      text: `Airfarming application not approved: ${reason}`,
+    });
+  }
+
+  private async sendAirfarmingDropPaid(
+    userId: string,
+    data: { amount: number; source: string; percent?: number },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const label =
+      data.source === 'week_floor_catchup'
+        ? 'weekly floor catch-up'
+        : 'Airfarming drop';
+    const html = this.email.layout(
+      'Airfarming yield credited',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your <strong>${this.escape(label)}</strong> credited <strong>$${data.amount.toFixed(2)} USDT</strong> to your cash wallet.</p>
+      ${data.percent != null && data.percent > 0 ? `<p style="color:#94a3b8;font-size:14px;">Rate: ${data.percent}% on eligible balance.</p>` : ''}
+      ${this.email.button(`${this.email.frontendUrl}/airfarming`, 'View Airfarming')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Airfarming — $${data.amount.toFixed(2)} USDT credited`,
+      html,
+      text: `Airfarming credited $${data.amount.toFixed(2)} USDT to your cash wallet.`,
+    });
+  }
+
   private async sendChainVaultDailyProfit(
     userId: string,
     data: {
@@ -910,7 +1043,7 @@ export class NotificationService {
       'Blockchain daily profit credited',
       `<p>Hi ${this.escape(user.name)},</p>
       <p>Your blockchain wallet earned <strong>$${data.amount.toFixed(2)} USDT</strong> at the current ${data.yieldPercent}% daily rate on $${data.principal.toFixed(2)} principal.</p>
-      <p>The profit is held in your blockchain wallet and follows the same five-day lock as your principal.</p>
+      <p>The profit is held in your blockchain wallet and follows the same five business-day lock as your principal.</p>
       ${this.email.button(`${this.email.frontendUrl}/blockchain`, 'View profit history')}`,
     );
     return this.email.send({
@@ -929,6 +1062,55 @@ export class NotificationService {
       this.sendChainVaultWithdrawn(userId, data),
       'Blockchain wallet withdrawn',
     );
+  }
+
+  chainVaultWeekendAdjustment(
+    userId: string,
+    data: {
+      removedProfit: number;
+      newPrincipal: number;
+      previousPrincipal: number;
+      lockedUntil: string;
+    },
+  ) {
+    this.dispatch(
+      this.sendChainVaultWeekendAdjustment(userId, data),
+      'Blockchain contract weekend adjustment',
+    );
+  }
+
+  private async sendChainVaultWeekendAdjustment(
+    userId: string,
+    data: {
+      removedProfit: number;
+      newPrincipal: number;
+      previousPrincipal: number;
+      lockedUntil: string;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const unlockDate = new Date(data.lockedUntil).toLocaleString('en-US', {
+      timeZone: 'Africa/Kampala',
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+    const html = this.email.layout(
+      'Contract balance adjusted',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>We updated your blockchain contract to match platform policy: <strong>no daily profit on Saturdays or Sundays</strong>, and lock periods count <strong>business days only</strong> (weekends excluded).</p>
+      <p>Weekend profit removed from your contract: <strong>$${data.removedProfit.toFixed(2)} USDT</strong>.</p>
+      <p>Contract principal: <strong>$${data.previousPrincipal.toFixed(2)}</strong> → <strong>$${data.newPrincipal.toFixed(2)} USDT</strong>.</p>
+      <p>Your full balance remains locked until <strong>${this.escape(unlockDate)} (Kampala time)</strong> — five business days from your latest contract reset.</p>
+      <p>Daily profit continues on weekdays only. After unlock you can withdraw principal and profit to your platform wallet.</p>
+      ${this.email.button(`${this.email.frontendUrl}/blockchain`, 'View blockchain wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Contract adjustment — $${data.removedProfit.toFixed(2)} weekend profit removed`,
+      html,
+      text: `Weekend contract profit removed: $${data.removedProfit.toFixed(2)} USDT. Principal now $${data.newPrincipal.toFixed(2)} USDT. Unlocks ${unlockDate} Kampala time.`,
+    });
   }
 
   private async sendChainVaultWithdrawn(

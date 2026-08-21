@@ -8,6 +8,7 @@ import { Mt5SyncModule } from '../mt5-sync/mt5-sync.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { InvestorModule } from '../investor/investor.module';
 import { UnitrustModule } from '../unitrust/unitrust.module';
+import { AirfarmingModule } from '../airfarming/airfarming.module';
 import { AbuseHunterService } from './abuse-hunter.service';
 import { AccountTransferModule } from '../account-transfer/account-transfer.module';
 import { BlockchainModule } from '../blockchain/blockchain.module';
@@ -22,6 +23,7 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
     WalletModule,
     InvestorModule,
     UnitrustModule,
+    AirfarmingModule,
     AccountTransferModule,
     BlockchainModule,
   ],

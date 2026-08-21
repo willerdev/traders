@@ -1,8 +1,8 @@
 /** Minimum Smart Invest balance required to earn daily yield once the policy is in force. */
-export const INVESTOR_MIN_BALANCE_USDT = 500;
+export const INVESTOR_MIN_BALANCE_USDT = 750;
 
 /** UTC calendar date when under-minimum investments stop earning (inclusive). */
-export const INVESTOR_MIN_BALANCE_EFFECTIVE_DATE = '2026-07-27';
+export const INVESTOR_MIN_BALANCE_EFFECTIVE_DATE = '2026-08-05';
 
 export function investorMinBalanceEffectiveAt(): Date {
   return new Date(`${INVESTOR_MIN_BALANCE_EFFECTIVE_DATE}T00:00:00.000Z`);

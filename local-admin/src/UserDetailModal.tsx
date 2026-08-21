@@ -49,6 +49,7 @@ export function UserDetailModal({
   const [error, setError] = useState("");
   const [kycBusy, setKycBusy] = useState(false);
   const [permissionsBusy, setPermissionsBusy] = useState(false);
+  const [investorBusy, setInvestorBusy] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [staffKyc, setStaffKyc] = useState(false);
   const [staffPayout, setStaffPayout] = useState(false);
@@ -56,6 +57,7 @@ export function UserDetailModal({
   const [staffSetups, setStaffSetups] = useState(false);
   const [staffCopy, setStaffCopy] = useState(false);
   const [permissionsMessage, setPermissionsMessage] = useState("");
+  const [investorMessage, setInvestorMessage] = useState("");
 
   const reload = () => {
     if (!userId) return;
@@ -73,6 +75,7 @@ export function UserDetailModal({
       setDetail(null);
       setError("");
       setRejectReason("");
+      setInvestorMessage("");
       return;
     }
 
@@ -309,10 +312,105 @@ export function UserDetailModal({
                   value={fmtMoney(detail.platformWallet?.lockedBalance ?? 0)}
                 />
                 <Field
+                  label="Investment balance"
+                  value={fmtMoney(
+                    detail.investor?.investmentBalance ??
+                      detail.platformWallet?.investorBalance ??
+                      0,
+                  )}
+                />
+                <Field
                   label="Updated"
                   value={fmtDate(detail.platformWallet?.updatedAt)}
                 />
               </dl>
+            </section>
+
+            <section className="user-detail-section">
+              <h4>Smart Invest</h4>
+              {detail.investor?.active || detail.investorActive ? (
+                <>
+                  <dl className="user-detail-grid">
+                    <Field label="Investor" value="Active" />
+                    <Field
+                      label="Investment"
+                      value={fmtMoney(detail.investor?.investmentBalance ?? 0)}
+                    />
+                    <Field
+                      label="Yield paused"
+                      value={detail.investor?.yieldPaused ? "Yes" : "No"}
+                    />
+                    <Field
+                      label="Custom daily yield"
+                      value={
+                        detail.investor?.dailyYieldPercent != null
+                          ? `${detail.investor.dailyYieldPercent}%`
+                          : "Platform default"
+                      }
+                    />
+                    <Field
+                      label="Below-min daily yield"
+                      value={
+                        detail.investor?.minBalanceExempt
+                          ? "Allowed (exempt)"
+                          : "Blocked if under minimum"
+                      }
+                    />
+                  </dl>
+                  <p className="muted" style={{ marginTop: 0 }}>
+                    Mark eligible to keep earning daily yield even when their
+                    investment is below the platform minimum.
+                  </p>
+                  {investorMessage && (
+                    <p className="muted" style={{ margin: "0 0 0.75rem" }}>
+                      {investorMessage}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={investorBusy}
+                    onClick={() => {
+                      if (!userId || !detail.investor) return;
+                      const next = !detail.investor.minBalanceExempt;
+                      setInvestorBusy(true);
+                      setInvestorMessage("");
+                      void api
+                        .setInvestorMinBalanceExempt(userId, next)
+                        .then((res) => {
+                          setDetail((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  investor: prev.investor
+                                    ? {
+                                        ...prev.investor,
+                                        minBalanceExempt: res.minBalanceExempt,
+                                      }
+                                    : prev.investor,
+                                }
+                              : prev,
+                          );
+                          setInvestorMessage(
+                            next
+                              ? "Allowed — can earn daily yield below the minimum."
+                              : "Removed — subject to the minimum again.",
+                          );
+                        })
+                        .catch((err: Error) => setError(err.message))
+                        .finally(() => setInvestorBusy(false));
+                    }}
+                  >
+                    {investorBusy
+                      ? "Updating…"
+                      : detail.investor?.minBalanceExempt
+                        ? "Remove below-min yield eligibility"
+                        : "Allow daily yield below minimum"}
+                  </button>
+                </>
+              ) : (
+                <p className="muted">Not enrolled in Smart Invest.</p>
+              )}
             </section>
 
             {detail.virtualAccount && (

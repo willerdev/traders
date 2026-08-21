@@ -21,3 +21,15 @@ export function isKampalaWeekend(date: Date = new Date()): boolean {
   const dow = kampalaDayOfWeek(date);
   return dow === 0 || dow === 6;
 }
+
+/** Advance by N Mon–Fri days in Kampala, preserving time-of-day. */
+export function addKampalaWeekdays(from: Date, weekdays: number): Date {
+  if (weekdays <= 0) return new Date(from);
+  const result = new Date(from.getTime());
+  let added = 0;
+  while (added < weekdays) {
+    result.setTime(result.getTime() + 24 * 60 * 60 * 1000);
+    if (!isKampalaWeekend(result)) added++;
+  }
+  return result;
+}

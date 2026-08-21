@@ -452,6 +452,7 @@ export interface ChainContractEnrollment {
     midTierMaxUsd: number;
     midTierYieldPercent: number;
     highTierYieldPercent: number;
+    enrollmentFeePercent?: number;
     withdrawFeePercent: number;
     yieldDisclaimer?: string;
   };

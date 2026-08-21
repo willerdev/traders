@@ -58,6 +58,7 @@ type SeedProduct = {
   ctaPath: string;
   detectKey: DetectKey;
   sortOrder: number;
+  active?: boolean;
 };
 
 const DEFAULT_PRODUCTS: SeedProduct[] = [
@@ -97,12 +98,13 @@ const DEFAULT_PRODUCTS: SeedProduct[] = [
     slug: 'auto_reinvest',
     name: 'Auto-reinvest earnings',
     description:
-      'Compound daily earnings automatically (90% reinvested after fee).',
+      'Compounding is disabled platform-wide. Kept for catalog history only.',
     cadence: 'daily',
-    yieldLabel: 'Compound daily',
+    yieldLabel: 'Disabled',
     ctaPath: '/invest',
     detectKey: 'auto_reinvest',
     sortOrder: 40,
+    active: false,
   },
 ];
 
@@ -174,6 +176,7 @@ export class ProductAgentService {
 
   async ensureDefaultProducts() {
     for (const p of DEFAULT_PRODUCTS) {
+      const active = p.active !== false;
       await this.prisma.returnProduct.upsert({
         where: { slug: p.slug },
         create: {
@@ -185,7 +188,7 @@ export class ProductAgentService {
           ctaPath: p.ctaPath,
           detectKey: p.detectKey,
           sortOrder: p.sortOrder,
-          active: true,
+          active,
           launchedAt: new Date(),
         },
         update: {
@@ -196,6 +199,7 @@ export class ProductAgentService {
           ctaPath: p.ctaPath,
           detectKey: p.detectKey,
           sortOrder: p.sortOrder,
+          active,
         },
       });
     }
@@ -508,11 +512,11 @@ export class ProductAgentService {
       topPaths.some((p) => p.path.startsWith('/invest') || p.path === '/journal');
 
     const styleHints: string[] = [];
-    if (prefersDailyYield) styleHints.push('Talk about daily compounding and Smart Invest.');
+    if (prefersDailyYield) styleHints.push('Talk about Smart Invest daily yield credits to wallet.');
     if (prefersDepositorPlans) styleHints.push('Highlight fixed depositor plan credits.');
     if (onlineMostlyEvenings) styleHints.push('User is usually online evenings UTC.');
-    if (user.investorActive && !user.investorSettings?.autoReinvestEarnings) {
-      styleHints.push('Already investing — pitch auto-reinvest compounding.');
+    if (user.investorActive) {
+      styleHints.push('Already investing — do not pitch compounding or auto-reinvest.');
     }
     if (!user.investorActive && !user.depositorActive) {
       styleHints.push('Not on any return product yet — introduce Smart Invest gently.');

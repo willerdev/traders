@@ -31,6 +31,7 @@ import {
   Landmark,
   HandCoins,
   Banknote,
+  Sprout,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore, useDashboardStore } from "@/stores/auth";
@@ -100,6 +101,13 @@ const NAV_GROUPS: NavGroup[] = [
         shortLabel: "Unitrust",
         icon: Landmark,
         keywords: "5% monthly",
+      },
+      {
+        href: "/airfarming",
+        label: "Airfarming",
+        shortLabel: "Airfarm",
+        icon: Sprout,
+        keywords: "drops yield scheduled",
       },
       {
         href: "/loans",

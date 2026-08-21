@@ -11,6 +11,7 @@ import { WEEKLY_ACCESS_MS } from '../common/weekly-access.util';
 import { WalletService } from '../wallet/wallet.service';
 import { InvestorService } from '../investor/investor.service';
 import { UnitrustService } from '../unitrust/unitrust.service';
+import { AirfarmingService } from '../airfarming/airfarming.service';
 import { AbuseHunterService } from './abuse-hunter.service';
 import { AccountTransferService } from '../account-transfer/account-transfer.service';
 import { ChainEnrollmentService } from '../blockchain/chain-enrollment.service';
@@ -29,6 +30,7 @@ export class PlatformJobsService implements OnModuleInit {
     private walletService: WalletService,
     private investorService: InvestorService,
     private unitrustService: UnitrustService,
+    private airfarmingService: AirfarmingService,
     private abuseHunter: AbuseHunterService,
     private accountTransfers: AccountTransferService,
     private chainEnrollment: ChainEnrollmentService,
@@ -332,6 +334,40 @@ export class PlatformJobsService implements OnModuleInit {
     } catch (err) {
       this.logger.error(
         `Account transfer finalize job failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  /** Every minute — settle Airfarming drops and run cash ↔ AF float. */
+  @Cron(CronExpression.EVERY_MINUTE)
+  async airfarmingMinuteJob() {
+    try {
+      const result = await this.airfarmingService.runMinuteJobs();
+      if (result.settled > 0 || result.floated > 0) {
+        this.logger.log(
+          `Airfarming minute job: settled=${result.settled} floated=${result.floated}`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Airfarming minute job failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  /** Hourly — ensure next natural Airfarming drop exists for active users. */
+  @Cron(CronExpression.EVERY_HOUR)
+  async airfarmingHourlyJob() {
+    try {
+      const result = await this.airfarmingService.runHourlyJobs();
+      if (result.scheduled > 0) {
+        this.logger.log(
+          `Airfarming hourly job: scheduled=${result.scheduled}`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Airfarming hourly job failed: ${err instanceof Error ? err.message : err}`,
       );
     }
   }
