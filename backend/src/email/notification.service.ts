@@ -2370,6 +2370,37 @@ export class NotificationService {
     );
   }
 
+  /** Awaitable — Sunday auto-batch queue ETA email. */
+  walletWithdrawSundayQueued(
+    userId: string,
+    data: {
+      gross: number;
+      netPayout: number;
+      originalNet: number;
+      adjustmentPercent: number;
+      queuePosition: number;
+      estimatedAt: string;
+    },
+  ): Promise<boolean> {
+    return this.sendWalletWithdrawSundayQueued(userId, data);
+  }
+
+  /** Awaitable — Sunday batch complete summary for ops/admin. */
+  sundayWithdrawBatchAdminSummary(
+    rows: Array<{
+      displayName: string;
+      email: string | null;
+      originalNet: number;
+      adjustedNet: number;
+      scheduledAt: Date;
+      status: string;
+      executedAt?: Date | null;
+      gatewayPayoutId?: string | null;
+    }>,
+  ): Promise<boolean> {
+    return this.sendSundayWithdrawBatchAdminSummary(rows);
+  }
+
   walletWithdrawInstantExecuted(
     userId: string,
     data: {
@@ -3300,6 +3331,109 @@ export class NotificationService {
       subject: 'Withdrawal requested',
       html,
       text: `Withdrawal of $${data.amount.toFixed(2)} USDT requested.`,
+    });
+  }
+
+  private formatKampalaWhen(date: Date | string): string {
+    return new Date(date).toLocaleString('en-GB', {
+      timeZone: 'Africa/Kampala',
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  }
+
+  private async sendWalletWithdrawSundayQueued(
+    userId: string,
+    data: {
+      gross: number;
+      netPayout: number;
+      originalNet: number;
+      adjustmentPercent: number;
+      queuePosition: number;
+      estimatedAt: string;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const when = this.formatKampalaWhen(data.estimatedAt);
+    const html = this.email.layout(
+      'Sunday withdrawal queued',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your Sunday withdrawal is in today&apos;s payout batch (<strong>#${data.queuePosition}</strong> in queue).</p>
+      <p>Gross request: <strong>$${data.gross.toFixed(2)} USDT</strong></p>
+      <p>After today&apos;s ${data.adjustmentPercent}% Sunday batch adjustment: <strong>$${data.netPayout.toFixed(2)} USDT</strong> will be sent to your saved wallet.</p>
+      <p><strong>Approximate send time:</strong> ${this.escape(when)} <span style="color:#94a3b8;">(Africa/Kampala)</span></p>
+      <p style="color:#94a3b8;font-size:14px;">Sunday is our preferred withdrawal day — payouts are sent hourly in queue order. You&apos;ll get another email when your transfer is submitted.</p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Sunday withdrawal queued — approx. ${when}`,
+      html,
+      text: `Your Sunday withdrawal of $${data.netPayout.toFixed(2)} USDT is queued (#${data.queuePosition}). Approx. send time: ${when} Kampala.`,
+    });
+  }
+
+  private async sendSundayWithdrawBatchAdminSummary(
+    rows: Array<{
+      displayName: string;
+      email: string | null;
+      originalNet: number;
+      adjustedNet: number;
+      scheduledAt: Date;
+      status: string;
+      executedAt?: Date | null;
+      gatewayPayoutId?: string | null;
+    }>,
+  ) {
+    const lines = rows
+      .map((r) => {
+        const scheduled = this.formatKampalaWhen(r.scheduledAt);
+        const executed = r.executedAt
+          ? this.formatKampalaWhen(r.executedAt)
+          : '—';
+        return `<tr>
+          <td style="padding:8px;border-bottom:1px solid #334155;">${this.escape(r.displayName)}</td>
+          <td style="padding:8px;border-bottom:1px solid #334155;">${this.escape(r.email ?? '—')}</td>
+          <td style="padding:8px;border-bottom:1px solid #334155;">$${r.originalNet.toFixed(2)} → $${r.adjustedNet.toFixed(2)}</td>
+          <td style="padding:8px;border-bottom:1px solid #334155;">${this.escape(scheduled)}</td>
+          <td style="padding:8px;border-bottom:1px solid #334155;">${this.escape(executed)}</td>
+          <td style="padding:8px;border-bottom:1px solid #334155;">${this.escape(r.status)}</td>
+          <td style="padding:8px;border-bottom:1px solid #334155;"><code style="color:#93c5fd;">${this.escape(r.gatewayPayoutId ?? '—')}</code></td>
+        </tr>`;
+      })
+      .join('');
+
+    const totalAdjusted = rows.reduce((s, r) => s + r.adjustedNet, 0);
+    const html = this.email.layout(
+      'Sunday withdrawal batch complete',
+      `<p>All scheduled Sunday wallet withdrawals have been processed (or attempted). Pending KYC submissions were approved after the last payout.</p>
+      <p><strong>Total net sent (scheduled):</strong> $${totalAdjusted.toFixed(2)} USDT across ${rows.length} payout(s)</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:13px;">
+        <thead>
+          <tr style="color:#94a3b8;text-align:left;">
+            <th style="padding:8px;">User</th>
+            <th style="padding:8px;">Email</th>
+            <th style="padding:8px;">Net (9% adj.)</th>
+            <th style="padding:8px;">Scheduled</th>
+            <th style="padding:8px;">Executed</th>
+            <th style="padding:8px;">Status</th>
+            <th style="padding:8px;">NOWPayments</th>
+          </tr>
+        </thead>
+        <tbody>${lines}</tbody>
+      </table>`,
+    );
+
+    return this.sendOpsAlert({
+      label: 'Sunday withdraw batch summary',
+      subject: `[Sunday batch] Withdrawals complete — ${rows.length} payout(s)`,
+      html,
+      text: `Sunday batch complete. ${rows.length} payouts, $${totalAdjusted.toFixed(2)} USDT net scheduled total.`,
     });
   }
 

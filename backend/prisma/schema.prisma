@@ -856,6 +856,10 @@ model Payout {
   processedAt     DateTime?
   notes           String?
   gatewayPayoutId String?
+  /// Sunday auto-batch: when the cron should approve/send this withdrawal.
+  scheduledApproveAt       DateTime?
+  /// Sunday auto-batch: ETA email sent to the user.
+  sundayBatchEtaNotifiedAt DateTime?
 
   user    User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   tpClaim TpClaim?           @relation(fields: [tpClaimId], references: [id], onDelete: SetNull)
@@ -863,6 +867,7 @@ model Payout {
 
   @@index([userId])
   @@index([status])
+  @@index([status, scheduledApproveAt])
   @@map("payouts")
 }
 
@@ -1128,6 +1133,10 @@ model PlatformConfig {
   withdrawalScheduleAnnouncedAt       DateTime?
   /// Set after the Airfarming launch email to Smart Invest alumni is broadcast once.
   airfarmingLaunchAnnouncedAt         DateTime?
+  /// Anchor time for the active Sunday wallet-withdraw auto-batch (UTC).
+  sundayWithdrawBatchAnchor           DateTime?
+  /// Set when the Sunday batch finishes (admin summary + KYC sweep done).
+  sundayWithdrawBatchFinalizedAt      DateTime?
 
   /// Deriv WebSocket API — admin-configured credentials for programmatic access.
   derivAppId            String?

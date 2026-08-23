@@ -367,7 +367,10 @@ export class PayoutService {
     payoutId: string,
     adminId: string,
     network = 'TRC20',
-    options?: { settlement?: 'gateway' | 'external' },
+    options?: {
+      settlement?: 'gateway' | 'external';
+      skipSafetyHold?: boolean;
+    },
   ) {
     const payout = await this.prisma.payout.findUnique({
       where: { id: payoutId },
@@ -381,7 +384,11 @@ export class PayoutService {
       };
     }
 
-    await this.assertDepositorWithdrawSafetyHold(payout.userId, payout);
+    await this.assertDepositorWithdrawSafetyHold(
+      payout.userId,
+      payout,
+      options?.skipSafetyHold,
+    );
 
     const amount = Number(payout.traderShare);
     const creditToWallet = payout.source !== 'DEPOSITOR';
@@ -858,7 +865,9 @@ export class PayoutService {
   private async assertDepositorWithdrawSafetyHold(
     userId: string,
     payout: { source: PayoutSource; requestedAt: Date },
+    skip = false,
   ) {
+    if (skip) return;
     if (payout.source !== 'DEPOSITOR' || !INSTANT_WITHDRAW_SAFETY_HOLD_ENABLED) {
       return;
     }

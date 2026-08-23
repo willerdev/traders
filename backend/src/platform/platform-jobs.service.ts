@@ -16,6 +16,8 @@ import { AbuseHunterService } from './abuse-hunter.service';
 import { AccountTransferService } from '../account-transfer/account-transfer.service';
 import { ChainEnrollmentService } from '../blockchain/chain-enrollment.service';
 import { isKampalaWeekend } from '../common/kampala-weekend.util';
+import { SundayWithdrawBatchService } from '../payouts/sunday-withdraw-batch.service';
+import { isSundayUtc } from '../payouts/sunday-withdraw-batch.util';
 
 @Injectable()
 export class PlatformJobsService implements OnModuleInit {
@@ -34,6 +36,7 @@ export class PlatformJobsService implements OnModuleInit {
     private abuseHunter: AbuseHunterService,
     private accountTransfers: AccountTransferService,
     private chainEnrollment: ChainEnrollmentService,
+    private sundayWithdrawBatch: SundayWithdrawBatchService,
   ) {}
 
   async onModuleInit() {
@@ -60,6 +63,13 @@ export class PlatformJobsService implements OnModuleInit {
         );
       }
     });
+    if (isSundayUtc()) {
+      void this.sundayWithdrawBatch.runSundayBatchTick().then((result) => {
+        this.logger.log(
+          `Sunday withdraw batch startup tick: ${JSON.stringify(result)}`,
+        );
+      });
+    }
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
@@ -351,6 +361,36 @@ export class PlatformJobsService implements OnModuleInit {
     } catch (err) {
       this.logger.error(
         `Airfarming minute job failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  /** Every 5 minutes on Sundays (UTC) — queue, approve due withdrawals (1h apart), finalize. */
+  @Cron('*/5 * * * 0')
+  async sundayWithdrawBatchJob() {
+    try {
+      const result = await this.sundayWithdrawBatch.runSundayBatchTick();
+      if (
+        result.skipped !== 'not_sunday' &&
+        result.skipped !== 'already_running'
+      ) {
+        const parts: string[] = [];
+        if (result.queued?.queued) {
+          parts.push(`queued=${result.queued.queued}`);
+        }
+        if (result.approved?.approved) {
+          parts.push(`approved=${result.approved.payoutId}`);
+        }
+        if (result.finalized?.finalized) {
+          parts.push('finalized=true');
+        }
+        if (parts.length > 0) {
+          this.logger.log(`Sunday withdraw batch: ${parts.join(' ')}`);
+        }
+      }
+    } catch (err) {
+      this.logger.error(
+        `Sunday withdraw batch failed: ${err instanceof Error ? err.message : err}`,
       );
     }
   }
