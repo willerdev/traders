@@ -69,6 +69,14 @@ export class PlatformJobsService implements OnModuleInit {
           `Sunday withdraw batch startup tick: ${JSON.stringify(result)}`,
         );
       });
+    } else {
+      void this.sundayWithdrawBatch.runSundayBatchTick().then((result) => {
+        if (result.skipped !== 'not_sunday') {
+          this.logger.log(
+            `Sunday withdraw batch resume tick: ${JSON.stringify(result)}`,
+          );
+        }
+      });
     }
   }
 
@@ -365,8 +373,8 @@ export class PlatformJobsService implements OnModuleInit {
     }
   }
 
-  /** Every 5 minutes on Sundays (UTC) — queue, approve due withdrawals (1h apart), finalize. */
-  @Cron('*/5 * * * 0')
+  /** Every 5 minutes — Sunday batch queue/approve/finalize (continues until batch closes). */
+  @Cron('*/5 * * * *')
   async sundayWithdrawBatchJob() {
     try {
       const result = await this.sundayWithdrawBatch.runSundayBatchTick();

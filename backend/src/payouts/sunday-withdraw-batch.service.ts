@@ -44,9 +44,18 @@ export class SundayWithdrawBatchService {
     private readonly referrals: ReferralsService,
   ) {}
 
-  /** Runs every few minutes on Sundays — queue new requests, approve one due payout, finalize. */
+  /** Runs every few minutes while Sunday batch is active — queue (Sunday UTC only), approve one due payout, finalize. */
   async runSundayBatchTick() {
-    if (!isSundayUtc()) return { skipped: 'not_sunday' as const };
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    const batchActive =
+      Boolean(config?.sundayWithdrawBatchAnchor) &&
+      !config?.sundayWithdrawBatchFinalizedAt;
+
+    if (!isSundayUtc() && !batchActive) {
+      return { skipped: 'not_sunday' as const };
+    }
 
     if (this.processing) {
       return { skipped: 'already_running' as const };
@@ -54,7 +63,9 @@ export class SundayWithdrawBatchService {
 
     this.processing = true;
     try {
-      const queued = await this.queuePendingSundayWithdrawals();
+      const queued = isSundayUtc()
+        ? await this.queuePendingSundayWithdrawals()
+        : { queued: 0 };
       const approved = await this.approveNextDueWithdrawal();
       const finalized = await this.finalizeBatchIfComplete();
       return { queued, approved, finalized };
