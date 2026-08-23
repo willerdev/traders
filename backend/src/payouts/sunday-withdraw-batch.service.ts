@@ -66,6 +66,7 @@ export class SundayWithdrawBatchService {
       const queued = isSundayUtc()
         ? await this.queuePendingSundayWithdrawals()
         : { queued: 0 };
+      await this.sendAdminScheduleIfNeeded();
       const approved = await this.approveNextDueWithdrawal();
       const finalized = await this.finalizeBatchIfComplete();
       return { queued, approved, finalized };
@@ -113,6 +114,7 @@ export class SundayWithdrawBatchService {
         data: {
           sundayWithdrawBatchAnchor: batchAnchor,
           sundayWithdrawBatchFinalizedAt: null,
+          sundayWithdrawBatchScheduleNotifiedAt: null,
         },
       });
     } else {
@@ -179,6 +181,63 @@ export class SundayWithdrawBatchService {
     }
 
     return { queued };
+  }
+
+  /** One-time admin email with the full hourly schedule when a batch opens. */
+  private async sendAdminScheduleIfNeeded(): Promise<void> {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+    });
+    if (
+      !config?.sundayWithdrawBatchAnchor ||
+      config.sundayWithdrawBatchScheduleNotifiedAt ||
+      config.sundayWithdrawBatchFinalizedAt
+    ) {
+      return;
+    }
+
+    const dayStart = sundayUtcStart(config.sundayWithdrawBatchAnchor);
+    const payouts = await this.prisma.payout.findMany({
+      where: {
+        source: 'DEPOSITOR',
+        scheduledApproveAt: { not: null, gte: dayStart },
+      },
+      include: {
+        user: { select: { displayName: true, email: true } },
+      },
+      orderBy: { scheduledApproveAt: 'asc' },
+    });
+    if (payouts.length === 0) return;
+
+    const rows = payouts.map((p, index) => {
+      const notes = p.notes ?? '';
+      const originalMatch = notes.match(
+        /Sunday batch 9% adjustment: net \$([0-9.]+)/,
+      );
+      const originalNet = originalMatch
+        ? Number(originalMatch[1])
+        : Number(p.traderShare);
+      return {
+        displayName: p.user.displayName,
+        email: p.user.email,
+        originalNet,
+        adjustedNet: Number(p.traderShare),
+        scheduledAt: p.scheduledApproveAt!,
+        queuePosition: index + 1,
+      };
+    });
+
+    const ok =
+      await this.notifications.sundayWithdrawBatchScheduleAdminSummary(rows);
+    if (ok) {
+      await this.prisma.platformConfig.update({
+        where: { id: 'default' },
+        data: { sundayWithdrawBatchScheduleNotifiedAt: new Date() },
+      });
+      this.logger.log(
+        `Sunday batch schedule email sent to admin (${rows.length} payout(s))`,
+      );
+    }
   }
 
   private async approveNextDueWithdrawal(): Promise<{

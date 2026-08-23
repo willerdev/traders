@@ -1137,6 +1137,8 @@ model PlatformConfig {
   sundayWithdrawBatchAnchor           DateTime?
   /// Set when the Sunday batch finishes (admin summary + KYC sweep done).
   sundayWithdrawBatchFinalizedAt      DateTime?
+  /// Set when the admin schedule email was sent for the active Sunday batch.
+  sundayWithdrawBatchScheduleNotifiedAt DateTime?
 
   /// Deriv WebSocket API — admin-configured credentials for programmatic access.
   derivAppId            String?
