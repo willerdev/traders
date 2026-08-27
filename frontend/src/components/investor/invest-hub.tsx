@@ -241,7 +241,6 @@ export function InvestHub() {
   const [copied, setCopied] = useState(false);
   const [transferAmount, setTransferAmount] = useState("");
   const [transferLoading, setTransferLoading] = useState(false);
-  const [reinvestLoading, setReinvestLoading] = useState(false);
   const [investmentAmount, setInvestmentAmount] = useState("100");
   const [vipLoading, setVipLoading] = useState(false);
 
@@ -672,6 +671,16 @@ export function InvestHub() {
           Wallet {formatMoney(status.walletBalance, display)} · Investment{" "}
           {formatMoney(status.investmentBalance ?? 0, display)}. Daily yield only
           applies to capital that has been invested for at least 24 hours.
+          {(status.selfReinvestFeePercent ?? 0) > 0 ? (
+            <>
+              {" "}
+              Reinvesting from wallet charges a{" "}
+              <strong>{status.selfReinvestFeePercent}%</strong> commission on the
+              amount you move.
+            </>
+          ) : status.vvip?.active ? (
+            <> VVIP reinvest has no commission.</>
+          ) : null}
         </p>
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <div className="min-w-[140px] flex-1">
@@ -705,7 +714,13 @@ export function InvestHub() {
                 .finally(() => setTransferLoading(false));
             }}
           >
+            {transferLoading && (
+              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+            )}
             Wallet → Investment
+            {(status.selfReinvestFeePercent ?? 0) > 0
+              ? ` (${status.selfReinvestFeePercent}% fee)`
+              : ""}
           </Button>
           <Button
             type="button"
@@ -734,9 +749,21 @@ export function InvestHub() {
         {status.reinvestBlocked && (
           <p className="mt-2 text-sm text-amber-400/90">
             {status.reinvestBlockedReason ??
-              "Open loan — wallet → investment and auto-reinvest are paused until you repay."}
+              "Open loan — wallet → investment is paused until you repay."}
           </p>
         )}
+        {!status.reinvestBlocked &&
+          (status.selfReinvestFeePercent ?? 0) > 0 &&
+          Number(transferAmount) > 0 && (
+            <p className="mt-2 text-xs text-gray-500">
+              Example: moving ${Number(transferAmount).toFixed(2)} → $
+              {(
+                Number(transferAmount) *
+                (1 - (status.selfReinvestFeePercent ?? 0) / 100)
+              ).toFixed(2)}{" "}
+              added to investment after {status.selfReinvestFeePercent}% fee.
+            </p>
+          )}
         <div className="mt-4 border-t border-white/10 pt-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -746,42 +773,18 @@ export function InvestHub() {
               <p className="mt-1 text-xs text-gray-500">
                 {status.reinvestBlocked
                   ? status.reinvestBlockedReason ??
-                    "Reinvesting revenue is disabled. Daily earnings stay in your wallet."
-                  : status.settings?.autoReinvestEarnings
-                    ? `On — ${status.autoReinvestFeePercent ?? 10}% of each daily earning is charged as a fee; the remaining 90% compounds into your investment.`
-                    : `Off — daily earnings go to your wallet. Enable to compound: ${status.autoReinvestFeePercent ?? 10}% fee on the full daily return, 90% added to investment.`}
+                    "Reinvesting is paused while you have an open loan."
+                  : "Off platform-wide — daily earnings stay in your wallet. Use Wallet → Investment above to reinvest manually."}
               </p>
             </div>
             <Button
               type="button"
               size="sm"
-              variant={
-                status.settings?.autoReinvestEarnings ? "secondary" : "default"
-              }
-              disabled={reinvestLoading || Boolean(status.reinvestBlocked)}
-              onClick={() => {
-                const next = !status.settings?.autoReinvestEarnings;
-                setReinvestLoading(true);
-                setError("");
-                void api.investor
-                  .setAutoReinvest(next)
-                  .then(() => refresh())
-                  .catch((e) =>
-                    setError(
-                      e instanceof Error
-                        ? e.message
-                        : "Failed to update auto-reinvest",
-                    ),
-                  )
-                  .finally(() => setReinvestLoading(false));
-              }}
+              variant="secondary"
+              disabled
+              title="Auto-reinvest is disabled"
             >
-              {reinvestLoading && (
-                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-              )}
-              {status.settings?.autoReinvestEarnings
-                ? "Turn off"
-                : "Enable compounding"}
+              Unavailable
             </Button>
           </div>
         </div>

@@ -20,7 +20,7 @@ import {
 export function WalletPanel({
   wallet,
   loading,
-  withdrawFeePercent = 5,
+  withdrawFeePercent = 15,
 }: {
   wallet: WalletState | null;
   loading: boolean;

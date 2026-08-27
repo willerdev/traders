@@ -1278,6 +1278,9 @@ class ApiClient {
       this.request<{
         direction: string;
         amount: number;
+        feeAmount?: number;
+        feePercent?: number;
+        netInvested?: number;
         walletBalance: number;
         investmentBalance: number;
       }>("/investor/allocate", {
@@ -1995,6 +1998,16 @@ export interface InvestorStatus {
       dailyYieldPercent?: number;
     };
   };
+  vvip?: {
+    active: boolean;
+    grantedAt: string | null;
+    benefits: {
+      instantWithdrawAnytime: boolean;
+      zeroWithdrawalFee: boolean;
+      noOffSchedulePenalty: boolean;
+      freeSelfServeReinvest: boolean;
+    };
+  };
   feeUsdt: number;
   feeTiers?: InvestorFeeTier[];
   investmentMin?: number;
@@ -2027,6 +2040,7 @@ export interface InvestorStatus {
     autoReinvestEarnings?: boolean;
   } | null;
   autoReinvestFeePercent?: number;
+  selfReinvestFeePercent?: number;
   reinvestBlocked?: boolean;
   reinvestBlockedReason?: string | null;
   minBalancePolicy?: {
@@ -2473,6 +2487,8 @@ export interface ChainContractEnrollment {
   livenessSelfieUrl: string | null;
   livenessPassedAt: string | null;
   rejectionReason: string | null;
+  reapplyBlockedUntil?: string | null;
+  contractPermanentlyClosed?: boolean;
   kycSubmittedAt: string | null;
   approvedAt: string | null;
   activatedAt: string | null;
@@ -2494,7 +2510,8 @@ export interface ChainContractEnrollment {
 }
 
 export interface ChainVaultStatus {
-  enrollmentStatus: "APPROVED" | "ACTIVE";
+  enrollmentStatus: "APPROVED" | "ACTIVE" | "KYC_REJECTED";
+  contractClosedPermanently?: boolean;
   platformWalletBalance: number;
   principalBalance: number;
   profitBalance: number;

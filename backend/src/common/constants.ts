@@ -28,6 +28,8 @@ export const REGISTRATION_FEE_USDT = 5;
 export const WALLET_WITHDRAWAL_FEE_USD = 3;
 /** Platform fee on auto-reinvested investor daily earnings (percent of full daily return). */
 export const INVESTOR_AUTO_REINVEST_FEE_PERCENT = 10;
+/** Platform fee on user self-serve wallet → Smart Invest reinvest (percent of gross amount). */
+export const INVESTOR_SELF_REINVEST_FEE_PERCENT = 30;
 export const TP_REWARD_USD = 5;
 export const PROFIT_SHARE_FEE_USDT = 50;
 export const PROFIT_SHARE_PERCENT = 50;

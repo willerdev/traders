@@ -1133,6 +1133,8 @@ model PlatformConfig {
   withdrawalScheduleAnnouncedAt       DateTime?
   /// Set after the Airfarming launch email to Smart Invest alumni is broadcast once.
   airfarmingLaunchAnnouncedAt         DateTime?
+  /// Set after the self-serve reinvest (30% fee) policy email is broadcast once.
+  investorReinvestPolicyAnnouncedAt   DateTime?
   /// Anchor time for the active Sunday wallet-withdraw auto-batch (UTC).
   sundayWithdrawBatchAnchor           DateTime?
   /// Set when the Sunday batch finishes (admin summary + KYC sweep done).
@@ -2188,8 +2190,8 @@ model ChainContractEnrollment {
   activatedAt        DateTime?
   /// Snapshot of yield % at activation (15 or 20).
   yieldPercent       Decimal?                      @db.Decimal(5, 2)
-  /// Withdraw fee on this contract (default 5%).
-  withdrawFeePercent Decimal                       @default(5) @db.Decimal(5, 2)
+  /// Withdraw fee on this contract (default 15%).
+  withdrawFeePercent Decimal                       @default(15) @db.Decimal(5, 2)
   /// When set, user cannot restart blockchain enrollment until this time.
   reapplyBlockedUntil DateTime?
   createdAt          DateTime                      @default(now())

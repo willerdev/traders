@@ -11,7 +11,7 @@ export function isInvestorVvipActive(user: {
   return Boolean(user.investorVvipActive);
 }
 
-/** VVIP pays no withdraw processing fee and no off-schedule penalty. */
+/** VVIP pays no withdraw processing fee and no platform withdrawal fee. */
 export function vvipWithdrawFeeQuote(input: {
   grossUsdt: number;
   preferredSchedule: WithdrawalPreferredSchedule;
@@ -23,7 +23,7 @@ export function vvipWithdrawFeeQuote(input: {
     processingFeeUsdt: 0,
     scheduleEnabled: false,
     preferredSchedule: input.preferredSchedule,
-    offSchedulePenaltyPercent: input.offSchedulePenaltyPercent,
+    offSchedulePenaltyPercent: 0,
     now: input.now,
   });
 }

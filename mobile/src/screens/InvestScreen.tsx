@@ -200,7 +200,22 @@ export function InvestScreen() {
             <>
               <SectionCard title="Transfer">
                 <Field label="Amount USDT" value={amount} onChangeText={setAmount} keyboardType="numeric" />
-                <PrimaryButton label="Allocate → investment" onPress={() => void allocate()} disabled={busy} />
+                {status?.reinvestBlocked ? (
+                  <Text style={{ color: theme.muted, marginBottom: 8, fontSize: 12 }}>
+                    {status.reinvestBlockedReason ??
+                      "Open loan — wallet → investment is paused until you repay."}
+                  </Text>
+                ) : (status?.selfReinvestFeePercent ?? 0) > 0 ? (
+                  <Text style={{ color: theme.muted, marginBottom: 8, fontSize: 12 }}>
+                    Reinvest commission: {status?.selfReinvestFeePercent}% on the amount moved from
+                    wallet.
+                  </Text>
+                ) : null}
+                <PrimaryButton
+                  label="Allocate → investment"
+                  onPress={() => void allocate()}
+                  disabled={busy || Boolean(status?.reinvestBlocked)}
+                />
                 <View style={{ height: 10 }} />
                 <PrimaryButton
                   label="Redeem → wallet"

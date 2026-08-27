@@ -129,31 +129,30 @@ export default function TermsPage() {
             3. Off-schedule / early withdrawals
           </h2>
           <p className="mt-3">
-            Withdrawals outside the preferred window{" "}
-            <strong className="text-gray-200">remain available</strong> — the
-            platform does not block anytime access to your available wallet
-            balance (subject to KYC, compliance, and sufficient funds). Choosing
-            an off-schedule withdrawal constitutes an early / discretionary exit
-            and incurs an{" "}
-            <strong className="text-gray-200">off-schedule penalty</strong> in
-            addition to any processing fee.
+            Withdrawals are available at any time (subject to KYC, compliance, and
+            sufficient balance). Every wallet withdrawal includes an{" "}
+            <strong className="text-gray-200">8% platform fee</strong> on the
+            gross amount, in addition to any processing fee shown before you
+            confirm. Preferred windows (Sundays UTC weekly or the 1st UTC monthly)
+            still apply for scheduling purposes; the 8% fee applies regardless of
+            timing.
           </p>
           <ul className="mt-3 list-disc space-y-2 pl-5">
             <li>
-              Default penalty:{" "}
+              Default fee:{" "}
               <strong className="text-gray-200">8% of the gross withdrawal
               amount</strong> (configurable by the platform; shown before you
               confirm).
             </li>
             <li>
-              Penalty and processing fee are deducted from the gross amount; you
-              receive the net payout to your saved withdrawal destination.
+              Platform fee and processing fee are deducted from the gross amount;
+              you receive the net payout to your saved withdrawal destination.
             </li>
             <li>
               VIP / promotional waivers may reduce or remove the{" "}
-              <em>processing</em> fee; they do{" "}
+              <em>processing</em> fee ($3 default for non-VIP); they do{" "}
               <strong className="text-gray-200">not</strong> automatically waive
-              the off-schedule penalty unless explicitly stated.
+              the 8% platform fee unless explicitly stated.
             </li>
             <li>
               Penalties and fees are non-refundable once the withdrawal request
@@ -275,9 +274,11 @@ export default function TermsPage() {
             <strong className="text-gray-200">15%</strong> band. Actual percentage
             may change depending on deposit size, available funds, market
             conditions, and past user behavior. Every withdrawal deducts a{" "}
-            <strong className="text-gray-200">5%</strong> fee. The live dashboard
-            stays empty until approval; the contract launches only after an
-            approved deposit.
+            <strong className="text-gray-200">15%</strong> fee. Once a contract is
+            launched it cannot be emptied — withdrawing the full balance
+            permanently closes the contract and you cannot apply again. The live
+            dashboard stays empty until approval; the contract launches only after
+            an approved deposit.
           </p>
         </section>
       </div>

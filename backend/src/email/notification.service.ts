@@ -1142,6 +1142,32 @@ export class NotificationService {
     );
   }
 
+  chainContractPermanentlyClosed(userId: string) {
+    this.dispatch(
+      this.sendChainContractPermanentlyClosed(userId),
+      'Blockchain contract permanently closed',
+    );
+  }
+
+  private async sendChainContractPermanentlyClosed(userId: string) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Blockchain contract closed',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>You withdrew your full blockchain contract balance. Under platform policy, <strong>a launched contract cannot be emptied and reopened</strong>.</p>
+      <p>This enrollment is <strong>permanently closed</strong> — you <strong>cannot apply for a new blockchain contract</strong> on this account.</p>
+      <p>Smart Invest and your platform wallet are unchanged.</p>
+      ${this.email.button(`${this.email.frontendUrl}/invest`, 'Open Smart Invest')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Blockchain contract closed — re-enrollment not available',
+      html,
+      text: `Your blockchain contract was fully withdrawn and permanently closed. You cannot apply again. Smart Invest and wallet are unchanged. ${this.email.frontendUrl}/invest`,
+    });
+  }
+
   chainVaultWeekendAdjustment(
     userId: string,
     data: {
@@ -4815,6 +4841,70 @@ export class NotificationService {
         'TraderRank Pro update: closing trader & prop programs — focusing on Smart Invest',
       html,
       text: `Hi ${user.name}, We are concluding TraderRank Pro’s trader competition and prop-style funding programs and focusing the platform on Smart Invest. We regret seeing that chapter end and thank you for your participation. Wallet and investment balances remain yours. Open ${this.email.frontendUrl}/invest or message Support with questions. — The TraderRank Pro team`,
+    });
+  }
+
+  /**
+   * Email active Smart Invest users about self-serve reinvest (30% commission).
+   */
+  async broadcastInvestorReinvestPolicy(): Promise<{
+    total: number;
+    sent: number;
+    failed: number;
+  }> {
+    const users = await this.prisma.user.findMany({
+      where: {
+        investorActive: true,
+        email: { not: null },
+        status: { not: 'BANNED' },
+      },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    let sent = 0;
+    let failed = 0;
+    for (const user of users) {
+      try {
+        const ok = await this.sendInvestorReinvestPolicy(user.id);
+        if (ok) sent++;
+        else failed++;
+      } catch {
+        failed++;
+      }
+      await new Promise((r) => setTimeout(r, 80));
+    }
+
+    this.logger.log(
+      `Investor reinvest policy broadcast: sent=${sent} failed=${failed} total=${users.length}`,
+    );
+    return { total: users.length, sent, failed };
+  }
+
+  private async sendInvestorReinvestPolicy(userId: string) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Smart Invest update: reinvest is back',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>You can again move earnings from your <strong>wallet</strong> back into <strong>Smart Invest</strong> from the Invest page.</p>
+      <p><strong>How it works</strong></p>
+      <ul style="padding-left:18px;color:#cbd5e1;">
+        <li>Open <strong>Invest → Move funds → Wallet → Investment</strong></li>
+        <li>A <strong>30% commission</strong> is deducted from the amount you move; the remainder is added to your investment balance</li>
+        <li>Example: reinvest <strong>$100</strong> from wallet → <strong>$70</strong> added to Smart Invest ($30 commission)</li>
+        <li>New allocations still follow the <strong>24-hour yield hold</strong> before they earn daily yield</li>
+        <li>If you have an <strong>open loan</strong>, reinvest stays paused until you repay</li>
+        <li><strong>VVIP</strong> members: no commission on reinvest (unchanged)</li>
+      </ul>
+      <p>Auto-reinvest (automatic compounding of daily earnings) remains off — use manual reinvest when you choose.</p>
+      ${this.email.button(`${this.email.frontendUrl}/invest`, 'Open Invest')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Smart Invest: wallet → investment reinvest is available (30% fee)',
+      html,
+      text: `Hi ${user.name}, Smart Invest reinvest is back on Invest. Move wallet → investment with a 30% commission on the amount moved (VVIP: no fee). Example: $100 moved → $70 to investment. Open ${this.email.frontendUrl}/invest`,
     });
   }
 }

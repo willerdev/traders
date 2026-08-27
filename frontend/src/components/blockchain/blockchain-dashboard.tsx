@@ -111,7 +111,8 @@ export function BlockchainDashboard({
               {enrollment.yieldPercent != null
                 ? ` · ${enrollment.yieldPercent}% contract yield (indicative; may vary)`
                 : ""}
-              . Withdrawals deduct {enrollment.withdrawFeePercent}% fee.
+              . Withdrawals deduct {enrollment.withdrawFeePercent}% fee. Full
+              withdrawal permanently closes the contract — you cannot apply again.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">

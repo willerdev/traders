@@ -208,6 +208,12 @@ export interface InvestorStatus {
     paused: boolean;
     yieldPaused?: boolean;
   } | null;
+  selfReinvestFeePercent?: number;
+  reinvestBlocked?: boolean;
+  reinvestBlockedReason?: string | null;
+  vvip?: {
+    active: boolean;
+  };
 }
 
 export interface InvestorCheckout {
@@ -438,6 +444,8 @@ export interface ChainContractEnrollment {
   livenessSelfieUrl: string | null;
   livenessPassedAt: string | null;
   rejectionReason: string | null;
+  reapplyBlockedUntil?: string | null;
+  contractPermanentlyClosed?: boolean;
   kycSubmittedAt: string | null;
   approvedAt: string | null;
   activatedAt: string | null;

@@ -14,7 +14,11 @@ export const CHAIN_CONTRACT_MIN_USD = 2000;
 export const CHAIN_CONTRACT_TIER_CUTOFF_USD = 5000;
 export const CHAIN_CONTRACT_YIELD_MID = 10;
 export const CHAIN_CONTRACT_YIELD_HIGH = 15;
-export const CHAIN_CONTRACT_WITHDRAW_FEE_PERCENT = 5;
+export const CHAIN_CONTRACT_WITHDRAW_FEE_PERCENT = 15;
+/** Full contract withdrawal — user cannot enroll in blockchain again. */
+export const CHAIN_CONTRACT_PERMANENT_REAPPLY_BLOCK = new Date(
+  '2099-12-31T23:59:59.999Z',
+);
 /** Platform fee taken from each blockchain vault funding transfer. */
 export const CHAIN_ENROLLMENT_FEE_PERCENT = 10;
 export const CHAIN_VAULT_LOCK_DAYS = 5;
@@ -214,18 +218,24 @@ export class ChainEnrollmentService {
         take: 30,
       }),
     ]);
-    if (!enrollment || !['APPROVED', 'ACTIVE'].includes(enrollment.status)) {
+    if (
+      !enrollment ||
+      (!['APPROVED', 'ACTIVE'].includes(enrollment.status) &&
+        !this.isPermanentlyClosed(enrollment))
+    ) {
       throw new BadRequestException(
         'Blockchain KYC must be approved before funding',
       );
     }
+    const permanentlyClosed = this.isPermanentlyClosed(enrollment);
     const principal = Number(position?.principalBalance ?? 0);
     const profit = Number(position?.profitBalance ?? 0);
     const lockedUntil = position?.lockedUntil ?? null;
     const now = Date.now();
     const unlocked = Boolean(lockedUntil && lockedUntil.getTime() <= now);
     return {
-      enrollmentStatus: enrollment.status,
+      enrollmentStatus: enrollment.status as 'APPROVED' | 'ACTIVE' | 'KYC_REJECTED',
+      contractClosedPermanently: permanentlyClosed,
       platformWalletBalance: Number(wallet?.availableBalance ?? 0),
       principalBalance: principal,
       profitBalance: profit,
@@ -389,7 +399,13 @@ export class ChainEnrollmentService {
     await this.ensureTable();
     const reference = `chain_withdraw_${randomUUID()}`;
     let notification:
-      | { gross: number; fee: number; net: number; walletBalance: number }
+      | {
+          gross: number;
+          fee: number;
+          net: number;
+          walletBalance: number;
+          contractClosedPermanently?: boolean;
+        }
       | undefined;
 
     await this.prisma.$transaction(
@@ -475,11 +491,32 @@ export class ChainEnrollmentService {
             severity: 'success',
           },
         });
+
+        const remainingPrincipal =
+          Math.round((principal - principalUsed) * 100) / 100;
+        const remainingProfit =
+          Math.round((profit - profitUsed) * 100) / 100;
+        const remainingTotal = remainingPrincipal + remainingProfit;
+        const closedPermanently =
+          remainingTotal <= 0.005 && Boolean(enrollment.activatedAt);
+        if (closedPermanently) {
+          await tx.chainContractEnrollment.update({
+            where: { userId },
+            data: {
+              status: 'KYC_REJECTED',
+              rejectionReason:
+                'Contract closed after full withdrawal. Once a blockchain contract is launched, it cannot be emptied and reopened — you cannot apply again.',
+              reapplyBlockedUntil: CHAIN_CONTRACT_PERMANENT_REAPPLY_BLOCK,
+            },
+          });
+        }
+
         notification = {
           gross: requested,
           fee,
           net,
           walletBalance: Number(platformWallet.availableBalance),
+          contractClosedPermanently: closedPermanently,
         };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
@@ -487,6 +524,9 @@ export class ChainEnrollmentService {
 
     if (notification) {
       this.notifications.chainVaultWithdrawn(userId, notification);
+      if (notification.contractClosedPermanently) {
+        this.notifications.chainContractPermanentlyClosed(userId);
+      }
     }
     return this.getVaultStatus(userId);
   }
@@ -671,6 +711,16 @@ export class ChainEnrollmentService {
     return this.toDto(row);
   }
 
+  private isPermanentlyClosed(
+    enrollment: { reapplyBlockedUntil?: Date | null } | null,
+  ): boolean {
+    return Boolean(
+      enrollment?.reapplyBlockedUntil &&
+        enrollment.reapplyBlockedUntil.getTime() >=
+          CHAIN_CONTRACT_PERMANENT_REAPPLY_BLOCK.getTime() - 86400000,
+    );
+  }
+
   private assertReapplyAllowed(
     enrollment: {
       reapplyBlockedUntil: Date | null;
@@ -680,6 +730,11 @@ export class ChainEnrollmentService {
       enrollment?.reapplyBlockedUntil &&
       enrollment.reapplyBlockedUntil.getTime() > Date.now()
     ) {
+      if (this.isPermanentlyClosed(enrollment)) {
+        throw new BadRequestException(
+          'Your blockchain contract was fully withdrawn and permanently closed — you cannot apply again.',
+        );
+      }
       const label = enrollment.reapplyBlockedUntil.toLocaleString('en-GB', {
         timeZone: 'Africa/Kampala',
         dateStyle: 'medium',
@@ -855,6 +910,7 @@ export class ChainEnrollmentService {
           ? 2
           : 3;
 
+    const permanentlyClosed = this.isPermanentlyClosed(row);
     return {
       id: row.id,
       userId: row.userId,
@@ -870,6 +926,7 @@ export class ChainEnrollmentService {
       livenessPassedAt: row.livenessPassedAt?.toISOString() ?? null,
       rejectionReason: row.rejectionReason,
       reapplyBlockedUntil: row.reapplyBlockedUntil?.toISOString() ?? null,
+      contractPermanentlyClosed: permanentlyClosed,
       kycSubmittedAt: row.kycSubmittedAt?.toISOString() ?? null,
       approvedAt: row.approvedAt?.toISOString() ?? null,
       activatedAt: row.activatedAt?.toISOString() ?? null,
@@ -879,9 +936,10 @@ export class ChainEnrollmentService {
       ),
       canAccessLiveDashboard,
       showNullDashboard,
-      canDeposit: status === 'APPROVED',
+      canDeposit: status === 'APPROVED' && !permanentlyClosed,
       canCancelRestart:
         status !== 'NOT_STARTED' &&
+        !permanentlyClosed &&
         !(row.reapplyBlockedUntil && row.reapplyBlockedUntil.getTime() > Date.now()),
       terms: {
         minDepositUsd: CHAIN_CONTRACT_MIN_USD,
@@ -923,7 +981,7 @@ export class ChainEnrollmentService {
         "approvedAt" TIMESTAMP(3),
         "activatedAt" TIMESTAMP(3),
         "yieldPercent" DECIMAL(5,2),
-        "withdrawFeePercent" DECIMAL(5,2) NOT NULL DEFAULT 5,
+        "withdrawFeePercent" DECIMAL(5,2) NOT NULL DEFAULT 15,
         "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
       )

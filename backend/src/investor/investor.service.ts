@@ -40,6 +40,7 @@ import { FxRatesService } from '../fx/fx-rates.service';
 import { resolvePreferredDisplayCurrency } from '../fx/country-currency.util';
 import {
   INVESTOR_AUTO_REINVEST_FEE_PERCENT,
+  INVESTOR_SELF_REINVEST_FEE_PERCENT,
 } from '../common/constants';
 import {
   INVESTOR_MIN_BALANCE_EFFECTIVE_DATE,
@@ -50,7 +51,7 @@ import {
 import {
   hasApprovedLoan,
   LOAN_REINVEST_BLOCKED_MESSAGE,
-  REVENUE_REINVEST_BLOCKED_MESSAGE,
+  AUTO_REINVEST_DISABLED_MESSAGE,
 } from '../loans/active-loan.util';
 
 @Injectable()
@@ -206,12 +207,11 @@ export class InvestorService {
     });
     const displayCurrency = await this.fxRates.buildDisplayCurrency(resolved);
     const loanBlocksReinvest = await hasApprovedLoan(this.prisma, userId);
-    const reinvestBlocked = !vvipActive;
-    const reinvestBlockedReason = vvipActive
-      ? null
-      : loanBlocksReinvest
-        ? LOAN_REINVEST_BLOCKED_MESSAGE
-        : REVENUE_REINVEST_BLOCKED_MESSAGE;
+    const reinvestBlocked = loanBlocksReinvest;
+    const reinvestBlockedReason = loanBlocksReinvest
+      ? LOAN_REINVEST_BLOCKED_MESSAGE
+      : null;
+    const selfReinvestFeePercent = vvipActive ? 0 : INVESTOR_SELF_REINVEST_FEE_PERCENT;
 
     return {
       active: user.investorActive,
@@ -263,6 +263,7 @@ export class InvestorService {
           }
         : null,
       autoReinvestFeePercent: INVESTOR_AUTO_REINVEST_FEE_PERCENT,
+      selfReinvestFeePercent,
       reinvestBlocked,
       reinvestBlockedReason,
       minBalancePolicy: await this.resolveMinBalancePolicy(
@@ -921,7 +922,7 @@ export class InvestorService {
     }
 
     if (autoReinvestEarnings) {
-      throw new BadRequestException(REVENUE_REINVEST_BLOCKED_MESSAGE);
+      throw new BadRequestException(AUTO_REINVEST_DISABLED_MESSAGE);
     }
 
     const settings = await this.prisma.investorSettings.upsert({
@@ -941,7 +942,7 @@ export class InvestorService {
    * Move funds between liquid wallet and investment balance.
    * direction: to_investment = wallet → investment, to_wallet = investment → wallet
    *
-   * User self-serve wallet→investment (revenue reinvest) is blocked.
+   * User self-serve wallet→investment charges INVESTOR_SELF_REINVEST_FEE_PERCENT (VVIP: free).
    * Enrollment / admin capital moves must pass allowCapitalAllocate or adminId.
    */
   async transferInvestment(
@@ -961,14 +962,11 @@ export class InvestorService {
       throw new BadRequestException('User must be enrolled in the investor program');
     }
 
-    if (direction === 'to_investment') {
-      const allowed =
-        Boolean(opts?.adminId) ||
-        Boolean(opts?.allowCapitalAllocate) ||
-        isInvestorVvipActive(user);
-      if (!allowed) {
-        throw new BadRequestException(REVENUE_REINVEST_BLOCKED_MESSAGE);
-      }
+    const isAdminMove =
+      Boolean(opts?.adminId) || Boolean(opts?.allowCapitalAllocate);
+    const vvipActive = isInvestorVvipActive(user);
+
+    if (direction === 'to_investment' && !isAdminMove) {
       if (await hasApprovedLoan(this.prisma, userId)) {
         throw new BadRequestException(LOAN_REINVEST_BLOCKED_MESSAGE);
       }
@@ -984,9 +982,23 @@ export class InvestorService {
           `Insufficient wallet balance — need $${rounded.toFixed(2)} but have $${available.toFixed(2)}`,
         );
       }
+
+      const feePercent =
+        isAdminMove || vvipActive ? 0 : INVESTOR_SELF_REINVEST_FEE_PERCENT;
+      const feeAmount =
+        feePercent > 0
+          ? Math.round(((rounded * feePercent) / 100) * 100) / 100
+          : 0;
+      const netInvested = Math.round((rounded - feeAmount) * 100) / 100;
+      if (netInvested <= 0) {
+        throw new BadRequestException(
+          'Amount must be greater than the reinvest commission for that transfer',
+        );
+      }
+
       const nextAvailable = available - rounded;
-      const nextInvested = invested + rounded;
-      await this.prisma.$transaction([
+      const nextInvested = invested + netInvested;
+      const ops = [
         this.prisma.platformWallet.update({
           where: { userId },
           data: {
@@ -1002,16 +1014,36 @@ export class InvestorService {
             referenceId: opts?.adminId ? `admin_${opts.adminId}` : userId,
             description: opts?.adminId
               ? `Admin moved $${rounded.toFixed(2)} USDT from wallet to investment`
-              : isInvestorVvipActive(user)
+              : vvipActive
                 ? `VVIP reinvest — moved $${rounded.toFixed(2)} USDT from wallet to investment (no fee)`
-                : `Moved $${rounded.toFixed(2)} USDT from wallet to investment`,
+                : feeAmount > 0
+                  ? `Reinvest — $${rounded.toFixed(2)} USDT from wallet ($${feeAmount.toFixed(2)} ${feePercent}% fee, $${netInvested.toFixed(2)} to investment)`
+                  : `Moved $${rounded.toFixed(2)} USDT from wallet to investment`,
             balanceAfter: nextAvailable,
           },
         }),
-      ]);
+      ];
+      if (feeAmount > 0) {
+        ops.push(
+          this.prisma.walletTransaction.create({
+            data: {
+              userId,
+              amount: -feeAmount,
+              type: 'INVESTOR_REINVEST_FEE',
+              referenceId: userId,
+              description: `Self-serve reinvest fee ${feePercent}% of $${rounded.toFixed(2)} USDT — $${feeAmount.toFixed(2)} USDT`,
+              balanceAfter: nextAvailable,
+            },
+          }),
+        );
+      }
+      await this.prisma.$transaction(ops);
       return {
         direction,
         amount: rounded,
+        feeAmount,
+        feePercent,
+        netInvested,
         walletBalance: nextAvailable,
         investmentBalance: nextInvested,
       };

@@ -24,14 +24,16 @@ export function TermsScreen() {
         </Text>
       </SectionCard>
 
-      <SectionCard title="2. Preferred withdrawals">
+      <SectionCard title="2. Wallet withdrawals">
         <Text style={[styles.body, { color: theme.muted }]}>
           Prefer weekly withdrawals on Sundays (UTC) or monthly on the 1st (UTC),
-          depending on platform settings. You can withdraw anytime. Off-schedule
-          requests add an off-schedule penalty (default 8% of gross) on top of the
-          processing fee. Investor VIP may waive the processing fee ($0); it does
-          not waive the off-schedule penalty unless separately stated. Every
-          withdrawal requires an email OTP before funds are requested.
+          depending on platform settings. You can withdraw anytime. An{" "}
+          <Text style={{ fontWeight: "700", color: theme.text }}>
+            8% platform fee
+          </Text>{" "}
+          applies to every wallet withdrawal on gross, plus a processing fee ($3
+          default; Investor VIP may waive processing only). Every withdrawal
+          requires an email OTP before funds are requested.
         </Text>
       </SectionCard>
 
@@ -41,9 +43,10 @@ export function TermsScreen() {
           deposit. Minimum $2,000 USDT. Indicative bands: 10% for $2,000–$5,000;
           15% above $5,000. Actual percentage may change with deposit size,
           available funds, market conditions, and past user behavior. Contract
-          withdrawals deduct 5%. The dashboard stays empty until approval; the
-          contract launches after funded activation. You may cancel and restart
-          enrollment before launch.
+          withdrawals deduct 15%. Once launched, a contract cannot be emptied —
+          full withdrawal permanently closes it and you cannot apply again. The
+          dashboard stays empty until approval; the contract launches after funded
+          activation. You may cancel and restart enrollment before launch.
         </Text>
       </SectionCard>
 

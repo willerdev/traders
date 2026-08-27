@@ -296,6 +296,12 @@ function PhaseTerms({
             of the withdrawn amount.
           </li>
           <li>
+            Once a contract is launched, it{" "}
+            <strong className="text-gray-200">cannot be emptied</strong>. Withdrawing
+            your full balance permanently closes the contract — you{" "}
+            <strong className="text-gray-200">cannot apply again</strong>.
+          </li>
+          <li>
             Contract does not start until KYC is approved and your first deposit
             is confirmed.
           </li>
@@ -428,8 +434,9 @@ function PhaseKyc({
         </p>
         {enrollment.status === "KYC_REJECTED" && enrollment.rejectionReason && (
           <p className="mt-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-            Previous submission rejected: {enrollment.rejectionReason}. Please
-            resubmit.
+            {enrollment.contractPermanentlyClosed
+              ? enrollment.rejectionReason
+              : `Previous submission rejected: ${enrollment.rejectionReason}. Please resubmit.`}
           </p>
         )}
       </div>
@@ -576,8 +583,10 @@ function PhaseKyc({
 
 export function ContractNullDashboard({
   enrollment,
+  onUpdated,
 }: {
   enrollment: ChainContractEnrollment;
+  onUpdated?: (next: ChainContractEnrollment) => void;
 }) {
   const t = enrollment.terms;
   const [vault, setVault] = useState<ChainVaultStatus | null>(null);
@@ -635,7 +644,25 @@ export function ContractNullDashboard({
   }
 
   async function withdrawVault() {
+    const available = vault?.totalBalance ?? 0;
     const amount = withdrawAmount.trim() ? Number(withdrawAmount) : undefined;
+    const gross =
+      amount == null || !Number.isFinite(amount) ? available : amount;
+    const feePercent = vault?.withdrawFeePercent ?? t.withdrawFeePercent ?? 15;
+    const fee = Math.round(((gross * feePercent) / 100) * 100) / 100;
+    const net = Math.round((gross - fee) * 100) / 100;
+    const fullWithdraw =
+      gross >= available - 0.005 && Boolean(enrollment.activatedAt);
+
+    if (fullWithdraw) {
+      const ok = window.confirm(
+        `Withdraw your full blockchain balance ($${gross.toFixed(2)} USDT)?\n\n` +
+          `• ${feePercent}% fee: $${fee.toFixed(2)} — you receive $${net.toFixed(2)} in your platform wallet.\n\n` +
+          `• This permanently closes your contract. Once launched, a contract cannot be emptied and reopened — you will NOT be able to apply for a new blockchain contract on this account.`,
+      );
+      if (!ok) return;
+    }
+
     setAction("withdraw");
     setVaultError("");
     setVaultMessage("");
@@ -643,7 +670,18 @@ export function ContractNullDashboard({
       const next = await api.chainEnrollment.withdrawVault(amount);
       setVault(next);
       setWithdrawAmount("");
-      setVaultMessage("Unlocked funds were returned to your platform wallet.");
+      if (next.contractClosedPermanently) {
+        setVaultMessage(
+          `$${net.toFixed(2)} USDT returned to your platform wallet after the ${feePercent}% fee. Your blockchain contract is permanently closed — you cannot apply again.`,
+        );
+        if (onUpdated) {
+          onUpdated(await api.chainEnrollment.get());
+        }
+      } else {
+        setVaultMessage(
+          `$${net.toFixed(2)} USDT returned to your platform wallet (${feePercent}% fee: $${fee.toFixed(2)}).`,
+        );
+      }
     } catch (error) {
       setVaultError(
         error instanceof Error ? error.message : "Withdrawal failed",
@@ -804,9 +842,17 @@ export function ContractNullDashboard({
               <p className="font-semibold text-white">Withdraw after unlock</p>
               <p className="mt-1 text-xs leading-relaxed text-gray-400">
                 Available blockchain balance: $
-                {(vault?.totalBalance ?? 0).toFixed(2)} USDT. Leave amount empty
-                to withdraw everything.
+                {(vault?.totalBalance ?? 0).toFixed(2)} USDT. Every withdrawal
+                deducts a {vault?.withdrawFeePercent ?? t.withdrawFeePercent}% fee.
+                Leave amount empty to withdraw everything.
               </p>
+              {enrollment.activatedAt ? (
+                <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                  Withdrawing your full balance permanently closes this contract.
+                  A launched contract cannot be emptied and reopened — you cannot
+                  apply for a new blockchain contract afterward.
+                </p>
+              ) : null}
               <div className="mt-4 space-y-3">
                 <Input
                   type="number"
@@ -893,6 +939,28 @@ export function ContractNullDashboard({
 export function ContractEnrollFlow({ enrollment, onUpdated }: Props) {
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState("");
+
+  if (enrollment.contractPermanentlyClosed) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-4">
+        <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.04] to-transparent p-6">
+          <h1 className="text-2xl font-bold text-white">Contract closed</h1>
+          <p className="mt-3 text-sm leading-relaxed text-gray-400">
+            {enrollment.rejectionReason ??
+              "Your blockchain contract was fully withdrawn and permanently closed."}
+          </p>
+          <p className="mt-3 text-sm text-gray-500">
+            Smart Invest and your platform wallet are unchanged. You cannot
+            enroll in a new blockchain contract on this account.
+          </p>
+          <Button asChild className="mt-6">
+            <Link href="/invest">Open Smart Invest</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   const phase =
     enrollment.status === "NOT_STARTED"
       ? 1
@@ -948,7 +1016,9 @@ export function ContractEnrollFlow({ enrollment, onUpdated }: Props) {
       {phase === 2 && (
         <PhaseKyc enrollment={enrollment} onSubmitted={onUpdated} />
       )}
-      {phase === 3 && <ContractNullDashboard enrollment={enrollment} />}
+      {phase === 3 && (
+        <ContractNullDashboard enrollment={enrollment} onUpdated={onUpdated} />
+      )}
     </div>
   );
 }

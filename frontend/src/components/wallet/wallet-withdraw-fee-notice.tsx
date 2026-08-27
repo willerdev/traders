@@ -28,10 +28,7 @@ export function estimateWithdrawalFees(
   const processing = Math.max(0, processingFeeUsdt);
   const enabled = schedule?.scheduleEnabled !== false;
   const inWindow = schedule?.inPreferredWindow !== false;
-  const penaltyPercent =
-    enabled && !inWindow
-      ? Math.max(0, Number(schedule?.offSchedulePenaltyPercent ?? 8))
-      : 0;
+  const penaltyPercent = Math.max(0, Number(schedule?.offSchedulePenaltyPercent ?? 8));
   const penaltyUsdt =
     Math.round(((gross * penaltyPercent) / 100) * 100) / 100;
   const totalFeesUsdt = Math.round((processing + penaltyUsdt) * 100) / 100;
@@ -108,8 +105,8 @@ export function WalletWithdrawFeeNotice({
           {inWindow ? (
             <>
               {" "}
-              — <span className="text-emerald-300">you are in-window</span> (no
-              off-schedule penalty).
+              — <span className="text-emerald-300">you are in-window</span> for
+              schedule (8% platform fee still applies).
             </>
           ) : (
             <>
@@ -118,17 +115,22 @@ export function WalletWithdrawFeeNotice({
               {penaltyPercent > 0 ? (
                 <>
                   {" "}
-                  (+{penaltyPercent}% penalty on gross)
+                  (+{penaltyPercent}% fee on gross)
                 </>
               ) : null}
-              {nextAt ? <> · next window {nextAt} UTC</> : null}.
+              {nextAt ? <> · next preferred window {nextAt} UTC</> : null}.
             </>
           )}{" "}
           <Link href="/terms#withdrawals" className="text-primary hover:underline">
             Terms
           </Link>
         </p>
-      ) : null}
+      ) : (
+        <p>
+          A <strong className="text-gray-300">{penaltyPercent}%</strong> fee
+          applies to every wallet withdrawal.
+        </p>
+      )}
 
       {fee <= 0 && !(quote?.penaltyUsdt) ? (
         <p className="text-emerald-200">
@@ -148,7 +150,7 @@ export function WalletWithdrawFeeNotice({
           {quote && quote.penaltyUsdt > 0 ? (
             <>
               {" "}
-              + off-schedule penalty {formatCurrency(quote.penaltyUsdt)}
+              + {penaltyPercent}% withdrawal fee {formatCurrency(quote.penaltyUsdt)}
             </>
           ) : null}
           {net != null && gross != null ? (
@@ -167,8 +169,8 @@ export function WalletWithdrawFeeNotice({
           ) : (
             <>
               {" "}
-              Anytime withdrawals work; withdrawing outside the preferred window
-              adds the penalty above.
+              Every withdrawal includes the {penaltyPercent}% platform fee above
+              {fee > 0 ? " plus processing" : ""}.
             </>
           )}
         </p>

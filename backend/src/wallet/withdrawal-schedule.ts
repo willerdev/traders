@@ -80,10 +80,8 @@ export function quoteWithdrawalFees(input: {
     !input.scheduleEnabled ||
     isInPreferredWithdrawalWindow(now, schedule);
   const processingFee = Math.max(0, input.processingFeeUsdt);
-  const penaltyPercent =
-    input.scheduleEnabled && !inWindow
-      ? Math.max(0, input.offSchedulePenaltyPercent)
-      : 0;
+  /** Platform policy: 8% withdrawal fee on all gross wallet payouts. */
+  const penaltyPercent = Math.max(0, input.offSchedulePenaltyPercent);
   const gross = Math.round(input.grossUsdt * 100) / 100;
   const penaltyUsdt =
     Math.round(((gross * penaltyPercent) / 100) * 100) / 100;
