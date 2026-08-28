@@ -984,7 +984,9 @@ export class InvestorService {
       }
 
       const feePercent =
-        isAdminMove || vvipActive ? 0 : INVESTOR_SELF_REINVEST_FEE_PERCENT;
+        isAdminMove || vvipActive || invested <= 50
+          ? 0
+          : INVESTOR_SELF_REINVEST_FEE_PERCENT;
       const feeAmount =
         feePercent > 0
           ? Math.round(((rounded * feePercent) / 100) * 100) / 100
