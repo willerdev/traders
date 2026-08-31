@@ -3232,6 +3232,16 @@ export class NotificationService {
     );
   }
 
+  walletWithdrawalCancelled(
+    userId: string,
+    data: { amount: number; balance: number },
+  ) {
+    this.dispatch(
+      this.sendWalletWithdrawalCancelled(userId, data),
+      'Wallet withdrawal cancelled',
+    );
+  }
+
   /** Awaitable admin deposit email (used when an admin credits a wallet). */
   notifyWalletAdminCredit(
     userId: string,
@@ -3288,6 +3298,28 @@ export class NotificationService {
       subject: `Admin deposited $${data.amount.toFixed(2)} USDT to your wallet`,
       html,
       text: `An admin deposited $${data.amount.toFixed(2)} USDT. Balance: $${data.balance.toFixed(2)} USDT. Invested funds earn yield only after 24 hours.`,
+    });
+  }
+
+  private async sendWalletWithdrawalCancelled(
+    userId: string,
+    data: { amount: number; balance: number },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Withdrawal cancelled — funds returned',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your pending withdrawal of <strong>$${data.amount.toFixed(2)} USDT</strong> was cancelled and the full amount has been returned to your platform wallet.</p>
+      <p>Available balance: <strong>$${data.balance.toFixed(2)} USDT</strong></p>
+      <p style="color:#94a3b8;font-size:14px;">You can submit a new withdrawal from your wallet when ready.</p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Withdrawal cancelled — funds returned to your wallet',
+      html,
+      text: `Your pending $${data.amount.toFixed(2)} USDT withdrawal was cancelled and returned. Balance: $${data.balance.toFixed(2)} USDT.`,
     });
   }
 

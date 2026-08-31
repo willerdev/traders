@@ -1,4 +1,13 @@
-import { Injectable, NotFoundException, BadRequestException, Logger, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+  ForbiddenException,
+  ConflictException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { PayoutSource, WalletTxType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NowPaymentsService } from '../payments/nowpayments.service';
@@ -899,6 +908,139 @@ export class PayoutService {
       where: { userId },
       orderBy: { requestedAt: 'desc' },
     });
+  }
+
+  async listPendingWalletWithdrawals(userId: string) {
+    const rows = await this.prisma.payout.findMany({
+      where: { userId, source: 'DEPOSITOR', status: 'PENDING' },
+      orderBy: { requestedAt: 'desc' },
+      select: {
+        id: true,
+        virtualProfit: true,
+        traderShare: true,
+        status: true,
+        payoutMethod: true,
+        walletAddress: true,
+        requestedAt: true,
+        scheduledApproveAt: true,
+      },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      grossAmount: Number(row.virtualProfit),
+      netAmount: Number(row.traderShare),
+      status: row.status,
+      payoutMethod: row.payoutMethod,
+      walletAddress: row.walletAddress,
+      requestedAt: row.requestedAt.toISOString(),
+      scheduledApproveAt: row.scheduledApproveAt?.toISOString() ?? null,
+    }));
+  }
+
+  async cancelPendingWithdrawalByUser(userId: string, payoutId: string) {
+    const payout = await this.prisma.payout.findFirst({
+      where: { id: payoutId, userId },
+    });
+    if (!payout) {
+      throw new NotFoundException('Withdrawal not found');
+    }
+    if (payout.source !== 'DEPOSITOR') {
+      throw new BadRequestException(
+        'Only platform wallet withdrawals can be cancelled here',
+      );
+    }
+    if (payout.status === 'APPROVED') {
+      throw new BadRequestException(
+        'This withdrawal is already being processed and cannot be cancelled',
+      );
+    }
+    if (payout.status === 'PAID') {
+      throw new BadRequestException('This withdrawal has already been paid');
+    }
+    if (payout.status === 'REJECTED') {
+      throw new BadRequestException('This withdrawal was already cancelled');
+    }
+    if (payout.status !== 'PENDING') {
+      throw new BadRequestException('This withdrawal cannot be cancelled');
+    }
+
+    const refundRef = `refund_${payoutId}`;
+    const existingRefund = await this.prisma.walletTransaction.findFirst({
+      where: { referenceId: refundRef },
+    });
+    if (existingRefund) {
+      throw new BadRequestException('This withdrawal was already refunded');
+    }
+
+    const amount = Number(payout.virtualProfit);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Invalid withdrawal amount');
+    }
+
+    const note = `Refund — pending withdrawal cancelled ($${amount.toFixed(2)} USDT)`;
+
+    const balance = await this.prisma.$transaction(async (tx) => {
+      const claim = await tx.payout.updateMany({
+        where: { id: payoutId, userId, source: 'DEPOSITOR', status: 'PENDING' },
+        data: {
+          status: 'REJECTED',
+          processedAt: new Date(),
+          scheduledApproveAt: null,
+          notes: `${payout.notes ?? ''} — cancelled by user: ${note}`.trim(),
+        },
+      });
+      if (claim.count !== 1) {
+        throw new ConflictException(
+          'Withdrawal status changed — refresh and try again',
+        );
+      }
+
+      const wallet = await tx.platformWallet.upsert({
+        where: { userId },
+        create: { userId },
+        update: {},
+      });
+      const newBalance =
+        Math.round((Number(wallet.availableBalance) + amount) * 100) / 100;
+
+      await tx.platformWallet.update({
+        where: { userId },
+        data: { availableBalance: newBalance },
+      });
+      await tx.walletTransaction.create({
+        data: {
+          userId,
+          amount,
+          type: 'ADJUSTMENT',
+          description: note,
+          referenceId: refundRef,
+          balanceAfter: newBalance,
+        },
+      });
+
+      const momo = await tx.momoP2pWithdrawal.findUnique({
+        where: { payoutId },
+      });
+      if (momo && momo.status !== 'COMPLETED' && momo.status !== 'CANCELLED') {
+        await tx.momoP2pWithdrawal.update({
+          where: { id: momo.id },
+          data: { status: 'CANCELLED' },
+        });
+      }
+
+      return newBalance;
+    });
+
+    await this.walletService.reverseLoanWithdraw(userId, amount);
+
+    this.notifications.walletWithdrawalCancelled(userId, { amount, balance });
+
+    return {
+      payoutId,
+      amount,
+      balance,
+      message: `Withdrawal cancelled — $${amount.toFixed(2)} USDT returned to your wallet`,
+    };
   }
 
   async getRecentPublicPayouts(limit = 12) {

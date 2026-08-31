@@ -1599,6 +1599,20 @@ export class WalletService {
     });
   }
 
+  /** Undo loan advance tracking when a pending wallet withdrawal is cancelled. */
+  async reverseLoanWithdraw(userId: string, amount: number) {
+    const gate = await this.getActiveLoanWithdrawGate(userId);
+    if (!gate || amount <= 0) return;
+    const next = Math.max(
+      0,
+      Math.round((gate.withdrawn - amount) * 100) / 100,
+    );
+    await this.prisma.loan.update({
+      where: { id: gate.loanId },
+      data: { withdrawnAgainstLoan: next },
+    });
+  }
+
   private async consumeWithdrawPin(userId: string, pin: string) {
     if (!/^\d{6}$/.test(pin?.trim() ?? '')) {
       throw new BadRequestException('PIN must be exactly 6 digits');

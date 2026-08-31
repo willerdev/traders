@@ -10,6 +10,7 @@ import { WalletWithdrawModal } from "@/components/wallet/wallet-withdraw-modal";
 import { WalletTransferModal } from "@/components/wallet/wallet-transfer-modal";
 import { WalletWithdrawFeeNotice } from "@/components/wallet/wallet-withdraw-fee-notice";
 import { WalletSavedWithdrawalWallets } from "@/components/wallet/wallet-saved-withdrawal-wallets";
+import { WalletPendingWithdrawals } from "@/components/wallet/wallet-pending-withdrawals";
 import { CurrencySwitcher } from "@/components/currency-switcher";
 import {
   cn,
@@ -162,6 +163,12 @@ export default function WalletPage() {
 
         {summary && (
           <div className="xl:col-span-7 xl:row-start-2">
+            <WalletPendingWithdrawals onCancelled={() => void refresh()} />
+          </div>
+        )}
+
+        {summary && (
+          <div className="xl:col-span-7 xl:row-start-3">
             <WalletWithdrawFeeNotice
               feeUsdt={summary.withdrawalFeeUsdt ?? 3}
               schedule={{
@@ -189,7 +196,7 @@ export default function WalletPage() {
         )}
 
         {summary && (
-          <div className="grid grid-cols-3 gap-2 xl:col-span-7 xl:row-start-3">
+          <div className="grid grid-cols-3 gap-2 xl:col-span-7 xl:row-start-4">
             {[
               { label: "Deposited", value: summary.totalDeposited },
               { label: "Earned", value: summary.totalEarned },
@@ -261,7 +268,7 @@ export default function WalletPage() {
           </CardContent>
         </Card>
 
-        <Card id="wallet-activity" className="xl:col-span-12 xl:row-start-4">
+        <Card id="wallet-activity" className="xl:col-span-12 xl:row-start-5">
           <CardHeader>
             <CardTitle className="text-base">Transactions</CardTitle>
           </CardHeader>

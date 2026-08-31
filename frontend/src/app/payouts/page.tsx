@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +14,9 @@ import { PayoutRewardTiersCard } from "@/components/dashboard/payout-reward-tier
 import { PayoutRequestForm } from "@/components/payments/payout-request-form";
 
 function payoutTitle(payout: PayoutRecord) {
+  if (payout.source === "DEPOSITOR") {
+    return "Wallet withdrawal";
+  }
   if (payout.source === "TP_REWARD") {
     return payout.notes?.replace(/^TP reward — /, "TP reward: ") ?? "TP reward payout";
   }
@@ -22,13 +24,13 @@ function payoutTitle(payout: PayoutRecord) {
 }
 
 export default function PayoutsPage() {
-  const router = useRouter();
   const { ready } = useRequireAuth();
   const [payouts, setPayouts] = useState<PayoutRecord[]>([]);
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [rewardTier, setRewardTier] = useState<PayoutRewardStatus | null>(null);
   const [kycStatus, setKycStatus] = useState<string>("NOT_STARTED");
   const [loading, setLoading] = useState(true);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   function reload() {
     return Promise.all([
@@ -68,8 +70,27 @@ export default function PayoutsPage() {
   const kycApproved =
     kycStatus === "APPROVED" || Boolean(settings?.user?.withdrawKycExempt);
   const pendingRequest = payouts.filter(
-    (p) => p.status === "PENDING" && !p.walletAddress,
+    (p) => p.status === "PENDING" && !p.walletAddress && p.source !== "DEPOSITOR",
   );
+  const pendingWalletWithdrawals = payouts.filter(
+    (p) => p.status === "PENDING" && p.source === "DEPOSITOR",
+  );
+
+  async function cancelWalletWithdrawal(payoutId: string, amount: number) {
+    const ok = window.confirm(
+      `Cancel this $${amount.toFixed(2)} USDT withdrawal? The full amount will be returned to your wallet.`,
+    );
+    if (!ok) return;
+    setCancellingId(payoutId);
+    try {
+      await api.wallet.cancelWithdrawal(payoutId);
+      await reload();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not cancel withdrawal");
+    } finally {
+      setCancellingId(null);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 xl:max-w-6xl xl:px-8">
@@ -109,6 +130,60 @@ export default function PayoutsPage() {
                   {kycStatus === "REJECTED" ? "Retry KYC" : "Complete KYC"}
                 </Button>
               </Link>
+            </CardContent>
+          </Card>
+        )}
+
+        {pendingWalletWithdrawals.length > 0 && (
+          <Card className="mb-6 border-amber-500/30 bg-amber-500/5">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Pending wallet withdrawals</CardTitle>
+              <CardDescription>
+                Cancel anytime before processing — funds return to your wallet
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {pendingWalletWithdrawals.map((payout) => (
+                <div
+                  key={payout.id}
+                  className="rounded-lg border border-white/5 bg-white/[0.02] p-4"
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="font-semibold text-white">
+                        {formatCurrency(Number(payout.virtualProfit))} USDT
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        Net: {formatCurrency(Number(payout.traderShare))}
+                      </p>
+                      {payout.walletAddress ? (
+                        <p className="mt-1 truncate font-mono text-xs text-gray-600">
+                          {payout.walletAddress}
+                        </p>
+                      ) : null}
+                    </div>
+                    <Badge variant="gold">Pending</Badge>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="mt-3"
+                    disabled={cancellingId === payout.id}
+                    onClick={() =>
+                      void cancelWalletWithdrawal(
+                        payout.id,
+                        Number(payout.virtualProfit),
+                      )
+                    }
+                  >
+                    {cancellingId === payout.id ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : null}
+                    Cancel & return funds
+                  </Button>
+                </div>
+              ))}
             </CardContent>
           </Card>
         )}

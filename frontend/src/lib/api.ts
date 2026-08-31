@@ -1196,6 +1196,15 @@ class ApiClient {
         `/wallet/withdrawal-wallets/${id}`,
         { method: "DELETE" },
       ),
+    pendingWithdrawals: () =>
+      this.request<PendingWalletWithdrawal[]>("/wallet/pending-withdrawals"),
+    cancelWithdrawal: (payoutId: string) =>
+      this.request<{
+        payoutId: string;
+        amount: number;
+        balance: number;
+        message: string;
+      }>(`/wallet/withdrawals/${payoutId}/cancel`, { method: "POST" }),
     incomeJournal: (take = 50, skip = 0) =>
       this.request<{ items: DailyIncomeEntry[]; total: number }>(
         `/wallet/income-journal?take=${take}&skip=${skip}`,
@@ -1623,7 +1632,7 @@ export interface PayoutRecord {
   traderShare: number;
   platformShare: number;
   status: string;
-  source?: "WEEKLY" | "TP_REWARD";
+  source?: "WEEKLY" | "TP_REWARD" | "DEPOSITOR";
   rewardTier?: string | null;
   payoutMethod?: "TRC20" | "MOBILE_MONEY" | null;
   weekNumber: number;
@@ -1631,6 +1640,17 @@ export interface PayoutRecord {
   walletAddress?: string | null;
   notes?: string | null;
   requestedAt: string;
+}
+
+export interface PendingWalletWithdrawal {
+  id: string;
+  grossAmount: number;
+  netAmount: number;
+  status: string;
+  payoutMethod?: "TRC20" | "MOBILE_MONEY" | null;
+  walletAddress?: string | null;
+  requestedAt: string;
+  scheduledApproveAt?: string | null;
 }
 
 export interface PayoutRewardTierDef {
