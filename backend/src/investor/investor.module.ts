@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { InvestorService } from './investor.service';
+import { InvestorYieldScheduleService } from './investor-yield-schedule.service';
 import { InvestorTradingService } from './investor-trading.service';
 import { InvestorController } from './investor.controller';
 import { PaymentsModule } from '../payments/payments.module';
@@ -17,7 +18,7 @@ import { WalletModule } from '../wallet/wallet.module';
     forwardRef(() => CopyTradingModule),
   ],
   controllers: [InvestorController],
-  providers: [InvestorService, InvestorTradingService],
-  exports: [InvestorService, InvestorTradingService],
+  providers: [InvestorService, InvestorYieldScheduleService, InvestorTradingService],
+  exports: [InvestorService, InvestorYieldScheduleService, InvestorTradingService],
 })
 export class InvestorModule {}

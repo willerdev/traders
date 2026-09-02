@@ -27,9 +27,7 @@ export class ComplianceService {
 
     if (!hasActiveTradingAccess(user)) {
       throw new ForbiddenException(
-        user.registrationPaid
-          ? 'Weekly access expired — pay to renew for 7 more trading days'
-          : 'Complete weekly payment to access trading',
+        'Your account is not active — contact support if this persists',
       );
     }
 

@@ -3766,6 +3766,30 @@ export class NotificationService {
     );
   }
 
+  investorDailyReport(
+    userId: string,
+    data: {
+      reportDateLabel: string;
+      todayEarning: number;
+      lifetimeEarnings: number;
+      walletBalance: number;
+      investmentBalance: number;
+      totalBalance: number;
+      yieldPercent: number;
+      daysEnrolled: number;
+      earningDays: number;
+      isWeekend: boolean;
+      yieldPaused: boolean;
+      vipActive: boolean;
+      yieldDeliveryWindow: string;
+    },
+  ) {
+    this.dispatch(
+      this.sendInvestorDailyReport(userId, data),
+      'Investor daily report',
+    );
+  }
+
   /** Awaitable — used when the user requests a monthly journal email. */
   journalMonthlyReport(
     userId: string,
@@ -3943,6 +3967,71 @@ export class NotificationService {
       text: data.autoReinvested
         ? `Investor daily earning: $${data.amount.toFixed(2)} USDT at ${data.yieldPercent}%. Auto-reinvested $${(data.reinvestAmount ?? 0).toFixed(2)} after $${(data.feeAmount ?? 0).toFixed(2)} fee. Investment: $${(data.investmentBalance ?? 0).toFixed(2)}.`
         : `Investor daily earning: $${data.amount.toFixed(2)} USDT at ${data.yieldPercent}%. Wallet: $${data.balance.toFixed(2)}.`,
+    });
+  }
+
+  private async sendInvestorDailyReport(
+    userId: string,
+    data: {
+      reportDateLabel: string;
+      todayEarning: number;
+      lifetimeEarnings: number;
+      walletBalance: number;
+      investmentBalance: number;
+      totalBalance: number;
+      yieldPercent: number;
+      daysEnrolled: number;
+      earningDays: number;
+      isWeekend: boolean;
+      yieldPaused: boolean;
+      vipActive: boolean;
+      yieldDeliveryWindow: string;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+
+    const fmt = (n: number) => `$${n.toFixed(2)} USDT`;
+    const weekendNote = data.isWeekend
+      ? '<p style="color:#94a3b8;font-size:14px;">Weekend (Kampala): daily yield does not credit on Saturday or Sunday.</p>'
+      : '';
+    const pauseNote = data.yieldPaused
+      ? '<p style="color:#fbbf24;font-size:14px;">Yield is currently paused on your account or platform-wide.</p>'
+      : '';
+    const vipBadge = data.vipActive
+      ? '<p>VIP status: <strong>Active</strong></p>'
+      : '';
+
+    const html = this.email.layout(
+      'Smart Invest daily report',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your Smart Invest summary for <strong>${this.escape(data.reportDateLabel)}</strong>.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:8px 0;color:#94a3b8;">Today's earnings</td><td style="padding:8px 0;text-align:right;font-weight:700;color:#4ade80;">${fmt(data.todayEarning)}</td></tr>
+        <tr><td style="padding:8px 0;color:#94a3b8;">Lifetime earnings</td><td style="padding:8px 0;text-align:right;font-weight:600;">${fmt(data.lifetimeEarnings)}</td></tr>
+        <tr><td style="padding:8px 0;color:#94a3b8;">Smart Invest balance</td><td style="padding:8px 0;text-align:right;">${fmt(data.investmentBalance)}</td></tr>
+        <tr><td style="padding:8px 0;color:#94a3b8;">Wallet (available)</td><td style="padding:8px 0;text-align:right;">${fmt(data.walletBalance)}</td></tr>
+        <tr><td style="padding:8px 0;color:#94a3b8;">Total balance</td><td style="padding:8px 0;text-align:right;font-weight:700;">${fmt(data.totalBalance)}</td></tr>
+      </table>
+      <h3 style="margin:20px 0 8px;font-size:14px;color:#e2e8f0;">Statistics</h3>
+      <table style="width:100%;border-collapse:collapse;margin:0 0 16px;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">Daily yield rate</td><td style="padding:6px 0;text-align:right;"><strong>${data.yieldPercent}%</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Days enrolled</td><td style="padding:6px 0;text-align:right;">${data.daysEnrolled}</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Earning days credited</td><td style="padding:6px 0;text-align:right;">${data.earningDays}</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Yield delivery window</td><td style="padding:6px 0;text-align:right;color:#cbd5e1;font-size:13px;">${this.escape(data.yieldDeliveryWindow)}</td></tr>
+      </table>
+      ${vipBadge}
+      ${weekendNote}
+      ${pauseNote}
+      <p style="color:#94a3b8;font-size:14px;">Daily yield credits on weekdays within the window above. This report is sent every day at 21:00 Africa/Kampala.</p>
+      ${this.email.button(`${this.email.frontendUrl}/invest`, 'Open Smart Invest')}`,
+    );
+
+    return this.email.send({
+      to: user.email,
+      subject: `Smart Invest daily report — ${fmt(data.todayEarning)} today · ${fmt(data.totalBalance)} total`,
+      html,
+      text: `Smart Invest ${data.reportDateLabel}: today ${fmt(data.todayEarning)}, lifetime ${fmt(data.lifetimeEarnings)}, invested ${fmt(data.investmentBalance)}, wallet ${fmt(data.walletBalance)}, total ${fmt(data.totalBalance)}, yield ${data.yieldPercent}%, ${data.daysEnrolled} days enrolled, ${data.earningDays} earning days.`,
     });
   }
 

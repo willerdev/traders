@@ -61,11 +61,15 @@ export class PayoutService {
   }
 
   async getRewardTier(userId: string) {
-    const [status, weeklyPayoutsEnabled] = await Promise.all([
-      getPayoutRewardStatus(this.prisma, userId),
-      getWeeklyTierPayoutsEnabled(this.prisma),
-    ]);
-    return { ...status, weeklyPayoutsEnabled };
+    void userId;
+    return {
+      tierId: null,
+      label: 'Discontinued',
+      wins: 0,
+      windowSize: 10,
+      amountUsdt: 0,
+      weeklyPayoutsEnabled: false,
+    };
   }
 
   async isWeeklyTierPayoutsEnabled() {
@@ -82,86 +86,10 @@ export class PayoutService {
   }
 
   async calculateWeeklyPayouts(weekNumber: number, year: number) {
-    const weeklyTierPayoutsEnabled = await getWeeklyTierPayoutsEnabled(
-      this.prisma,
-    );
-
-    const accounts = await this.prisma.virtualAccount.findMany({
-      where: { weeklyProfit: { gt: 0 } },
-      include: { user: true },
-    });
-
-    const payouts: Awaited<ReturnType<typeof this.prisma.payout.create>>[] = [];
-    const processedUserIds: string[] = [];
-
-    for (const account of accounts) {
-      const existing = await this.prisma.payout.findFirst({
-        where: { userId: account.userId, weekNumber, year },
-      });
-      if (existing) continue;
-
-      const virtualProfit = Number(account.weeklyProfit);
-      if (virtualProfit <= 0) continue;
-
-      const user = account.user;
-      if (user.profitShareActive) {
-        const credited = await this.profitShare.creditEarning(
-          account.userId,
-          virtualProfit,
-          `Weekly profit share — week ${weekNumber}/${year}`,
-          `weekly-${year}-${weekNumber}`,
-        );
-        if (credited) {
-          processedUserIds.push(account.userId);
-        }
-        continue;
-      }
-
-      if (!weeklyTierPayoutsEnabled) {
-        continue;
-      }
-
-      const rewardStatus = await getPayoutRewardStatus(
-        this.prisma,
-        account.userId,
-      );
-      const tier = resolvePayoutRewardTier(rewardStatus.wins);
-      const traderShare = tier.amountUsdt;
-      const platformShare = Math.max(0, virtualProfit - traderShare);
-
-      const payout = await this.prisma.payout.create({
-        data: {
-          userId: account.userId,
-          virtualProfit,
-          traderShare,
-          platformShare,
-          traderPercent: virtualProfit > 0 ? (traderShare / virtualProfit) * 100 : 0,
-          rewardTier: tier.tierId,
-          weekNumber,
-          year,
-          status: 'PENDING',
-          notes: `${tier.label} tier — ${rewardStatus.wins}/${rewardStatus.windowSize} wins in rolling window`,
-        },
-      });
-
-      payouts.push(payout);
-      processedUserIds.push(account.userId);
-
-      this.notifications.payoutAvailable(account.userId, {
-        amount: traderShare,
-        weekNumber,
-        year,
-      });
-    }
-
-    if (processedUserIds.length > 0) {
-      await this.prisma.virtualAccount.updateMany({
-        where: { userId: { in: processedUserIds } },
-        data: { weeklyProfit: 0 },
-      });
-    }
-
-    return payouts;
+    // Weekly tier payouts and profit-share weekly credits discontinued.
+    void weekNumber;
+    void year;
+    return [];
   }
 
   async requestPayout(
@@ -280,70 +208,11 @@ export class PayoutService {
   }
 
   async requestProfitShareWithdrawal(userId: string, walletAddress?: string) {
-    await this.compliance.requireKycForPayout(userId);
-
-    const status = await this.profitShare.getStatus(userId);
-    if (!status.active) {
-      throw new BadRequestException('Profit share is not active on your account');
-    }
-    if (!status.canWithdraw) {
-      throw new BadRequestException(
-        `Profit share balance must reach $${status.withdrawThreshold.toFixed(2)} before withdrawal (currently $${status.balance.toFixed(2)})`,
-      );
-    }
-
-    const openPayout = await this.prisma.payout.findFirst({
-      where: {
-        userId,
-        source: 'PROFIT_SHARE',
-        status: 'PENDING',
-      },
-    });
-    if (openPayout) {
-      if (!openPayout.walletAddress && walletAddress) {
-        return this.requestPayout(userId, openPayout.id, walletAddress);
-      }
-      throw new BadRequestException(
-        'You already have a pending profit share withdrawal',
-      );
-    }
-
-    const profile = await this.prisma.userProfile.findUnique({
-      where: { userId },
-    });
-    const { destination, method } = resolvePayoutDestination(
-      profile,
-      walletAddress,
+    void userId;
+    void walletAddress;
+    throw new BadRequestException(
+      'Profit share withdrawals have been discontinued. Contact support if you have an existing balance.',
     );
-
-    const amount = status.amountToWithdraw;
-    const { weekNumber, year } = this.isoWeekYear(new Date());
-
-    const payout = await this.prisma.payout.create({
-      data: {
-        userId,
-        source: 'PROFIT_SHARE',
-        virtualProfit: amount,
-        traderShare: amount,
-        platformShare: 0,
-        traderPercent: 100,
-        weekNumber,
-        year,
-        status: 'PENDING',
-        walletAddress: destination,
-        payoutMethod: method,
-        notes: `Profit share withdrawal — balance $${amount.toFixed(2)}`,
-      },
-    });
-
-    await this.profitShare.deductOnPayout(userId, amount, payout.id);
-
-    return {
-      status: 'requested',
-      payoutId: payout.id,
-      amount,
-      source: 'PROFIT_SHARE',
-    };
   }
 
   private isoWeekYear(date: Date): { weekNumber: number; year: number } {

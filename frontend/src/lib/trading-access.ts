@@ -6,9 +6,7 @@ export function hasTradingAccess(user: {
 }): boolean {
   if (user.tradingAccessActive === true) return true;
   if (user.role === "ADMIN") return true;
-  if (user.status !== "ACTIVE") return false;
-  if (!user.accessExpiresAt) return false;
-  return new Date(user.accessExpiresAt).getTime() > Date.now();
+  return user.status === "ACTIVE";
 }
 
 export function tradingDaysRemaining(

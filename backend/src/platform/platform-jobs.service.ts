@@ -6,10 +6,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CopyTradingService } from '../copy-trading/copy-trading.service';
 import { Mt5SyncService } from '../mt5-sync/mt5-sync.service';
 import { currentWeekYear, getWeekNumber } from '../common/week.util';
-import { WEEKLY_ACCESS_MS } from '../common/weekly-access.util';
 
 import { WalletService } from '../wallet/wallet.service';
 import { InvestorService } from '../investor/investor.service';
+import { InvestorYieldScheduleService } from '../investor/investor-yield-schedule.service';
 import { UnitrustService } from '../unitrust/unitrust.service';
 import { AirfarmingService } from '../airfarming/airfarming.service';
 import { AbuseHunterService } from './abuse-hunter.service';
@@ -18,6 +18,11 @@ import { ChainEnrollmentService } from '../blockchain/chain-enrollment.service';
 import { isKampalaWeekend } from '../common/kampala-weekend.util';
 import { SundayWithdrawBatchService } from '../payouts/sunday-withdraw-batch.service';
 import { isSundayUtc } from '../payouts/sunday-withdraw-batch.util';
+import {
+  MAX_RISK_PER_TRADE,
+  RISK_PERCENT,
+  STARTING_BALANCE,
+} from '../common/constants';
 
 @Injectable()
 export class PlatformJobsService implements OnModuleInit {
@@ -31,6 +36,7 @@ export class PlatformJobsService implements OnModuleInit {
     private mt5Sync: Mt5SyncService,
     private walletService: WalletService,
     private investorService: InvestorService,
+    private investorYieldSchedule: InvestorYieldScheduleService,
     private unitrustService: UnitrustService,
     private airfarmingService: AirfarmingService,
     private abuseHunter: AbuseHunterService,
@@ -40,21 +46,8 @@ export class PlatformJobsService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    const grace = new Date(Date.now() + WEEKLY_ACCESS_MS);
-    const backfill = await this.prisma.user.updateMany({
-      where: {
-        role: { not: 'ADMIN' },
-        status: 'ACTIVE',
-        registrationPaid: true,
-        accessExpiresAt: null,
-      },
-      data: { accessExpiresAt: grace },
-    });
-    if (backfill.count > 0) {
-      this.logger.log(
-        `Backfilled weekly access expiry for ${backfill.count} active trader(s)`,
-      );
-    }
+    await this.grandfatherPendingPaymentTraders();
+    await this.grandfatherFreeMt5Sync();
     void this.copyTrading.runCopyPoolHealthCheck();
     void this.abuseHunter.runHunt('startup').then((result) => {
       if (result.bannedCount > 0) {
@@ -80,22 +73,72 @@ export class PlatformJobsService implements OnModuleInit {
     }
   }
 
-  @Cron(CronExpression.EVERY_MINUTE)
-  async expireWeeklyTradingAccessJob() {
-    const now = new Date();
-    const expired = await this.prisma.user.updateMany({
+  /** Weekly access billing removed — activate legacy pending traders. */
+  private async grandfatherPendingPaymentTraders() {
+    const pending = await this.prisma.user.findMany({
       where: {
         role: { not: 'ADMIN' },
-        status: 'ACTIVE',
-        accessExpiresAt: { lt: now },
+        status: 'PENDING_PAYMENT',
       },
-      data: { status: 'PENDING_PAYMENT' },
+      select: { id: true },
     });
-    if (expired.count > 0) {
+    if (pending.length === 0) return;
+
+    for (const user of pending) {
+      const va = await this.prisma.virtualAccount.findUnique({
+        where: { userId: user.id },
+      });
+      if (!va) {
+        await this.prisma.virtualAccount.create({
+          data: {
+            userId: user.id,
+            balance: STARTING_BALANCE,
+            maxRiskPerTrade: MAX_RISK_PER_TRADE,
+            riskPercent: RISK_PERCENT,
+          },
+        });
+      }
+    }
+
+    const updated = await this.prisma.user.updateMany({
+      where: {
+        role: { not: 'ADMIN' },
+        status: 'PENDING_PAYMENT',
+      },
+      data: {
+        status: 'ACTIVE',
+        registrationPaid: true,
+      },
+    });
+    if (updated.count > 0) {
       this.logger.log(
-        `Locked ${expired.count} trader(s) — weekly access expired`,
+        `Grandfathered ${updated.count} trader(s) — weekly access fee discontinued`,
       );
     }
+  }
+
+  /** MT5 sync subscription removed — enable sync for linked accounts. */
+  private async grandfatherFreeMt5Sync() {
+    const updated = await this.prisma.user.updateMany({
+      where: {
+        metaApiAccountId: { not: null },
+        OR: [{ mt5SyncActive: false }, { mt5SyncEnabled: false }],
+      },
+      data: {
+        mt5SyncActive: true,
+        mt5SyncEnabled: true,
+      },
+    });
+    if (updated.count > 0) {
+      this.logger.log(
+        `Enabled free MT5 Live Sync for ${updated.count} linked account(s)`,
+      );
+    }
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async expireWeeklyTradingAccessJob() {
+    // Weekly access billing discontinued — no-op.
   }
 
   @Cron(CronExpression.EVERY_5_MINUTES)
@@ -200,13 +243,7 @@ export class PlatformJobsService implements OnModuleInit {
 
   @Cron(CronExpression.EVERY_MINUTE)
   async deactivateExpiredMt5SyncJob() {
-    try {
-      await this.mt5Sync.deactivateExpired();
-    } catch (err) {
-      this.logger.error(
-        `MT5 sync expiry job failed: ${err instanceof Error ? err.message : err}`,
-      );
-    }
+    // MT5 sync subscription billing discontinued — no-op.
   }
 
   @Cron('*/30 * * * * *')
@@ -242,11 +279,15 @@ export class PlatformJobsService implements OnModuleInit {
     }
   }
 
-  /** Daily at 16:00 Africa/Kampala — credit investor daily earnings. */
-  @Cron('0 16 * * *', { timeZone: 'Africa/Kampala' })
+  /** Every minute — Smart Invest yield at a random Kampala weekday time (13:00–18:59). */
+  @Cron(CronExpression.EVERY_MINUTE)
   async investorDailyEarningsJob() {
     try {
+      if (!(await this.investorYieldSchedule.isYieldDeliveryDue())) return;
+
       const result = await this.investorService.creditDailyEarnings();
+      await this.investorYieldSchedule.markYieldDelivered();
+
       if (result.credited > 0) {
         this.logger.log(
           `Investor daily earnings credited: ${result.credited} investor(s)` +
@@ -257,15 +298,16 @@ export class PlatformJobsService implements OnModuleInit {
               ? ` (${result.holdSkipped} under 24h hold)`
               : ''),
         );
-      } else if (result.weekendSkipped) {
-        this.logger.log(
-          `Investor daily earnings skipped — weekend (${result.weekendSkipped} investor(s))`,
-        );
       } else if (result.skipped === 'global_pause') {
         this.logger.warn(
           'Investor daily earnings skipped — global yield pause',
         );
+      } else {
+        this.logger.log('Investor daily earnings tick — no eligible credits');
       }
+
+      // Unitrust follows Smart Invest delivery on the same tick.
+      void this.unitrustDailyEarningsJob();
     } catch (err) {
       this.logger.error(
         `Investor earnings job failed: ${err instanceof Error ? err.message : err}`,
@@ -273,8 +315,28 @@ export class PlatformJobsService implements OnModuleInit {
     }
   }
 
-  /** Daily at 16:05 Africa/Kampala — credit Unitrust 5% daily earnings. */
-  @Cron('5 16 * * *', { timeZone: 'Africa/Kampala' })
+  /** Daily at 21:00 Africa/Kampala — Smart Invest daily summary email. */
+  @Cron('0 21 * * *', { timeZone: 'Africa/Kampala' })
+  async investorDailyReportJob() {
+    try {
+      const claimed = await this.investorYieldSchedule.claimDailyReportSend();
+      if (!claimed) {
+        this.logger.debug('Investor daily report already sent today');
+        return;
+      }
+
+      const result = await this.investorService.sendDailyReports();
+      this.logger.log(
+        `Investor daily report emails: sent=${result.sent} skipped=${result.skipped} total=${result.total}`,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Investor daily report job failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  /** Credits Unitrust 5% daily earnings — invoked after Smart Invest yield delivery. */
   async unitrustDailyEarningsJob() {
     try {
       const result = await this.unitrustService.creditDailyEarnings();

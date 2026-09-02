@@ -10,7 +10,6 @@ import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { api, PayoutRecord, UserSettings, PayoutRewardStatus } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { Wallet, Info, ShieldAlert, Loader2 } from "lucide-react";
-import { PayoutRewardTiersCard } from "@/components/dashboard/payout-reward-tiers";
 import { PayoutRequestForm } from "@/components/payments/payout-request-form";
 
 function payoutTitle(payout: PayoutRecord) {
@@ -98,17 +97,9 @@ export default function PayoutsPage() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-white">Payouts</h1>
           <p className="mt-1 text-gray-400">
-            {rewardTier?.weeklyPayoutsEnabled === false
-              ? "Weekly tier payouts are paused — TP rewards and other payouts still apply."
-              : "Weekly USDT rewards by performance tier — $10 Starter, $50 Pro, $100 Elite"}
+            Payout history — TP rewards, wallet withdrawals, and other payouts.
           </p>
         </div>
-
-        {rewardTier && (
-          <div className="mb-6">
-            <PayoutRewardTiersCard reward={rewardTier} compact />
-          </div>
-        )}
 
         {!kycApproved && (
           <Card className="mb-6 border-rank-gold/30 bg-rank-gold/5">
