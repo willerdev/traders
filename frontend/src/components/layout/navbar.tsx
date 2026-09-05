@@ -212,7 +212,13 @@ function PublicHeader() {
         <Link href="/" className="flex items-center">
           <Logo className="text-lg" />
         </Link>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Link
+            href="/terms"
+            className="hidden text-sm text-gray-400 transition-colors hover:text-gray-200 sm:inline"
+          >
+            Terms
+          </Link>
           <Link href="/invest">
             <Button size="sm" className="gap-1">
               Invest
