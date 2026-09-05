@@ -36,6 +36,11 @@ import {
 } from './investor-vip.util';
 import { isInvestorVvipActive } from './investor-vvip.util';
 import { isKampalaWeekend } from '../common/kampala-weekend.util';
+import {
+  formatKampalaDateLabel,
+  investorYieldDeliveryWindowLabel,
+  kampalaCalendarDate,
+} from '../common/kampala-time.util';
 import { FxRatesService } from '../fx/fx-rates.service';
 import { resolvePreferredDisplayCurrency } from '../fx/country-currency.util';
 import {
@@ -1499,6 +1504,95 @@ export class InvestorService {
     }
 
     return { credited, pausedUsers, weekendSkipped, holdSkipped, minBalanceSkipped };
+  }
+
+  /** Daily 21:00 Kampala — summary email for all enrolled Smart Invest users. */
+  async sendDailyReports() {
+    const today = kampalaCalendarDate();
+    const reportDateLabel = formatKampalaDateLabel();
+    const isWeekend = isKampalaWeekend();
+    const platformYield = await this.platformInvestorDailyYield();
+    const globalYieldPaused = await this.isGlobalInvestorYieldPaused();
+
+    const investors = await this.prisma.user.findMany({
+      where: { investorActive: true },
+      include: {
+        investorSettings: true,
+        platformWallet: true,
+      },
+    });
+
+    let sent = 0;
+    let skipped = 0;
+
+    for (const user of investors) {
+      const walletBalance = Number(user.platformWallet?.availableBalance ?? 0);
+      const investmentBalance = Number(user.platformWallet?.investorBalance ?? 0);
+      if (investmentBalance <= 0 && walletBalance <= 0) {
+        skipped++;
+        continue;
+      }
+
+      const [todayCredit, lifetimeAgg, earningDays] = await Promise.all([
+        this.prisma.investorDailyCredit.findUnique({
+          where: {
+            userId_creditDate: { userId: user.id, creditDate: today },
+          },
+        }),
+        this.prisma.investorDailyCredit.aggregate({
+          where: { userId: user.id },
+          _sum: { amount: true },
+        }),
+        this.prisma.investorDailyCredit.count({ where: { userId: user.id } }),
+      ]);
+
+      const todayEarning = Number(todayCredit?.amount ?? 0);
+      const lifetimeEarnings = Number(lifetimeAgg._sum.amount ?? 0);
+      const yieldPercent =
+        todayCredit != null
+          ? Number(todayCredit.yieldPercent)
+          : resolveInvestorDailyYieldPercent({
+              vipActive: isInvestorVipActive(user),
+              settingsYieldPercent:
+                user.investorSettings?.dailyYieldPercent != null
+                  ? Number(user.investorSettings.dailyYieldPercent)
+                  : null,
+              platformYieldPercent: platformYield,
+            });
+
+      const enrolledAt = user.investorEnrolledAt;
+      const daysEnrolled =
+        enrolledAt != null
+          ? Math.max(
+              1,
+              Math.floor(
+                (today.getTime() - kampalaCalendarDate(enrolledAt).getTime()) /
+                  (24 * 60 * 60 * 1000),
+              ) + 1,
+            )
+          : 0;
+
+      this.notifications.investorDailyReport(user.id, {
+        reportDateLabel,
+        todayEarning,
+        lifetimeEarnings,
+        walletBalance,
+        investmentBalance,
+        totalBalance: walletBalance + investmentBalance,
+        yieldPercent,
+        daysEnrolled,
+        earningDays,
+        isWeekend,
+        yieldPaused: Boolean(
+          globalYieldPaused || user.investorSettings?.yieldPaused,
+        ),
+        vipActive: isInvestorVipActive(user),
+        yieldDeliveryWindow: investorYieldDeliveryWindowLabel(),
+      });
+      sent++;
+    }
+
+    return { sent, skipped, total: investors.length };
   }
 
   /** Enrollment + wallet deposits for MT5 investor display. */

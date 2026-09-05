@@ -1141,6 +1141,14 @@ model PlatformConfig {
   sundayWithdrawBatchFinalizedAt      DateTime?
   /// Set when the admin schedule email was sent for the active Sunday batch.
   sundayWithdrawBatchScheduleNotifiedAt DateTime?
+  /// Kampala calendar date for which Smart Invest yield delivery time was chosen.
+  investorYieldScheduleDate             DateTime? @db.Date
+  /// Minutes from Kampala midnight (0–1439) when Smart Invest yield credits today.
+  investorYieldScheduleMinute           Int?
+  /// Kampala calendar date when Smart Invest yield was delivered for that day.
+  investorYieldDeliveredDate            DateTime? @db.Date
+  /// Kampala calendar date when the 21:00 Smart Invest daily report email was sent.
+  investorDailyReportSentDate           DateTime? @db.Date
 
   /// Deriv WebSocket API — admin-configured credentials for programmatic access.
   derivAppId            String?

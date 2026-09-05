@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletService } from '../wallet/wallet.service';
 import { NotificationService } from '../email/notification.service';
+import { investorYieldDeliveryWindowLabel } from '../common/kampala-time.util';
 import { isKampalaWeekend } from '../common/kampala-weekend.util';
 import {
   UNITRUST_DAILY_YIELD_PERCENT_DEFAULT,
@@ -139,7 +140,7 @@ export class UnitrustService {
         ? this.nextKampalaMonthStart().toISOString()
         : null,
       withdrawWindowLabel: 'Once per calendar month (Africa/Kampala)',
-      creditTimeLabel: 'Daily at 16:00 Africa/Kampala',
+      creditTimeLabel: investorYieldDeliveryWindowLabel(),
       recentCredits: recentCredits.map((c) => ({
         amount: Number(c.amount),
         yieldPercent: Number(c.yieldPercent),

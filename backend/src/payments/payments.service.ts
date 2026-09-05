@@ -3,6 +3,7 @@ import {
   BadRequestException,
   NotFoundException,
   ServiceUnavailableException,
+  GoneException,
   Logger,
   Inject,
   forwardRef,
@@ -36,6 +37,10 @@ import { InvestorService } from '../investor/investor.service';
 import { EvaluationsService } from '../evaluations/evaluations.service';
 import { FlutterwavePaymentsService } from '../flutterwave/flutterwave-payments.service';
 import { FLW_GATEWAY } from '../flutterwave/flutterwave.constants';
+import {
+  DISCONTINUED_FEATURE_MESSAGE,
+  DISCONTINUED_FEATURES,
+} from '../common/discontinued-features.util';
 
 @Injectable()
 export class PaymentsService {
@@ -67,6 +72,10 @@ export class PaymentsService {
     @Inject(forwardRef(() => FlutterwavePaymentsService))
     private flutterwavePayments: FlutterwavePaymentsService,
   ) {}
+
+  private discontinuedPayment(feature: string): never {
+    throw new GoneException(`${feature} ${DISCONTINUED_FEATURE_MESSAGE}`);
+  }
 
   private ipnUrl() {
     const base = resolvePublicApiBaseUrl(this.config);
@@ -298,26 +307,9 @@ export class PaymentsService {
   }
 
   async applyPromoCode(userId: string, code: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found');
-    if (!this.needsWeeklyPayment(user)) {
-      return {
-        message: 'Weekly access is already active',
-        alreadyPaid: true,
-        accessExpiresAt: user.accessExpiresAt?.toISOString() ?? null,
-      };
-    }
-
-    const fee = await this.registrationFee();
-    const validation = await this.promo.validate(code, fee);
-
-    if (validation.finalAmount > 0) {
-      throw new BadRequestException(
-        `Promo "${validation.code}" only gives ${validation.discountPercent}% off — pay the remaining $${validation.finalAmount} USDT`,
-      );
-    }
-
-    return this.completeFreeRegistration(userId, validation.code, fee);
+    void userId;
+    void code;
+    this.discontinuedPayment(DISCONTINUED_FEATURES.weeklyAccess);
   }
 
   async createRegistrationPayment(
@@ -327,136 +319,12 @@ export class PaymentsService {
     source: 'wallet' | 'crypto' | 'momo' = 'crypto',
     momo?: { phoneNumber: string; network: string; countryCode?: string },
   ) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found');
-    if (!this.needsWeeklyPayment(user)) {
-      return {
-        message: 'Weekly access is still active',
-        accessExpiresAt: user.accessExpiresAt?.toISOString() ?? null,
-      };
-    }
-
-    const fee = await this.registrationFee();
-
-    // Partial promo codes discount the amount; 100% codes skip payment entirely.
-    let amount = fee;
-    let appliedPromo: {
-      code: string;
-      discountPercent: number;
-    } | null = null;
-    if (promoCode?.trim()) {
-      const validation = await this.promo.validate(promoCode, fee);
-      if (validation.finalAmount <= 0) {
-        return this.completeFreeRegistration(userId, validation.code, fee);
-      }
-      amount = validation.finalAmount;
-      appliedPromo = {
-        code: validation.code,
-        discountPercent: validation.discountPercent,
-      };
-    }
-
-    if (source === 'wallet') {
-      return this.payRegistrationFromWallet(userId, amount, appliedPromo);
-    }
-
-    const promoExtras = appliedPromo
-      ? {
-          promoCode: appliedPromo.code,
-          discountPercent: appliedPromo.discountPercent,
-          originalAmount: fee,
-        }
-      : undefined;
-
-    if (source === 'momo') {
-      if (!momo?.phoneNumber?.trim() || !momo.network?.trim()) {
-        throw new BadRequestException(
-          'Mobile money phone number and network are required',
-        );
-      }
-      return this.flutterwavePayments.initiatePayment({
-        userId,
-        purpose: 'registration',
-        amountUsd: amount,
-        network: 'MOMO',
-        momo: {
-          phoneNumber: momo.phoneNumber,
-          network: momo.network,
-          countryCode: momo.countryCode,
-        },
-        gatewayMeta: promoExtras,
-      });
-    }
-
-    const promoMeta = promoExtras;
-
-    if (!this.nowPayments.isConfigured) {
-      const payment = await this.prisma.payment.create({
-        data: {
-          userId,
-          amount,
-          currency: 'USDT',
-          network,
-          purpose: 'registration',
-          gatewayId: `pending_${Date.now()}`,
-          ...(promoMeta ? { gatewayResponse: promoMeta as object } : {}),
-        },
-      });
-      return {
-        paymentId: payment.id,
-        amount,
-        currency: 'USDT',
-        network,
-        gateway: 'NOWPayments',
-        message: 'NOWPayments not configured — set NOWPAYMENTS_API_KEY',
-      };
-    }
-
-    const existing = await this.findReusableRegistrationPayment(
-      userId,
-      network,
-      amount,
-    );
-
-    if (
-      existing?.payAddress &&
-      existing.gatewayId &&
-      !existing.gatewayId.startsWith('pending_')
-    ) {
-      return this.formatRegistrationPaymentResponse(existing, promoExtras);
-    }
-
-    let payment = existing;
-    if (!payment) {
-      this.assertGatewayCreateCooldown(userId);
-      payment = await this.prisma.payment.create({
-        data: {
-          userId,
-          amount,
-          currency: 'USDT',
-          network,
-          purpose: 'registration',
-          gatewayId: `pending_${Date.now()}`,
-          ...(promoMeta ? { gatewayResponse: promoMeta as object } : {}),
-        },
-      });
-    } else {
-      this.assertGatewayCreateCooldown(userId);
-    }
-
-    await this.createGatewayPayment({
-      paymentId: payment.id,
-      amount,
-      network,
-      description: 'TraderRank Pro weekly trading access (7 days)',
-      promoMeta,
-    });
-
-    const updated = await this.prisma.payment.findUniqueOrThrow({
-      where: { id: payment.id },
-    });
-
-    return this.formatRegistrationPaymentResponse(updated, promoExtras);
+    void userId;
+    void network;
+    void promoCode;
+    void source;
+    void momo;
+    this.discontinuedPayment(DISCONTINUED_FEATURES.weeklyAccess);
   }
 
   private async payRegistrationFromWallet(
@@ -523,38 +391,9 @@ export class PaymentsService {
   }
 
   async getPendingRegistrationPayment(userId: string, network?: string) {
-    const payment = await this.prisma.payment.findFirst({
-      where: {
-        userId,
-        purpose: 'registration',
-        status: 'PENDING',
-        payAddress: { not: null },
-        ...(network ? { network: network.toUpperCase() } : {}),
-        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (
-      !payment?.payAddress ||
-      !payment.gatewayId ||
-      payment.gatewayId.startsWith('pending_')
-    ) {
-      return { pending: null };
-    }
-
-    await this.syncPendingCryptoPayment(payment.id).catch(() => null);
-
-    const fresh = await this.prisma.payment.findUnique({
-      where: { id: payment.id },
-    });
-    if (!fresh || fresh.status !== 'PENDING' || !fresh.payAddress) {
-      return { pending: null };
-    }
-
-    return {
-      pending: this.formatRegistrationPaymentResponse(fresh),
-    };
+    void userId;
+    void network;
+    this.discontinuedPayment(DISCONTINUED_FEATURES.weeklyAccess);
   }
 
   private setupPlanPurpose(plan: 'PREMIUM' | 'PRO') {
@@ -668,174 +507,21 @@ export class PaymentsService {
     network: string,
     plan: 'PREMIUM' | 'PRO',
   ) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found');
-    if (!hasActiveTradingAccess(user)) {
-      throw new BadRequestException(
-        'Complete weekly payment before buying setup plan',
-      );
-    }
-
-    const amount = this.setupPlanPrice[plan];
-    const purpose = this.setupPlanPurpose(plan);
-    const payment = await this.prisma.payment.create({
-      data: {
-        userId,
-        amount,
-        currency: 'USDT',
-        network,
-        purpose,
-        gatewayId: `pending_${Date.now()}`,
-      },
-    });
-
-    if (!this.nowPayments.isConfigured) {
-      return {
-        paymentId: payment.id,
-        amount,
-        currency: 'USDT',
-        network,
-        purpose,
-        plan,
-        message: 'NOWPayments not configured — set NOWPAYMENTS_API_KEY',
-      };
-    }
-
-    const npPayment = await this.nowPayments.createPayment({
-      amount,
-      orderId: payment.id,
-      network,
-      description:
-        plan === 'PRO'
-          ? 'TraderRank setup plan — unlimited submissions'
-          : 'TraderRank setup plan — +3 submissions/day',
-      ipnCallbackUrl: this.ipnUrl(),
-    });
-
-    await this.prisma.payment.update({
-      where: { id: payment.id },
-      data: {
-        gatewayId: String(npPayment.payment_id),
-        gatewayResponse: {
-          ...(npPayment as object),
-          gateway: 'NOWPayments',
-        } as object,
-        payAddress: npPayment.pay_address,
-        payAmount: npPayment.pay_amount,
-      },
-    });
-
-    return {
-      paymentId: payment.id,
-      amount,
-      currency: 'USDT',
-      network,
-      purpose,
-      plan,
-      payCurrency: npPayment.pay_currency,
-      payAmount: npPayment.pay_amount,
-      payAddress: npPayment.pay_address,
-      gatewayPaymentId: npPayment.payment_id,
-      liveStatus: npPayment.payment_status,
-      gateway: 'NOWPayments',
-      orderId: payment.id,
-    };
+    void userId;
+    void network;
+    void plan;
+    this.discontinuedPayment(DISCONTINUED_FEATURES.setupPlan);
   }
 
   async createProfitSharePayment(userId: string, network: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found');
-    if (!hasActiveTradingAccess(user)) {
-      throw new BadRequestException(
-        'Complete weekly payment before enrolling in profit share',
-      );
-    }
-    if (user.profitShareActive) {
-      return {
-        message: 'Profit share is already active',
-        active: true,
-        enrolledAt: user.profitShareEnrolledAt?.toISOString() ?? null,
-      };
-    }
-
-    const amount = await this.profitShareFee();
-    const purpose = 'profit_share';
-    const payment = await this.prisma.payment.create({
-      data: {
-        userId,
-        amount,
-        currency: 'USDT',
-        network,
-        purpose,
-        gatewayId: `pending_${Date.now()}`,
-      },
-    });
-
-    if (!this.nowPayments.isConfigured) {
-      return {
-        paymentId: payment.id,
-        amount,
-        currency: 'USDT',
-        network,
-        purpose,
-        message: 'NOWPayments not configured — set NOWPAYMENTS_API_KEY',
-      };
-    }
-
-    const npPayment = await this.nowPayments.createPayment({
-      amount,
-      orderId: payment.id,
-      network,
-      description: 'TraderRank profit share — 50% setup & copy commission',
-      ipnCallbackUrl: this.ipnUrl(),
-    });
-
-    await this.prisma.payment.update({
-      where: { id: payment.id },
-      data: {
-        gatewayId: String(npPayment.payment_id),
-        gatewayResponse: {
-          ...(npPayment as object),
-          gateway: 'NOWPayments',
-        } as object,
-        payAddress: npPayment.pay_address,
-        payAmount: npPayment.pay_amount,
-      },
-    });
-
-    return {
-      paymentId: payment.id,
-      amount,
-      currency: 'USDT',
-      network,
-      purpose,
-      payCurrency: npPayment.pay_currency,
-      payAmount: npPayment.pay_amount,
-      payAddress: npPayment.pay_address,
-      gatewayPaymentId: npPayment.payment_id,
-      liveStatus: npPayment.payment_status,
-      gateway: 'NOWPayments',
-      orderId: payment.id,
-    };
+    void userId;
+    void network;
+    this.discontinuedPayment(DISCONTINUED_FEATURES.profitShare);
   }
 
   async getProfitSharePaymentStatus(userId: string) {
-    const status = await this.profitShare.getStatus(userId);
-    const latestPayment = await this.prisma.payment.findFirst({
-      where: { userId, purpose: 'profit_share' },
-      orderBy: { createdAt: 'desc' },
-    });
-    return {
-      ...status,
-      latestPayment: latestPayment
-        ? {
-            id: latestPayment.id,
-            status: latestPayment.status,
-            amount: Number(latestPayment.amount),
-            confirmedAt: latestPayment.confirmedAt?.toISOString() ?? null,
-          }
-        : null,
-    };
+    void userId;
+    this.discontinuedPayment(DISCONTINUED_FEATURES.profitShare);
   }
 
   /**
@@ -1096,99 +782,13 @@ export class PaymentsService {
   }
 
   async createMt5SyncPayment(userId: string, network: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found');
-    if (!hasActiveTradingAccess(user)) {
-      throw new BadRequestException(
-        'Complete weekly payment before enrolling in MT5 Live Sync',
-      );
-    }
-    if (!user.metaApiAccountId?.trim()) {
-      throw new BadRequestException(
-        'Link your MT5 trading account in Settings before enabling MT5 Live Sync',
-      );
-    }
-
-    const amount = await this.mt5SyncFee();
-    const purpose = 'mt5_sync';
-    const payment = await this.prisma.payment.create({
-      data: {
-        userId,
-        amount,
-        currency: 'USDT',
-        network,
-        purpose,
-        gatewayId: `pending_${Date.now()}`,
-      },
-    });
-
-    if (!this.nowPayments.isConfigured) {
-      return {
-        paymentId: payment.id,
-        amount,
-        currency: 'USDT',
-        network,
-        purpose,
-        message: 'NOWPayments not configured — set NOWPAYMENTS_API_KEY',
-      };
-    }
-
-    const npPayment = await this.nowPayments.createPayment({
-      amount,
-      orderId: payment.id,
-      network,
-      description: 'TraderRank MT5 Live Sync — weekly add-on',
-      ipnCallbackUrl: this.ipnUrl(),
-    });
-
-    await this.prisma.payment.update({
-      where: { id: payment.id },
-      data: {
-        gatewayId: String(npPayment.payment_id),
-        gatewayResponse: {
-          ...(npPayment as object),
-          gateway: 'NOWPayments',
-        } as object,
-        payAddress: npPayment.pay_address,
-        payAmount: npPayment.pay_amount,
-      },
-    });
-
-    return {
-      paymentId: payment.id,
-      amount,
-      currency: 'USDT',
-      network,
-      purpose,
-      payCurrency: npPayment.pay_currency,
-      payAmount: npPayment.pay_amount,
-      payAddress: npPayment.pay_address,
-      gatewayPaymentId: npPayment.payment_id,
-      liveStatus: npPayment.payment_status,
-      gateway: 'NOWPayments',
-      orderId: payment.id,
-    };
+    void userId;
+    void network;
+    this.discontinuedPayment(DISCONTINUED_FEATURES.mt5Sync);
   }
 
   async getMt5SyncPaymentStatus(userId: string) {
-    const status = await this.mt5SyncBilling.getStatus(userId);
-    const latestPayment = await this.prisma.payment.findFirst({
-      where: { userId, purpose: 'mt5_sync' },
-      orderBy: { createdAt: 'desc' },
-    });
-    const feeUsdt = await this.mt5SyncFee();
-    return {
-      ...status,
-      feeUsdt,
-      latestPayment: latestPayment
-        ? {
-            id: latestPayment.id,
-            status: latestPayment.status,
-            amount: Number(latestPayment.amount),
-            confirmedAt: latestPayment.confirmedAt?.toISOString() ?? null,
-          }
-        : null,
-    };
+    return this.mt5SyncBilling.getStatus(userId);
   }
 
   async confirmMt5SyncPayment(
@@ -1654,22 +1254,8 @@ export class PaymentsService {
 
   async getSetupPlanStatus(userId: string) {
     const now = new Date();
-    const active = await this.prisma.subscription.findFirst({
-      where: {
-        userId,
-        isActive: true,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      },
-      orderBy: { expiresAt: 'desc' },
-    });
-
-    const plan: SubscriptionPlan = active?.plan ?? 'FREE';
-    const dailyLimit =
-      plan === 'PRO' ? null : plan === 'PREMIUM' ? 5 : 2;
-
     const startOfDay = new Date(now);
     startOfDay.setHours(0, 0, 0, 0);
-
     const submittedToday = await this.prisma.signal.count({
       where: {
         userId,
@@ -1679,15 +1265,14 @@ export class PaymentsService {
     });
 
     return {
-      plan,
-      dailyLimit,
+      plan: 'FREE' as SubscriptionPlan,
+      dailyLimit: null,
       submittedToday,
-      remainingToday:
-        dailyLimit == null ? null : Math.max(0, dailyLimit - submittedToday),
-      isUnlimited: plan === 'PRO',
-      subscriptionActive: Boolean(active),
-      subscriptionExpiresAt: active?.expiresAt?.toISOString() ?? null,
-      renewPricesUsdt: { PREMIUM: 5, PRO: 15 },
+      remainingToday: null,
+      isUnlimited: true,
+      subscriptionActive: true,
+      subscriptionExpiresAt: null,
+      renewPricesUsdt: null,
     };
   }
 }

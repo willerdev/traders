@@ -117,10 +117,13 @@ export class AuthService {
         emailVerifyToken,
         lastLoginIp: ip,
         termsAcceptedAt: new Date(),
-        status: 'PENDING_PAYMENT',
+        status: 'ACTIVE',
+        registrationPaid: true,
         referredById: referrer.id,
       },
     });
+
+    await this.ensureTraderVirtualAccount(user.id);
 
     this.logger.log(
       `Invite-only registration: ${user.id} referred by ${referrer.id} (${referralCode})`,
@@ -140,8 +143,7 @@ export class AuthService {
 
     return {
       user: this.sanitizeUser(user),
-      message:
-        'Registration successful. Sign in and pay the registration fee to start trading.',
+      message: 'Registration successful. Sign in and start trading.',
     };
   }
 
@@ -356,10 +358,12 @@ export class AuthService {
           walletAddress: address,
           displayName: `${address.slice(0, 6)}...${address.slice(-4)}`,
           emailVerified: true,
-          status: 'PENDING_PAYMENT',
+          status: 'ACTIVE',
+          registrationPaid: true,
           lastLoginIp: ip,
         },
       });
+      await this.ensureTraderVirtualAccount(user.id);
     } else {
       await this.prisma.user.update({
         where: { id: user.id },
@@ -384,7 +388,6 @@ export class AuthService {
       data: {
         emailVerified: true,
         emailVerifyToken: null,
-        status: 'PENDING_PAYMENT',
       },
     });
 
@@ -490,47 +493,32 @@ export class AuthService {
     });
 
     if (!user) throw new BadRequestException('User not found');
-    if (!user.registrationPaid) {
-      throw new BadRequestException('Registration fee not paid');
-    }
 
-    if (!user.virtualAccount) {
-      await this.prisma.virtualAccount.create({
-        data: {
-          userId,
-          balance: STARTING_BALANCE,
-          maxRiskPerTrade: MAX_RISK_PER_TRADE,
-          riskPercent: RISK_PERCENT,
-        },
-      });
-    }
-
-    const activeSubscription = await this.prisma.subscription.findFirst({
-      where: {
-        userId,
-        isActive: true,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-      },
-    });
-
-    if (!activeSubscription) {
-      await this.prisma.subscription.create({
-        data: {
-          userId,
-          plan: 'FREE',
-          isActive: true,
-          startsAt: new Date(),
-          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        },
-      });
-    }
+    await this.ensureTraderVirtualAccount(userId);
 
     await this.prisma.user.update({
       where: { id: userId },
-      data: { status: 'ACTIVE' },
+      data: { status: 'ACTIVE', registrationPaid: true },
     });
 
     return { message: 'Account activated with $1000 virtual funded account' };
+  }
+
+  /** Creates the default virtual account if missing (weekly access fee removed). */
+  private async ensureTraderVirtualAccount(userId: string) {
+    const existing = await this.prisma.virtualAccount.findUnique({
+      where: { userId },
+    });
+    if (existing) return;
+
+    await this.prisma.virtualAccount.create({
+      data: {
+        userId,
+        balance: STARTING_BALANCE,
+        maxRiskPerTrade: MAX_RISK_PER_TRADE,
+        riskPercent: RISK_PERCENT,
+      },
+    });
   }
 
   private generateToken(user: {

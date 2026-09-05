@@ -2,20 +2,15 @@ import { computeWeeklyAccessExpiry } from './weekly-access.util';
 
 export const MT5_SYNC_PLACEHOLDER_SCREENSHOT = 'mt5-sync://auto';
 
+/** MT5 Live Sync subscription billing discontinued — linked accounts sync for free. */
 export function hasActiveMt5Sync(user: {
   mt5SyncActive?: boolean;
   mt5SyncExpiresAt?: Date | string | null;
   mt5SyncEnabled?: boolean;
   metaApiAccountId?: string | null;
 }): boolean {
-  if (!user.mt5SyncActive || user.mt5SyncEnabled === false) return false;
-  if (!user.metaApiAccountId?.trim()) return false;
-  if (!user.mt5SyncExpiresAt) return false;
-  const expires =
-    user.mt5SyncExpiresAt instanceof Date
-      ? user.mt5SyncExpiresAt
-      : new Date(user.mt5SyncExpiresAt);
-  return expires.getTime() > Date.now();
+  if (user.mt5SyncEnabled === false) return false;
+  return Boolean(user.metaApiAccountId?.trim());
 }
 
 export function computeMt5SyncExpiry(
