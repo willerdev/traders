@@ -280,6 +280,7 @@ export class Mt5PoolService {
         where: { id: userId },
         data: { metaApiAccountId: existingAccount.id },
       });
+      await this.enableFreeMt5Sync(userId);
       this.logger.log(
         `Linked existing MetaAPI account ${existingAccount.id} to ${user.displayName}`,
       );
@@ -309,6 +310,7 @@ export class Mt5PoolService {
         where: { id: userId },
         data: { metaApiAccountId: created.id },
       });
+      await this.enableFreeMt5Sync(userId);
 
       await this.prisma.mt5LinkRequest.create({
         data: {
@@ -386,6 +388,7 @@ export class Mt5PoolService {
       where: { id: userId },
       data: { metaApiAccountId: candidate.id },
     });
+    await this.enableFreeMt5Sync(userId);
 
     this.logger.log(
       `Assigned pool MetaAPI account ${candidate.id} to user ${userId}`,
@@ -433,5 +436,18 @@ export class Mt5PoolService {
       errorMessage: row.errorMessage,
       createdAt: row.createdAt.toISOString(),
     }));
+  }
+
+  /** MT5 sync subscription removed — enable sync when an account is linked. */
+  private async enableFreeMt5Sync(userId: string) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        mt5SyncActive: true,
+        mt5SyncEnabled: true,
+        mt5SyncEnrolledAt: new Date(),
+        mt5SyncExpiresAt: null,
+      },
+    });
   }
 }

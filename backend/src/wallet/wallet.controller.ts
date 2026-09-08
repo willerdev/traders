@@ -12,12 +12,14 @@ import {
 import { JwtAuthGuard } from '../auth/guards';
 import { WalletService } from './wallet.service';
 import { SavedWithdrawalWalletService } from './saved-withdrawal-wallet.service';
+import { PayoutService } from '../payouts/payout.service';
 
 @Controller('wallet')
 export class WalletController {
   constructor(
     private wallet: WalletService,
     private savedWallets: SavedWithdrawalWalletService,
+    private payouts: PayoutService,
   ) {}
 
   @Get('summary')
@@ -180,6 +182,21 @@ export class WalletController {
       code: body.code,
       pin: body.pin,
     });
+  }
+
+  @Get('pending-withdrawals')
+  @UseGuards(JwtAuthGuard)
+  pendingWithdrawals(@Request() req: { user: { id: string } }) {
+    return this.payouts.listPendingWalletWithdrawals(req.user.id);
+  }
+
+  @Post('withdrawals/:id/cancel')
+  @UseGuards(JwtAuthGuard)
+  cancelWithdrawal(
+    @Request() req: { user: { id: string } },
+    @Param('id') payoutId: string,
+  ) {
+    return this.payouts.cancelPendingWithdrawalByUser(req.user.id, payoutId);
   }
 
   @Get('momo-p2p/quote')

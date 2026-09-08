@@ -11,19 +11,14 @@ export function computeWeeklyAccessExpiry(
   return new Date(base.getTime() + WEEKLY_ACCESS_MS);
 }
 
+/** Weekly trading access billing discontinued — ACTIVE traders have full access. */
 export function hasActiveTradingAccess(user: {
   role?: string;
   status: string;
   accessExpiresAt?: Date | string | null;
 }): boolean {
   if (user.role === 'ADMIN') return true;
-  if (user.status !== 'ACTIVE') return false;
-  if (!user.accessExpiresAt) return false;
-  const expiry =
-    user.accessExpiresAt instanceof Date
-      ? user.accessExpiresAt
-      : new Date(user.accessExpiresAt);
-  return expiry.getTime() > Date.now();
+  return user.status === 'ACTIVE';
 }
 
 export function tradingAccessDaysRemaining(

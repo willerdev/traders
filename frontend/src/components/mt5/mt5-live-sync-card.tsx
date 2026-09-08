@@ -5,8 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { api, type Mt5SyncStatus } from "@/lib/api";
-import { formatCurrency } from "@/lib/utils";
-import { Mt5LiveSyncPaymentPanel } from "@/components/mt5/mt5-live-sync-payment-panel";
 import {
   Mt5ConnectForm,
   type Mt5ConnectCredentials,
@@ -29,7 +27,6 @@ export function Mt5LiveSyncCard({
 }: Props) {
   const [status, setStatus] = useState<Mt5SyncStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showCheckout, setShowCheckout] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [connectError, setConnectError] = useState("");
@@ -61,8 +58,8 @@ export function Mt5LiveSyncCard({
   }, [tradingActive, refresh]);
 
   useEffect(() => {
-    if (connectError || showCheckout) setExpanded(true);
-  }, [connectError, showCheckout]);
+    if (connectError) setExpanded(true);
+  }, [connectError]);
 
   if (!tradingActive) return null;
 
@@ -71,8 +68,7 @@ export function Mt5LiveSyncCard({
       linkedAccountId?.trim() ||
       status?.linkedAccountId?.trim(),
   );
-  const active = status?.active ?? false;
-  const feeUsdt = status?.feeUsdt ?? 5;
+  const active = hasLinkedAccount && (status?.enabled ?? true);
 
   async function connectAccount(credentials: Mt5ConnectCredentials) {
     setClaiming(true);
@@ -85,8 +81,8 @@ export function Mt5LiveSyncCard({
       setLocalLinkedId(result.accountId);
       setConnectMessage(
         result.alreadyLinked
-          ? "MT5 account already linked — you can subscribe below."
-          : "MT5 account connected — you can subscribe below.",
+          ? "MT5 account already linked — live sync is enabled."
+          : "MT5 account connected — live sync is enabled.",
       );
       await refresh();
       onAccountLinked?.();
@@ -132,22 +128,12 @@ export function Mt5LiveSyncCard({
         </div>
       )}
 
-      {status && (
+      {status && hasLinkedAccount && (
         <div className="grid gap-2 text-xs sm:grid-cols-2">
           <div>
             <span className="text-muted">Linked account</span>
             <p className="font-mono text-foreground">
               {status.linkedAccountId ?? "Not linked"}
-            </p>
-          </div>
-          <div>
-            <span className="text-muted">Expires</span>
-            <p className="text-foreground">
-              {status.expiresAt
-                ? new Date(status.expiresAt).toLocaleString()
-                : active
-                  ? "—"
-                  : "Not subscribed"}
             </p>
           </div>
           {status.lastSyncedAt && (
@@ -158,43 +144,21 @@ export function Mt5LiveSyncCard({
               </p>
             </div>
           )}
-          {active && (
-            <div className="flex items-center justify-between gap-3 sm:col-span-2">
-              <span className="text-muted">Sync enabled</span>
-              <Button
-                size="sm"
-                variant={status.enabled ? "secondary" : "ghost"}
-                disabled={toggling}
-                onClick={() => void toggleEnabled(!status.enabled)}
-              >
-                {status.enabled ? "On" : "Off"}
-              </Button>
-            </div>
-          )}
+          <div className="flex items-center justify-between gap-3 sm:col-span-2">
+            <span className="text-muted">Sync enabled</span>
+            <Button
+              size="sm"
+              variant={status.enabled ? "secondary" : "ghost"}
+              disabled={toggling}
+              onClick={() => void toggleEnabled(!status.enabled)}
+            >
+              {status.enabled ? "On" : "Off"}
+            </Button>
+          </div>
         </div>
       )}
 
-      {!active ? (
-        <>
-          {!showCheckout ? (
-            <Button
-              onClick={() => setShowCheckout(true)}
-              disabled={!hasLinkedAccount || loading}
-              className="w-full sm:w-auto"
-            >
-              Pay {formatCurrency(feeUsdt)}/week
-            </Button>
-          ) : (
-            <Mt5LiveSyncPaymentPanel
-              feeUsdt={feeUsdt}
-              onComplete={() => {
-                setShowCheckout(false);
-                void refresh();
-              }}
-            />
-          )}
-        </>
-      ) : (
+      {active && (
         <p className="text-xs text-muted">
           {status?.openLinks ?? 0} open synced position
           {(status?.openLinks ?? 0) === 1 ? "" : "s"} tracked.
@@ -221,16 +185,14 @@ export function Mt5LiveSyncCard({
               </Badge>
             ) : (
               <Badge variant="secondary" className="text-[10px]">
-                Add-on
+                Connect
               </Badge>
             )}
             {!expanded && (
               <span className="truncate text-[10px] text-[var(--mt5-muted)]">
                 {!hasLinkedAccount
                   ? "Tap to connect"
-                  : !active
-                    ? `Enable — ${formatCurrency(feeUsdt)}/week`
-                    : `${status?.openLinks ?? 0} synced`}
+                  : `${status?.openLinks ?? 0} synced`}
               </span>
             )}
           </div>
@@ -254,16 +216,7 @@ export function Mt5LiveSyncCard({
         </button>
         {expanded && (
           <div className="mt-3 space-y-3">
-            {!active && hasLinkedAccount && (
-              <Button
-                size="sm"
-                className="w-full"
-                onClick={() => setShowCheckout(true)}
-              >
-                Enable — {formatCurrency(feeUsdt)}/week
-              </Button>
-            )}
-            {!active && !hasLinkedAccount && (
+            {!hasLinkedAccount && (
               <div className="space-y-2">
                 <Mt5ConnectForm
                   compact
@@ -277,15 +230,6 @@ export function Mt5LiveSyncCard({
                   <p className="text-xs text-success">{connectMessage}</p>
                 )}
               </div>
-            )}
-            {showCheckout && (
-              <Mt5LiveSyncPaymentPanel
-                feeUsdt={feeUsdt}
-                onComplete={() => {
-                  setShowCheckout(false);
-                  void refresh();
-                }}
-              />
             )}
             {hasLinkedAccount && status && (
               <div className="space-y-1 text-xs text-[var(--mt5-muted)]">
@@ -329,19 +273,17 @@ export function Mt5LiveSyncCard({
             {expanded
               ? active
                 ? "Your MT5 trades sync to the platform automatically"
-                : `${formatCurrency(feeUsdt)}/week — no manual setup upload`
+                : "Connect your MT5 account to enable live sync"
               : !hasLinkedAccount
                 ? "Tap to connect your MT5 account"
-                : !active
-                  ? `Tap to enable — ${formatCurrency(feeUsdt)}/week`
-                  : "Tap to view sync details"}
+                : "Tap to view sync details"}
           </p>
         </button>
         <div className="flex items-center gap-2">
           {active ? (
             <Badge variant="success">Active</Badge>
           ) : (
-            <Badge variant="secondary">Add-on</Badge>
+            <Badge variant="secondary">Connect</Badge>
           )}
           <Button
             size="sm"

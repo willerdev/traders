@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, GoneException, UseGuards, Request } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards';
 import { ProfitShareService } from './profit-share.service';
 
@@ -9,6 +9,9 @@ export class ProfitShareController {
 
   @Get('status')
   getStatus(@Request() req: { user: { id: string } }) {
-    return this.profitShare.getStatus(req.user.id);
+    void req;
+    throw new GoneException(
+      'Profit share has been discontinued. Smart Invest, wallet, and core trading remain available.',
+    );
   }
 }

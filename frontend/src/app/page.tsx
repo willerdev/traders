@@ -15,6 +15,10 @@ import { ArrowRight, ArrowDown, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RecentPayoutsShowcase } from "@/components/marketing/recent-payouts-showcase";
 import { InvestmentRules } from "@/components/marketing/investment-rules";
+import {
+  HeroRiskNotice,
+  RiskDisclaimerSection,
+} from "@/components/marketing/risk-disclaimer";
 import { DailyCreditTimeText } from "@/components/daily-credit-time-text";
 import { useAuthStore } from "@/stores/auth";
 import { cn } from "@/lib/utils";
@@ -273,8 +277,16 @@ export default function HomePage() {
                 className="mt-6 flex items-center gap-1.5 text-sm text-gray-500"
               >
                 <Wallet className="h-4 w-4 shrink-0" />
-                USDT in and out via NOWPayments
+                USDT deposits and withdrawals via crypto payment
               </motion.p>
+
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.62 }}
+              >
+                <HeroRiskNotice />
+              </motion.div>
             </div>
 
             {/* Dominant visual — yield curve + live % */}
@@ -420,6 +432,8 @@ export default function HomePage() {
       <InvestmentRules />
 
       <RecentPayoutsShowcase />
+
+      <RiskDisclaimerSection />
 
       {/* Closing CTA */}
       <section className="relative mx-auto max-w-7xl px-4 pb-28 pt-10 sm:px-6">

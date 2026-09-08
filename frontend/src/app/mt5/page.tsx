@@ -18,9 +18,7 @@ import { canAccessMt5Copy } from "@/lib/copy-access";
 import { useMt5Terminal } from "@/hooks/use-mt5-terminal";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { useUrlTab } from "@/hooks/use-url-tab";
-import { hasTradingAccess } from "@/lib/trading-access";
 import { cn, formatCurrency } from "@/lib/utils";
-import { WeeklyAccessGate } from "@/components/payments/weekly-access-gate";
 import { EvaluationStatusCard } from "@/components/evaluations/evaluation-status-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -116,9 +114,7 @@ export default function Mt5UserPage() {
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [historyLoadingId, setHistoryLoadingId] = useState<string | null>(null);
   const [closingAll, setClosingAll] = useState(false);
-  const [tradingAccess, setTradingAccess] = useState<boolean | null>(null);
   const [evaluationBreached, setEvaluationBreached] = useState(false);
-  const [hadPaidBefore, setHadPaidBefore] = useState(false);
   const [selectedChartSymbol, setSelectedChartSymbol] = useState<string | null>(
     null,
   );
@@ -127,21 +123,16 @@ export default function Mt5UserPage() {
   >(null);
   const { settings: chartDisplaySettings } = useMt5ChartDisplaySettings();
 
-  const refreshTradingAccess = useCallback(async () => {
+  const refreshEvaluationStatus = useCallback(async () => {
     try {
-      const [dash, evaluation] = await Promise.all([
-        api.users.dashboard(),
-        api.evaluations.getActive().catch(() => null),
-      ]);
-      setTradingAccess(dash?.user ? hasTradingAccess(dash.user) : false);
-      setHadPaidBefore(Boolean(dash?.user?.registrationPaid));
+      const evaluation = await api.evaluations.getActive().catch(() => null);
       setEvaluationBreached(evaluation?.status === "BREACHED");
     } catch {
-      setTradingAccess(false);
+      setEvaluationBreached(false);
     }
   }, []);
 
-  const accessGranted = tradingAccess === true;
+  const accessGranted = ready;
   const effectivePermissions = dashboardPermissions ?? adminPermissions;
   const canManageCopy = canAccessMt5Copy({
     role: userRole,
@@ -167,8 +158,8 @@ export default function Mt5UserPage() {
 
   useEffect(() => {
     if (!ready) return;
-    void refreshTradingAccess();
-  }, [ready, refreshTradingAccess]);
+    void refreshEvaluationStatus();
+  }, [ready, refreshEvaluationStatus]);
 
   useEffect(() => {
     if (data?.selectedEvaluationEnrollmentId) {
@@ -390,29 +381,6 @@ export default function Mt5UserPage() {
 
   if (!ready) {
     return <AuthLoadingScreen />;
-  }
-
-  if (tradingAccess === null) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (!tradingAccess) {
-    return (
-      <div className="mx-auto max-w-lg px-4 py-6">
-        <WeeklyAccessGate
-          renewal={hadPaidBefore}
-          onComplete={() => {
-            void refreshTradingAccess();
-          }}
-          title={hadPaidBefore ? "Renew to use MT5" : "Pay to unlock MT5"}
-          description="MT5 quotes, setups, and live trading require an active weekly pass (7 days per payment)."
-        />
-      </div>
-    );
   }
 
   if (evaluationBreached) {

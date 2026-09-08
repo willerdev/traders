@@ -41,29 +41,15 @@ export class Mt5SyncService {
   }
 
   async deactivateExpired() {
-    const now = new Date();
-    const result = await this.prisma.user.updateMany({
-      where: {
-        mt5SyncActive: true,
-        mt5SyncExpiresAt: { lt: now },
-      },
-      data: { mt5SyncActive: false },
-    });
-    if (result.count > 0) {
-      this.logger.log(`Deactivated MT5 Live Sync for ${result.count} user(s)`);
-    }
-    return result.count;
+    return 0;
   }
 
   async syncAllActiveUsers() {
     if (!this.metaApi.isConfigured) return { users: 0, imported: 0, closed: 0 };
 
-    const now = new Date();
     const users = await this.prisma.user.findMany({
       where: {
-        mt5SyncActive: true,
-        mt5SyncEnabled: true,
-        mt5SyncExpiresAt: { gt: now },
+        mt5SyncEnabled: { not: false },
         metaApiAccountId: { not: null },
         status: 'ACTIVE',
       },

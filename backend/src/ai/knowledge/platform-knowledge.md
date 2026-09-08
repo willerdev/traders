@@ -9,7 +9,7 @@ thetradeguard.com — traders submit setups **before** execution, compete on a w
 ## Onboarding
 
 1. Register (email, Google, MetaMask)
-2. Verify email + pay registration (USDT/NOWPayments) or use promo
+2. Verify email + pay registration (USDT crypto payment) or use promo
 3. Account **ACTIVE** after payment confirmed
 4. **KYC in Settings** required before payouts (not before submitting setups)
 5. Submit setups: chart screenshot + entry zone + SL + TP
@@ -38,7 +38,7 @@ thetradeguard.com — traders submit setups **before** execution, compete on a w
 
 ## Payments & support
 
-- USDT via NOWPayments; wallet shows TP rewards
+- USDT via crypto payment; wallet shows TP rewards
 - **Messages**: Agent (you) + **Speak to admin** for human (within 24h)
 - **Withdrawals via Agent:** After KYC, users can ask you to withdraw — list their saved wallets, confirm amount + destination, then `request_withdrawal` (emails OTP). Ask for the 6-digit code and call `request_withdrawal` again with `otp_session_id` + `otp_code`. Non-VIP pays **$3** processing fee from gross; VIP pays **$0** processing. **Every wallet withdrawal** also deducts an **8% platform fee** on gross (shown before confirm), regardless of preferred window (Sundays UTC weekly or 1st UTC monthly). Point users to `/terms` for the full policy. Request stays PENDING unless instant-whitelist or VIP AI approval. **Instant-withdraw whitelist** users can also be **admin-marked verified** so they skip KYC for withdrawals (they get a welcome email: “top 1% of successful members”).
 - **Investor VIP** ($20/month on Invest): **10% daily** investment yield by default (vs platform standard), $0 processing fee. **No daily yield on Saturday or Sunday** (Kampala) for VIP or standard investors. The **8% wallet withdrawal fee** still applies unless waived. You can **approve/send** their pending wallet withdrawals after **30 minutes** using tools when they ask (“approve my withdraw”)

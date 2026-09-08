@@ -4,16 +4,9 @@ import Link from "next/link";
 import { CheckCircle2, Circle, ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { RegistrationCheckout } from "@/components/payments/registration-checkout";
 import type { OnboardingStatus } from "@/lib/api";
 
 const INVEST_STEPS = [
-  {
-    key: "registrationPaid" as const,
-    label: "Pay registration fee (5 USDT)",
-    href: "/dashboard",
-    action: "Pay now",
-  },
   {
     key: "accountActive" as const,
     label: "Open Smart Invest and allocate capital",
@@ -24,7 +17,6 @@ const INVEST_STEPS = [
 
 function normalizeOnboarding(onboarding: OnboardingStatus) {
   return {
-    registrationPaid: onboarding.registrationPaid,
     accountActive: onboarding.accountActive,
     hasSubmittedSignal: onboarding.hasSubmittedSignal,
     emailVerified: onboarding.emailVerified,
@@ -33,7 +25,6 @@ function normalizeOnboarding(onboarding: OnboardingStatus) {
 
 export function OnboardingChecklist({
   onboarding,
-  onComplete,
 }: {
   onboarding: OnboardingStatus;
   onComplete?: () => void;
@@ -48,9 +39,8 @@ export function OnboardingChecklist({
       <CardHeader className="pb-3">
         <CardTitle className="text-lg">Start investing</CardTitle>
         <CardDescription>
-          Pay registration to activate your account, then allocate capital on
-          Smart Invest. KYC is only required before withdrawals (
-          {completed}/{INVEST_STEPS.length}).
+          Allocate capital on Smart Invest to begin earning. KYC is only required
+          before withdrawals ({completed}/{INVEST_STEPS.length}).
         </CardDescription>
         <div className="mt-3 h-2 overflow-hidden rounded-full bg-foreground/10">
           <div
@@ -62,34 +52,28 @@ export function OnboardingChecklist({
       <CardContent className="space-y-2">
         {INVEST_STEPS.map((step) => {
           const done = state[step.key];
-          const isRegistration = step.key === "registrationPaid";
 
           return (
-            <div key={step.key} className="space-y-0">
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] px-3 py-2.5">
-                <div className="flex min-w-0 items-center gap-3">
-                  {done ? (
-                    <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
-                  ) : (
-                    <Circle className="h-5 w-5 shrink-0 text-muted" />
-                  )}
-                  <p
-                    className={`text-sm font-medium ${done ? "text-muted line-through" : "text-foreground"}`}
-                  >
-                    {step.label}
-                  </p>
-                </div>
-                {!done && !isRegistration && (
-                  <Link href={step.href}>
-                    <Button size="sm" variant="secondary" className="gap-1">
-                      {step.action}
-                      <ChevronRight className="h-3 w-3" />
-                    </Button>
-                  </Link>
+            <div key={step.key} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] px-3 py-2.5">
+              <div className="flex min-w-0 items-center gap-3">
+                {done ? (
+                  <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
+                ) : (
+                  <Circle className="h-5 w-5 shrink-0 text-muted" />
                 )}
+                <p
+                  className={`text-sm font-medium ${done ? "text-muted line-through" : "text-foreground"}`}
+                >
+                  {step.label}
+                </p>
               </div>
-              {isRegistration && !done && (
-                <RegistrationCheckout onComplete={onComplete} compact />
+              {!done && (
+                <Link href={step.href}>
+                  <Button size="sm" variant="secondary" className="gap-1">
+                    {step.action}
+                    <ChevronRight className="h-3 w-3" />
+                  </Button>
+                </Link>
               )}
             </div>
           );
