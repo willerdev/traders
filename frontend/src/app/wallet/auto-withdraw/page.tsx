@@ -45,7 +45,7 @@ export default function AutoWithdrawPage() {
   const eligible = summary?.autoWithdrawEligible ?? false;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 px-4 py-8 sm:px-6">
+    <div className="mx-auto max-w-lg space-y-4 px-4 py-4 sm:max-w-xl sm:px-6 sm:py-6 xl:max-w-7xl xl:space-y-6 xl:px-8 xl:py-8">
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -58,17 +58,31 @@ export default function AutoWithdrawPage() {
           <ArrowLeft className="h-4 w-4" />
           Back to wallet
         </Link>
-        <div className="flex items-center gap-2 text-primary">
-          <Clock className="h-5 w-5" />
-          <span className="text-sm font-medium uppercase tracking-wide">
-            Money
-          </span>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-primary">
+              <Clock className="h-5 w-5" />
+              <span className="text-sm font-medium uppercase tracking-wide">
+                Money
+              </span>
+            </div>
+            <h1 className="text-2xl font-bold text-foreground">
+              Daily auto-withdraw
+            </h1>
+            <p className="max-w-3xl text-sm text-muted">
+              Schedule automatic sends from your platform wallet to a saved TRC20
+              address every day at 09:00 Kampala time.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" asChild>
+              <Link href="/wallet">Open wallet</Link>
+            </Button>
+            <Button variant="ghost" asChild>
+              <Link href="/settings">KYC &amp; settings</Link>
+            </Button>
+          </div>
         </div>
-        <h1 className="text-2xl font-bold text-foreground">Daily auto-withdraw</h1>
-        <p className="text-sm text-muted">
-          Schedule automatic sends from your platform wallet to a saved TRC20
-          address every day at 09:00 Kampala time.
-        </p>
       </motion.div>
 
       {loading && !summary ? (
@@ -76,9 +90,9 @@ export default function AutoWithdrawPage() {
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
       ) : (
-        <>
+        <div className="space-y-4 xl:grid xl:grid-cols-12 xl:items-start xl:gap-5 xl:space-y-0">
           {summary && (
-            <Card>
+            <Card className="xl:col-span-4 xl:row-start-1">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base">Available balance</CardTitle>
                 <CardDescription>
@@ -98,12 +112,12 @@ export default function AutoWithdrawPage() {
             </Card>
           )}
 
-          <Card>
+          <Card className="xl:col-span-8 xl:row-start-1">
             <CardHeader>
               <CardTitle className="text-base">Withdrawal wallets</CardTitle>
               <CardDescription>
-                Add a TRC20 address below, then verify it by email before turning
-                on auto-withdraw.
+                Add a TRC20 address below, then verify it by email before
+                turning on auto-withdraw.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -111,7 +125,7 @@ export default function AutoWithdrawPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="xl:col-span-12 xl:row-start-2">
             <CardHeader>
               <CardTitle className="text-base">Auto-withdraw settings</CardTitle>
               <CardDescription>
@@ -125,16 +139,7 @@ export default function AutoWithdrawPage() {
               />
             </CardContent>
           </Card>
-
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" asChild>
-              <Link href="/wallet">Open wallet</Link>
-            </Button>
-            <Button variant="ghost" asChild>
-              <Link href="/settings">KYC &amp; settings</Link>
-            </Button>
-          </div>
-        </>
+        </div>
       )}
     </div>
   );

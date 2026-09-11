@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { TrendingUp } from "lucide-react";
+import { Shield } from "lucide-react";
 
 export function Logo({
   className,
@@ -22,7 +22,7 @@ export function Logo({
           )}
           aria-hidden
         >
-          <TrendingUp className="h-5 w-5" strokeWidth={2.5} />
+          <Shield className="h-5 w-5" strokeWidth={2.5} />
         </span>
         <span
           className={cn(
@@ -32,7 +32,7 @@ export function Logo({
             "group-focus-within/sidebar:max-w-[11rem] group-focus-within/sidebar:opacity-100",
           )}
         >
-          Trader<span className="text-primary">Rank</span> Pro
+          Trade<span className="text-primary">Guard</span>
         </span>
       </>
     );
@@ -41,14 +41,14 @@ export function Logo({
   if (compact) {
     return (
       <span className={cn("font-bold text-foreground", className)}>
-        Trader<span className="text-primary">Rank</span>
+        Trade<span className="text-primary">Guard</span>
       </span>
     );
   }
 
   return (
     <span className={cn("font-bold text-foreground", className)}>
-      Trader<span className="text-primary">Rank</span> Pro
+      Trade<span className="text-primary">Guard</span>
     </span>
   );
 }
