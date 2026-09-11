@@ -2,7 +2,6 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SignalHubService } from '../signals/signal-hub.service';
 import { currentWeekYear } from '../common/week.util';
-import { NotificationService } from '../email/notification.service';
 import { PlatformNotificationsService } from '../platform-notifications/platform-notifications.service';
 import { isDemoLeaderboardUser } from '../common/demo-user.util';
 
@@ -13,7 +12,6 @@ export class LeaderboardService implements OnModuleInit {
   constructor(
     private prisma: PrismaService,
     private signalHub: SignalHubService,
-    private notifications: NotificationService,
     private platformNotifications: PlatformNotificationsService,
   ) {}
 
@@ -111,7 +109,6 @@ export class LeaderboardService implements OnModuleInit {
       };
 
       if (entry.rank < oldRank) {
-        this.notifications.rankImproved(entry.userId, payload);
         await this.platformNotifications.create({
           userId: entry.userId,
           type: 'RANK_IMPROVED',
@@ -120,7 +117,6 @@ export class LeaderboardService implements OnModuleInit {
           linkUrl: '/leaderboard',
         });
       } else {
-        this.notifications.rankDropped(entry.userId, payload);
         await this.platformNotifications.create({
           userId: entry.userId,
           type: 'RANK_DROPPED',
