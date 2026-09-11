@@ -262,6 +262,23 @@ export class PlatformJobsService implements OnModuleInit {
     }
   }
 
+  /** Daily at 09:00 Africa/Kampala — auto-withdraw for opted-in new depositors. */
+  @Cron('0 9 * * *', { timeZone: 'Africa/Kampala' })
+  async depositorAutoWithdrawJob() {
+    try {
+      const result = await this.walletService.processDailyAutoWithdrawals();
+      if (result.processed > 0 || result.errors > 0) {
+        this.logger.log(
+          `Depositor auto-withdraw: processed=${result.processed} skipped=${result.skipped} errors=${result.errors} checked=${result.checked}`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Depositor auto-withdraw job failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
   /** Daily at 00:10 UTC — credit depositor plan earnings. */
   @Cron('10 0 * * *')
   async depositorDailyEarningsJob() {

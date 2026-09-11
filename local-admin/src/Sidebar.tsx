@@ -36,6 +36,7 @@ export const ADMIN_TABS: Tab[] = [
   "overview",
   "engine",
   "users",
+  "messages",
   "platform",
   "deriv",
   "contractBlockchain",
@@ -139,6 +140,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "overview", label: "Overview", icon: "overview" },
   { id: "engine", label: "Engine", icon: "engine" },
   { id: "users", label: "Users", icon: "users" },
+  { id: "messages", label: "Support chat", icon: "messages" },
   { id: "platform", label: "Investor & depositor", icon: "forecast" },
   { id: "deriv", label: "Deriv", icon: "deriv" },
   { id: "contractBlockchain", label: "Contract blockchain", icon: "contract" },
@@ -358,6 +360,7 @@ type SidebarProps = {
   adminEmail: string;
   onRefresh: () => void;
   onLogout: () => void;
+  messagesUnread?: number;
 };
 
 export function Sidebar({
@@ -369,6 +372,7 @@ export function Sidebar({
   adminEmail,
   onRefresh,
   onLogout,
+  messagesUnread = 0,
 }: SidebarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -420,6 +424,9 @@ export function Sidebar({
           >
             <span className="sidebar-nav-icon">{icons[item.icon]}</span>
             <span className="sidebar-nav-label">{item.label}</span>
+            {item.id === "messages" && messagesUnread > 0 && (
+              <span className="sidebar-nav-badge">{messagesUnread}</span>
+            )}
           </button>
         ))
         )}

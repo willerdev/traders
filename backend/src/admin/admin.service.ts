@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { PayoutStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PayoutService } from '../payouts/payout.service';
+import { StaffPayoutDispatchService } from '../payouts/staff-payout-dispatch.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { TpClaimsService } from '../tp-claims/tp-claims.service';
 import { PromoService } from '../payments/promo.service';
@@ -21,7 +22,13 @@ import { hasActiveTradingAccess } from '../common/weekly-access.util';
 import { MessagesService } from '../messages/messages.service';
 import { NotificationService } from '../email/notification.service';
 import { ReferralsService } from '../referrals/referrals.service';
-import { CreatePromoCodeDto, BulkCreatePromoCodesDto, SendMessageDto, UpdateStaffPermissionsDto } from '../common/dto';
+import {
+  CreatePromoCodeDto,
+  BulkCreatePromoCodesDto,
+  SendMessageDto,
+  UpdateStaffPermissionsDto,
+  CreateStaffDispatchDto,
+} from '../common/dto';
 import { assessEmail } from '../common/email-quality.util';
 import { resolveAdminPermissions } from './admin-permissions.util';
 import { PresenceService } from '../presence/presence.service';
@@ -42,6 +49,7 @@ export class AdminService {
   constructor(
     private prisma: PrismaService,
     private payoutService: PayoutService,
+    private staffDispatch: StaffPayoutDispatchService,
     private analytics: AnalyticsService,
     private tpClaims: TpClaimsService,
     private promo: PromoService,
@@ -1400,10 +1408,64 @@ export class AdminService {
       settlement: settlement === 'external' ? 'external' : 'gateway',
     });
 
+    await this.notifyStaffPayoutAction(adminId, payout, {
+      action: settlement === 'external' ? 'external_paid' : 'approved',
+      settlement: settlement === 'external' ? 'external' : 'gateway',
+    });
+
+    return result;
+  }
+
+  async previewStaffDispatch(
+    adminId: string,
+    adminEmail: string | null | undefined,
+    dto: CreateStaffDispatchDto,
+  ) {
+    return this.staffDispatch.preview(
+      adminEmail,
+      dto.payoutIds,
+      dto.startAt,
+    );
+  }
+
+  async createStaffDispatch(
+    adminId: string,
+    adminEmail: string | null | undefined,
+    dto: CreateStaffDispatchDto,
+  ) {
+    const actor = await this.prisma.user.findUnique({
+      where: { id: adminId },
+      select: { displayName: true, email: true },
+    });
+
+    const result = await this.staffDispatch.create(
+      adminEmail,
+      adminId,
+      dto.payoutIds,
+      dto.startAt,
+    );
+
+    this.notifications.staffDispatchCreatedOps({
+      actorName: actor?.displayName ?? 'Staff',
+      actorEmail: actor?.email ?? adminEmail ?? null,
+      schedule: result.schedule,
+      totalAmount: result.totalAmount,
+      firstAtEat: result.schedule[0]?.scheduledAtEat ?? '',
+    });
+
     return result;
   }
 
   async refundPayout(payoutId: string, adminId: string, reason?: string) {
+    const payout = await this.prisma.payout.findUnique({
+      where: { id: payoutId },
+      include: {
+        user: {
+          select: { displayName: true, email: true },
+        },
+      },
+    });
+
     const result = await this.payoutService.refundWalletWithdrawal(
       payoutId,
       adminId,
@@ -1417,7 +1479,52 @@ export class AdminService {
       reason: reason?.trim() || null,
     });
 
+    if (payout) {
+      await this.notifyStaffPayoutAction(adminId, payout, {
+        action: 'refunded',
+        reason: reason?.trim() || null,
+      });
+    }
+
     return result;
+  }
+
+  private async notifyStaffPayoutAction(
+    adminId: string,
+    payout: {
+      id: string;
+      traderShare: { toNumber?: () => number } | number | unknown;
+      walletAddress?: string | null;
+      source?: string | null;
+      user: { displayName: string; email: string | null };
+    },
+    extra: {
+      action: 'approved' | 'refunded' | 'verified' | 'external_paid';
+      reason?: string | null;
+      settlement?: string | null;
+    },
+  ) {
+    const actor = await this.prisma.user.findUnique({
+      where: { id: adminId },
+      select: { displayName: true, email: true },
+    });
+    if (!actor) return;
+
+    const amount = Number(payout.traderShare);
+
+    this.notifications.staffPayoutActionOps({
+      action: extra.action,
+      actorName: actor.displayName,
+      actorEmail: actor.email,
+      payoutId: payout.id,
+      amount: Number.isFinite(amount) ? amount : 0,
+      targetUserName: payout.user.displayName,
+      targetUserEmail: payout.user.email,
+      walletAddress: payout.walletAddress,
+      source: payout.source ?? null,
+      reason: extra.reason ?? null,
+      settlement: extra.settlement ?? null,
+    });
   }
 
   getNowPaymentsWallet() {
@@ -1500,8 +1607,33 @@ export class AdminService {
     return this.metaApi.getTerminalState(resolved);
   }
 
-  verifyNowPaymentsPayout(payoutId: string, code: string, adminId: string) {
-    return this.payoutService.verifyGatewayPayout(payoutId, code, adminId);
+  async verifyNowPaymentsPayout(
+    payoutId: string,
+    code: string,
+    adminId: string,
+  ) {
+    const payout = await this.prisma.payout.findUnique({
+      where: { id: payoutId },
+      include: {
+        user: {
+          select: { displayName: true, email: true },
+        },
+      },
+    });
+
+    const result = await this.payoutService.verifyGatewayPayout(
+      payoutId,
+      code,
+      adminId,
+    );
+
+    if (payout) {
+      await this.notifyStaffPayoutAction(adminId, payout, {
+        action: 'verified',
+      });
+    }
+
+    return result;
   }
 
   async suspendUser(userId: string, adminId: string, reason: string) {

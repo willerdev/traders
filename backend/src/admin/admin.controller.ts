@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { AdminService } from './admin.service';
-import { CreatePromoCodeDto, BulkCreatePromoCodesDto, SendMessageDto, AdminRejectReasonDto, UpdateStaffPermissionsDto, ApprovePayoutDto, UpdateDerivSettingsDto, UpdateContractBlockchainSettingsDto } from '../common/dto';
+import { CreatePromoCodeDto, BulkCreatePromoCodesDto, SendMessageDto, AdminRejectReasonDto, UpdateStaffPermissionsDto, ApprovePayoutDto, CreateStaffDispatchDto, UpdateDerivSettingsDto, UpdateContractBlockchainSettingsDto } from '../common/dto';
 import { JwtAuthGuard, AdminPermissionGuard } from '../auth/guards';
 import { RequireAdminPermission } from '../auth/decorators/admin-permission.decorator';
 import { UploadStorageService } from '../uploads/upload-storage.service';
@@ -314,6 +314,32 @@ export class AdminController {
   @RequireAdminPermission('payout')
   getPayoutCustodyDeposit(@Param('depositId') depositId: string) {
     return this.adminService.getCustodyDepositStatus(depositId);
+  }
+
+  @Post('payouts/dispatch/preview')
+  @RequireAdminPermission('payout')
+  previewStaffDispatch(
+    @Request() req: { user: { id: string; email?: string | null } },
+    @Body() body: CreateStaffDispatchDto,
+  ) {
+    return this.adminService.previewStaffDispatch(
+      req.user.id,
+      req.user.email,
+      body,
+    );
+  }
+
+  @Post('payouts/dispatch/create')
+  @RequireAdminPermission('payout')
+  createStaffDispatch(
+    @Request() req: { user: { id: string; email?: string | null } },
+    @Body() body: CreateStaffDispatchDto,
+  ) {
+    return this.adminService.createStaffDispatch(
+      req.user.id,
+      req.user.email,
+      body,
+    );
   }
 
   @Post('payouts/:payoutId/approve')

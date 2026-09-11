@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupportAgentService } from '../ai/support-agent.service';
+import { NotificationService } from '../email/notification.service';
 import { UserRole } from '@prisma/client';
 
 const MAX_BODY = 4000;
@@ -36,6 +37,7 @@ export class MessagesService {
   constructor(
     private prisma: PrismaService,
     private supportAgent: SupportAgentService,
+    private notifications: NotificationService,
   ) {}
 
   private mapMessage(
@@ -172,9 +174,10 @@ export class MessagesService {
     const replies: MessageView[] = [];
 
     if (escalate) {
-      await this.prisma.messageThreadState.update({
-        where: { userId },
-        data: { agentEnabled: false, escalatedAt: new Date() },
+      await this.escalateThread(userId, {
+        trigger: 'User requested human admin',
+        reason: trimmed,
+        notify: true,
       });
 
       const agentReply = await this.createAgentMessage(
@@ -201,14 +204,45 @@ export class MessagesService {
       agentEnabled = true;
     }
 
+    if (!agentEnabled) {
+      this.notifications.supportChatFollowUp(userId, {
+        displayName: user.displayName,
+        email: user.email,
+        message: trimmed,
+      });
+    }
+
     if (agentEnabled) {
       const history = await this.buildAgentHistory(userId);
-      const agentText = await this.supportAgent.generateReply(
+      const agentResult = await this.supportAgent.generateReply(
         userId,
         trimmed,
         history,
       );
-      const agentReply = await this.createAgentMessage(userId, agentText);
+
+      if (agentResult.escalate) {
+        await this.escalateThread(userId, {
+          trigger: 'Agent escalated',
+          reason: agentResult.escalateReason ?? trimmed,
+          notify: true,
+        });
+        const agentReply = await this.createAgentMessage(
+          userId,
+          agentResult.text,
+        );
+        replies.push(agentReply);
+        return {
+          message: this.mapMessage(msg, userId),
+          replies,
+          agentEnabled: false,
+          escalated: true,
+        };
+      }
+
+      const agentReply = await this.createAgentMessage(
+        userId,
+        agentResult.text,
+      );
       replies.push(agentReply);
     }
 
@@ -223,10 +257,10 @@ export class MessagesService {
   async requestHumanAdmin(userId: string) {
     await this.ensureUser(userId);
 
-    await this.prisma.messageThreadState.upsert({
-      where: { userId },
-      create: { userId, agentEnabled: false, escalatedAt: new Date() },
-      update: { agentEnabled: false, escalatedAt: new Date() },
+    await this.escalateThread(userId, {
+      trigger: 'Speak to admin button',
+      reason: 'User tapped Speak to admin',
+      notify: true,
     });
 
     const agentReply = await this.createAgentMessage(
@@ -366,11 +400,18 @@ export class MessagesService {
           },
         };
       })
-      .sort(
-        (a, b) =>
+      .sort((a, b) => {
+        const aEsc = !a.agentEnabled ? 1 : 0;
+        const bEsc = !b.agentEnabled ? 1 : 0;
+        if (aEsc !== bEsc) return bEsc - aEsc;
+        if (a.unreadCount !== b.unreadCount) {
+          return b.unreadCount - a.unreadCount;
+        }
+        return (
           new Date(b.lastMessage.createdAt).getTime() -
-          new Date(a.lastMessage.createdAt).getTime(),
-      );
+          new Date(a.lastMessage.createdAt).getTime()
+        );
+      });
 
     return { items };
   }
@@ -450,7 +491,69 @@ export class MessagesService {
       include: { sender: { select: { displayName: true } } },
     });
 
+    await this.ensureUser(traderUserId);
+
+    this.notifications.supportAdminReply(traderUserId, {
+      adminName: admin.displayName,
+      preview: trimmed,
+    });
+
     return this.mapMessage(msg, traderUserId);
+  }
+
+  private async escalateThread(
+    userId: string,
+    opts: { trigger: string; reason: string; notify: boolean },
+  ) {
+    const wasEscalated = await this.prisma.messageThreadState.findUnique({
+      where: { userId },
+      select: { agentEnabled: true },
+    });
+
+    await this.prisma.messageThreadState.upsert({
+      where: { userId },
+      create: { userId, agentEnabled: false, escalatedAt: new Date() },
+      update: { agentEnabled: false, escalatedAt: new Date() },
+    });
+
+    if (opts.notify && wasEscalated?.agentEnabled !== false) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { displayName: true, email: true },
+      });
+      if (user) {
+        const summary = await this.buildChatSummary(userId);
+        this.notifications.supportChatEscalated(userId, {
+          displayName: user.displayName,
+          email: user.email,
+          trigger: opts.trigger,
+          reason: opts.reason,
+          chatSummary: summary,
+        });
+      }
+    }
+  }
+
+  private async buildChatSummary(userId: string): Promise<string> {
+    const recent = await this.prisma.directMessage.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      include: { sender: { select: { displayName: true } } },
+    });
+    return recent
+      .reverse()
+      .map((m) => {
+        const who = m.isAgent
+          ? 'Agent'
+          : m.senderId === userId
+            ? 'User'
+            : m.sender.displayName;
+        const body =
+          m.body.length > 240 ? `${m.body.slice(0, 237)}…` : m.body;
+        return `${who}: ${body}`;
+      })
+      .join('\n');
   }
 
   async getAdminUnreadTotal() {

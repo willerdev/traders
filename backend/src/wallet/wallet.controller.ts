@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   Request,
@@ -290,5 +291,26 @@ export class WalletController {
     @Param('id') walletId: string,
   ) {
     return this.savedWallets.remove(req.user.id, walletId);
+  }
+
+  @Get('auto-withdraw')
+  @UseGuards(JwtAuthGuard)
+  autoWithdrawSettings(@Request() req: { user: { id: string } }) {
+    return this.wallet.getAutoWithdrawSettings(req.user.id);
+  }
+
+  @Patch('auto-withdraw')
+  @UseGuards(JwtAuthGuard)
+  updateAutoWithdrawSettings(
+    @Request() req: { user: { id: string } },
+    @Body()
+    body: {
+      enabled?: boolean;
+      savedWalletId?: string | null;
+      amount?: number | null;
+      useFullAvailable?: boolean;
+    },
+  ) {
+    return this.wallet.updateAutoWithdrawSettings(req.user.id, body);
   }
 }

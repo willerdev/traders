@@ -1225,6 +1225,18 @@ class ApiClient {
         method: "POST",
         body: JSON.stringify({ year, month }),
       }),
+    autoWithdrawSettings: () =>
+      this.request<AutoWithdrawSettings>("/wallet/auto-withdraw"),
+    updateAutoWithdrawSettings: (data: {
+      enabled?: boolean;
+      savedWalletId?: string | null;
+      amount?: number | null;
+      useFullAvailable?: boolean;
+    }) =>
+      this.request<AutoWithdrawSettings>("/wallet/auto-withdraw", {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
   };
 
   investor = {
@@ -1575,6 +1587,7 @@ class ApiClient {
   };
 
   admin = {
+    session: () => this.request<AdminSession>("/admin/session"),
     overview: () => this.request<AdminOverview>("/admin/overview"),
     pendingKyc: () => this.request<AdminKycItem[]>("/admin/kyc/pending"),
     approveKyc: (userId: string) =>
@@ -1584,10 +1597,60 @@ class ApiClient {
         method: "POST",
         body: JSON.stringify({ reason }),
       }),
+    listPayouts: (status?: string) =>
+      this.request<AdminPayoutListResponse>(
+        `/admin/payouts?limit=50${status ? `&status=${encodeURIComponent(status)}` : ""}`,
+      ),
     pendingPayouts: () =>
       this.request<AdminPayoutItem[]>("/admin/payouts/pending"),
-    approvePayout: (payoutId: string) =>
-      this.request(`/admin/payouts/${payoutId}/approve`, { method: "POST" }),
+    approvePayout: (payoutId: string, settlement?: "gateway" | "external") =>
+      settlement === "external"
+        ? this.request<AdminApprovePayoutResponse>(
+            `/admin/payouts/${payoutId}/mark-external-paid`,
+            { method: "POST" },
+          )
+        : this.request<AdminApprovePayoutResponse>(
+            `/admin/payouts/${payoutId}/approve`,
+            {
+              method: "POST",
+              body: JSON.stringify(settlement ? { settlement } : {}),
+            },
+          ),
+    refundPayout: (payoutId: string, reason?: string) =>
+      this.request<AdminRefundPayoutResponse>(
+        `/admin/payouts/${payoutId}/refund`,
+        {
+          method: "POST",
+          body: JSON.stringify({ reason }),
+        },
+      ),
+    verifyPayout: (payoutId: string, code: string) =>
+      this.request<{ message: string }>(`/admin/payouts/${payoutId}/verify`, {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      }),
+    previewStaffDispatch: (body?: {
+      payoutIds?: string[];
+      startAt?: string;
+    }) =>
+      this.request<StaffDispatchPreviewResponse>(
+        "/admin/payouts/dispatch/preview",
+        {
+          method: "POST",
+          body: JSON.stringify(body ?? {}),
+        },
+      ),
+    createStaffDispatch: (body?: {
+      payoutIds?: string[];
+      startAt?: string;
+    }) =>
+      this.request<StaffDispatchCreateResponse>(
+        "/admin/payouts/dispatch/create",
+        {
+          method: "POST",
+          body: JSON.stringify(body ?? {}),
+        },
+      ),
   };
 }
 
@@ -1809,18 +1872,86 @@ export interface AdminKycItem {
   };
 }
 
+export interface AdminSession {
+  id: string;
+  email: string | null;
+  displayName: string;
+  role: string;
+  permissions: AdminPermissionsView;
+}
+
 export interface AdminPayoutItem {
   id: string;
-  traderShare: number;
-  virtualProfit: number;
+  traderShare: number | string;
+  virtualProfit?: number | string;
   walletAddress: string | null;
   status: string;
+  source?: string;
+  payoutMethod?: string | null;
+  notes?: string | null;
+  requestedAt?: string;
+  scheduledApproveAt?: string | null;
+  gatewayPayoutId?: string | null;
+  tpClaim?: {
+    id: string;
+    status: string;
+    claimType?: string | null;
+    symbol?: string | null;
+  } | null;
   user: {
     id: string;
     displayName: string;
     email: string | null;
     kyc: { status: string } | null;
   };
+}
+
+export interface AdminPayoutListResponse {
+  items: AdminPayoutItem[];
+  count: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AdminApprovePayoutResponse {
+  verificationRequired?: boolean;
+  alreadyProcessed?: boolean;
+  creditedToWallet?: boolean;
+  gatewayPayoutId?: string;
+  message?: string;
+  payout?: { status: string };
+}
+
+export interface AdminRefundPayoutResponse {
+  message: string;
+  amount: number;
+  balance: number;
+  payout: { id: string; status: string };
+}
+
+export interface StaffDispatchRow {
+  position: number;
+  payoutId: string;
+  displayName: string;
+  email: string | null;
+  amount: number;
+  walletAddress: string;
+  scheduledAt: string;
+  scheduledAtEat: string;
+}
+
+export interface StaffDispatchPreviewResponse {
+  intervalHours: number;
+  order: "low_to_high_amount";
+  firstAt: string;
+  firstAtEat: string;
+  count: number;
+  totalAmount: number;
+  schedule: StaffDispatchRow[];
+}
+
+export interface StaffDispatchCreateResponse extends StaffDispatchPreviewResponse {
+  message: string;
 }
 
 export interface WalletTransaction {
@@ -1863,6 +1994,7 @@ export interface WalletSummary {
   withdrawalNextPreferredWindowAt?: string;
   withdrawalPreferredWindowLabel?: string;
   vipActive?: boolean;
+  autoWithdrawEligible?: boolean;
   activePlan: {
     id: string;
     amount: number;
@@ -1899,6 +2031,25 @@ export interface SavedWithdrawalWallet {
   network: WithdrawalWalletNetwork;
   verifiedAt: string;
   createdAt: string;
+}
+
+export interface AutoWithdrawSettings {
+  eligible: boolean;
+  eligibleAt: string | null;
+  enabled: boolean;
+  savedWalletId: string | null;
+  savedWallet: {
+    id: string;
+    label: string;
+    address: string;
+    network: string;
+  } | null;
+  amount: number | null;
+  useFullAvailable: boolean;
+  lastAutoWithdrawAt: string | null;
+  kycApproved: boolean;
+  availableBalance: number;
+  minFeeUsdt: number;
 }
 
 export interface MomoP2pWithdrawal {

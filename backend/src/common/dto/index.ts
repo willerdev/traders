@@ -265,6 +265,17 @@ export class ApprovePayoutDto {
   settlement?: 'gateway' | 'external';
 }
 
+export class CreateStaffDispatchDto {
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  payoutIds?: string[];
+
+  @IsOptional()
+  @IsString()
+  startAt?: string;
+}
+
 export class RequestTpClaimPayoutDto {
   @IsOptional()
   @IsString()

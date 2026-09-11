@@ -522,6 +522,8 @@ export default function App() {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatSending, setChatSending] = useState(false);
   const [chatModalUser, setChatModalUser] = useState<UserRow | null>(null);
+  const [messagesUnread, setMessagesUnread] = useState(0);
+  const [chatFilter, setChatFilter] = useState<"all" | "needs_admin">("all");
   const [suspiciousOnly, setSuspiciousOnly] = useState(false);
   const [userPage, setUserPage] = useState(0);
   const [userSearch, setUserSearch] = useState("");
@@ -767,11 +769,12 @@ export default function App() {
       } else if (active === "contractBlockchain") {
         /* ContractBlockchainPanel is self-contained */
       } else if (active === "messages") {
-        const res = await api.messageThreads();
-        setMessageThreads(res.items);
-        if (res.items.length > 0 && !activeChatUserId) {
-          setActiveChatUserId(res.items[0].userId);
+        const items = await refreshMessageThreads();
+        if (items.length > 0 && !activeChatUserId) {
+          const needsAdmin = items.find((t) => !t.agentEnabled);
+          setActiveChatUserId(needsAdmin?.userId ?? items[0].userId);
         }
+        await refreshMessagesUnread();
       } else if (active === "signals") {
         const res = await api.signals(
           signalPage * SIGNAL_PAGE_SIZE,
@@ -1072,6 +1075,22 @@ export default function App() {
   }
 
   const chatLastSyncRef = useRef<Record<string, string>>({});
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const refreshMessageThreads = useCallback(async () => {
+    const res = await api.messageThreads();
+    setMessageThreads(res.items);
+    return res.items;
+  }, []);
+
+  const refreshMessagesUnread = useCallback(async () => {
+    try {
+      const res = await api.messagesUnreadCount();
+      setMessagesUnread(res.count);
+    } catch {
+      /* silent */
+    }
+  }, []);
 
   const loadChatThread = useCallback(async (userId: string, incremental = false) => {
     if (!incremental) setChatLoading(true);
@@ -1116,16 +1135,28 @@ export default function App() {
 
   useEffect(() => {
     if (!authed) return;
+    void refreshMessagesUnread();
+    const timer = setInterval(() => void refreshMessagesUnread(), 15000);
+    return () => clearInterval(timer);
+  }, [authed, refreshMessagesUnread]);
+
+  useEffect(() => {
+    if (!authed) return;
     if (tab === "messages" && activeChatUserId) {
       void loadChatThread(activeChatUserId);
-      const timer = setInterval(
-        () => void loadChatThread(activeChatUserId, true),
-        4000,
-      );
-      return () => clearInterval(timer);
+      const poll = setInterval(() => {
+        void loadChatThread(activeChatUserId, true);
+        void refreshMessageThreads();
+        void refreshMessagesUnread();
+      }, 4000);
+      return () => clearInterval(poll);
     }
     return undefined;
-  }, [authed, tab, activeChatUserId, loadChatThread]);
+  }, [authed, tab, activeChatUserId, loadChatThread, refreshMessageThreads, refreshMessagesUnread]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages, chatModalUser]);
 
   useEffect(() => {
     if (!chatModalUser) return;
@@ -1146,8 +1177,8 @@ export default function App() {
       setChatMessages((prev) => [...prev, msg]);
       setChatDraft("");
       if (tab === "messages") {
-        const res = await api.messageThreads();
-        setMessageThreads(res.items);
+        await refreshMessageThreads();
+        await refreshMessagesUnread();
       }
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Could not send message");
@@ -1593,6 +1624,7 @@ export default function App() {
         adminEmail={email || getAdminEmail() || "admin"}
         onRefresh={() => void refresh()}
         onLogout={logout}
+        messagesUnread={messagesUnread}
       />
 
       <main className="main">
@@ -2314,20 +2346,47 @@ export default function App() {
         {tab === "messages" && (
           <>
             <div className="toolbar">
-              <h2>Direct messages</h2>
+              <h2>Support chat</h2>
+              {messagesUnread > 0 && (
+                <span className="chat-unread" style={{ marginLeft: "0.5rem" }}>
+                  {messagesUnread} unread
+                </span>
+              )}
             </div>
             <div className="chat-layout">
               <aside className="chat-threads">
+                <div className="chat-filter-bar">
+                  <button
+                    type="button"
+                    className={chatFilter === "all" ? "active" : ""}
+                    onClick={() => setChatFilter("all")}
+                  >
+                    All ({messageThreads.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={chatFilter === "needs_admin" ? "active" : ""}
+                    onClick={() => setChatFilter("needs_admin")}
+                  >
+                    Needs admin (
+                    {messageThreads.filter((t) => !t.agentEnabled).length})
+                  </button>
+                </div>
                 {messageThreads.length === 0 ? (
                   <p className="muted" style={{ padding: "1rem" }}>
-                    No conversations yet. Open a user from the Users tab and click Chat.
+                    No conversations yet. Users reach Support from Messages on the
+                    platform, or open a user from Users → Chat.
                   </p>
                 ) : (
-                  messageThreads.map((t) => (
+                  messageThreads
+                    .filter((t) =>
+                      chatFilter === "needs_admin" ? !t.agentEnabled : true,
+                    )
+                    .map((t) => (
                     <button
                       key={t.userId}
                       type="button"
-                      className={`chat-thread${activeChatUserId === t.userId ? " active" : ""}`}
+                      className={`chat-thread${activeChatUserId === t.userId ? " active" : ""}${!t.agentEnabled ? " escalated" : ""}`}
                       onClick={() => setActiveChatUserId(t.userId)}
                     >
                       <div className="chat-thread-top">
@@ -2342,6 +2401,9 @@ export default function App() {
                       )}
                       <span className="chat-preview">
                         {t.lastMessage.isAgent ? "Agent: " : ""}
+                        {!t.lastMessage.fromAdmin && !t.lastMessage.isAgent
+                          ? `${t.displayName}: `
+                          : ""}
                         {t.lastMessage.body}
                       </span>
                     </button>
@@ -2350,7 +2412,9 @@ export default function App() {
               </aside>
               <section className="chat-panel">
                 {!activeChatUserId ? (
-                  <p className="muted">Select a conversation</p>
+                  <p className="muted" style={{ padding: "1rem" }}>
+                    Select a conversation
+                  </p>
                 ) : (
                   <>
                     <div className="chat-panel-header">
@@ -2358,6 +2422,16 @@ export default function App() {
                         {messageThreads.find((t) => t.userId === activeChatUserId)
                           ?.displayName ?? "Trader"}
                       </strong>
+                      <div className="chat-panel-meta">
+                        <span>
+                          {messageThreads.find((t) => t.userId === activeChatUserId)
+                            ?.email ?? "—"}
+                        </span>
+                        {!messageThreads.find((t) => t.userId === activeChatUserId)
+                          ?.agentEnabled && (
+                          <span className="chat-panel-badge">Needs admin</span>
+                        )}
+                      </div>
                     </div>
                     <div className="chat-messages">
                       {chatLoading && chatMessages.length === 0 ? (
@@ -2382,11 +2456,15 @@ export default function App() {
                             {msg.isAgent && (
                               <span className="chat-sender">Agent</span>
                             )}
+                            {!msg.isAgent && msg.fromAdmin && (
+                              <span className="chat-sender">You (admin)</span>
+                            )}
                             <p>{msg.body}</p>
                             <time>{fmtDate(msg.createdAt)}</time>
                           </div>
                         ))
                       )}
+                      <div ref={chatEndRef} />
                     </div>
                     <form
                       className="chat-compose"
@@ -2397,13 +2475,19 @@ export default function App() {
                     >
                       <textarea
                         rows={2}
-                        placeholder="Write to trader…"
+                        placeholder="Reply to trader… (Enter to send, Shift+Enter for new line)"
                         value={chatDraft}
                         onChange={(e) => setChatDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            void sendChatMessage(activeChatUserId);
+                          }
+                        }}
                         maxLength={4000}
                       />
                       <button type="submit" className="primary" disabled={chatSending}>
-                        {chatSending ? "Sending…" : "Send"}
+                        {chatSending ? "Sending…" : "Send reply"}
                       </button>
                     </form>
                   </>

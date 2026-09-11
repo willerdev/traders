@@ -32,6 +32,7 @@ import {
   HandCoins,
   Banknote,
   Sprout,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore, useDashboardStore } from "@/stores/auth";
@@ -42,6 +43,7 @@ import { PlatformNotificationsBell } from "@/components/layout/platform-notifica
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import { ChatFab } from "@/components/layout/chat-fab";
 import {
+  canAccessAdminSection,
   mt5NavHref,
   type AdminPermissionsView,
 } from "@/lib/copy-access";
@@ -193,12 +195,30 @@ function resolveGroups(
   adminPermissions?: AdminPermissionsView | null,
 ): NavGroup[] {
   const mt5Href = mt5NavHref({ role, adminPermissions });
-  return NAV_GROUPS.map((group) => ({
+  const groups = NAV_GROUPS.map((group) => ({
     ...group,
     items: group.items.map((item) =>
       item.href === "/mt5" ? { ...item, href: mt5Href } : item,
     ),
   }));
+
+  if (canAccessAdminSection({ role, adminPermissions })) {
+    groups.push({
+      id: "admin",
+      label: "Admin",
+      items: [
+        {
+          href: "/admin/payouts",
+          label: "Payouts",
+          shortLabel: "Payouts",
+          icon: ShieldCheck,
+          keywords: "admin approve deny refund staff",
+        },
+      ],
+    });
+  }
+
+  return groups;
 }
 
 function pathActive(pathname: string, href: string) {

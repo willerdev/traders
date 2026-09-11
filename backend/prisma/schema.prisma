@@ -335,6 +335,15 @@ model User {
   instantWithdrawGrantedById     String?
   /// When true with instantWithdraw: admin-marked verified — skip KYC for withdrawals.
   instantWithdrawKycExempt       Boolean    @default(false)
+  /// Set on first confirmed platform wallet deposit — unlocks daily auto-withdraw opt-in.
+  autoWithdrawEligible           Boolean    @default(false)
+  autoWithdrawEligibleAt         DateTime?
+  /// User opt-in: daily cron sends available balance to saved TRC20 wallet.
+  autoWithdrawEnabled            Boolean    @default(false)
+  autoWithdrawWalletId           String?
+  /// Fixed daily gross USDT; null = withdraw full available balance.
+  autoWithdrawAmount             Decimal?   @db.Decimal(12, 2)
+  lastAutoWithdrawAt             DateTime?
   /// Bcrypt hash of 6-digit app PIN (unlock + withdraw auth).
   appPinHash                     String?
   appPinUpdatedAt                DateTime?

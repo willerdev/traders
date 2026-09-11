@@ -183,6 +183,49 @@ export class NotificationService {
     );
   }
 
+  /** User asked for admin / AI escalated — alert ops inbox + admins. */
+  supportChatEscalated(
+    userId: string,
+    data: {
+      displayName: string;
+      email: string | null;
+      trigger: string;
+      reason: string;
+      chatSummary: string;
+    },
+  ) {
+    this.dispatch(
+      this.sendSupportChatEscalated(userId, data),
+      'Support chat escalation',
+    );
+  }
+
+  /** User sent a follow-up while waiting for admin (already escalated). */
+  supportChatFollowUp(
+    userId: string,
+    data: {
+      displayName: string;
+      email: string | null;
+      message: string;
+    },
+  ) {
+    this.dispatch(
+      this.sendSupportChatFollowUp(userId, data),
+      'Support chat follow-up',
+    );
+  }
+
+  /** Admin replied in support thread — email the trader. */
+  supportAdminReply(
+    userId: string,
+    data: { adminName: string; preview: string },
+  ) {
+    this.dispatch(
+      this.sendSupportAdminReply(userId, data),
+      'Support admin reply',
+    );
+  }
+
   /** Email ops + admins about a platform-level issue (broker limits, quotas). */
   async adminSystemAlert(subject: string, bodyLines: string[]) {
     const html = this.email.layout(
@@ -367,6 +410,95 @@ export class NotificationService {
     });
   }
 
+  private async sendSupportChatEscalated(
+    userId: string,
+    data: {
+      displayName: string;
+      email: string | null;
+      trigger: string;
+      reason: string;
+      chatSummary: string;
+    },
+  ) {
+    const userLabel = data.email
+      ? `${data.displayName} (${data.email})`
+      : data.displayName;
+    const summaryHtml = this.escape(data.chatSummary).replace(/\n/g, '<br/>');
+    const html = this.email.layout(
+      'Support chat needs admin',
+      `<p>A user requested human support or Agent escalated the conversation.</p>
+      <table style="width:100%;border-collapse:collapse;margin:12px 0;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">User</td><td style="padding:6px 0;"><strong>${this.escape(userLabel)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">User ID</td><td style="padding:6px 0;"><code style="color:#e2e8f0;">${this.escape(userId)}</code></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Trigger</td><td style="padding:6px 0;">${this.escape(data.trigger)}</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Reason</td><td style="padding:6px 0;">${this.escape(data.reason)}</td></tr>
+      </table>
+      <p style="color:#94a3b8;font-size:14px;margin-bottom:8px;">Recent messages:</p>
+      <div style="background:#1e293b;border-radius:8px;padding:12px;font-size:13px;color:#cbd5e1;line-height:1.5;">${summaryHtml}</div>
+      <p style="color:#94a3b8;font-size:14px;margin-top:16px;">Open <strong>Local Admin → Support chat</strong>, find this user by email, and reply. Trader-facing thread: ${this.email.frontendUrl}/messages</p>`,
+    );
+    return this.sendOpsAlert({
+      label: 'Support chat escalation',
+      subject: `[Support] Admin needed — ${data.displayName}`,
+      html,
+      text: `Support escalation for ${userLabel} (${userId}). Trigger: ${data.trigger}. Reason: ${data.reason}\n\n${data.chatSummary}\n\nReply in Local Admin → Support chat.`,
+    });
+  }
+
+  private async sendSupportChatFollowUp(
+    userId: string,
+    data: {
+      displayName: string;
+      email: string | null;
+      message: string;
+    },
+  ) {
+    const userLabel = data.email
+      ? `${data.displayName} (${data.email})`
+      : data.displayName;
+    const preview =
+      data.message.length > 300
+        ? `${data.message.slice(0, 297)}…`
+        : data.message;
+    const html = this.email.layout(
+      'New message in escalated support chat',
+      `<p><strong>${this.escape(userLabel)}</strong> sent a follow-up while waiting for admin:</p>
+      <p style="color:#cbd5e1;">${this.escape(preview)}</p>
+      <p style="color:#94a3b8;font-size:14px;">User ID: <code style="color:#e2e8f0;">${this.escape(userId)}</code> — open Local Admin → Support chat to reply.</p>`,
+    );
+    return this.sendOpsAlert({
+      label: 'Support chat follow-up',
+      subject: `[Support] Follow-up from ${data.displayName}`,
+      html,
+      text: `${userLabel} (${userId}) follow-up: ${preview}\nReply in Local Admin → Support chat.`,
+    });
+  }
+
+  private async sendSupportAdminReply(
+    userId: string,
+    data: { adminName: string; preview: string },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const preview =
+      data.preview.length > 400
+        ? `${data.preview.slice(0, 397)}…`
+        : data.preview;
+    const html = this.email.layout(
+      'Admin replied to your support message',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p><strong>${this.escape(data.adminName)}</strong> from our team replied in Support:</p>
+      <p style="color:#cbd5e1;">${this.escape(preview)}</p>
+      ${this.email.button(`${this.email.frontendUrl}/messages`, 'Open Support chat')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `${data.adminName} replied to your support message`,
+      html,
+      text: `${data.adminName}: ${preview}\nOpen ${this.email.frontendUrl}/messages`,
+    });
+  }
+
   private async sendPasswordReset(email: string, token: string) {
     const to = email.trim().toLowerCase();
     const resetUrl = `${this.email.frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
@@ -538,6 +670,158 @@ export class NotificationService {
     },
   ) {
     this.dispatch(this.sendPayoutApproved(userId, data), 'Payout approved');
+  }
+
+  /** Ops copy when staff creates a timed payout dispatch (rukundo18 only). */
+  staffDispatchCreatedOps(data: {
+    actorName: string;
+    actorEmail: string | null;
+    schedule: Array<{
+      position: number;
+      displayName: string;
+      email: string | null;
+      amount: number;
+      scheduledAtEat: string;
+    }>;
+    totalAmount: number;
+    firstAtEat: string;
+  }) {
+    this.dispatch(this.sendStaffDispatchCreatedOps(data), 'Staff dispatch created');
+  }
+
+  private async sendStaffDispatchCreatedOps(data: {
+    actorName: string;
+    actorEmail: string | null;
+    schedule: Array<{
+      position: number;
+      displayName: string;
+      email: string | null;
+      amount: number;
+      scheduledAtEat: string;
+    }>;
+    totalAmount: number;
+    firstAtEat: string;
+  }) {
+    const actor = data.actorEmail
+      ? `${this.escape(data.actorName)} (${this.escape(data.actorEmail)})`
+      : this.escape(data.actorName);
+    const rows = data.schedule
+      .map(
+        (r) =>
+          `<tr>
+            <td style="padding:4px 8px;border-bottom:1px solid #334155;">${r.position}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #334155;">${this.escape(r.displayName)}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #334155;">$${r.amount.toFixed(2)}</td>
+            <td style="padding:4px 8px;border-bottom:1px solid #334155;">${this.escape(r.scheduledAtEat)} EAT</td>
+          </tr>`,
+      )
+      .join('');
+
+    const html = this.email.layout(
+      'Staff payout dispatch created',
+      `<p><strong>Payout dispatch scheduled</strong> by ${actor}</p>
+      <p style="color:#94a3b8;font-size:14px;">Order: <strong>low → high amount</strong> · Interval: <strong>2 hours</strong> · First slot: <strong>${this.escape(data.firstAtEat)} EAT</strong></p>
+      <p><strong>${data.schedule.length}</strong> payout(s) · Total <strong>$${data.totalAmount.toFixed(2)} USDT</strong></p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:13px;">
+        <thead>
+          <tr style="color:#94a3b8;text-align:left;">
+            <th style="padding:4px 8px;">#</th>
+            <th style="padding:4px 8px;">User</th>
+            <th style="padding:4px 8px;">Amount</th>
+            <th style="padding:4px 8px;">Scheduled</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p style="font-size:13px;color:#94a3b8;">Cron auto-approves each payout when its slot is due.</p>`,
+    );
+
+    const textLines = data.schedule
+      .map(
+        (r) =>
+          `${r.position}. ${r.displayName} $${r.amount.toFixed(2)} @ ${r.scheduledAtEat} EAT`,
+      )
+      .join('\n');
+
+    return this.sendOpsAlert({
+      label: `Staff dispatch ${data.schedule.length} payouts`,
+      subject: `[Staff dispatch] ${data.schedule.length} payouts — $${data.totalAmount.toFixed(2)} — ${data.actorName}`,
+      html,
+      text: `Dispatch by ${data.actorName}: ${data.schedule.length} payouts, $${data.totalAmount.toFixed(2)} total, 2h interval low→high\nFirst: ${data.firstAtEat} EAT\n\n${textLines}`,
+    });
+  }
+
+  /** Ops copy when staff (or any admin) approves, refunds, or verifies a payout. */
+  staffPayoutActionOps(data: {
+    action: 'approved' | 'refunded' | 'verified' | 'external_paid';
+    actorName: string;
+    actorEmail: string | null;
+    payoutId: string;
+    amount: number;
+    targetUserName: string;
+    targetUserEmail: string | null;
+    walletAddress?: string | null;
+    source?: string | null;
+    reason?: string | null;
+    settlement?: string | null;
+  }) {
+    this.dispatch(this.sendStaffPayoutActionOps(data), 'Staff payout action');
+  }
+
+  private async sendStaffPayoutActionOps(data: {
+    action: 'approved' | 'refunded' | 'verified' | 'external_paid';
+    actorName: string;
+    actorEmail: string | null;
+    payoutId: string;
+    amount: number;
+    targetUserName: string;
+    targetUserEmail: string | null;
+    walletAddress?: string | null;
+    source?: string | null;
+    reason?: string | null;
+    settlement?: string | null;
+  }) {
+    const actionLabel =
+      data.action === 'approved'
+        ? 'Approved payout'
+        : data.action === 'external_paid'
+          ? 'Marked payout paid (external)'
+          : data.action === 'refunded'
+            ? 'Refunded / denied payout'
+            : 'Verified payout (2FA)';
+
+    const actor = data.actorEmail
+      ? `${this.escape(data.actorName)} (${this.escape(data.actorEmail)})`
+      : this.escape(data.actorName);
+    const target = data.targetUserEmail
+      ? `${this.escape(data.targetUserName)} (${this.escape(data.targetUserEmail)})`
+      : this.escape(data.targetUserName);
+    const wallet = data.walletAddress?.trim()
+      ? `<code>${this.escape(data.walletAddress.trim())}</code>`
+      : '—';
+
+    const html = this.email.layout(
+      actionLabel,
+      `<p><strong>${this.escape(actionLabel)}</strong> by staff/admin:</p>
+      <p style="margin:8px 0;color:#cbd5e1;">Actor: <strong>${actor}</strong></p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">Payout ID</td><td><code>${this.escape(data.payoutId)}</code></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">User</td><td>${target}</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Amount</td><td><strong>$${data.amount.toFixed(2)} USDT</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Source</td><td>${this.escape(data.source ?? '—')}</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Wallet</td><td>${wallet}</td></tr>
+        ${data.settlement ? `<tr><td style="padding:6px 0;color:#94a3b8;">Settlement</td><td>${this.escape(data.settlement)}</td></tr>` : ''}
+        ${data.reason ? `<tr><td style="padding:6px 0;color:#94a3b8;">Reason</td><td>${this.escape(data.reason)}</td></tr>` : ''}
+      </table>
+      <p style="font-size:13px;color:#94a3b8;">Review in local-admin or the user frontend Admin → Payouts panel.</p>`,
+    );
+
+    return this.sendOpsAlert({
+      label: `Staff payout ${data.action} ${data.payoutId}`,
+      subject: `[Staff payout] ${actionLabel} — $${data.amount.toFixed(2)} — ${data.targetUserName}`,
+      html,
+      text: `${actionLabel} by ${data.actorName}${data.actorEmail ? ` (${data.actorEmail})` : ''}: $${data.amount.toFixed(2)} for ${data.targetUserName}, payout ${data.payoutId}${data.reason ? ` — ${data.reason}` : ''}`,
+    });
   }
 
   payoutCreditedToWallet(
@@ -2396,6 +2680,31 @@ export class NotificationService {
     );
   }
 
+  walletAutoWithdrawInitiated(
+    userId: string,
+    data: {
+      amount: number;
+      netPayout: number;
+      fee: number;
+      payoutId: string;
+      destination: string;
+      walletLabel?: string;
+    },
+  ) {
+    this.dispatch(
+      this.sendWalletAutoWithdrawInitiated(userId, data),
+      'Daily auto-withdraw initiated',
+    );
+    this.dispatch(
+      this.sendWalletWithdrawAdminAlert(userId, {
+        amount: data.amount,
+        payoutId: data.payoutId,
+        destination: data.destination,
+      }),
+      'Admin wallet withdraw alert',
+    );
+  }
+
   /** Awaitable — Sunday auto-batch queue ETA email. */
   walletWithdrawSundayQueued(
     userId: string,
@@ -3403,6 +3712,41 @@ export class NotificationService {
       subject: 'Withdrawal requested',
       html,
       text: `Withdrawal of $${data.amount.toFixed(2)} USDT requested.`,
+    });
+  }
+
+  private async sendWalletAutoWithdrawInitiated(
+    userId: string,
+    data: {
+      amount: number;
+      netPayout: number;
+      fee: number;
+      payoutId: string;
+      destination: string;
+      walletLabel?: string;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const destLabel = data.walletLabel
+      ? `${this.escape(data.walletLabel)} (${this.escape(data.destination)})`
+      : this.escape(data.destination);
+    const html = this.email.layout(
+      'Daily auto-withdraw initiated',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your scheduled daily auto-withdraw has been initiated.</p>
+      <p><strong>Gross:</strong> $${data.amount.toFixed(2)} USDT<br/>
+      <strong>Fees:</strong> $${data.fee.toFixed(2)} USDT<br/>
+      <strong>Net payout:</strong> $${data.netPayout.toFixed(2)} USDT<br/>
+      <strong>Destination:</strong> ${destLabel}</p>
+      <p>You will receive another email when the TRC20 transfer is processed.</p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: 'Daily auto-withdraw initiated',
+      html,
+      text: `Daily auto-withdraw of $${data.amount.toFixed(2)} USDT initiated (net $${data.netPayout.toFixed(2)}).`,
     });
   }
 

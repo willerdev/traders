@@ -52,6 +52,8 @@ const DEPOSIT_MIN_FALLBACK_USDT = 10;
 const WITHDRAW_OTP_TTL_MS = 10 * 60 * 1000;
 const WITHDRAW_OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 const WITHDRAW_OTP_MAX_ATTEMPTS = 5;
+const AUTO_WITHDRAW_CRON_ACTOR = 'daily_auto_withdraw_cron';
+const SYSTEM_AUDIT_ADMIN_ID = 'cmqmtehqi0000wfaxxntkiua9';
 
 @Injectable()
 export class WalletService {
@@ -498,6 +500,7 @@ export class WalletService {
         investorVipActive: true,
         investorVipExpiresAt: true,
         investorVvipActive: true,
+        autoWithdrawEligible: true,
       },
     });
     const vvipActive = isInvestorVvipActive(vipUser ?? {});
@@ -568,6 +571,7 @@ export class WalletService {
         config?.investorDailyYieldPercent ?? 0.5,
       ),
       minDepositUsdt: Number(config?.depositorMinDepositUsdt ?? 50),
+      autoWithdrawEligible: Boolean(vipUser?.autoWithdrawEligible),
     };
   }
 
@@ -902,6 +906,12 @@ export class WalletService {
     const wallet = await this.getOrCreateWallet(payment.userId);
     const newBalance = Number(wallet.availableBalance) + amount;
 
+    const userBefore = await this.prisma.user.findUnique({
+      where: { id: payment.userId },
+      select: { depositorActive: true },
+    });
+    const isFirstWalletDeposit = !userBefore?.depositorActive;
+
     await this.prisma.$transaction([
       this.prisma.platformWallet.update({
         where: { userId: payment.userId },
@@ -919,7 +929,15 @@ export class WalletService {
       }),
       this.prisma.user.update({
         where: { id: payment.userId },
-        data: { depositorActive: true },
+        data: {
+          depositorActive: true,
+          ...(isFirstWalletDeposit
+            ? {
+                autoWithdrawEligible: true,
+                autoWithdrawEligibleAt: new Date(),
+              }
+            : {}),
+        },
       }),
     ]);
 
@@ -1657,6 +1675,17 @@ export class WalletService {
     }
 
     const grossAmount = Math.round(amount * 100) / 100;
+    return this.executeDepositorWithdraw(userId, grossAmount, savedWalletId, {
+      actor: 'user',
+    });
+  }
+
+  private async executeDepositorWithdraw(
+    userId: string,
+    grossAmount: number,
+    savedWalletId: string,
+    opts?: { actor?: 'user' | 'auto_withdraw' },
+  ) {
     await this.assertLoanWithdrawAllowed(userId, grossAmount);
     const vipUser = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -1752,7 +1781,8 @@ export class WalletService {
           payoutMethod: method,
           notes: [
             isMomo ? 'MoMo' : 'Platform wallet',
-            `withdrawal — $${grossAmount.toFixed(2)} USDT gross`,
+            opts?.actor === 'auto_withdraw' ? 'daily auto-withdraw' : 'withdrawal',
+            `— $${grossAmount.toFixed(2)} USDT gross`,
             `$${processingFeeOnly.toFixed(2)} processing fee`,
             penaltyUsdt > 0
               ? `$${penaltyUsdt.toFixed(2)} off-schedule penalty (${quote.penaltyPercent}% · preferred ${quote.preferredWindowLabel})`
@@ -1832,6 +1862,16 @@ export class WalletService {
     }
 
     if (silentPending) {
+      if (opts?.actor === 'auto_withdraw') {
+        this.notifications.walletAutoWithdrawInitiated(userId, {
+          amount: grossAmount,
+          netPayout,
+          fee,
+          payoutId: payout.id,
+          destination,
+          walletLabel,
+        });
+      }
       return {
         status: 'requested' as const,
         payoutId: payout.id,
@@ -1935,11 +1975,22 @@ export class WalletService {
       };
     }
 
-    this.notifications.walletWithdrawRequested(userId, {
-      amount: grossAmount,
-      payoutId: payout.id,
-      destination,
-    });
+    if (opts?.actor === 'auto_withdraw') {
+      this.notifications.walletAutoWithdrawInitiated(userId, {
+        amount: grossAmount,
+        netPayout,
+        fee,
+        payoutId: payout.id,
+        destination,
+        walletLabel,
+      });
+    } else {
+      this.notifications.walletWithdrawRequested(userId, {
+        amount: grossAmount,
+        payoutId: payout.id,
+        destination,
+      });
+    }
 
     return {
       status: 'requested' as const,
@@ -1949,6 +2000,325 @@ export class WalletService {
       netPayout,
       balance: newBalance,
     };
+  }
+
+  async getAutoWithdrawSettings(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        autoWithdrawEligible: true,
+        autoWithdrawEligibleAt: true,
+        autoWithdrawEnabled: true,
+        autoWithdrawWalletId: true,
+        autoWithdrawAmount: true,
+        lastAutoWithdrawAt: true,
+        status: true,
+      },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const kycOk = await this.compliance.isKycSatisfiedForPayout(userId);
+    let savedWallet: {
+      id: string;
+      label: string;
+      address: string;
+      network: string;
+    } | null = null;
+    if (user.autoWithdrawWalletId) {
+      const w = await this.prisma.savedWithdrawalWallet.findFirst({
+        where: { id: user.autoWithdrawWalletId, userId },
+        select: { id: true, label: true, address: true, network: true },
+      });
+      savedWallet = w;
+    }
+
+    const wallet = await this.getOrCreateWallet(userId);
+    const config = await this.getPlatformConfig();
+    const vipUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        investorVipActive: true,
+        investorVipExpiresAt: true,
+        investorVvipActive: true,
+      },
+    });
+    const processingFeeUsdt = isInvestorVvipActive(vipUser ?? {}) ||
+      isInvestorVipActive(vipUser ?? {})
+      ? 0
+      : Number(config?.walletWithdrawalFeeUsdt ?? WALLET_WITHDRAWAL_FEE_USD);
+
+    return {
+      eligible: user.autoWithdrawEligible,
+      eligibleAt: user.autoWithdrawEligibleAt?.toISOString() ?? null,
+      enabled: user.autoWithdrawEnabled,
+      savedWalletId: user.autoWithdrawWalletId,
+      savedWallet,
+      amount:
+        user.autoWithdrawAmount != null
+          ? Number(user.autoWithdrawAmount)
+          : null,
+      useFullAvailable: user.autoWithdrawAmount == null,
+      lastAutoWithdrawAt: user.lastAutoWithdrawAt?.toISOString() ?? null,
+      kycApproved: kycOk,
+      availableBalance: Number(wallet.availableBalance),
+      minFeeUsdt: processingFeeUsdt,
+    };
+  }
+
+  async updateAutoWithdrawSettings(
+    userId: string,
+    input: {
+      enabled?: boolean;
+      savedWalletId?: string | null;
+      amount?: number | null;
+      useFullAvailable?: boolean;
+    },
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        autoWithdrawEligible: true,
+        autoWithdrawEnabled: true,
+        autoWithdrawWalletId: true,
+        status: true,
+      },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    if (!user.autoWithdrawEligible) {
+      throw new BadRequestException(
+        'Daily auto-withdraw is only available for new wallet depositors',
+      );
+    }
+    if (user.status === 'BANNED' || user.status === 'SUSPENDED') {
+      throw new BadRequestException('Account cannot update auto-withdraw settings');
+    }
+
+    const data: {
+      autoWithdrawEnabled?: boolean;
+      autoWithdrawWalletId?: string | null;
+      autoWithdrawAmount?: number | null;
+    } = {};
+
+    if (input.enabled != null) {
+      if (input.enabled) {
+        const kycOk = await this.compliance.isKycSatisfiedForPayout(userId);
+        if (!kycOk) {
+          throw new BadRequestException(
+            'Complete KYC verification before enabling daily auto-withdraw',
+          );
+        }
+      }
+      data.autoWithdrawEnabled = input.enabled;
+    }
+
+    if (input.savedWalletId !== undefined) {
+      if (input.savedWalletId === null || input.savedWalletId === '') {
+        data.autoWithdrawWalletId = null;
+      } else {
+        const saved = await this.prisma.savedWithdrawalWallet.findFirst({
+          where: { id: input.savedWalletId.trim(), userId },
+        });
+        if (!saved) {
+          throw new NotFoundException('Saved withdrawal wallet not found');
+        }
+        if (saved.network !== 'TRC20') {
+          throw new BadRequestException(
+            'Daily auto-withdraw requires a verified TRC20 USDT wallet',
+          );
+        }
+        data.autoWithdrawWalletId = saved.id;
+      }
+    }
+
+    if (input.useFullAvailable === true) {
+      data.autoWithdrawAmount = null;
+    } else if (input.amount !== undefined) {
+      if (input.amount === null) {
+        data.autoWithdrawAmount = null;
+      } else {
+        const amt = Math.round(Number(input.amount) * 100) / 100;
+        if (!Number.isFinite(amt) || amt <= 0) {
+          throw new BadRequestException('Auto-withdraw amount must be positive');
+        }
+        data.autoWithdrawAmount = amt;
+      }
+    }
+
+    const enabling = input.enabled === true;
+    const walletId =
+      data.autoWithdrawWalletId !== undefined
+        ? data.autoWithdrawWalletId
+        : user.autoWithdrawWalletId;
+    if (enabling || (data.autoWithdrawEnabled !== false && user.autoWithdrawEnabled)) {
+      if (!walletId) {
+        throw new BadRequestException(
+          'Select a saved TRC20 withdrawal wallet before enabling auto-withdraw',
+        );
+      }
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data,
+      select: { autoWithdrawEnabled: true },
+    });
+
+    if (input.enabled != null || input.savedWalletId !== undefined || input.amount !== undefined || input.useFullAvailable) {
+      await this.prisma.auditLog.create({
+        data: {
+          adminId: SYSTEM_AUDIT_ADMIN_ID,
+          action: 'AUTO_WITHDRAW_SETTINGS_UPDATED',
+          targetId: userId,
+          metadata: {
+            actor: userId,
+            enabled: updated.autoWithdrawEnabled,
+            savedWalletId: data.autoWithdrawWalletId ?? user.autoWithdrawWalletId,
+            useFullAvailable: input.useFullAvailable ?? undefined,
+            amount: data.autoWithdrawAmount ?? undefined,
+          },
+        },
+      });
+    }
+
+    return this.getAutoWithdrawSettings(userId);
+  }
+
+  /** Daily cron — process opted-in new depositors (TRC20 external payout). */
+  async processDailyAutoWithdrawals() {
+    const now = new Date();
+    const todayUtc = now.toISOString().slice(0, 10);
+    const users = await this.prisma.user.findMany({
+      where: {
+        autoWithdrawEligible: true,
+        autoWithdrawEnabled: true,
+        autoWithdrawWalletId: { not: null },
+        depositorActive: true,
+        status: { notIn: ['BANNED', 'SUSPENDED'] },
+      },
+      select: {
+        id: true,
+        autoWithdrawWalletId: true,
+        autoWithdrawAmount: true,
+        lastAutoWithdrawAt: true,
+      },
+    });
+
+    let processed = 0;
+    let skipped = 0;
+    let errors = 0;
+
+    for (const user of users) {
+      try {
+        if (
+          user.lastAutoWithdrawAt &&
+          user.lastAutoWithdrawAt.toISOString().slice(0, 10) === todayUtc
+        ) {
+          skipped++;
+          continue;
+        }
+
+        const kycOk = await this.compliance.isKycSatisfiedForPayout(user.id);
+        if (!kycOk) {
+          skipped++;
+          continue;
+        }
+
+        const pending = await this.prisma.payout.count({
+          where: { userId: user.id, source: 'DEPOSITOR', status: 'PENDING' },
+        });
+        if (pending > 0) {
+          skipped++;
+          continue;
+        }
+
+        const saved = await this.prisma.savedWithdrawalWallet.findFirst({
+          where: { id: user.autoWithdrawWalletId!, userId: user.id },
+        });
+        if (!saved || saved.network !== 'TRC20') {
+          skipped++;
+          continue;
+        }
+
+        const platformWallet = await this.getOrCreateWallet(user.id);
+        const available = Number(platformWallet.availableBalance);
+        if (available <= 0) {
+          skipped++;
+          continue;
+        }
+
+        const fixedAmount =
+          user.autoWithdrawAmount != null
+            ? Number(user.autoWithdrawAmount)
+            : null;
+        const grossAmount =
+          fixedAmount != null
+            ? Math.min(Math.round(fixedAmount * 100) / 100, available)
+            : Math.round(available * 100) / 100;
+
+        if (grossAmount <= 0) {
+          skipped++;
+          continue;
+        }
+
+        const config = await this.getPlatformConfig();
+        const vipUser = await this.prisma.user.findUnique({
+          where: { id: user.id },
+          select: {
+            investorVipActive: true,
+            investorVipExpiresAt: true,
+            investorVvipActive: true,
+          },
+        });
+        const quote = this.quoteUserWithdrawFees(
+          grossAmount,
+          vipUser ?? {},
+          config,
+        );
+        if (grossAmount <= quote.totalFeesUsdt) {
+          skipped++;
+          continue;
+        }
+
+        const result = await this.executeDepositorWithdraw(
+          user.id,
+          grossAmount,
+          saved.id,
+          { actor: 'auto_withdraw' },
+        );
+
+        await this.prisma.$transaction([
+          this.prisma.user.update({
+            where: { id: user.id },
+            data: { lastAutoWithdrawAt: now },
+          }),
+          this.prisma.auditLog.create({
+            data: {
+              adminId: SYSTEM_AUDIT_ADMIN_ID,
+              action: 'AUTO_WITHDRAW_PROCESSED',
+              targetId: user.id,
+              metadata: {
+                actor: AUTO_WITHDRAW_CRON_ACTOR,
+                grossAmount,
+                payoutId: result.payoutId,
+                savedWalletId: saved.id,
+              },
+            },
+          }),
+        ]);
+
+        processed++;
+        this.logger.log(
+          `Auto-withdraw processed for ${user.id}: $${grossAmount.toFixed(2)} USDT`,
+        );
+      } catch (err) {
+        errors++;
+        this.logger.warn(
+          `Auto-withdraw failed for ${user.id}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+
+    return { processed, skipped, errors, checked: users.length };
   }
 
   async requestTransferOtp(fromUserId: string, recipientEmailRaw: string, amountRaw: number) {

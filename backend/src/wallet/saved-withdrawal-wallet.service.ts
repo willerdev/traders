@@ -233,7 +233,16 @@ export class SavedWithdrawalWalletService {
       throw new NotFoundException('Saved withdrawal wallet not found');
     }
 
-    await this.prisma.savedWithdrawalWallet.delete({ where: { id: wallet.id } });
+    await this.prisma.$transaction([
+      this.prisma.savedWithdrawalWallet.delete({ where: { id: wallet.id } }),
+      this.prisma.user.updateMany({
+        where: { id: userId, autoWithdrawWalletId: wallet.id },
+        data: {
+          autoWithdrawWalletId: null,
+          autoWithdrawEnabled: false,
+        },
+      }),
+    ]);
     return { ok: true, message: 'Withdrawal wallet removed' };
   }
 }

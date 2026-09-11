@@ -14,6 +14,12 @@ import { isMomoWithdrawalNetwork } from '../flutterwave/flutterwave.constants';
 type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
 type HistoryItem = { role: 'user' | 'assistant'; content: string };
 
+export type AgentReply = {
+  text: string;
+  escalate?: boolean;
+  escalateReason?: string;
+};
+
 type ToolCall = {
   id: string;
   type: 'function';
@@ -161,6 +167,25 @@ const SUPPORT_TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'escalate_to_admin',
+      description:
+        'Escalate to a human admin when you cannot resolve the issue, the user needs manual account changes, policy exceptions, or is frustrated. Include a brief reason.',
+      parameters: {
+        type: 'object',
+        properties: {
+          reason: {
+            type: 'string',
+            description: 'Why a human admin is needed (shown to ops)',
+          },
+        },
+        required: ['reason'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'set_auto_reinvest',
       description:
         'Auto-reinvest is disabled platform-wide. Enabling always fails. You may call with enabled:false to confirm earnings go to wallet. Requires confirmed: true.',
@@ -233,9 +258,9 @@ export class SupportAgentService {
     userId: string,
     userMessage: string,
     history: HistoryItem[],
-  ): Promise<string> {
+  ): Promise<AgentReply> {
     if (!this.isConfigured) {
-      return this.fallbackReply(userMessage);
+      return { text: this.fallbackReply(userMessage) };
     }
 
     const vip = await this.loadVip(userId);
@@ -268,6 +293,17 @@ export class SupportAgentService {
               call.function.name,
               call.function.arguments,
             );
+            if (result.escalate === true) {
+              const reason =
+                typeof result.reason === 'string'
+                  ? result.reason
+                  : 'Agent could not resolve this automatically';
+              return {
+                text: `I’m connecting you with our admin team for this one. ${reason} A human will reply here as soon as possible — usually within 24 hours. You can keep sending details while you wait.`,
+                escalate: true,
+                escalateReason: reason,
+              };
+            }
             messages.push({
               role: 'tool',
               tool_call_id: call.id,
@@ -279,15 +315,15 @@ export class SupportAgentService {
         }
 
         const content = assistantMsg.content?.trim();
-        if (content) return content;
+        if (content) return { text: content };
         break;
       }
-      return this.fallbackReply(userMessage);
+      return { text: this.fallbackReply(userMessage) };
     } catch (err) {
       this.logger.error(
         `Support agent error: ${err instanceof Error ? err.message : err}`,
       );
-      return this.fallbackReply(userMessage);
+      return { text: this.fallbackReply(userMessage) };
     }
   }
 
@@ -307,7 +343,8 @@ Account tools:
 - After tools run, summarize what happened in plain language (amounts, new balances, payout status, fees).
 - Keep replies concise. Plain text, no markdown headers. Bullet lists OK.
 - Never invent payout_id or saved_wallet_id — only use IDs from list tools.
-- If unsure or they need a human, suggest Speak to admin.`;
+- If you cannot help after trying tools, call escalate_to_admin with a clear reason instead of guessing.
+- If unsure or they need a human, call escalate_to_admin or suggest Speak to admin.`;
   }
 
   private async loadVip(userId: string) {
@@ -392,6 +429,14 @@ Account tools:
           return this.toolTransfer(userId, args, 'to_wallet');
         case 'set_auto_reinvest':
           return this.toolSetAutoReinvest(userId, args);
+        case 'escalate_to_admin': {
+          const reason = String(args.reason || '').trim();
+          return {
+            ok: true,
+            escalate: true,
+            reason: reason || 'Agent requested human admin',
+          };
+        }
         default:
           return { ok: false, error: `Unknown tool: ${name}` };
       }

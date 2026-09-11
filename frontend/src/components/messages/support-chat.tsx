@@ -380,7 +380,7 @@ export function SupportChat() {
                 void handleSend(e);
               }
             }}
-            placeholder="Message Agent…"
+            placeholder={showAgent ? "Message Agent…" : "Message admin team…"}
             maxLength={4000}
             rows={1}
             className="max-h-32 min-h-[44px] flex-1 resize-none rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-gray-500 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
