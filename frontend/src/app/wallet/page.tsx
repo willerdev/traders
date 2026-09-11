@@ -192,17 +192,15 @@ export default function WalletPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <WalletSavedWithdrawalWallets />
-              {summary.autoWithdrawEligible && (
-                <div className="border-t border-white/10 pt-5">
-                  <h3 className="mb-3 text-sm font-semibold text-white">
-                    Daily auto-withdraw
-                  </h3>
-                  <WalletAutoWithdrawSettings
-                    eligible={summary.autoWithdrawEligible}
-                    onUpdated={() => void refresh()}
-                  />
-                </div>
-              )}
+              <div className="border-t border-white/10 pt-5">
+                <h3 className="mb-3 text-sm font-semibold text-white">
+                  Daily auto-withdraw
+                </h3>
+                <WalletAutoWithdrawSettings
+                  eligible={summary.autoWithdrawEligible}
+                  onUpdated={() => void refresh()}
+                />
+              </div>
             </CardContent>
           </Card>
         )}

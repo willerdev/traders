@@ -11,6 +11,7 @@ import {
 } from "@/lib/api";
 import { maskWithdrawalWalletAddress } from "@/components/wallet/wallet-saved-withdrawal-wallets";
 import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export function WalletAutoWithdrawSettings({
   eligible,
@@ -30,10 +31,6 @@ export function WalletAutoWithdrawSettings({
   const [enabled, setEnabled] = useState(false);
 
   const load = useCallback(async () => {
-    if (!eligible) {
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     setError("");
     try {
@@ -52,7 +49,7 @@ export function WalletAutoWithdrawSettings({
     } finally {
       setLoading(false);
     }
-  }, [eligible]);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -90,7 +87,8 @@ export function WalletAutoWithdrawSettings({
     }
   }
 
-  if (!eligible) return null;
+  const isEligible = eligible && (settings?.eligible ?? eligible);
+  const controlsDisabled = !isEligible || saving;
 
   if (loading) {
     return (
@@ -105,13 +103,25 @@ export function WalletAutoWithdrawSettings({
   const minHint = settings?.minFeeUsdt ?? 3;
 
   return (
-    <div className="space-y-4">
+    <div
+      className={cn(
+        "space-y-4",
+        !isEligible && "opacity-60",
+      )}
+    >
       <div>
         <p className="text-sm text-gray-300">
           Send earnings to your saved TRC20 wallet automatically each day at
           09:00 Kampala time.
         </p>
-        {!settings?.kycApproved && (
+        {!isEligible && (
+          <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+            Not available on your account yet. This feature is for new wallet
+            depositors (first deposit after the feature launch). Contact support
+            if you believe you should have access.
+          </p>
+        )}
+        {isEligible && !settings?.kycApproved && (
           <p className="mt-2 text-sm text-amber-400">
             Complete{" "}
             <Link href="/settings" className="underline">
@@ -134,10 +144,10 @@ export function WalletAutoWithdrawSettings({
               Destination wallet
             </label>
             <select
-              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
               value={savedWalletId}
               onChange={(e) => setSavedWalletId(e.target.value)}
-              disabled={saving}
+              disabled={controlsDisabled}
             >
               <option value="">Select TRC20 wallet</option>
               {trc20Wallets.map((w) => (
@@ -155,7 +165,7 @@ export function WalletAutoWithdrawSettings({
                 name="autoWithdrawAmountMode"
                 checked={useFullAvailable}
                 onChange={() => setUseFullAvailable(true)}
-                disabled={saving}
+                disabled={controlsDisabled}
               />
               Withdraw full available balance daily
             </label>
@@ -165,7 +175,7 @@ export function WalletAutoWithdrawSettings({
                 name="autoWithdrawAmountMode"
                 checked={!useFullAvailable}
                 onChange={() => setUseFullAvailable(false)}
-                disabled={saving}
+                disabled={controlsDisabled}
               />
               Fixed amount (USDT)
             </label>
@@ -177,7 +187,7 @@ export function WalletAutoWithdrawSettings({
                 placeholder={`Min ~$${(minHint + 0.01).toFixed(2)} after fees`}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                disabled={saving}
+                disabled={controlsDisabled}
               />
             )}
           </div>
@@ -186,14 +196,22 @@ export function WalletAutoWithdrawSettings({
             <div>
               <p className="text-sm font-medium text-white">Daily auto-withdraw</p>
               <p className="text-xs text-gray-500">
-                {enabled ? "On — runs once per day" : "Off"}
+                {!isEligible
+                  ? "Unavailable — not eligible"
+                  : enabled
+                    ? "On — runs once per day"
+                    : "Off"}
               </p>
             </div>
             <Button
               type="button"
               variant={enabled ? "secondary" : "default"}
               size="sm"
-              disabled={saving || !settings?.kycApproved || !savedWalletId}
+              disabled={
+                controlsDisabled ||
+                !settings?.kycApproved ||
+                !savedWalletId
+              }
               onClick={() => void save(!enabled)}
             >
               {saving ? (
@@ -206,13 +224,13 @@ export function WalletAutoWithdrawSettings({
             </Button>
           </div>
 
-          {!enabled && savedWalletId && settings?.kycApproved && (
+          {!enabled && savedWalletId && settings?.kycApproved && isEligible && (
             <Button
               type="button"
               variant="ghost"
               size="sm"
               className="text-muted"
-              disabled={saving}
+              disabled={controlsDisabled}
               onClick={() => void save()}
             >
               Save preferences
