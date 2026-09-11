@@ -653,7 +653,7 @@ export default function AdminPayoutsPage() {
                   Cancel
                 </Button>
                 <Button
-                  variant="destructive"
+                  variant="danger"
                   disabled={busyId === refundTarget.id}
                   onClick={() => void confirmRefund()}
                 >
