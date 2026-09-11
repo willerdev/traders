@@ -33,6 +33,7 @@ import {
   Banknote,
   Sprout,
   ShieldCheck,
+  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore, useDashboardStore } from "@/stores/auth";
@@ -137,6 +138,13 @@ const NAV_GROUPS: NavGroup[] = [
         shortLabel: "Wallet",
         icon: Wallet,
         keywords: "deposit withdraw",
+      },
+      {
+        href: "/wallet/auto-withdraw",
+        label: "Auto-withdraw",
+        shortLabel: "Auto",
+        icon: Clock,
+        keywords: "daily automatic withdraw schedule",
       },
       {
         href: "/blockchain",

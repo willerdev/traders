@@ -10,7 +10,6 @@ import { WalletWithdrawModal } from "@/components/wallet/wallet-withdraw-modal";
 import { WalletTransferModal } from "@/components/wallet/wallet-transfer-modal";
 import { WalletWithdrawFeeNotice } from "@/components/wallet/wallet-withdraw-fee-notice";
 import { WalletSavedWithdrawalWallets } from "@/components/wallet/wallet-saved-withdrawal-wallets";
-import { WalletAutoWithdrawSettings } from "@/components/wallet/wallet-auto-withdraw-settings";
 import { WalletPendingWithdrawals } from "@/components/wallet/wallet-pending-withdrawals";
 import { CurrencySwitcher } from "@/components/currency-switcher";
 import {
@@ -192,15 +191,6 @@ export default function WalletPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <WalletSavedWithdrawalWallets />
-              <div className="border-t border-white/10 pt-5">
-                <h3 className="mb-3 text-sm font-semibold text-white">
-                  Daily auto-withdraw
-                </h3>
-                <WalletAutoWithdrawSettings
-                  eligible={summary.autoWithdrawEligible}
-                  onUpdated={() => void refresh()}
-                />
-              </div>
             </CardContent>
           </Card>
         )}
