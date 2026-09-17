@@ -1223,6 +1223,7 @@ class ApiClient {
         momoNetwork?: string;
         message?: string;
         instantFailure?: string;
+        errorCode?: "missing_credentials" | "send_failed";
         gatewayPayoutId?: string | null;
         payoutStatus?: string;
         p2p?: MomoP2pWithdrawal;

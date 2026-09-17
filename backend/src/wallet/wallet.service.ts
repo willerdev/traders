@@ -1696,6 +1696,19 @@ export class WalletService {
     });
   }
 
+  private nowpaymentsErrorCode(
+    message: string,
+  ): 'missing_credentials' | 'send_failed' {
+    if (
+      /not configured|payout login|api key|missing NOWPayments|credentials|not saved yet/i.test(
+        message,
+      )
+    ) {
+      return 'missing_credentials';
+    }
+    return 'send_failed';
+  }
+
   private async executeDepositorWithdraw(
     userId: string,
     grossAmount: number,
@@ -1750,6 +1763,22 @@ export class WalletService {
     const destination = savedWallet.address;
     const method = isMomo ? ('MOBILE_MONEY' as const) : ('TRC20' as const);
     const walletLabel = savedWallet.label;
+
+    if (isSoloApp() && !isMomo) {
+      const payoutStatus = await this.nowPayments.getPayoutConfigStatus();
+      if (!payoutStatus.payoutConfigured) {
+        const missing = [
+          !payoutStatus.apiKeySet ? 'API key' : null,
+          !payoutStatus.payoutEmailSet ? 'payout username' : null,
+          !payoutStatus.payoutPasswordSet ? 'payout password' : null,
+        ].filter(Boolean);
+        throw new BadRequestException(
+          `Withdrawal not sent — missing NOWPayments ${missing.join(
+            ' and ',
+          )}. Save the payout username and password in Settings. The API key must be set on the server.`,
+        );
+      }
+    }
 
     const newBalance = Number(platformWallet.availableBalance) - grossAmount;
     const { weekNumber, year } = this.isoWeekYear(new Date());
@@ -1891,6 +1920,7 @@ export class WalletService {
             balance: newBalance,
             payoutStatus: 'PENDING',
             gatewayPayoutId: null,
+            errorCode: this.nowpaymentsErrorCode(sendError),
             instantFailure: sendError,
             message: sendError,
           };

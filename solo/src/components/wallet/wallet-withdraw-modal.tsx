@@ -5,7 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, type SavedWithdrawalWallet } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
-import { CheckCircle2, Loader2, X } from "lucide-react";
+import { Loader2, X } from "lucide-react";
+import {
+  WalletWithdrawResultModal,
+  type WalletWithdrawResult,
+} from "@/components/wallet/wallet-withdraw-result-modal";
 import {
   WalletWithdrawFeeNotice,
   WALLET_WITHDRAWAL_FEE_USD,
@@ -41,7 +45,7 @@ export function WalletWithdrawModal({
   const [addWalletOpen, setAddWalletOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
+  const [result, setResult] = useState<WalletWithdrawResult | null>(null);
 
   const loadWallets = useCallback(async () => {
     setWalletsLoading(true);
@@ -65,7 +69,7 @@ export function WalletWithdrawModal({
     if (!open) {
       setAmount("");
       setError("");
-      setSuccess(false);
+      setResult(null);
       return;
     }
     void loadWallets();
@@ -88,19 +92,45 @@ export function WalletWithdrawModal({
     }
     setLoading(true);
     try {
-      const result = await api.wallet.withdraw(Number(amount), selectedWalletId);
+      const sent = await api.wallet.withdraw(Number(amount), selectedWalletId);
       onComplete?.();
-      if (result.instantFailure || result.status === "queued") {
-        setError(
-          result.instantFailure ||
-            result.message ||
-            "NOWPayments did not accept this withdrawal. Check payout login and try again.",
-        );
+      const failure =
+        sent.instantFailure ||
+        sent.errorCode ||
+        sent.status === "queued"
+          ? sent.instantFailure || sent.message || "NOWPayments did not accept this withdrawal."
+          : "";
+      if (failure) {
+        const missingCredentials =
+          sent.errorCode === "missing_credentials" ||
+          /not configured|payout login|api key|missing NOWPayments|credentials/i.test(
+            failure,
+          );
+        setResult({
+          ok: false,
+          title: "Withdrawal not sent",
+          body: failure,
+          missingCredentials,
+        });
         return;
       }
-      setSuccess(true);
+      setResult({
+        ok: true,
+        title: "Withdrawal sent",
+        body: `${formatCurrency(sent.netPayout)} USDT is being sent to your saved wallet.`,
+      });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Withdrawal failed");
+      const message =
+        e instanceof Error ? e.message : "Withdrawal failed";
+      setResult({
+        ok: false,
+        title: "Withdrawal failed",
+        body: message,
+        missingCredentials:
+          /not configured|payout login|api key|missing NOWPayments|credentials/i.test(
+            message,
+          ),
+      });
     } finally {
       setLoading(false);
     }
@@ -144,16 +174,6 @@ export function WalletWithdrawModal({
           </div>
 
           <div className="space-y-4 p-5">
-            {success ? (
-              <div className="flex flex-col items-center gap-3 py-4 text-center">
-                <CheckCircle2 className="h-12 w-12 text-success" />
-                <p className="text-sm text-gray-300">
-                  Withdrawal submitted. USDT is being sent to your saved wallet.
-                </p>
-                <Button onClick={onClose}>Done</Button>
-              </div>
-            ) : (
-              <>
                 <p className="text-sm text-gray-400">
                   Available:{" "}
                   <strong className="text-white">
@@ -231,12 +251,18 @@ export function WalletWithdrawModal({
                       ? `Withdraw ${formatCurrency(gross)}`
                       : "Withdraw"}
                 </Button>
-              </>
-            )}
           </div>
         </div>
       </div>
 
+      <WalletWithdrawResultModal
+        result={result}
+        onClose={() => {
+          const closeAll = result?.ok;
+          setResult(null);
+          if (closeAll) onClose();
+        }}
+      />
       <WalletAddWithdrawalWalletModal
         open={addWalletOpen}
         onClose={() => setAddWalletOpen(false)}
