@@ -156,7 +156,7 @@ export function WalletWithdrawModal({
     <>
       <div
         className="modal-overlay fixed inset-0 z-[120] flex items-end justify-center p-0 sm:items-center sm:p-4"
-        onClick={onClose}
+        onClick={result ? undefined : onClose}
       >
         <div
           className="modal-panel w-full max-w-md rounded-t-2xl border border-white/10 shadow-2xl sm:rounded-2xl"
