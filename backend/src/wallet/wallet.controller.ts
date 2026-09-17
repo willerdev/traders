@@ -6,11 +6,13 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards';
+import { AuthRateLimitGuard } from '../auth/auth-rate-limit.guard';
 import { WalletService } from './wallet.service';
 import { SavedWithdrawalWalletService } from './saved-withdrawal-wallet.service';
 import { PayoutService } from '../payouts/payout.service';
@@ -291,6 +293,26 @@ export class WalletController {
     @Param('id') walletId: string,
   ) {
     return this.savedWallets.remove(req.user.id, walletId);
+  }
+
+  @Get('nowpayments-payout')
+  @UseGuards(JwtAuthGuard)
+  nowpaymentsPayout() {
+    return this.wallet.getNowpaymentsPayoutLogin();
+  }
+
+  @Put('nowpayments-payout')
+  @UseGuards(JwtAuthGuard, AuthRateLimitGuard)
+  saveNowpaymentsPayout(
+    @Request() req: { user: { id: string } },
+    @Body() body: { email?: string; password?: string; apiKey?: string },
+  ) {
+    return this.wallet.saveNowpaymentsPayoutLogin(
+      req.user.id,
+      body.email ?? '',
+      body.password ?? '',
+      body.apiKey,
+    );
   }
 
   @Get('auto-withdraw')

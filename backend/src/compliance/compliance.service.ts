@@ -6,6 +6,7 @@ import {
 import { EvaluationStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { hasActiveTradingAccess } from '../common/weekly-access.util';
+import { isSoloApp } from '../common/app-variant';
 
 @Injectable()
 export class ComplianceService {
@@ -60,6 +61,15 @@ export class ComplianceService {
   }
 
   async requireKycForPayout(userId: string) {
+    if (isSoloApp()) {
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (!user) throw new NotFoundException('User not found');
+      if (user.status === 'SUSPENDED' || user.status === 'BANNED') {
+        throw new ForbiddenException('Account is suspended');
+      }
+      return;
+    }
+
     await this.requireActiveTrader(userId);
 
     const config = await this.prisma.platformConfig.findUnique({
@@ -102,6 +112,7 @@ export class ComplianceService {
 
   /** True when KYC is approved, globally disabled, or whitelist-verified. */
   async isKycSatisfiedForPayout(userId: string): Promise<boolean> {
+    if (isSoloApp()) return true;
     const config = await this.prisma.platformConfig.findUnique({
       where: { id: 'default' },
     });

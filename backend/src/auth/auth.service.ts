@@ -2,6 +2,7 @@ import {
   Injectable,
   Logger,
   UnauthorizedException,
+  ForbiddenException,
   ConflictException,
   BadRequestException,
   HttpException,
@@ -34,6 +35,7 @@ import { randomBytes, randomInt, createHash } from 'crypto';
 import { verifyMessage } from 'viem';
 import { NotificationService } from '../email/notification.service';
 import { ReferralsService } from '../referrals/referrals.service';
+import { isSoloApp } from '../common/app-variant';
 import {
   hasAdminHubAccess,
   resolveAdminPermissions,
@@ -73,6 +75,12 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto, ip?: string) {
+    if (isSoloApp()) {
+      throw new ForbiddenException(
+        'New accounts are no longer accepted. Sign in with an existing account.',
+      );
+    }
+
     const email = dto.email.trim().toLowerCase();
 
     if (!isRegistrationEmailAllowed(email)) {
@@ -93,20 +101,27 @@ export class AuthService {
     const displayName = assertAllowedDisplayName(dto.displayName);
 
     const referralCode = dto.referralCode?.trim().toUpperCase();
-    if (!referralCode) {
-      throw new BadRequestException(
-        'Registration is invite-only. Ask a current member for their referral link.',
-      );
-    }
+    let referredById: string | null = null;
 
-    const referrer = await this.prisma.user.findUnique({
-      where: { referralCode },
-      select: { id: true },
-    });
-    if (!referrer) {
-      throw new BadRequestException(
-        'Invalid referral invite. Ask a current member for a fresh link.',
-      );
+    if (isSoloApp()) {
+      // Solo: open email/password signup — no invite, account is immediately ACTIVE.
+    } else {
+      if (!referralCode) {
+        throw new BadRequestException(
+          'Registration is invite-only. Ask a current member for their referral link.',
+        );
+      }
+
+      const referrer = await this.prisma.user.findUnique({
+        where: { referralCode },
+        select: { id: true },
+      });
+      if (!referrer) {
+        throw new BadRequestException(
+          'Invalid referral invite. Ask a current member for a fresh link.',
+        );
+      }
+      referredById = referrer.id;
     }
 
     const user = await this.prisma.user.create({
@@ -119,31 +134,39 @@ export class AuthService {
         termsAcceptedAt: new Date(),
         status: 'ACTIVE',
         registrationPaid: true,
-        referredById: referrer.id,
+        referredById,
       },
     });
 
     await this.ensureTraderVirtualAccount(user.id);
 
-    this.logger.log(
-      `Invite-only registration: ${user.id} referred by ${referrer.id} (${referralCode})`,
-    );
+    if (isSoloApp()) {
+      this.logger.log(`Solo registration: ${user.id}`);
+    } else {
+      this.logger.log(
+        `Invite-only registration: ${user.id} referred by ${referredById} (${referralCode})`,
+      );
+    }
 
     this.notifications.userRegistered(user.id);
 
-    try {
-      await this.referrals.creditAndNotifyOnInviteUsed(user.id);
-    } catch (err) {
-      this.logger.error(
-        `Referral invite credit failed for ${user.id}: ${
-          err instanceof Error ? err.message : err
-        }`,
-      );
+    if (!isSoloApp() && referredById) {
+      try {
+        await this.referrals.creditAndNotifyOnInviteUsed(user.id);
+      } catch (err) {
+        this.logger.error(
+          `Referral invite credit failed for ${user.id}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
     }
 
     return {
       user: this.sanitizeUser(user),
-      message: 'Registration successful. Sign in and start trading.',
+      message: isSoloApp()
+        ? 'Registration successful. Sign in to open your wallet.'
+        : 'Registration successful. Sign in and start trading.',
     };
   }
 
@@ -546,9 +569,10 @@ export class AuthService {
   }
 
   private sanitizeUser(user: Record<string, unknown>) {
-    const { passwordHash, emailVerifyToken, ...safe } = user;
+    const { passwordHash, emailVerifyToken, derivApiTokenEnc, ...safe } = user;
     void passwordHash;
     void emailVerifyToken;
+    void derivApiTokenEnc;
     return {
       ...safe,
       adminPermissions: resolveAdminPermissions({

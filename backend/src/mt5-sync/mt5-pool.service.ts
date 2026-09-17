@@ -222,24 +222,43 @@ export class Mt5PoolService {
   }
 
   async linkUserAccount(userId: string, rawInput: LinkMt5AccountInput) {
-    if (!this.metaApi.isConfigured) {
-      throw new ServiceUnavailableException(
-        'Live MT5 linking is not configured on the platform yet',
-      );
-    }
-
     const input = this.validateLinkInput(rawInput);
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
         metaApiAccountId: true,
+        metaApiTokenEnc: true,
         displayName: true,
         email: true,
       },
     });
     if (!user) {
       throw new BadRequestException('User not found');
+    }
+
+    if (user.metaApiTokenEnc && !this.metaApi.hasRequestToken()) {
+      try {
+        const cloud = decryptCredential(
+          user.metaApiTokenEnc,
+          this.credentialSecret,
+        );
+        if (cloud.trim()) {
+          return this.metaApi.runWithToken(cloud, () =>
+            this.linkUserAccount(userId, rawInput),
+          );
+        }
+      } catch {
+        throw new BadRequestException(
+          'Saved MetaAPI token could not be decrypted. Paste it again in Settings.',
+        );
+      }
+    }
+
+    if (!this.metaApi.isConfigured) {
+      throw new ServiceUnavailableException(
+        'Paste your MetaAPI token in Settings, then connect this MT5 login.',
+      );
     }
 
     if (user.metaApiAccountId?.trim()) {

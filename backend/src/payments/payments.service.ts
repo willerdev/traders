@@ -6,6 +6,7 @@ import {
   GoneException,
   Logger,
   Inject,
+  Optional,
   forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -68,7 +69,8 @@ export class PaymentsService {
     @Inject(forwardRef(() => InvestorService))
     private investorService: InvestorService,
     @Inject(forwardRef(() => EvaluationsService))
-    private evaluationsService: EvaluationsService,
+    @Optional()
+    private evaluationsService: EvaluationsService | null,
     @Inject(forwardRef(() => FlutterwavePaymentsService))
     private flutterwavePayments: FlutterwavePaymentsService,
   ) {}
@@ -96,7 +98,7 @@ export class PaymentsService {
     description: string;
     promoMeta?: Record<string, unknown>;
   }) {
-    if (!this.nowPayments.isConfigured) {
+    if (!(await this.nowPayments.ensureConfigured())) {
       throw new ServiceUnavailableException(
         'Crypto payments are not configured — contact support',
       );
@@ -940,7 +942,7 @@ export class PaymentsService {
       !gatewayId.startsWith('pending_') &&
       !gatewayId.startsWith('promo_');
 
-    if (hasGateway && this.nowPayments.isConfigured) {
+    if (hasGateway && (await this.nowPayments.ensureConfigured())) {
       try {
         const live = await this.nowPayments.getPaymentStatus(gatewayId);
         const status = live.payment_status?.toLowerCase();
@@ -1071,6 +1073,11 @@ export class PaymentsService {
     }
 
     if (this.isEvaluationEnrollmentPurpose(payment.purpose)) {
+      if (!this.evaluationsService) {
+        throw new ServiceUnavailableException(
+          'Evaluation enrollments are not available on this service',
+        );
+      }
       return this.evaluationsService.confirmEnrollment(
         payment.id,
         gatewayPayload,
@@ -1170,7 +1177,7 @@ export class PaymentsService {
       gatewayId &&
       !gatewayId.startsWith('pending_') &&
       !gatewayId.startsWith('promo_') &&
-      this.nowPayments.isConfigured
+      (await this.nowPayments.ensureConfigured())
     ) {
       try {
         const live = await this.nowPayments.getPaymentStatus(gatewayId);

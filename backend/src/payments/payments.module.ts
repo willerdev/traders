@@ -14,6 +14,7 @@ import { WalletModule } from '../wallet/wallet.module';
 import { InvestorModule } from '../investor/investor.module';
 import { EvaluationsModule } from '../evaluations/evaluations.module';
 import { FlutterwaveModule } from '../flutterwave/flutterwave.module';
+import { isSoloApp } from '../common/app-variant';
 
 @Module({
   imports: [
@@ -23,7 +24,8 @@ import { FlutterwaveModule } from '../flutterwave/flutterwave.module';
     Mt5SyncBillingModule,
     forwardRef(() => WalletModule),
     forwardRef(() => InvestorModule),
-    forwardRef(() => EvaluationsModule),
+    // Evaluations → Mt5Sync → Signals → TpClaims. Solo does not use that chain.
+    ...(isSoloApp() ? [] : [forwardRef(() => EvaluationsModule)]),
     forwardRef(() => FlutterwaveModule),
   ],
   controllers: [PaymentsController],

@@ -17,7 +17,7 @@ export type BrokerErrorKind =
 const PATTERNS: Array<{ kind: BrokerErrorKind; test: RegExp }> = [
   {
     kind: 'rate_limit',
-    test: /cpu credits|ratelimiting|rate limit|extend your quota|too many requests|429/i,
+    test: /cpu credits|ratelimiting|rate limit|extend your quota|too many requests|429|full capacity/i,
   },
   {
     kind: 'position_limit',

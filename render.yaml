@@ -152,3 +152,126 @@ services:
         value: "256"
       - key: NEXT_PUBLIC_MOMO_USD_RATE
         value: "3800"
+
+  - type: web
+    name: solo-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npm run prisma:push && npm run start:solo
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_VARIANT
+        value: solo
+      - key: PORT
+        value: "4001"
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        sync: false
+      - key: PUBLIC_APP_URL
+        sync: false
+      - key: API_PUBLIC_URL
+        sync: false
+      - key: METAAPI_PROVISIONING_URL
+        sync: false
+      - key: NOWPAYMENTS_API_KEY
+        sync: false
+      - key: NOWPAYMENTS_PUBLIC_KEY
+        sync: false
+      - key: NOWPAYMENTS_IPN_SECRET
+        sync: false
+      - key: NOWPAYMENTS_PAYOUT_EMAIL
+        sync: false
+      - key: NOWPAYMENTS_PAYOUT_PASSWORD
+        sync: false
+      - key: FLW_CLIENT_ID
+        sync: false
+      - key: FLW_CLIENT_SECRET
+        sync: false
+      - key: FLW_ENCRYPTION_KEY
+        sync: false
+      - key: FLW_WEBHOOK_SECRET
+        sync: false
+      - key: FLW_API_URL
+        value: https://f4bexperience.flutterwave.com
+      - key: FLW_ENV
+        value: live
+      - key: FLW_MOMO_CURRENCY
+        value: UGX
+      - key: FLW_MOMO_COUNTRY_CODE
+        value: "256"
+      - key: FLW_USD_TO_LOCAL_RATE
+        value: "3800"
+      - key: FLW_MIN_DEPOSIT_USD
+        value: "3"
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: Tradeguard <info@thetradeguard.com>
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY
+        sync: false
+      - key: S3_SECRET_KEY
+        sync: false
+      - key: S3_REGION
+        value: us-east-1
+      - key: S3_PUBLIC_URL
+        sync: false
+      - key: DEMO_VAULT_ADDRESS
+        sync: false
+      - key: CONTRACT_ADDRESS
+        sync: false
+      - key: NEXT_PUBLIC_CONTRACT_ADDRESS
+        sync: false
+      - key: POLYGON_AMOY_RPC
+        value: https://polygon-amoy-bor-rpc.publicnode.com
+      - key: POLYGON_AMOY_CHAIN_ID
+        value: "80002"
+      - key: POLYGON_AMOY_EXPLORER
+        value: https://amoy.polygonscan.com
+      - key: BNB_TESTNET_RPC
+        value: https://polygon-amoy-bor-rpc.publicnode.com
+      - key: BNB_CHAIN_ID
+        value: "80002"
+      - key: BNB_EXPLORER_URL
+        value: https://amoy.polygonscan.com
+
+  - type: web
+    name: solo-web
+    runtime: node
+    rootDir: solo
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_URL
+        sync: false
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+      - key: NEXT_PUBLIC_CONTRACT_ADDRESS
+        sync: false
+      - key: NEXT_PUBLIC_CHAIN_ID
+        value: "80002"
+      - key: NEXT_PUBLIC_RPC_URL
+        value: https://polygon-amoy-bor-rpc.publicnode.com
+      - key: NEXT_PUBLIC_EXPLORER_URL
+        value: https://amoy.polygonscan.com
+      - key: NEXT_PUBLIC_BLOCKCHAIN_PROVIDER
+        value: hybrid
+      - key: NEXT_PUBLIC_MOMO_ENABLED
+        value: "true"
+      - key: NEXT_PUBLIC_MOMO_CURRENCY
+        value: UGX
+      - key: NEXT_PUBLIC_MOMO_COUNTRY_CODE
+        value: "256"
+      - key: NEXT_PUBLIC_MOMO_USD_RATE
+        value: "3800"

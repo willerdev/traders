@@ -347,6 +347,12 @@ model User {
   /// Bcrypt hash of 6-digit app PIN (unlock + withdraw auth).
   appPinHash                     String?
   appPinUpdatedAt                DateTime?
+  /// Encrypted Deriv API token (user-owned). Never returned in API payloads.
+  derivApiTokenEnc               String?
+  derivConnectedAt               DateTime?
+  /// Encrypted MetaAPI Cloud token (user-owned). Used on Solo instead of METAAPI_TOKEN.
+  metaApiTokenEnc                String?
+  metaApiTokenSavedAt            DateTime?
   createdAt                      DateTime   @default(now())
   updatedAt                      DateTime   @updatedAt
 
@@ -385,6 +391,7 @@ model User {
   loginOtps                    LoginOtp[]
   passwordResets               PasswordReset[]
   savedWithdrawalWallets       SavedWithdrawalWallet[]
+  derivCryptoWallets           DerivCryptoWallet[]
   withdrawalWalletOtps         WithdrawalWalletOtp[]
   withdrawOtps                 WithdrawOtp[]
   walletTransferOtps           WalletTransferOtp[]
@@ -563,6 +570,24 @@ model SavedWithdrawalWallet {
   @@unique([userId, address, network])
   @@index([userId])
   @@map("saved_withdrawal_wallets")
+}
+
+/// Crypto addresses for Deriv deposits / cashouts — not the platform USDT wallet.
+model DerivCryptoWallet {
+  id        String   @id @default(cuid())
+  userId    String
+  purpose   String
+  network   String
+  address   String
+  label     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, purpose])
+  @@index([userId])
+  @@map("deriv_crypto_wallets")
 }
 
 model PasswordReset {
@@ -1166,6 +1191,13 @@ model PlatformConfig {
   derivOAuthRedirectUrl String?
   derivEnabled          Boolean @default(false)
   derivNotes            String? @db.Text
+
+  /// Shared NOWPayments payout login (Solo: either user can set; used for all withdrawals).
+  nowpaymentsPayoutEmail         String?
+  nowpaymentsPayoutPasswordEnc   String?
+  nowpaymentsPayoutUpdatedAt     DateTime?
+  nowpaymentsPayoutUpdatedById   String?
+  nowpaymentsApiKeyEnc           String?
 
   /// Launch / vault contract config (Remix deploy) — preferred over env when set.
   contractAddress      String?

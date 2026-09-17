@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TpClaimsService } from './tp-claims.service';
 import { TpClaimsController } from './tp-claims.controller';
 import { TradesModule } from '../trades/trades.module';
@@ -10,7 +10,9 @@ import { ProfitShareModule } from '../profit-share/profit-share.module';
 @Module({
   imports: [
     TradesModule,
-    PayoutsModule,
+    // PayoutsModule is often still evaluating when this file loads via
+    // Payments → Evaluations → Mt5Sync → Signals → TpClaims.
+    forwardRef(() => PayoutsModule),
     MetaApiModule,
     EmailModule,
     ProfitShareModule,

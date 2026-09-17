@@ -11,6 +11,7 @@ import {
 import { PayoutSource, WalletTxType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { NowPaymentsService } from '../payments/nowpayments.service';
+import { isSoloApp } from '../common/app-variant';
 import { ConfigService } from '@nestjs/config';
 import { ComplianceService } from '../compliance/compliance.service';
 import { NotificationService } from '../email/notification.service';
@@ -332,7 +333,7 @@ export class PayoutService {
       };
     }
 
-    return this.sendExternalWalletPayout(payout, adminId, settlement);
+    return this.sendExternalWalletPayout(payout, adminId, settlement, network);
   }
 
   private async sendExternalWalletPayout(
@@ -349,6 +350,7 @@ export class PayoutService {
     },
     adminId: string,
     settlement: 'gateway' | 'external' = 'gateway',
+    network = 'TRC20',
   ) {
     const amount = Number(payout.traderShare);
     const destination = payout.walletAddress?.trim();
@@ -482,26 +484,38 @@ export class PayoutService {
       };
     }
 
-    if (!this.nowPayments.isConfigured) {
+    if (!(await this.nowPayments.ensureConfigured())) {
       throw new BadRequestException(
-        'NOWPayments is not configured — set NOWPAYMENTS_API_KEY before approving wallet withdrawals',
+        isSoloApp()
+          ? 'NOWPayments is not configured — save the shared API key in Settings so both of you can withdraw'
+          : 'NOWPayments is not configured — set NOWPAYMENTS_API_KEY before approving wallet withdrawals',
       );
     }
 
-    if (!this.nowPayments.isPayoutConfigured) {
-      const status = this.nowPayments.getPayoutConfigStatus();
+    if (!(await this.nowPayments.isPayoutReady())) {
+      const status = await this.nowPayments.getPayoutConfigStatus();
       const missing = [
-        !status.payoutEmailSet ? 'NOWPAYMENTS_PAYOUT_EMAIL' : null,
-        !status.payoutPasswordSet ? 'NOWPAYMENTS_PAYOUT_PASSWORD' : null,
+        !status.payoutEmailSet ? 'payout email' : null,
+        !status.payoutPasswordSet ? 'payout password' : null,
       ].filter(Boolean);
       throw new BadRequestException(
-        `NOWPayments payout login is not configured on traders-api — set ${missing.join(
-          ' and ',
-        )} on the Render backend service (not the frontend), then Manual Deploy / restart`,
+        isSoloApp()
+          ? `NOWPayments payout login is not configured — save ${missing.join(
+              ' and ',
+            )} in Settings (shared for both users)`
+          : `NOWPayments payout login is not configured on traders-api — set ${missing
+              .map((m) =>
+                m === 'payout email'
+                  ? 'NOWPAYMENTS_PAYOUT_EMAIL'
+                  : 'NOWPAYMENTS_PAYOUT_PASSWORD',
+              )
+              .join(
+                ' and ',
+              )} on the Render backend service (not the frontend), then Manual Deploy / restart`,
       );
     }
 
-    const currency = this.nowPayments.mapNetworkToCurrency('TRC20');
+    const currency = this.nowPayments.mapNetworkToCurrency(network);
     let result: { id: string };
     try {
       result = await this.nowPayments.createPayout({
@@ -746,6 +760,7 @@ export class PayoutService {
     skip = false,
   ) {
     if (skip) return;
+    if (isSoloApp()) return;
     if (payout.source !== 'DEPOSITOR' || !INSTANT_WITHDRAW_SAFETY_HOLD_ENABLED) {
       return;
     }

@@ -1,0 +1,3791 @@
+// Browser uses same-origin proxy (app/api/v1/[...path]/route.ts) to avoid CORS.
+const API_BASE = "/api/v1";
+
+function networkErrorMessage(): string {
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      return "Cannot reach the API. Start the backend with: cd backend && npm run start:dev";
+    }
+  }
+  return "Cannot reach the API. The server may be waking up — wait a moment and try again.";
+}
+
+function apiErrorMessage(body: unknown, statusText: string): string {
+  if (body && typeof body === "object") {
+    const msg = (body as { message?: unknown }).message;
+    if (Array.isArray(msg)) return msg.join(", ");
+    if (typeof msg === "string" && msg.trim()) {
+      if (msg === "Unauthorized") {
+        return "Your session expired — signing you out.";
+      }
+      if (/validation failed/i.test(msg)) {
+        return "That MT5 account is no longer available. Retrying with another pool account — if this persists, contact support.";
+      }
+      return msg;
+    }
+  }
+  return statusText || "Request failed";
+}
+
+function readStoredToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem("trp-auth");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { state?: { token?: string } };
+    return parsed.state?.token ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Clear persisted auth when the API rejects the JWT (avoid circular import). */
+function signOutExpiredSession() {
+  if (typeof window === "undefined") return;
+  void import("@/stores/auth").then(({ useAuthStore }) => {
+    const state = useAuthStore.getState();
+    if (state.token || state.isAuthenticated) {
+      state.logout();
+    }
+  });
+}
+
+class ApiClient {
+  private token: string | null = readStoredToken();
+
+  setToken(token: string | null) {
+    this.token = token;
+  }
+
+  getToken() {
+    return this.token ?? readStoredToken();
+  }
+
+  /** If we sent a Bearer token and got 401, the session is dead — sign out. */
+  private clearSessionIfUnauthorized(status: number, sentAuth: boolean) {
+    if (status === 401 && sentAuth) {
+      this.token = null;
+      signOutExpiredSession();
+    }
+  }
+
+  private async agentRequest<T>(
+    path: string,
+    agentToken: string,
+    options: RequestInit = {},
+  ): Promise<T> {
+    const headers: Record<string, string> = {
+      ...(options.headers as Record<string, string>),
+      "X-Agent-Token": agentToken,
+    };
+    const hasBody = options.body != null && options.body !== "";
+    if (hasBody && !headers["Content-Type"] && !headers["content-type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers,
+    }).catch(() => {
+      throw new Error(networkErrorMessage());
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      let error: { message?: unknown } = { message: res.statusText };
+      try {
+        if (text) error = JSON.parse(text) as { message?: unknown };
+      } catch {
+        throw new Error(text.slice(0, 120) || "Request failed");
+      }
+      throw new Error(apiErrorMessage(error, res.statusText));
+    }
+    return res.json() as Promise<T>;
+  }
+
+  private async request<T>(
+    path: string,
+    options: RequestInit = {},
+  ): Promise<T> {
+    const headers: Record<string, string> = {
+      ...(options.headers as Record<string, string>),
+    };
+
+    const hasBody = options.body != null && options.body !== "";
+    if (hasBody && !headers["Content-Type"] && !headers["content-type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+
+    const token = this.getToken();
+    const sentAuth = Boolean(token);
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}${path}`, {
+        ...options,
+        headers,
+      });
+    } catch {
+      throw new Error(networkErrorMessage());
+    }
+
+    if (!res.ok) {
+      this.clearSessionIfUnauthorized(res.status, sentAuth);
+      const text = await res.text();
+      let error: { message?: unknown } = { message: res.statusText };
+      try {
+        if (text) error = JSON.parse(text) as { message?: unknown };
+      } catch {
+        throw new Error(
+          text.slice(0, 180).trim() ||
+            `Request failed (HTTP ${res.status}). Check API_URL on solo-web and solo-api logs.`,
+        );
+      }
+      throw new Error(
+        apiErrorMessage(error, res.statusText || `HTTP ${res.status}`),
+      );
+    }
+
+    try {
+      return await res.json();
+    } catch {
+      throw new Error("Invalid response from server — try again shortly");
+    }
+  }
+
+  private async uploadRequest<T>(
+    path: string,
+    formData: FormData,
+    failLabel: string,
+  ): Promise<T> {
+    const headers: Record<string, string> = {};
+    const token = this.getToken();
+    const sentAuth = Boolean(token);
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers,
+      body: formData,
+    }).catch(() => {
+      throw new Error(networkErrorMessage());
+    });
+
+    if (!res.ok) {
+      this.clearSessionIfUnauthorized(res.status, sentAuth);
+      const error = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(apiErrorMessage(error, res.statusText) || failLabel);
+    }
+
+    return res.json() as Promise<T>;
+  }
+
+  private isMissingRouteError(err: unknown): boolean {
+    if (!(err instanceof Error)) return false;
+    const msg = err.message.toLowerCase();
+    return msg.includes("cannot post") || msg.includes("not found");
+  }
+
+  private async claimTradingAccountRequest(credentials: {
+    accountName: string;
+    login: string;
+    password: string;
+    server: string;
+  }): Promise<{
+    alreadyLinked: boolean;
+    accountId: string;
+    account: MetaApiAccountRow;
+    settings?: UserSettings;
+  }> {
+    const options = {
+      method: "POST" as const,
+      body: JSON.stringify(credentials),
+    };
+    try {
+      return await this.request<{
+        alreadyLinked: boolean;
+        accountId: string;
+        account: MetaApiAccountRow;
+        settings: UserSettings;
+      }>("/users/trading-account/claim", options);
+    } catch (err) {
+      if (!this.isMissingRouteError(err)) throw err;
+      return await this.request<{
+        alreadyLinked: boolean;
+        accountId: string;
+        account: MetaApiAccountRow;
+      }>("/mt5-sync/claim-account", options);
+    }
+  }
+
+  auth = {
+    register: (data: {
+      email: string;
+      password: string;
+      displayName: string;
+      acceptTerms: boolean;
+      referralCode?: string;
+    }) =>
+      this.request("/auth/register", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    login: (data: { email: string; password: string }) =>
+      this.request<LoginResponse>("/auth/login", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    verifyLoginOtp: (data: { loginSessionId: string; code: string }) =>
+      this.request<{ accessToken: string; user: Record<string, unknown> }>(
+        "/auth/login/verify-otp",
+        { method: "POST", body: JSON.stringify(data) },
+      ),
+    resendLoginOtp: (data: { loginSessionId: string }) =>
+      this.request<{
+        loginSessionId: string;
+        message: string;
+        expiresIn: number;
+      }>("/auth/login/resend-otp", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    forgotPassword: (email: string) =>
+      this.request<{ message: string }>("/auth/forgot-password", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      }),
+    resetPassword: (token: string, password: string) =>
+      this.request<{ message: string }>("/auth/reset-password", {
+        method: "POST",
+        body: JSON.stringify({ token, password }),
+      }),
+    walletLogin: (data: {
+      walletAddress: string;
+      signature: string;
+      message: string;
+    }) =>
+      this.request<{ accessToken: string; user: Record<string, unknown> }>(
+        "/auth/wallet",
+        { method: "POST", body: JSON.stringify(data) },
+      ),
+  };
+
+  accountTransfers = {
+    byToken: (token: string) =>
+      this.request<{
+        id: string;
+        status: string;
+        agreementVersion: string;
+        expiresAt: string;
+        finalizeAfter: string | null;
+        fromDisplayName: string;
+        fromEmailMasked: string;
+        toDisplayName: string;
+        toEmailMasked: string;
+        availableBalance: number;
+        lockedBalance: number;
+        investorBalance: number;
+        expired: boolean;
+        canAgree: boolean;
+      }>(`/account-transfers/by-token?token=${encodeURIComponent(token)}`),
+    agree: (token: string) =>
+      this.request<{
+        id: string;
+        status: string;
+        finalizeAfter: string | null;
+      }>("/account-transfers/agree", {
+        method: "POST",
+        body: JSON.stringify({ token }),
+      }),
+  };
+
+  deriv = {
+    status: () =>
+      this.request<{
+        connected: boolean;
+        connectedAt: string | null;
+        tokenMasked: string | null;
+      }>("/deriv/status"),
+    saveToken: (token: string) =>
+      this.request<{
+        connected: boolean;
+        connectedAt: string;
+        tokenMasked: string;
+        loginid: string | null;
+      }>("/deriv/token", {
+        method: "PUT",
+        body: JSON.stringify({ token }),
+      }),
+    disconnect: () =>
+      this.request<{ connected: boolean }>("/deriv/token", {
+        method: "DELETE",
+      }),
+    accounts: () =>
+      this.request<{
+        wallet: DerivAccount | null;
+        wallets?: DerivAccount[];
+        options?: DerivAccount[];
+        mt5: DerivAccount[];
+      }>("/deriv/accounts"),
+    trades: () =>
+      this.request<{
+        open: Record<string, unknown>[];
+        statement: Record<string, unknown>[];
+      }>("/deriv/trades"),
+    transfer: (data: {
+      accountFrom: string;
+      accountTo: string;
+      amount: number;
+      currency: string;
+    }) =>
+      this.request<Record<string, unknown>>("/deriv/transfer", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    sellContract: (id: string | number) =>
+      this.request<Record<string, unknown>>(`/deriv/contracts/${id}/sell`, {
+        method: "POST",
+      }),
+    cryptoWallets: () =>
+      this.request<DerivCryptoWalletsResult>("/deriv/crypto-wallets"),
+    saveCryptoWallet: (data: {
+      purpose: "DEPOSIT" | "WITHDRAW";
+      network: string;
+      address: string;
+      label?: string;
+    }) =>
+      this.request<DerivCryptoWalletsResult>("/deriv/crypto-wallets", {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    deleteCryptoWallet: (purpose: "DEPOSIT" | "WITHDRAW") =>
+      this.request<DerivCryptoWalletsResult>(
+        `/deriv/crypto-wallets/${purpose}`,
+        { method: "DELETE" },
+      ),
+  };
+
+  metaApi = {
+    status: () =>
+      this.request<{
+        connected: boolean;
+        connectedAt: string | null;
+        tokenMasked: string | null;
+        accountId: string | null;
+      }>("/metaapi/status"),
+    saveToken: (token: string) =>
+      this.request<{
+        connected: boolean;
+        connectedAt: string;
+        tokenMasked: string;
+      }>("/metaapi/token", {
+        method: "PUT",
+        body: JSON.stringify({ token }),
+      }),
+    disconnect: () =>
+      this.request<{ connected: boolean }>("/metaapi/token", {
+        method: "DELETE",
+      }),
+    accounts: () =>
+      this.request<{
+        items: Array<{
+          id: string;
+          login: string;
+          name: string;
+          server: string;
+          state: string;
+          connectionStatus: string;
+          region: string;
+          selected: boolean;
+        }>;
+        selectedId: string | null;
+      }>("/metaapi/accounts"),
+    linkAccount: (accountId: string, token?: string) =>
+      this.request<{
+        accountId: string;
+        account: {
+          id: string;
+          login: string;
+          name: string;
+          server: string;
+          state: string;
+          connectionStatus: string;
+        };
+      }>("/metaapi/account", {
+        method: "PUT",
+        body: JSON.stringify({
+          accountId,
+          ...(token?.trim() ? { token: token.trim() } : {}),
+        }),
+      }),
+  };
+
+  users = {
+    dashboard: () => this.request<DashboardData>("/users/dashboard"),
+    profile: () => this.request("/users/profile"),
+    settings: () => this.request<UserSettings>("/users/settings"),
+    updateProfile: (data: UpdateProfileInput) =>
+      this.request<UserSettings>("/users/profile", {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    updateAddress: (data: UpdateAddressInput) =>
+      this.request<UserSettings>("/users/address", {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    updateCurrency: (preferredCurrency: string | null) =>
+      this.request<UserSettings>("/users/currency", {
+        method: "PATCH",
+        body: JSON.stringify({ preferredCurrency }),
+      }),
+    updatePaymentDetails: (data: UpdatePaymentDetailsInput) =>
+      this.request<UserSettings>("/users/payment-details", {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    updateTradingAccount: (metaApiAccountId: string | null) =>
+      this.request<UserSettings>("/users/trading-account", {
+        method: "PATCH",
+        body: JSON.stringify({ metaApiAccountId }),
+      }),
+    claimTradingAccount: (credentials: {
+      accountName: string;
+      login: string;
+      password: string;
+      server: string;
+    }) => this.claimTradingAccountRequest(credentials),
+    getKyc: () => this.request<KycRecord>("/users/kyc"),
+    submitKyc: (data: SubmitKycInput) =>
+      this.request<KycRecord>("/users/kyc/submit", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    retryKyc: () =>
+      this.request<KycRecord>("/users/kyc/retry", { method: "POST" }),
+  };
+
+  chainEnrollment = {
+    get: () => this.request<ChainContractEnrollment>("/blockchain/enrollment"),
+    acceptTerms: () =>
+      this.request<ChainContractEnrollment>(
+        "/blockchain/enrollment/accept-terms",
+        { method: "POST" },
+      ),
+    cancel: () =>
+      this.request<ChainContractEnrollment>("/blockchain/enrollment/cancel", {
+        method: "POST",
+      }),
+    submitKyc: (data: ChainContractKycInput) =>
+      this.request<ChainContractEnrollment>("/blockchain/enrollment/kyc", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    activate: (depositUsd: number) =>
+      this.request<ChainContractEnrollment>("/blockchain/enrollment/activate", {
+        method: "POST",
+        body: JSON.stringify({ depositUsd }),
+      }),
+    vault: () => this.request<ChainVaultStatus>("/blockchain/enrollment/vault"),
+    fundVault: (amount: number) =>
+      this.request<ChainVaultStatus>("/blockchain/enrollment/vault/fund", {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+      }),
+    withdrawVault: (amount?: number) =>
+      this.request<ChainVaultStatus>("/blockchain/enrollment/vault/withdraw", {
+        method: "POST",
+        body: JSON.stringify(amount == null ? {} : { amount }),
+      }),
+    validateDocument: (data: {
+      country?: string;
+      documentType: "PASSPORT" | "NATIONAL_ID" | "DRIVERS_LICENSE";
+      documentNumber: string;
+    }) =>
+      this.request<{
+        ok: boolean;
+        plausible: boolean;
+        confidence: number;
+        reason: string;
+        suggestedFormatHint?: string;
+      }>("/blockchain/enrollment/validate-document", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+  };
+
+  signals = {
+    submit: (data: SignalInput) =>
+      this.request<
+        | {
+            status: "duplicate_signal";
+            signalId: string;
+            message: string;
+            matchedSignal: MatchedDuplicateSignal;
+          }
+        | {
+            status: "accepted";
+            signalId: string;
+            submittedAt: string;
+            entryRange: { min: number; max: number };
+            execution?: {
+              status?: "pending" | "queued" | "failed";
+              forwarded: boolean;
+              hubError?: string;
+              sendername?: string;
+              orderType?: string;
+            };
+            executionHub?: {
+              id: string;
+              status: string;
+              duplicate: boolean;
+              progress?: { stage: string; message: string; executed: boolean };
+            } | null;
+            executionValidation?: {
+              approved: boolean;
+              adjusted: boolean;
+              issues: string[];
+              rejectReason?: string;
+              sentPrices?: {
+                symbol: string;
+                direction: string;
+                entry: number;
+                sl: number;
+                tp: number;
+              };
+            };
+          }
+      >("/signals", { method: "POST", body: JSON.stringify(data) }),
+    hubHealth: () =>
+      this.request<{
+        configured: boolean;
+        baseUrl: string;
+        providerName: string;
+        orderType: string;
+        lotScale: number | null;
+        keyHint?: string | null;
+      }>("/signals/hub/health"),
+    resendHub: (signalId: string) =>
+      this.request<{
+        status: string;
+        signalId: string;
+        submittedAt: string;
+        entryRange: { min: number; max: number };
+        execution?: {
+          forwarded: boolean;
+          hubError?: string;
+          sendername?: string;
+          orderType?: string;
+        };
+        executionHub?: {
+          id: string;
+          status: string;
+          duplicate: boolean;
+          progress?: { stage: string; message: string; executed: boolean };
+        } | null;
+        executionValidation?: {
+          approved: boolean;
+          adjusted: boolean;
+          issues: string[];
+          rejectReason?: string;
+        };
+      }>(`/signals/hub/resend/${signalId}`, { method: "POST" }),
+    list: () => this.request<SignalRecord[]>("/signals"),
+    get: (signalId: string) =>
+      this.request<SignalDetailRecord>(`/signals/${signalId}`),
+    warmupExecution: () =>
+      this.request<{ ready: boolean; message?: string; accountId?: string }>(
+        "/signals/execution/warmup",
+      ),
+    openUnresolved: () =>
+      this.request<OpenSetupsResult>("/signals/open/unresolved"),
+    claimableTps: () =>
+      this.request<ClaimableTpsResult>("/signals/claimable/tps"),
+    getResolution: (signalId: string) =>
+      this.request<SetupResolution>(`/signals/${signalId}/resolution`),
+    getLiveTrade: (signalId: string) =>
+      this.request<{ signalId: string; liveTrade: SetupLiveTrade | null }>(
+        `/signals/${signalId}/live-trade`,
+      ),
+    placeTrade: (signalId: string) =>
+      this.request<PlaceTradeResult>(`/signals/${signalId}/place-trade`, {
+        method: "POST",
+      }),
+    closeTrade: (signalId: string) =>
+      this.request<CloseSetupTradeResult>(`/signals/${signalId}/close-trade`, {
+        method: "POST",
+      }),
+    setBreakeven: (signalId: string) =>
+      this.request<SetBreakevenResult>(`/signals/${signalId}/set-breakeven`, {
+        method: "POST",
+      }),
+    partialClose: (signalId: string, volume: number) =>
+      this.request<{
+        status: string;
+        signalId: string;
+        volume: number;
+        message?: string;
+      }>(`/signals/${signalId}/partial-close`, {
+        method: "POST",
+        body: JSON.stringify({ volume }),
+      }),
+    updateStops: (
+      signalId: string,
+      stops: { stopLoss?: number; takeProfit?: number },
+    ) =>
+      this.request<UpdateSetupStopsResult>(
+        `/signals/${signalId}/update-stops`,
+        {
+          method: "POST",
+          body: JSON.stringify(stops),
+        },
+      ),
+    metaApiAccounts: () =>
+      this.request<MetaApiAccountsResult>("/signals/metaapi/accounts"),
+    mt5Terminal: () => this.request<UserMt5Terminal>("/signals/mt5/terminal"),
+    mt5Quotes: () => this.request<UserMt5QuotesResult>("/signals/mt5/quotes"),
+    mt5BatchQuotes: (symbols: string[]) => {
+      const q = new URLSearchParams({
+        symbols: symbols.join(","),
+      });
+      return this.request<UserMt5BatchQuotesResult>(
+        `/signals/mt5/quotes/batch?${q}`,
+      );
+    },
+    mt5Quote: (symbol: string) => {
+      const q = new URLSearchParams({ symbol });
+      return this.request<UserMt5QuoteResult>(`/signals/mt5/quote?${q}`);
+    },
+    mt5Ohlc: (symbol: string, timeframe: string, limit?: number) => {
+      const q = new URLSearchParams({ symbol, timeframe });
+      if (limit != null) q.set("limit", String(limit));
+      return this.request<UserMt5OhlcResult>(`/signals/mt5/ohlc?${q}`);
+    },
+    mt5Running: () =>
+      this.request<UserMt5RunningResult>("/signals/mt5/running"),
+    mt5History: (fresh?: boolean, days?: number) => {
+      const q = new URLSearchParams();
+      if (fresh) q.set("fresh", "1");
+      if (days != null) q.set("days", String(days));
+      const qs = q.toString();
+      return this.request<UserMt5HistoryResult>(
+        `/signals/mt5/history${qs ? `?${qs}` : ""}`,
+      );
+    },
+    closeMt5Position: (positionId: string) =>
+      this.request<{ ok: boolean; positionId: string; status?: string }>(
+        `/signals/mt5/positions/${encodeURIComponent(positionId)}/close`,
+        { method: "POST" },
+      ),
+    modifyMt5PositionStops: (
+      positionId: string,
+      stops: { stopLoss?: number; takeProfit?: number },
+    ) =>
+      this.request<ModifyMt5PositionStopsResult>(
+        `/signals/mt5/positions/${encodeURIComponent(positionId)}/modify-stops`,
+        { method: "POST", body: JSON.stringify(stops) },
+      ),
+    closeAllMt5Positions: () =>
+      this.request<CloseAllMt5Result>("/signals/mt5/positions/close-all", {
+        method: "POST",
+      }),
+    mt5OrderPreview: (
+      symbol: string,
+      direction: "BUY" | "SELL",
+      volume?: number,
+    ) => {
+      const q = new URLSearchParams({ symbol, direction });
+      if (volume != null && Number.isFinite(volume) && volume > 0) {
+        q.set("volume", String(volume));
+      }
+      return this.request<Mt5MarketOrderPreview>(
+        `/signals/mt5/order-preview?${q}`,
+      );
+    },
+    placeMt5Order: (body: {
+      symbol: string;
+      direction: "BUY" | "SELL";
+      stopLoss: number;
+      takeProfit: number;
+      volume?: number;
+    }) =>
+      this.request<PlaceTradeResult>("/signals/mt5/orders", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    copyDashboard: () =>
+      this.request<CopyTradingDashboard>("/signals/metaapi/copy-dashboard"),
+    copySettings: () =>
+      this.request<CopySettings>("/admin/hub/metaapi/copy-settings"),
+    updateCopySettings: (body: Partial<CopySettings>) =>
+      this.request<CopySettings>("/admin/hub/metaapi/copy-settings", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    addCopyPoolTrader: (userId: string) =>
+      this.request<CopyPoolMutationResult>("/admin/hub/metaapi/copy-pool", {
+        method: "POST",
+        body: JSON.stringify({ userId }),
+      }),
+    removeCopyPoolTrader: (userId: string) =>
+      this.request<CopyPoolMutationResult>(
+        `/admin/hub/metaapi/copy-pool/${encodeURIComponent(userId)}`,
+        { method: "DELETE" },
+      ),
+    claim: (
+      signalId: string,
+      outcome: "tp" | "sl",
+      evidence?: {
+        beforeScreenshotUrl: string;
+        afterScreenshotUrl: string;
+        tpClaimType?: "full" | "rr_1_1";
+      },
+    ) =>
+      this.request<ClaimSetupResult>(`/signals/claim/${signalId}`, {
+        method: "POST",
+        body: JSON.stringify({
+          outcome,
+          ...(evidence ?? {}),
+        }),
+      }),
+    deleteLimit: (signalId: string) =>
+      this.request<{
+        status: string;
+        signalId: string;
+        cancelledMetaApi: boolean;
+        hubWarning?: string;
+        message: string;
+      }>(`/signals/${signalId}/delete-limit`, { method: "POST" }),
+    archive: (signalId: string) =>
+      this.request<{ status: string; signalId: string }>(
+        `/signals/archive/${signalId}`,
+        { method: "POST" },
+      ),
+    archiveAll: () =>
+      this.request<{ archivedCount: number; signalIds: string[] }>(
+        "/signals/archive-all",
+        { method: "POST" },
+      ),
+    archived: (limit = 50) =>
+      this.request<{ items: ArchivedSetupItem[]; count: number }>(
+        `/signals/archived/list?limit=${limit}`,
+      ),
+    invalidate: (signalId: string, reason?: string) =>
+      this.request<InvalidateSetupResult>(`/signals/invalidate/${signalId}`, {
+        method: "POST",
+        body: JSON.stringify(reason ? { reason } : {}),
+      }),
+    executionStatus: (signalId: string) =>
+      this.request<HubSignalStatus>(`/signals/hub/execution/${signalId}`),
+    executionLogs: (params?: { signal_id?: string; limit?: number }) => {
+      const q = new URLSearchParams();
+      if (params?.signal_id) q.set("signal_id", params.signal_id);
+      if (params?.limit) q.set("limit", String(params.limit));
+      const qs = q.toString();
+      return this.request<HubLogsResult>(
+        `/signals/hub/logs${qs ? `?${qs}` : ""}`,
+      );
+    },
+    hubList: (params?: {
+      status?: string;
+      limit?: number;
+      offset?: number;
+      since?: string;
+      external_id?: string;
+    }) => {
+      const q = new URLSearchParams();
+      if (params?.status) q.set("status", params.status);
+      if (params?.limit) q.set("limit", String(params.limit ?? 50));
+      if (params?.offset) q.set("offset", String(params.offset));
+      if (params?.since) q.set("since", params.since);
+      if (params?.external_id) q.set("external_id", params.external_id);
+      const qs = q.toString();
+      return this.request<HubSignalList>(
+        `/signals/hub/list${qs ? `?${qs}` : ""}`,
+      );
+    },
+    positions: () => this.request<HubPositions>("/signals/hub/positions"),
+    closePosition: (ticket: number) =>
+      this.request<{ ok: boolean; ticket: number }>(
+        `/signals/hub/positions/${ticket}/close`,
+        { method: "POST" },
+      ),
+    closeAllPositions: () =>
+      this.request<{ ok: boolean; closed: number; count: number }>(
+        "/signals/hub/positions/close-all",
+        { method: "POST" },
+      ),
+    quote: (symbol: string) => {
+      const q = new URLSearchParams({ symbol });
+      return this.request<HubQuote>(`/signals/hub/quote?${q}`);
+    },
+    hubSignalById: (hubId: string) =>
+      this.request<HubSignalStatus>(`/signals/hub/signals/${hubId}`),
+    hubAction: (payload: HubActionInput) =>
+      this.request<HubSignalStatus>("/signals/hub/action", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    listDrafts: () => this.request<SignalDraft[]>("/signals/drafts"),
+    getDraft: (draftId: string) =>
+      this.request<SignalDraft>(`/signals/drafts/${draftId}`),
+    createDraft: (data: SignalDraftInput) =>
+      this.request<SignalDraft>("/signals/drafts", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    updateDraft: (draftId: string, data: SignalDraftInput) =>
+      this.request<SignalDraft>(`/signals/drafts/${draftId}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    deleteDraft: (draftId: string) =>
+      this.request<{ deleted: boolean }>(`/signals/drafts/${draftId}`, {
+        method: "DELETE",
+      }),
+  };
+
+  uploads = {
+    setup: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return this.uploadRequest<{ url: string; filename: string }>(
+        "/uploads/setup",
+        formData,
+        "Upload failed",
+      );
+    },
+    ingestSetup: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return this.uploadRequest<{
+        url: string;
+        filename: string;
+        analysis: SetupAnalysis;
+      }>("/uploads/setup/ingest", formData, "Upload failed");
+    },
+    kyc: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return this.uploadRequest<{ url: string; filename: string }>(
+        "/uploads/kyc",
+        formData,
+        "Upload failed",
+      );
+    },
+    analyzeSetup: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return this.uploadRequest<{ analysis: SetupAnalysis }>(
+        "/uploads/setup/analyze",
+        formData,
+        "AI analysis failed",
+      );
+    },
+  };
+
+  assistant = {
+    mt5Chat: (body: {
+      message: string;
+      history?: { role: "user" | "assistant"; content: string }[];
+    }) =>
+      this.request<Mt5AssistantReply>("/assistant/mt5/chat", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+  };
+
+  presence = {
+    heartbeat: (path: string) =>
+      this.request<{ ok: boolean }>("/presence/heartbeat", {
+        method: "POST",
+        body: JSON.stringify({ path }),
+      }),
+  };
+
+  messages = {
+    getThread: (since?: string) => {
+      const qs = since ? `?since=${encodeURIComponent(since)}` : "";
+      return this.request<DirectMessageThread>(`/messages${qs}`);
+    },
+    send: (body: string) =>
+      this.request<SendMessageResult>("/messages", {
+        method: "POST",
+        body: JSON.stringify({ body }),
+      }),
+    requestAdmin: () =>
+      this.request<RequestAdminResult>("/messages/request-admin", {
+        method: "POST",
+      }),
+    resumeAgent: () =>
+      this.request<RequestAdminResult>("/messages/resume-agent", {
+        method: "POST",
+      }),
+    unreadCount: () =>
+      this.request<{ count: number }>("/messages/unread-count"),
+  };
+
+  chat = {
+    inbox: () => this.request<ChatConversation[]>("/chat/conversations"),
+    unreadCount: () =>
+      this.request<{ count: number }>("/chat/unread-count"),
+    get: (conversationId: string) =>
+      this.request<ChatConversation>(
+        `/chat/conversations/${encodeURIComponent(conversationId)}`,
+      ),
+    start: (email: string, body?: string) =>
+      this.request<ChatConversation>("/chat/conversations", {
+        method: "POST",
+        body: JSON.stringify({
+          recipientEmail: email.trim(),
+          ...(body?.trim() ? { body: body.trim() } : {}),
+        }),
+      }),
+    messages: (conversationId: string, since?: string) => {
+      const qs = since ? `?since=${encodeURIComponent(since)}` : "";
+      return this.request<{ messages: PeerChatMessage[] }>(
+        `/chat/conversations/${encodeURIComponent(conversationId)}/messages${qs}`,
+      );
+    },
+    send: (conversationId: string, body: string) =>
+      this.request<PeerChatMessage>(
+        `/chat/conversations/${encodeURIComponent(conversationId)}/messages`,
+        {
+          method: "POST",
+          body: JSON.stringify({ body }),
+        },
+      ),
+    markRead: (conversationId: string) =>
+      this.request<{ ok: boolean }>(
+        `/chat/conversations/${encodeURIComponent(conversationId)}/read`,
+        { method: "POST" },
+      ),
+  };
+
+  leaderboard = {
+    get: (week?: number, year?: number) => {
+      const params = new URLSearchParams();
+      if (week) params.set("week", String(week));
+      if (year) params.set("year", String(year));
+      return this.request<LeaderboardEntry[]>(`/leaderboard?${params}`);
+    },
+    hubExecution: (params?: {
+      days?: number;
+      min_closed_trades?: number;
+      limit?: number;
+    }) => {
+      const q = new URLSearchParams();
+      if (params?.days) q.set("days", String(params.days));
+      if (params?.min_closed_trades !== undefined) {
+        q.set("min_closed_trades", String(params.min_closed_trades));
+      }
+      if (params?.limit) q.set("limit", String(params.limit));
+      const qs = q.toString();
+      return this.request<HubSenderReport>(
+        `/leaderboard/hub-execution${qs ? `?${qs}` : ""}`,
+      );
+    },
+  };
+
+  public = {
+    recentPayouts: (limit = 12) =>
+      this.request<PublicPayoutFeed>(`/public/recent-payouts?limit=${limit}`),
+  };
+
+  payments = {
+    pendingRegistration: (network?: string) =>
+      this.request<{
+        pending: {
+          paymentId: string;
+          amount: number;
+          currency: string;
+          network: string;
+          payAddress?: string;
+          payAmount?: number;
+          payCurrency?: string;
+          gatewayPaymentId?: number;
+          liveStatus?: string;
+          gateway?: string;
+          orderId?: string;
+        } | null;
+      }>(
+        `/payments/registration/pending${
+          network ? `?network=${encodeURIComponent(network)}` : ""
+        }`,
+      ),
+    createRegistration: (
+      network: string,
+      promoCode?: string,
+      source?: "wallet" | "crypto" | "momo",
+      momo?: { phone: string; network: string; countryCode?: string },
+    ) =>
+      this.request<{
+        paymentId?: string;
+        amount?: number;
+        amountLocal?: number;
+        localCurrency?: string;
+        currency?: string;
+        network?: string;
+        payAddress?: string;
+        payAmount?: number;
+        payCurrency?: string;
+        gatewayPaymentId?: number | string;
+        gatewayChargeId?: string;
+        liveStatus?: string;
+        instruction?: string;
+        invoiceUrl?: string;
+        gateway?: string;
+        success?: boolean;
+        message?: string;
+        promoCode?: string;
+        amountCharged?: number;
+        source?: string;
+        balanceAfter?: number;
+        accessExpiresAt?: string;
+      }>("/payments/registration", {
+        method: "POST",
+        body: JSON.stringify({
+          network,
+          promoCode,
+          source,
+          ...(source === "momo" && momo
+            ? {
+                momoPhone: momo.phone,
+                momoNetwork: momo.network,
+                momoCountryCode: momo.countryCode,
+              }
+            : {}),
+        }),
+      }),
+    getStatus: (paymentId: string) =>
+      this.request<{
+        payment: { id: string; status: string; amount: number };
+        liveStatus?: string;
+        actuallyPaid?: number;
+        payAmount?: number;
+        payAddress?: string;
+        progress: string;
+        confirmed: boolean;
+      }>(`/payments/${paymentId}/status`),
+    applyPromo: (code: string) =>
+      this.request<{
+        success?: boolean;
+        alreadyPaid?: boolean;
+        message: string;
+        promoCode?: string;
+        discountPercent?: number;
+        amountCharged?: number;
+      }>("/payments/apply-promo", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      }),
+    featuredPromo: () =>
+      this.request<{
+        registrationFeeUsdt: number;
+        promo: {
+          code: string;
+          discountPercent: number;
+          description: string;
+          originalAmount: number;
+          finalAmount: number;
+          expiresAt: string;
+        } | null;
+      }>("/payments/promo/featured"),
+    validatePromo: (code: string) =>
+      this.request<{
+        valid: boolean;
+        code: string;
+        discountPercent: number;
+        description: string;
+        originalAmount: number;
+        finalAmount: number;
+        freeRegistration: boolean;
+      }>(`/payments/promo/validate?code=${encodeURIComponent(code)}`),
+    history: () => this.request("/payments/history"),
+    wallet: () => this.request<WalletTransaction[]>("/payments/wallet"),
+    createProfitShare: (network: string) =>
+      this.request<{
+        paymentId?: string;
+        amount?: number;
+        currency?: string;
+        network?: string;
+        payAddress?: string;
+        payAmount?: number;
+        payCurrency?: string;
+        gatewayPaymentId?: number;
+        liveStatus?: string;
+        gateway?: string;
+        message?: string;
+        active?: boolean;
+        enrolledAt?: string | null;
+      }>("/payments/profit-share", {
+        method: "POST",
+        body: JSON.stringify({ network }),
+      }),
+    profitShareStatus: () =>
+      this.request<ProfitShareStatus>("/payments/profit-share/status"),
+    createMt5Sync: (network: string) =>
+      this.request<{
+        paymentId?: string;
+        amount?: number;
+        currency?: string;
+        network?: string;
+        payAddress?: string;
+        payAmount?: number;
+        payCurrency?: string;
+        gatewayPaymentId?: number;
+        liveStatus?: string;
+        gateway?: string;
+        message?: string;
+      }>("/payments/mt5-sync", {
+        method: "POST",
+        body: JSON.stringify({ network }),
+      }),
+    mt5SyncStatus: () =>
+      this.request<Mt5SyncStatus>("/payments/mt5-sync/status"),
+  };
+
+  flutterwave = {
+    config: () =>
+      this.request<{
+        enabled: boolean;
+        currency: string;
+        countryCode: string;
+        usdRate: number;
+        minDepositUsd: number;
+        webhookUrl?: string;
+        networks: Array<{ id: string; label: string }>;
+      }>("/flutterwave/config"),
+    webhookInfo: () =>
+      this.request<{
+        webhookUrl?: string;
+        method: string;
+        signatureHeader: string;
+        signatureConfigured: boolean;
+        supportedEvents: string[];
+        dashboardHint: string;
+      }>("/flutterwave/webhook"),
+  };
+
+  wallet = {
+    summary: () => this.request<WalletSummary>("/wallet/summary"),
+    transactions: (take = 50, skip = 0) =>
+      this.request<{ items: WalletLedgerItem[]; total: number }>(
+        `/wallet/transactions?take=${take}&skip=${skip}`,
+      ),
+    depositMinimum: (network: string) =>
+      this.request<{ minUsdt: number; network: string }>(
+        `/wallet/deposit/minimum?network=${encodeURIComponent(network)}`,
+      ),
+    previewDeposit: (amount: number, riskPercent: number) =>
+      this.request<DepositorPlanPreview>(
+        `/wallet/deposit/preview?amount=${amount}&riskPercent=${riskPercent}`,
+      ),
+    deposit: (data: {
+      network?: string;
+      amount: number;
+      riskPercent?: number;
+      method?: "crypto" | "momo";
+      momoPhone?: string;
+      momoNetwork?: string;
+      momoCountryCode?: string;
+    }) =>
+      this.request<WalletDepositCheckout>("/wallet/deposit", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    createPlan: (amount: number, riskPercent: number) =>
+      this.request<DepositorPlanPreview>("/wallet/deposit/plan", {
+        method: "POST",
+        body: JSON.stringify({ amount, riskPercent }),
+      }),
+    withdraw: (
+      amount: number,
+      savedWalletId: string,
+      sessionId: string,
+      code: string,
+    ) =>
+      this.request<{
+        status: string;
+        payoutId: string;
+        amount: number;
+        fee: number;
+        netPayout: number;
+        balance: number;
+        p2pId?: string;
+        amountUgx?: number;
+        rateUgxPerUsdt?: number;
+        momoPhone?: string;
+        momoNetwork?: string;
+        message?: string;
+        p2p?: MomoP2pWithdrawal;
+      }>("/wallet/withdraw", {
+        method: "POST",
+        body: JSON.stringify({
+          amount,
+          savedWalletId: savedWalletId.trim(),
+          sessionId: sessionId.trim(),
+          code: code.trim(),
+        }),
+      }),
+    momoP2pQuote: (amountUsdt: number) =>
+      this.request<{
+        asset: string;
+        fiat: string;
+        tradeType: string;
+        price: number;
+        amountUsdt: number;
+        amountUgx: number;
+        fetchedAt: string;
+        source: string;
+      }>(
+        `/wallet/momo-p2p/quote?amountUsdt=${encodeURIComponent(String(amountUsdt))}`,
+      ),
+    momoP2pList: () => this.request<MomoP2pWithdrawal[]>("/wallet/momo-p2p"),
+    momoP2pGet: (id: string) =>
+      this.request<MomoP2pWithdrawal>(`/wallet/momo-p2p/${id}`),
+    momoP2pConfirmReceived: (id: string) =>
+      this.request<MomoP2pWithdrawal>(
+        `/wallet/momo-p2p/${id}/confirm-received`,
+        {
+          method: "POST",
+        },
+      ),
+    requestWithdrawOtp: (amount: number, savedWalletId: string) =>
+      this.request<{
+        sessionId: string;
+        email: string;
+        amount: number;
+        savedWalletId: string;
+        message: string;
+        expiresIn: number;
+      }>("/wallet/withdraw/request-otp", {
+        method: "POST",
+        body: JSON.stringify({
+          amount,
+          savedWalletId: savedWalletId.trim(),
+        }),
+      }),
+    requestTransferOtp: (recipientEmail: string, amount: number) =>
+      this.request<{
+        sessionId: string;
+        email: string;
+        amount: number;
+        recipientEmail: string;
+        recipientName: string;
+        message: string;
+        expiresIn: number;
+      }>("/wallet/transfer/request-otp", {
+        method: "POST",
+        body: JSON.stringify({
+          recipientEmail: recipientEmail.trim(),
+          amount,
+        }),
+      }),
+    confirmTransfer: (sessionId: string, code: string) =>
+      this.request<{
+        status: string;
+        amount: number;
+        recipientEmail: string;
+        recipientName: string;
+        balance: number;
+        referenceId: string;
+        message: string;
+      }>("/wallet/transfer/confirm", {
+        method: "POST",
+        body: JSON.stringify({ sessionId, code }),
+      }),
+    withdrawalWallets: () =>
+      this.request<SavedWithdrawalWallet[]>("/wallet/withdrawal-wallets"),
+    requestWithdrawalWalletVerification: (data: {
+      label: string;
+      address: string;
+      network: string;
+    }) =>
+      this.request<{
+        sessionId: string;
+        email: string;
+        network: string;
+        message: string;
+        expiresIn: number;
+      }>("/wallet/withdrawal-wallets/request-verification", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    confirmWithdrawalWallet: (sessionId: string, code: string) =>
+      this.request<{ wallet: SavedWithdrawalWallet; message: string }>(
+        "/wallet/withdrawal-wallets/confirm",
+        {
+          method: "POST",
+          body: JSON.stringify({ sessionId, code }),
+        },
+      ),
+    removeWithdrawalWallet: (id: string) =>
+      this.request<{ ok: boolean; message: string }>(
+        `/wallet/withdrawal-wallets/${id}`,
+        { method: "DELETE" },
+      ),
+    pendingWithdrawals: () =>
+      this.request<PendingWalletWithdrawal[]>("/wallet/pending-withdrawals"),
+    cancelWithdrawal: (payoutId: string) =>
+      this.request<{
+        payoutId: string;
+        amount: number;
+        balance: number;
+        message: string;
+      }>(`/wallet/withdrawals/${payoutId}/cancel`, { method: "POST" }),
+    incomeJournal: (take = 50, skip = 0) =>
+      this.request<{ items: DailyIncomeEntry[]; total: number }>(
+        `/wallet/income-journal?take=${take}&skip=${skip}`,
+      ),
+    dailyCalendar: (year: number, month: number) =>
+      this.request<DailyCalendarResult>(
+        `/wallet/daily-calendar?year=${year}&month=${month}`,
+      ),
+    sendJournalReport: (year: number, month: number) =>
+      this.request<{
+        ok: boolean;
+        year: number;
+        month: number;
+        monthLabel: string;
+        monthNet: number;
+        message: string;
+      }>("/wallet/daily-calendar/report", {
+        method: "POST",
+        body: JSON.stringify({ year, month }),
+      }),
+    nowpaymentsPayoutLogin: () =>
+      this.request<{
+        apiKeySet: boolean;
+        payoutEmailSet: boolean;
+        payoutEmailMasked: string | null;
+        payoutPasswordSet: boolean;
+        payoutConfigured: boolean;
+        shared?: boolean;
+      }>("/wallet/nowpayments-payout"),
+    saveNowpaymentsPayoutLogin: (data: {
+      email: string;
+      password: string;
+      apiKey?: string;
+    }) =>
+      this.request<{
+        apiKeySet: boolean;
+        payoutEmailSet: boolean;
+        payoutEmailMasked: string | null;
+        payoutPasswordSet: boolean;
+        payoutConfigured: boolean;
+        shared?: boolean;
+      }>("/wallet/nowpayments-payout", {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    autoWithdrawSettings: () =>
+      this.request<AutoWithdrawSettings>("/wallet/auto-withdraw"),
+    updateAutoWithdrawSettings: (data: {
+      enabled?: boolean;
+      savedWalletId?: string | null;
+      amount?: number | null;
+      useFullAvailable?: boolean;
+    }) =>
+      this.request<AutoWithdrawSettings>("/wallet/auto-withdraw", {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+  };
+
+  investor = {
+    status: () => this.request<InvestorStatus>("/investor/status"),
+    vipStatus: () =>
+      this.request<{
+        eligible: boolean;
+        active: boolean;
+        expiresAt: string | null;
+        feeUsdt: number;
+        walletBalance: number;
+        benefits: {
+          weekendEarnings: boolean;
+          zeroWithdrawalFee: boolean;
+          dailyYieldPercent?: number;
+        };
+      }>("/investor/vip/status"),
+    vipUpgrade: () =>
+      this.request<{
+        success: boolean;
+        active: boolean;
+        feeUsdt: number;
+        expiresAt: string;
+        paymentId: string;
+        message: string;
+      }>("/investor/vip/upgrade", { method: "POST" }),
+    enrollCheckout: (
+      network: string,
+      source?: "wallet" | "crypto",
+      investmentAmount?: number,
+    ) =>
+      this.request<InvestorCheckout>("/investor/enroll/checkout", {
+        method: "POST",
+        body: JSON.stringify({ network, source, investmentAmount }),
+      }),
+    updateSettings: (riskPercent: number) =>
+      this.request<{ riskPercent: number; paused: boolean }>(
+        "/investor/settings",
+        {
+          method: "PATCH",
+          body: JSON.stringify({ riskPercent }),
+        },
+      ),
+    setAutoReinvest: (enabled: boolean) =>
+      this.request<{
+        autoReinvestEarnings: boolean;
+        feePercent: number;
+        note: string;
+      }>("/investor/auto-reinvest", {
+        method: "POST",
+        body: JSON.stringify({ enabled }),
+      }),
+    pause: () =>
+      this.request<{ paused: boolean }>("/investor/pause", { method: "POST" }),
+    resume: () =>
+      this.request<{ paused: boolean }>("/investor/resume", {
+        method: "POST",
+      }),
+    allocate: (amount: number) =>
+      this.request<{
+        direction: string;
+        amount: number;
+        feeAmount?: number;
+        feePercent?: number;
+        netInvested?: number;
+        walletBalance: number;
+        investmentBalance: number;
+      }>("/investor/allocate", {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+      }),
+    redeem: (amount: number) =>
+      this.request<{
+        direction: string;
+        amount: number;
+        walletBalance: number;
+        investmentBalance: number;
+      }>("/investor/redeem", {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+      }),
+  };
+
+  unitrust = {
+    status: () => this.request<UnitrustStatus>("/unitrust/status"),
+    enroll: (amount: number) =>
+      this.request<{
+        success: boolean;
+        amount: number;
+        walletBalance: number;
+        unitrustBalance: number;
+        message: string;
+      }>("/unitrust/enroll", {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+      }),
+    allocate: (amount: number) =>
+      this.request<{
+        success: boolean;
+        amount: number;
+        walletBalance: number;
+        unitrustBalance: number;
+        message: string;
+      }>("/unitrust/allocate", {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+      }),
+    redeem: (amount: number) =>
+      this.request<{
+        success: boolean;
+        amount: number;
+        walletBalance: number;
+        unitrustBalance: number;
+        nextWithdrawAt: string;
+        message: string;
+      }>("/unitrust/redeem", {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+      }),
+  };
+
+  airfarming = {
+    status: () => this.request<AirfarmingStatus>("/airfarming/status"),
+    apply: (payload: AirfarmingApplyPayload) =>
+      this.request<{ enrollment: AirfarmingEnrollmentView; message: string }>(
+        "/airfarming/apply",
+        { method: "POST", body: JSON.stringify(payload) },
+      ),
+    allocate: (amount: number) =>
+      this.request<AirfarmingStatus>("/airfarming/allocate", {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+      }),
+    deallocate: (amount: number) =>
+      this.request<AirfarmingStatus>("/airfarming/deallocate", {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+      }),
+  };
+
+  loans = {
+    eligibility: () => this.request<LoanEligibility>("/loans/eligibility"),
+    quote: (term: "DAILY" | "WEEKLY" | "MONTHLY") =>
+      this.request<LoanQuote>(`/loans/quote?term=${encodeURIComponent(term)}`),
+    list: () => this.request<LoanRow[]>("/loans"),
+    request: (term: "DAILY" | "WEEKLY" | "MONTHLY") =>
+      this.request<LoanRow>("/loans/request", {
+        method: "POST",
+        body: JSON.stringify({ term }),
+      }),
+    cancel: (id: string) =>
+      this.request<LoanRow>(`/loans/${id}/cancel`, { method: "POST" }),
+    repay: (id: string) =>
+      this.request<LoanRow>(`/loans/${id}/repay`, { method: "POST" }),
+  };
+
+  agents = {
+    apply: (data: {
+      displayName: string;
+      phone?: string;
+      email?: string;
+      note?: string;
+    }) =>
+      this.request<{ id: string; status: string; message: string }>(
+        "/agents/apply",
+        { method: "POST", body: JSON.stringify(data) },
+      ),
+    applyMe: (data: {
+      displayName: string;
+      phone?: string;
+      email?: string;
+      note?: string;
+    }) =>
+      this.request<{ id: string; status: string; message: string }>(
+        "/agents/apply/me",
+        { method: "POST", body: JSON.stringify(data) },
+      ),
+    openSession: (code: string) =>
+      this.request<{
+        token: string;
+        expiresAt: string;
+        agent: CashAgentProfile;
+      }>("/agents/session", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      }),
+    me: (agentToken: string) =>
+      this.agentRequest<CashAgentProfile>("/agents/me", agentToken),
+    listJobs: (agentToken: string) =>
+      this.agentRequest<AgentMomoJob[]>("/agents/momo-p2p", agentToken),
+    claimJob: (agentToken: string, id: string) =>
+      this.agentRequest<AgentMomoJob>(
+        `/agents/momo-p2p/${id}/claim`,
+        agentToken,
+        { method: "POST" },
+      ),
+    confirmJob: async (agentToken: string, id: string, file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const headers: Record<string, string> = {
+        "X-Agent-Token": agentToken,
+      };
+      const jwt = this.getToken();
+      if (jwt) headers.Authorization = `Bearer ${jwt}`;
+      const res = await fetch(`${API_BASE}/agents/momo-p2p/${id}/confirm`, {
+        method: "POST",
+        headers,
+        body: formData,
+      }).catch(() => {
+        throw new Error(networkErrorMessage());
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({
+          message: res.statusText,
+        }));
+        throw new Error(
+          apiErrorMessage(error, res.statusText) || "Confirm failed",
+        );
+      }
+      return res.json() as Promise<AgentMomoJob>;
+    },
+  };
+
+  evaluations = {
+    listPlans: () =>
+      this.request<EvaluationPlanCatalog[]>("/evaluations/plans"),
+    getActive: () =>
+      this.request<EvaluationEnrollment | null>("/evaluations/active"),
+    getHistory: () =>
+      this.request<EvaluationEnrollment[]>("/evaluations/history"),
+    listMine: async () => {
+      try {
+        return await this.request<EvaluationMineResponse>("/evaluations/mine");
+      } catch {
+        const history = await this.request<EvaluationEnrollment[]>(
+          "/evaluations/history",
+        );
+        const items = history.filter((row) => row.status !== "PENDING");
+        return { selectedEnrollmentId: null, items };
+      }
+    },
+    select: (enrollmentId: string) =>
+      this.request<EvaluationSelectResult>(
+        `/evaluations/${encodeURIComponent(enrollmentId)}/select`,
+        { method: "POST" },
+      ),
+    checkout: (input: {
+      type: string;
+      variant: string;
+      planId: string;
+      network: string;
+      source?: "wallet" | "crypto" | "momo";
+      momoPhone?: string;
+      momoNetwork?: string;
+      momoCountryCode?: string;
+    }) =>
+      this.request<EvaluationCheckoutResult>("/evaluations/checkout", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+  };
+
+  mt5Sync = {
+    setEnabled: (enabled: boolean) =>
+      this.request<Mt5SyncStatus>("/mt5-sync/enabled", {
+        method: "POST",
+        body: JSON.stringify({ enabled }),
+      }),
+    status: () => this.request<Mt5SyncStatus>("/mt5-sync/status"),
+    poolAccounts: () =>
+      this.request<MetaApiAccountsResult>("/mt5-sync/pool-accounts"),
+    claimAccount: (credentials: {
+      accountName: string;
+      login: string;
+      password: string;
+      server: string;
+    }) => this.claimTradingAccountRequest(credentials),
+  };
+
+  tpClaims = {
+    list: () => this.request<TpClaimRecord[]>("/tp-claims"),
+    resubmit: (
+      claimId: string,
+      evidence: { beforeScreenshotUrl: string; afterScreenshotUrl: string },
+    ) =>
+      this.request<ClaimSetupResult>(`/tp-claims/${claimId}/resubmit`, {
+        method: "POST",
+        body: JSON.stringify(evidence),
+      }),
+    requestPayout: (claimId: string, walletAddress?: string) =>
+      this.request<{
+        status: string;
+        payoutId: string;
+        amount: number;
+        claimId: string;
+        symbol: string;
+      }>(`/tp-claims/${claimId}/request-payout`, {
+        method: "POST",
+        body: JSON.stringify(
+          walletAddress?.trim() ? { walletAddress: walletAddress.trim() } : {},
+        ),
+      }),
+  };
+
+  payouts = {
+    history: () => this.request<PayoutRecord[]>("/payouts"),
+    rewardTier: () => this.request<PayoutRewardStatus>("/payouts/reward-tier"),
+    request: (payoutId: string, walletAddress?: string) =>
+      this.request("/payouts/request", {
+        method: "POST",
+        body: JSON.stringify(
+          walletAddress?.trim()
+            ? { payoutId, walletAddress: walletAddress.trim() }
+            : { payoutId },
+        ),
+      }),
+    withdrawProfitShare: (walletAddress?: string) =>
+      this.request<{
+        status: string;
+        payoutId: string;
+        amount: number;
+        source: string;
+      }>("/payouts/profit-share/withdraw", {
+        method: "POST",
+        body: JSON.stringify(
+          walletAddress?.trim() ? { walletAddress: walletAddress.trim() } : {},
+        ),
+      }),
+  };
+
+  notifications = {
+    list: (limit?: number) =>
+      this.request<PlatformNotificationsResult>(
+        `/notifications${limit ? `?limit=${limit}` : ""}`,
+      ),
+    markRead: (id: string) =>
+      this.request<{ ok: boolean }>(`/notifications/${id}/read`, {
+        method: "PATCH",
+      }),
+    markAllRead: () =>
+      this.request<{ ok: boolean }>("/notifications/read-all", {
+        method: "PATCH",
+      }),
+  };
+
+  referrals = {
+    me: () => this.request<ReferralInfo>("/referrals/me"),
+  };
+
+  admin = {
+    session: () => this.request<AdminSession>("/admin/session"),
+    overview: () => this.request<AdminOverview>("/admin/overview"),
+    pendingKyc: () => this.request<AdminKycItem[]>("/admin/kyc/pending"),
+    approveKyc: (userId: string) =>
+      this.request(`/admin/kyc/${userId}/approve`, { method: "POST" }),
+    rejectKyc: (userId: string, reason: string) =>
+      this.request(`/admin/kyc/${userId}/reject`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      }),
+    listPayouts: (status?: string) =>
+      this.request<AdminPayoutListResponse>(
+        `/admin/payouts?limit=50${status ? `&status=${encodeURIComponent(status)}` : ""}`,
+      ),
+    pendingPayouts: () =>
+      this.request<AdminPayoutItem[]>("/admin/payouts/pending"),
+    approvePayout: (payoutId: string, settlement?: "gateway" | "external") =>
+      settlement === "external"
+        ? this.request<AdminApprovePayoutResponse>(
+            `/admin/payouts/${payoutId}/mark-external-paid`,
+            { method: "POST" },
+          )
+        : this.request<AdminApprovePayoutResponse>(
+            `/admin/payouts/${payoutId}/approve`,
+            {
+              method: "POST",
+              body: JSON.stringify(settlement ? { settlement } : {}),
+            },
+          ),
+    refundPayout: (payoutId: string, reason?: string) =>
+      this.request<AdminRefundPayoutResponse>(
+        `/admin/payouts/${payoutId}/refund`,
+        {
+          method: "POST",
+          body: JSON.stringify({ reason }),
+        },
+      ),
+    verifyPayout: (payoutId: string, code: string) =>
+      this.request<{ message: string }>(`/admin/payouts/${payoutId}/verify`, {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      }),
+    previewStaffDispatch: (body?: {
+      payoutIds?: string[];
+      startAt?: string;
+    }) =>
+      this.request<StaffDispatchPreviewResponse>(
+        "/admin/payouts/dispatch/preview",
+        {
+          method: "POST",
+          body: JSON.stringify(body ?? {}),
+        },
+      ),
+    createStaffDispatch: (body?: {
+      payoutIds?: string[];
+      startAt?: string;
+    }) =>
+      this.request<StaffDispatchCreateResponse>(
+        "/admin/payouts/dispatch/create",
+        {
+          method: "POST",
+          body: JSON.stringify(body ?? {}),
+        },
+      ),
+  };
+}
+
+export interface ReferralInfo {
+  code: string;
+  link: string;
+  rewards: { kycRewardUsdt: number; paidRewardUsdt: number };
+  totalEarnedUsdt: number;
+  pendingUsdt: number;
+  totalSettlements: number;
+  totalReferred: number;
+  referrals: Array<{
+    displayName: string;
+    joinedAt: string;
+    kycCompleted: boolean;
+    subscribed: boolean;
+    kycRewarded: boolean;
+    paidRewarded: boolean;
+    kycSettled: boolean;
+    paidSettled: boolean;
+  }>;
+}
+
+export interface LoginStartResponse {
+  requiresOtp: true;
+  loginSessionId: string;
+  email: string;
+  message: string;
+  expiresIn: number;
+}
+
+export interface LoginCompleteResponse {
+  accessToken: string;
+  user: Record<string, unknown>;
+}
+
+export type LoginResponse = LoginStartResponse | LoginCompleteResponse;
+
+export interface DerivAccount {
+  login: string;
+  kind: "deriv" | "mt5" | "options";
+  accountType: string | null;
+  currency: string;
+  balance: number;
+}
+
+export interface DerivCryptoWallet {
+  id: string;
+  purpose: "DEPOSIT" | "WITHDRAW" | string;
+  network: string;
+  address: string;
+  label: string | null;
+  updatedAt: string;
+}
+
+export interface DerivCryptoWalletsResult {
+  deposit: DerivCryptoWallet | null;
+  withdraw: DerivCryptoWallet | null;
+  saved?: DerivCryptoWallet;
+}
+
+export interface PayoutRecord {
+  id: string;
+  virtualProfit: number;
+  traderShare: number;
+  platformShare: number;
+  status: string;
+  source?: "WEEKLY" | "TP_REWARD" | "DEPOSITOR";
+  rewardTier?: string | null;
+  payoutMethod?: "TRC20" | "MOBILE_MONEY" | null;
+  weekNumber: number;
+  year: number;
+  walletAddress?: string | null;
+  notes?: string | null;
+  requestedAt: string;
+}
+
+export interface PendingWalletWithdrawal {
+  id: string;
+  grossAmount: number;
+  netAmount: number;
+  status: string;
+  payoutMethod?: "TRC20" | "MOBILE_MONEY" | null;
+  walletAddress?: string | null;
+  requestedAt: string;
+  scheduledApproveAt?: string | null;
+}
+
+export interface PayoutRewardTierDef {
+  id: "STARTER" | "PRO" | "ELITE";
+  label: string;
+  amountUsdt: number;
+  winsMin: number;
+  winsMax: number;
+  requirement: string;
+}
+
+export interface PayoutRewardStatus {
+  windowSize: number;
+  resolved: number;
+  wins: number;
+  losses: number;
+  currentTierId: "STARTER" | "PRO" | "ELITE";
+  currentTierLabel: string;
+  currentRewardUsdt: number;
+  nextTierId: "PRO" | "ELITE" | null;
+  winsToNextTier: number;
+  tiers: PayoutRewardTierDef[];
+  recentResults: ("W" | "L")[];
+  weeklyPayoutsEnabled?: boolean;
+}
+
+export interface PublicPayoutHighlight {
+  displayName: string;
+  amount: number;
+  tier: string;
+  source: string;
+  rewardTier: string | null;
+  weekNumber: number;
+  year: number;
+  paidAt: string;
+}
+
+export interface PublicPayoutFeed {
+  items: PublicPayoutHighlight[];
+  totalPaid: number;
+  payoutCount: number;
+  refreshedAt: string;
+}
+
+export interface ProfitShareStatus {
+  active: boolean;
+  enrolledAt: string | null;
+  balance: number;
+  lifetimeEarned: number;
+  sharePercent: number;
+  feeUsdt: number;
+  withdrawThreshold: number;
+  withdrawThresholdPercent: number;
+  canWithdraw: boolean;
+  amountToWithdraw: number;
+  remainingToWithdraw: number;
+  initialInvestmentBasis: number;
+}
+
+export interface Mt5SyncStatus {
+  active: boolean;
+  enabled: boolean;
+  enrolledAt: string | null;
+  expiresAt: string | null;
+  linkedAccountId: string | null;
+  openLinks: number;
+  lastSyncedAt?: string | null;
+  feeUsdt?: number;
+  latestPayment?: {
+    id: string;
+    status: string;
+    amount: number;
+    confirmedAt: string | null;
+  } | null;
+}
+
+export interface AdminPermissionsView {
+  fullAdmin?: boolean;
+  hubAccess?: boolean;
+  kyc?: boolean;
+  payout?: boolean;
+  tpClaim?: boolean;
+  setup?: boolean;
+  copy?: boolean;
+  managePermissions?: boolean;
+}
+
+export interface DashboardData {
+  user: {
+    id: string;
+    displayName: string;
+    avatarUrl?: string | null;
+    email: string;
+    role: string;
+    status: string;
+    emailVerified?: boolean;
+    registrationPaid?: boolean;
+    accessExpiresAt?: string | null;
+    tradingAccessActive?: boolean;
+    tradingDaysRemaining?: number | null;
+    adminPermissions?: AdminPermissionsView;
+  };
+  onboarding?: OnboardingStatus;
+  account: {
+    balance: number;
+    tier: string;
+    weeklyProfit: number;
+    winRate: number;
+    score: number;
+    consecutiveWins: number;
+    consecutiveLosses: number;
+    maxDrawdown: number;
+    currentDrawdown: number;
+    totalProfit: number;
+  } | null;
+  rank: number | null;
+  tier: string;
+  recentSignals: SignalRecord[];
+  walletTransactions: WalletTransaction[];
+  payoutReward?: PayoutRewardStatus;
+  profitShare?: ProfitShareStatus;
+}
+
+export interface OnboardingStatus {
+  emailVerified: boolean;
+  registrationPaid: boolean;
+  accountActive: boolean;
+  kycStatus: "NOT_STARTED" | "PENDING" | "APPROVED" | "REJECTED";
+  profileComplete: boolean;
+  addressComplete: boolean;
+  hasSubmittedSignal: boolean;
+}
+
+export interface AdminOverview {
+  activeTraders: number;
+  totalUsers: number;
+  todayRegistrations: number;
+  totalRevenue: number;
+  pendingKycCount: number;
+  pendingPayouts: { count: number; amount: number };
+}
+
+export interface AdminKycItem {
+  id: string;
+  userId: string;
+  status: string;
+  documentType: string | null;
+  documentFrontUrl: string | null;
+  selfieUrl: string | null;
+  submittedAt: string | null;
+  user: {
+    id: string;
+    email: string | null;
+    displayName: string;
+    profile: UserProfileRecord | null;
+  };
+}
+
+export interface AdminSession {
+  id: string;
+  email: string | null;
+  displayName: string;
+  role: string;
+  permissions: AdminPermissionsView;
+}
+
+export interface AdminPayoutItem {
+  id: string;
+  traderShare: number | string;
+  virtualProfit?: number | string;
+  walletAddress: string | null;
+  status: string;
+  source?: string;
+  payoutMethod?: string | null;
+  notes?: string | null;
+  requestedAt?: string;
+  scheduledApproveAt?: string | null;
+  gatewayPayoutId?: string | null;
+  tpClaim?: {
+    id: string;
+    status: string;
+    claimType?: string | null;
+    symbol?: string | null;
+  } | null;
+  user: {
+    id: string;
+    displayName: string;
+    email: string | null;
+    kyc: { status: string } | null;
+  };
+}
+
+export interface AdminPayoutListResponse {
+  items: AdminPayoutItem[];
+  count: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AdminApprovePayoutResponse {
+  verificationRequired?: boolean;
+  alreadyProcessed?: boolean;
+  creditedToWallet?: boolean;
+  gatewayPayoutId?: string;
+  message?: string;
+  payout?: { status: string };
+}
+
+export interface AdminRefundPayoutResponse {
+  message: string;
+  amount: number;
+  balance: number;
+  payout: { id: string; status: string };
+}
+
+export interface StaffDispatchRow {
+  position: number;
+  payoutId: string;
+  displayName: string;
+  email: string | null;
+  amount: number;
+  walletAddress: string;
+  scheduledAt: string;
+  scheduledAtEat: string;
+}
+
+export interface StaffDispatchPreviewResponse {
+  intervalHours: number;
+  order: "low_to_high_amount";
+  firstAt: string;
+  firstAtEat: string;
+  count: number;
+  totalAmount: number;
+  schedule: StaffDispatchRow[];
+}
+
+export interface StaffDispatchCreateResponse extends StaffDispatchPreviewResponse {
+  message: string;
+}
+
+export interface WalletTransaction {
+  id: string;
+  amount: number;
+  type: string;
+  referenceId: string | null;
+  description: string;
+  balanceAfter: number | null;
+  createdAt: string;
+}
+
+export interface DisplayCurrencyInfo {
+  code: string;
+  rate: number | null;
+  source: "coinbase" | "fallback";
+  preferredCurrency: string | null;
+  derivedFromCountry: string | null;
+  localCurrencyCode?: string | null;
+}
+
+export interface WalletSummary {
+  availableBalance: number;
+  lockedBalance: number;
+  pendingWalletDeposits?: number;
+  pendingWalletDepositAmount?: number;
+  subscriptionPaid: number;
+  totalDeposited: number;
+  totalEarned: number;
+  totalWithdrawn: number;
+  platformDailyYieldPercent: number;
+  investorDailyYieldPercent: number;
+  minDepositUsdt: number;
+  displayCurrency?: DisplayCurrencyInfo;
+  withdrawalFeeUsdt?: number;
+  withdrawalScheduleEnabled?: boolean;
+  withdrawalPreferredSchedule?: "WEEKLY" | "MONTHLY" | string;
+  withdrawalOffSchedulePenaltyPercent?: number;
+  withdrawalInPreferredWindow?: boolean;
+  withdrawalNextPreferredWindowAt?: string;
+  withdrawalPreferredWindowLabel?: string;
+  vipActive?: boolean;
+  autoWithdrawEligible?: boolean;
+  activePlan: {
+    id: string;
+    amount: number;
+    riskPercent: number;
+    dailyYieldPercent: number;
+    startAt: string;
+    endAt: string;
+    status: string;
+    credits: Array<{ dayIndex: number; amount: number; creditedAt: string }>;
+  } | null;
+}
+
+export interface WalletLedgerItem {
+  id: string;
+  amount: number;
+  type: string;
+  description: string;
+  referenceId: string | null;
+  balanceAfter: number | null;
+  createdAt: string;
+}
+
+export type WithdrawalWalletNetwork =
+  | "TRC20"
+  | "ERC20"
+  | "BEP20"
+  | "MOMO_MTN"
+  | "MOMO_AIRTEL";
+
+export interface SavedWithdrawalWallet {
+  id: string;
+  label: string;
+  address: string;
+  network: WithdrawalWalletNetwork;
+  verifiedAt: string;
+  createdAt: string;
+}
+
+export interface AutoWithdrawSettings {
+  eligible: boolean;
+  eligibleAt: string | null;
+  enabled: boolean;
+  savedWalletId: string | null;
+  savedWallet: {
+    id: string;
+    label: string;
+    address: string;
+    network: string;
+  } | null;
+  amount: number | null;
+  useFullAvailable: boolean;
+  lastAutoWithdrawAt: string | null;
+  kycApproved: boolean;
+  availableBalance: number;
+  minFeeUsdt: number;
+}
+
+export interface MomoP2pWithdrawal {
+  id: string;
+  payoutId: string;
+  amountUsdt: number;
+  amountUgx: number;
+  rateUgxPerUsdt: number;
+  momoNetwork: string;
+  momoPhone: string;
+  momoLabel: string | null;
+  recipientName: string | null;
+  status: "INITIATED" | "UNDER_PROCESS" | "COMPLETED" | "CANCELLED";
+  opsEmailSentAt: string | null;
+  userConfirmedAt: string | null;
+  adminConfirmedAt: string | null;
+  completedAt: string | null;
+  completedBy: string | null;
+  createdAt: string;
+}
+
+export interface DepositorPlanPreview {
+  amount: number;
+  riskPercent: number;
+  maxLossPerDay: number;
+  maxGainPerDay: number;
+  rr: string;
+  planDays: number;
+  dailyYieldPercent: number;
+  projectedDailyEarning: number;
+  projectedTotalEarning: number;
+  days: Array<{
+    day: number;
+    maxLoss: number;
+    maxGain: number;
+    projectedEarning?: number;
+  }>;
+}
+
+export interface WalletDepositCheckout {
+  paymentId: string;
+  amount: number;
+  amountLocal?: number;
+  localCurrency?: string;
+  currency: string;
+  network: string;
+  payAddress?: string;
+  payAmount?: number;
+  payCurrency?: string;
+  gatewayPaymentId?: number | string;
+  gatewayChargeId?: string;
+  liveStatus?: string;
+  gateway?: string;
+  instruction?: string;
+  momoNetwork?: string;
+  momoPhone?: string;
+  redirectUrl?: string;
+}
+
+export interface DailyIncomeEntry {
+  id: string;
+  source: "INVESTOR" | "DEPOSITOR";
+  amount: number;
+  yieldPercent: number;
+  baseBalance: number;
+  creditDate: string;
+  dayIndex: number | null;
+  creditedAt: string;
+}
+
+export interface DailyCalendarDay {
+  date: string;
+  net: number;
+  transactions: Array<{
+    amount: number;
+    type: string;
+    description: string;
+  }>;
+}
+
+export interface DailyCalendarSummary {
+  activeDays: number;
+  creditTotal: number;
+  debitTotal: number;
+  monthNet: number;
+  bestDay: { date: string; net: number } | null;
+  worstDay: { date: string; net: number } | null;
+  byType: Array<{ type: string; amount: number }>;
+  dailyNets: Array<{ date: string; net: number; txCount: number }>;
+}
+
+export interface DailyCalendarResult {
+  year: number;
+  month: number;
+  monthNet: number;
+  days: Record<string, DailyCalendarDay>;
+  summary?: DailyCalendarSummary;
+}
+
+export interface InvestorFeeTier {
+  min: number;
+  max: number;
+  fee: number;
+  label: string;
+}
+
+export interface InvestorStatus {
+  active: boolean;
+  enrolledAt: string | null;
+  vip?: {
+    active: boolean;
+    expiresAt: string | null;
+    feeUsdt: number;
+    benefits: {
+      weekendEarnings: boolean;
+      zeroWithdrawalFee: boolean;
+      dailyYieldPercent?: number;
+    };
+  };
+  vvip?: {
+    active: boolean;
+    grantedAt: string | null;
+    benefits: {
+      instantWithdrawAnytime: boolean;
+      zeroWithdrawalFee: boolean;
+      noOffSchedulePenalty: boolean;
+      freeSelfServeReinvest: boolean;
+    };
+  };
+  feeUsdt: number;
+  feeTiers?: InvestorFeeTier[];
+  investmentMin?: number;
+  investmentMax?: number;
+  committedInvestmentAmount?: number | null;
+  dailyYieldPercent: number;
+  platformDailyYieldPercent: number;
+  vipDailyYieldPercent?: number;
+  displayCurrency?: DisplayCurrencyInfo;
+  mt5Linked: boolean;
+  mt5Connected: boolean;
+  mt5HealthMessage: string | null;
+  investmentDeposited: number;
+  investmentBalance: number;
+  enrollmentPaid: number;
+  walletDeposited: number;
+  walletBalance: number;
+  tradingProfit: number;
+  walletEarnings: number;
+  totalProfit: number;
+  mt5Balance: number | null;
+  mt5Equity: number | null;
+  currency: string;
+  settings: {
+    riskPercent: number;
+    useTwoToOneRr: boolean;
+    paused: boolean;
+    yieldPaused?: boolean;
+    minBalanceExempt?: boolean;
+    autoReinvestEarnings?: boolean;
+  } | null;
+  autoReinvestFeePercent?: number;
+  selfReinvestFeePercent?: number;
+  reinvestBlocked?: boolean;
+  reinvestBlockedReason?: string | null;
+  minBalancePolicy?: {
+    thresholdUsdt: number;
+    effectiveFrom: string;
+    enforced: boolean;
+    dateReached: boolean;
+    exempt: boolean;
+    blocked: boolean;
+    underThreshold: boolean;
+  };
+  recentTrades: Array<{
+    id: string;
+    signalId: string;
+    symbol: string;
+    direction: string;
+    status: string;
+    profit: number | null;
+    notes: string | null;
+    executedAt: string | null;
+    closedAt: string | null;
+  }>;
+}
+
+export interface UnitrustStatus {
+  active: boolean;
+  enrolledAt: string | null;
+  unitrustBalance: number;
+  availableBalance: number;
+  dailyYieldPercent: number;
+  minDepositUsdt: number;
+  maxDepositUsdt: number;
+  projectedDailyEarning: number;
+  yieldPaused: boolean;
+  canWithdrawThisMonth: boolean;
+  lastWithdrawAt: string | null;
+  nextWithdrawAt: string | null;
+  withdrawWindowLabel: string;
+  creditTimeLabel: string;
+  recentCredits: Array<{
+    amount: number;
+    yieldPercent: number;
+    baseBalance: number;
+    creditDate: string;
+    creditedAt: string;
+  }>;
+}
+
+export interface AirfarmingApplyPayload {
+  fullName: string;
+  email: string;
+  age: number;
+  location: string;
+  plannedInvestmentUsd: number;
+  withdrawPreference: "WEEKLY" | "MONTHLY" | "YEARLY";
+  acceptTerms: boolean;
+}
+
+export interface AirfarmingEnrollmentView {
+  status: "NOT_APPLIED" | "PENDING" | "APPROVED" | "REJECTED";
+  appliedAt: string | null;
+  approvedAt: string | null;
+  rejectionReason: string | null;
+  canApply: boolean;
+  canAllocate: boolean;
+  application: {
+    fullName: string;
+    email: string;
+    age: number;
+    location: string;
+    plannedInvestmentUsd: number;
+    withdrawPreference: string;
+  } | null;
+}
+
+export interface AirfarmingStatus {
+  active: boolean;
+  enrollment: AirfarmingEnrollmentView;
+  cashWalletUsd: number;
+  airfarmingWalletUsd: number;
+  committedUsd: number;
+  phase: string;
+  globallyPaused: boolean;
+  week: {
+    weekStart: string;
+    investmentUsd: number;
+    yieldUsd: number;
+    floorRate: number;
+    floorTargetUsd: number;
+    floorRemainingUsd: number;
+    progressPct: number;
+  } | null;
+  nextDrop: {
+    id: string;
+    dueAt: string;
+    minBalance: number;
+    maxBalance: number;
+    percent: number;
+    secondsRemaining: number;
+  } | null;
+  history: Array<{
+    id: string;
+    dueAt: string;
+    status: string;
+    source: string;
+    profitAmount: number | null;
+    percent: number;
+  }>;
+}
+
+export interface LoanEligibility {
+  corpus: number;
+  dailyEarning: number;
+  eligible: boolean;
+  minCorpusUsdt: number;
+  minDailyEarningUsdt: number;
+  advancePercent: number;
+  interestPercent: number;
+}
+
+export interface LoanQuote extends LoanEligibility {
+  term: "DAILY" | "WEEKLY" | "MONTHLY";
+  periodDays: number;
+  projectedEarnings: number;
+  principal: number;
+  interestAmount: number;
+  totalDue: number;
+  dueAt: string;
+  explanation: string;
+  availableBalance: number;
+  investorBalance: number;
+  unitrustBalance: number;
+}
+
+export interface LoanRow {
+  id: string;
+  userId: string;
+  term: "DAILY" | "WEEKLY" | "MONTHLY";
+  status:
+    | "PENDING"
+    | "APPROVED"
+    | "REJECTED"
+    | "REPAID"
+    | "DEFAULTED"
+    | "CANCELLED";
+  dailyEarningEstimate: number;
+  periodDays: number;
+  projectedEarnings: number;
+  advancePercent: number;
+  interestPercent: number;
+  principal: number;
+  interestAmount: number;
+  totalDue: number;
+  dueAt: string | null;
+  requestedAt: string;
+  reviewedAt: string | null;
+  approvedAt: string | null;
+  repaidAt: string | null;
+  rejectedReason: string | null;
+  adminNote: string | null;
+  createdAt: string;
+}
+
+export interface CashAgentProfile {
+  id: string;
+  displayName: string;
+  phone: string | null;
+  email: string | null;
+  status: "PENDING" | "ACTIVE" | "REJECTED" | "SUSPENDED";
+  hasCode: boolean;
+  applyNote: string | null;
+  adminNote: string | null;
+  approvedAt: string | null;
+  createdAt: string;
+  userId: string | null;
+}
+
+export interface AgentMomoJob {
+  id: string;
+  payoutId: string;
+  amountUsdt: number;
+  amountUgx: number;
+  rateUgxPerUsdt: number;
+  momoNetwork: string;
+  momoPhone: string;
+  momoLabel: string | null;
+  recipientName: string | null;
+  status: string;
+  agentId: string | null;
+  agentClaimedAt: string | null;
+  agentProofUrl: string | null;
+  mine?: boolean;
+  createdAt: string;
+}
+
+export interface InvestorCheckout {
+  paymentId?: string;
+  amount?: number;
+  feeUsdt?: number;
+  investmentAmount?: number;
+  currency?: string;
+  network?: string;
+  payAddress?: string;
+  payAmount?: number;
+  payCurrency?: string;
+  gatewayPaymentId?: number;
+  liveStatus?: string;
+  message?: string;
+  active?: boolean;
+  enrolledAt?: string | null;
+  success?: boolean;
+  source?: string;
+  balanceAfter?: number;
+}
+
+export interface SignalRecord {
+  id: string;
+  signalId: string;
+  symbol: string;
+  direction: string;
+  entryMin: number;
+  entryMax: number;
+  stopLoss: number;
+  takeProfit: number;
+  status: string;
+  submittedAt: string;
+  pointsAwarded: number;
+  screenshotUrl?: string;
+}
+
+export interface SignalDetailRecord extends SignalRecord {
+  metaApiOrderId?: string | null;
+  metaApiPositionId?: string | null;
+  metaApiExecutedAt?: string | null;
+  hubRecordId?: string | null;
+}
+
+export interface MatchedDuplicateSignal {
+  signalId: string;
+  traderName: string;
+  symbol: string;
+  direction: "BUY" | "SELL";
+  entryMin: number;
+  entryMax: number;
+  stopLoss: number;
+  takeProfit: number;
+  submittedAt: string;
+  pipDistance: number;
+}
+
+export interface SignalInput {
+  symbol: string;
+  direction: "BUY" | "SELL";
+  entryMin: number;
+  entryMax: number;
+  stopLoss: number;
+  takeProfit: number;
+  riskRewardRatio: number;
+  description: string;
+  screenshotUrl: string;
+}
+
+export interface ArchivedSetupItem {
+  id: string;
+  signalId: string;
+  symbol: string;
+  direction: string;
+  status: string;
+  entryMin: number;
+  entryMax: number;
+  stopLoss: number;
+  takeProfit: number;
+  submittedAt: string;
+  resolvedAt: string | null;
+}
+
+export interface HubQuote {
+  symbol: string;
+  resolved_symbol: string;
+  bid: number;
+  ask: number;
+  price: number;
+  mid: number;
+  spread: number;
+  time: string;
+  source?: string;
+}
+
+export interface SetupAnalysis {
+  symbol: string;
+  direction: "BUY" | "SELL";
+  entryMin: number;
+  entryMax: number;
+  stopLoss: number;
+  takeProfit: number;
+  description: string;
+}
+
+export interface SignalDraftInput {
+  symbol?: string;
+  direction?: "BUY" | "SELL";
+  entryMin?: number;
+  entryMax?: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  description?: string;
+  screenshotUrl?: string;
+  aiFilled?: boolean;
+}
+
+export interface SignalDraft {
+  id: string;
+  symbol: string | null;
+  direction: "BUY" | "SELL" | null;
+  entryMin: number | null;
+  entryMax: number | null;
+  stopLoss: number | null;
+  takeProfit: number | null;
+  description: string | null;
+  screenshotUrl: string | null;
+  aiFilled: boolean;
+  progress: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserSettings {
+  user: {
+    id: string;
+    email: string | null;
+    displayName: string;
+    avatarUrl: string | null;
+    role: string;
+    status: string;
+    walletAddress: string | null;
+    metaApiAccountId?: string | null;
+    createdAt: string;
+    tier: string;
+    instantWithdraw?: boolean;
+    withdrawKycExempt?: boolean;
+  };
+  profile: UserProfileRecord | null;
+  kyc: KycRecord;
+  displayCurrency?: DisplayCurrencyInfo;
+  currencyOptions?: string[];
+  metaApi?: {
+    configured: boolean;
+    defaultAccountId: string | null;
+  };
+}
+
+export interface UserProfileRecord {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  phone: string | null;
+  dateOfBirth: string | null;
+  country: string | null;
+  preferredCurrency?: string | null;
+  state: string | null;
+  city: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  postalCode: string | null;
+  payoutMethod?: "TRC20" | "MOBILE_MONEY" | null;
+  trc20Address?: string | null;
+  mobileMoneyProvider?: string | null;
+  mobileMoneyNumber?: string | null;
+  mobileMoneyAccountName?: string | null;
+}
+
+export interface KycRecord {
+  id?: string;
+  status: "NOT_STARTED" | "PENDING" | "APPROVED" | "REJECTED";
+  documentType?: "PASSPORT" | "NATIONAL_ID" | "DRIVERS_LICENSE" | null;
+  documentNumber?: string | null;
+  documentFrontUrl?: string | null;
+  documentBackUrl?: string | null;
+  selfieUrl?: string | null;
+  rejectionReason?: string | null;
+  submittedAt?: string | null;
+  reviewedAt?: string | null;
+}
+
+export interface UpdateProfileInput {
+  displayName?: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  dateOfBirth?: string;
+}
+
+export interface UpdateAddressInput {
+  country?: string;
+  state?: string;
+  city?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  postalCode?: string;
+}
+
+export interface UpdatePaymentDetailsInput {
+  payoutMethod: "TRC20" | "MOBILE_MONEY";
+  trc20Address?: string;
+  mobileMoneyProvider?: string;
+  mobileMoneyNumber?: string;
+  mobileMoneyAccountName?: string;
+}
+
+export interface SubmitKycInput {
+  documentType: "PASSPORT" | "NATIONAL_ID" | "DRIVERS_LICENSE";
+  documentNumber: string;
+  documentFrontUrl: string;
+  documentBackUrl?: string;
+  selfieUrl: string;
+}
+
+export interface ChainContractKycInput {
+  country: string;
+  documentType: "PASSPORT" | "NATIONAL_ID" | "DRIVERS_LICENSE";
+  documentNumber: string;
+  documentFrontUrl: string;
+  documentBackUrl?: string;
+  livenessSelfieUrl: string;
+}
+
+export interface ChainContractEnrollment {
+  id: string | null;
+  userId: string;
+  status:
+    | "NOT_STARTED"
+    | "TERMS_ACCEPTED"
+    | "KYC_PENDING"
+    | "KYC_REJECTED"
+    | "APPROVED"
+    | "ACTIVE";
+  phase: 1 | 2 | 3;
+  termsAcceptedAt: string | null;
+  country: string | null;
+  documentType: "PASSPORT" | "NATIONAL_ID" | "DRIVERS_LICENSE" | null;
+  documentNumber: string | null;
+  documentFrontUrl: string | null;
+  documentBackUrl: string | null;
+  livenessSelfieUrl: string | null;
+  livenessPassedAt: string | null;
+  rejectionReason: string | null;
+  reapplyBlockedUntil?: string | null;
+  contractPermanentlyClosed?: boolean;
+  kycSubmittedAt: string | null;
+  approvedAt: string | null;
+  activatedAt: string | null;
+  yieldPercent: number | null;
+  withdrawFeePercent: number;
+  canAccessLiveDashboard: boolean;
+  showNullDashboard: boolean;
+  canDeposit: boolean;
+  canCancelRestart?: boolean;
+  terms: {
+    minDepositUsd: number;
+    midTierMaxUsd: number;
+    midTierYieldPercent: number;
+    highTierYieldPercent: number;
+    enrollmentFeePercent: number;
+    withdrawFeePercent: number;
+    yieldDisclaimer?: string;
+  };
+}
+
+export interface ChainVaultStatus {
+  enrollmentStatus: "APPROVED" | "ACTIVE" | "KYC_REJECTED";
+  contractClosedPermanently?: boolean;
+  platformWalletBalance: number;
+  principalBalance: number;
+  profitBalance: number;
+  totalBalance: number;
+  yieldPercent: number;
+  lockDays: number;
+  lockedUntil: string | null;
+  unlocked: boolean;
+  secondsUntilUnlock: number;
+  withdrawFeePercent: number;
+  enrollmentFeePercent: number;
+  minimumInitialTransfer: number;
+  recentCredits: Array<{
+    id: string;
+    amount: number;
+    yieldPercent: number;
+    baseBalance: number;
+    creditDate: string;
+    createdAt: string;
+  }>;
+}
+
+export interface LeaderboardEntry {
+  id: string;
+  userId: string;
+  displayName: string;
+  tier: string;
+  rank: number;
+  score: number;
+  profit: number;
+  winRate: number;
+  drawdown: number;
+  consistency: number;
+}
+
+export interface HubSignalStatus {
+  id: string;
+  external_id: string | null;
+  status: string;
+  duplicate: boolean;
+  progress?: { stage: string; message: string; executed: boolean } | null;
+  created_at?: string;
+  acked_at?: string | null;
+}
+
+export interface HubSignalList {
+  items: HubSignalStatus[];
+  count: number;
+  sendername?: string | null;
+}
+
+export interface HubLogEvent {
+  id: string;
+  signal_id: string | null;
+  sendername: string | null;
+  event: string;
+  message: string;
+  created_at: string;
+}
+
+export interface HubLogsResult {
+  items: HubLogEvent[];
+  count: number;
+  sendername?: string | null;
+}
+
+export interface HubPosition {
+  ticket?: number;
+  symbol?: string;
+  type?: string;
+  volume?: number;
+  price_open?: number;
+  sl?: number;
+  tp?: number;
+  profit?: number;
+}
+
+export interface HubPositions {
+  sendername: string;
+  count: number;
+  items: HubPosition[];
+}
+
+export type HubActionType =
+  | "open"
+  | "add"
+  | "close"
+  | "breakeven"
+  | "modify"
+  | "partial_close"
+  | "close_all"
+  | "ignore";
+
+export interface HubActionInput {
+  action: HubActionType;
+  symbol?: string;
+  direction?: "buy" | "sell";
+  entry?: number;
+  sl?: number;
+  tp?: number;
+  lot?: number;
+  ticket?: number;
+  external_id?: string;
+  message?: string;
+}
+
+export interface HubSenderStat {
+  rank?: number;
+  sendername?: string;
+  sender?: string;
+  signals?: number;
+  executed?: number;
+  skipped?: number;
+  failed?: number;
+  closed_trades?: number;
+  wins?: number;
+  losses?: number;
+  win_rate?: number;
+  net_profit?: number;
+  profit?: number;
+  gross_profit?: number;
+  gross_loss?: number;
+  profit_factor?: number;
+  expectancy?: number;
+  profitable?: boolean;
+}
+
+export interface HubSenderReport {
+  days: number;
+  sort?: string;
+  min_closed_trades?: number;
+  total_senders: number;
+  returned: number;
+  generated_at?: string | null;
+  senders: HubSenderStat[];
+}
+
+export interface DirectMessage {
+  id: string;
+  userId: string;
+  senderId: string;
+  senderRole: string;
+  senderName: string;
+  body: string;
+  readAt: string | null;
+  createdAt: string;
+  fromAdmin: boolean;
+  isAgent: boolean;
+}
+
+export interface PeerChatMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  senderName: string;
+  body: string;
+  createdAt: string;
+  mine: boolean;
+}
+
+export interface ChatConversation {
+  id: string;
+  peer: {
+    id: string;
+    displayName: string;
+    email: string | null;
+  };
+  lastMessage: {
+    id: string;
+    body: string;
+    createdAt: string;
+    senderId: string;
+  } | null;
+  unreadCount: number;
+  updatedAt: string;
+  createdAt: string;
+}
+
+export interface DirectMessageThread {
+  userId: string;
+  messages: DirectMessage[];
+  unreadCount: number;
+  agentEnabled: boolean;
+  escalatedAt: string | null;
+}
+
+export interface SendMessageResult {
+  message: DirectMessage;
+  replies?: DirectMessage[];
+  agentEnabled: boolean;
+  escalated?: boolean;
+}
+
+export interface RequestAdminResult {
+  agentEnabled: boolean;
+  escalated: boolean;
+  reply: DirectMessage;
+}
+
+export type SetupExecutionPhase =
+  | "not_opened"
+  | "limit_active"
+  | "running"
+  | "partial"
+  | "claimable"
+  | "closed_win"
+  | "closed_loss"
+  | "closed_neutral"
+  | "closed";
+
+export type TradeProgressOutcome = "win" | "loss" | "neutral";
+
+export interface SetupResolution {
+  signalId: string;
+  symbol?: string;
+  direction?: string;
+  status: string;
+  takeProfit?: number;
+  stopLoss?: number;
+  entryMin?: number;
+  entryMax?: number;
+  oneToOnePrice?: number;
+  riskRewardRatio?: number;
+  activated?: boolean;
+  tradeOpened?: boolean;
+  partialClosed?: boolean;
+  executionPhase?: SetupExecutionPhase;
+  executionLabel?: string;
+  tradeProgressOutcome?: TradeProgressOutcome | null;
+  resolvedAt?: string | null;
+  exitPrice?: number | null;
+  pnl?: number | null;
+  pointsAwarded?: number;
+  tp1ClaimBlockedReason?: string;
+  currentPrice?: number | null;
+  priceOutcome?: "tp" | "sl" | null;
+  hubStatus?: string | null;
+  hubOutcome?: "tp" | "sl" | null;
+  pendingTpClaim?: boolean;
+  claimable: boolean;
+  canClaimTp: boolean;
+  canClaimTp1R1?: boolean;
+  canClaimSl: boolean;
+  reason?: string;
+  metaApiExecuted?: boolean;
+  metaApiOrderId?: string | null;
+  metaApiPositionId?: string | null;
+  canPlaceTrade?: boolean;
+  canCloseTrade?: boolean;
+  metaApiPrice?: number | null;
+  liveTrade?: SetupLiveTrade | null;
+  canInvalidate?: boolean;
+  invalidateBlockedReason?: string;
+  tp1Reached?: boolean;
+  breakevenSet?: boolean;
+  breakevenPending?: boolean;
+  breakevenRetryCount?: number;
+  canSetBreakeven?: boolean;
+  canAdjustStops?: boolean;
+}
+
+export interface SetupLiveTrade {
+  status: "open" | "pending" | "none";
+  positionId?: string;
+  orderId?: string;
+  openPrice?: number;
+  currentPrice?: number;
+  volume?: number;
+  profit?: number;
+  unrealizedProfit?: number;
+  swap?: number;
+  commission?: number;
+  currency?: string;
+  symbol?: string;
+  comment?: string;
+  stopLoss?: number;
+  takeProfit?: number;
+  tp1Price?: number;
+  tp1Reached?: boolean;
+  entryPrice?: number;
+  canClose?: boolean;
+}
+
+export interface CloseSetupTradeResult {
+  status: string;
+  signalId: string;
+  exitPrice?: number;
+  outcome?: "tp" | "even" | "sl";
+  fullTp?: boolean;
+  tp1Price?: number;
+  pointsAwarded?: number;
+  message?: string;
+}
+
+export interface SetBreakevenResult {
+  status: "set" | "pending" | "already_set" | "exhausted";
+  applied: boolean;
+  breakevenPrice?: number;
+  retriesUsed: number;
+  retriesRemaining: number;
+  message: string;
+}
+
+export interface UpdateSetupStopsResult {
+  status: string;
+  signalId: string;
+  stopLoss: number;
+  takeProfit: number;
+  riskRewardRatio: number;
+  metaApiUpdated: boolean;
+  hubUpdated: boolean;
+  brokerStopLoss?: number | null;
+  brokerTakeProfit?: number | null;
+  message: string;
+}
+
+export interface ModifyMt5PositionStopsResult {
+  ok: boolean;
+  positionId: string;
+  signalId?: string;
+  stopLoss?: number | null;
+  takeProfit?: number | null;
+  message: string;
+}
+
+export interface MetaApiAccountRow {
+  id: string;
+  login: string;
+  name: string;
+  server: string;
+  state: string;
+  connectionStatus: string;
+  type: string;
+  region: string;
+  version: number;
+  baseCurrency: string;
+}
+
+export interface MetaApiAccountsResult {
+  configured: boolean;
+  count: number;
+  items: MetaApiAccountRow[];
+}
+
+export interface CopyTradingLeader {
+  rank: number;
+  userId: string;
+  displayName: string;
+  score: number;
+  tier: string;
+  winRate: number;
+  profit: number;
+}
+
+export interface CopyTradeJournalEntry {
+  id: string;
+  signalId: string;
+  sourceRank: number;
+  sourceName: string;
+  symbol: string;
+  direction: string;
+  volume: number | null;
+  entryPrice: number | null;
+  stopLoss: number;
+  takeProfit: number;
+  status: string;
+  profit: number | null;
+  notes: string | null;
+  executedAt: string | null;
+  closedAt: string | null;
+  createdAt: string;
+}
+
+export interface CopyPoolTraderRow {
+  userId: string;
+  displayName: string;
+  addedAt: string;
+  addedById: string | null;
+  rank: number | null;
+  tier: string | null;
+  score: number | null;
+  winRate: number | null;
+  profit: number | null;
+}
+
+export interface CopyPoolMutationResult {
+  ok: boolean;
+  poolTraders: CopyPoolTraderRow[];
+  leaders: CopyTradingLeader[];
+}
+
+export interface CopySettings {
+  copyRiskPercent: number;
+  copyNotifyEmail: string;
+  copyUseTwoToOneRr?: boolean;
+  copyAutoBreakevenEnabled?: boolean;
+  copyEmailAlertsEnabled?: boolean;
+  copyTradesEnabled?: boolean;
+  copyHealthReady?: boolean;
+  copyHealthMessage?: string | null;
+  copyHealthCheckedAt?: string | null;
+}
+
+export interface CopyTradingDashboard {
+  configured: boolean;
+  copyAccountId: string | null;
+  copyAccountSource?: "env" | "auto";
+  message?: string;
+  riskPercent?: number;
+  poolMode?: "manual" | "auto";
+  poolTraders?: CopyPoolTraderRow[];
+  weeklyLeaderboard?: CopyTradingLeader[];
+  copyRiskPercent?: number;
+  copyNotifyEmail?: string;
+  copyUseTwoToOneRr?: boolean;
+  copyAutoBreakevenEnabled?: boolean;
+  copyEmailAlertsEnabled?: boolean;
+  copyTradesEnabled?: boolean;
+  copyHealth?: {
+    ready: boolean;
+    message?: string | null;
+    checkedAt?: string | null;
+  };
+  leaders: CopyTradingLeader[];
+  terminal: {
+    configured: boolean;
+    accountId: string | null;
+    information: {
+      balance: number;
+      equity: number;
+      currency: string;
+      margin: number;
+      freeMargin: number;
+      leverage: number;
+      tradeAllowed: boolean;
+    } | null;
+    positions: Array<{
+      id: string;
+      symbol: string;
+      type: string;
+      volume: number;
+      openPrice: number;
+      currentPrice: number;
+      stopLoss?: number;
+      takeProfit?: number;
+      profit: number;
+      unrealizedProfit: number;
+      swap: number;
+      commission: number;
+      comment?: string;
+    }>;
+    error?: string;
+  } | null;
+  journal: CopyTradeJournalEntry[];
+  stats: {
+    openCount: number;
+    closedCount: number;
+    totalRealizedProfit: number;
+    floatingProfit: number;
+  };
+}
+
+export interface UserMt5Trade {
+  signalId: string | null;
+  symbol: string;
+  direction: string;
+  kind: "limit" | "running";
+  status: "pending" | "open";
+  entryMin?: number;
+  entryMax?: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  volume?: number;
+  openPrice?: number;
+  currentPrice?: number;
+  profit?: number;
+  orderId?: string;
+  positionId?: string;
+  orderType?: string;
+  canClose: boolean;
+  canSetBreakeven?: boolean;
+  breakevenSet?: boolean;
+  canPartialClose?: boolean;
+  canAdjustStops?: boolean;
+  executionLabel?: string;
+}
+
+export interface UserMt5RunningResult {
+  trades: UserMt5Trade[];
+  account?: UserMt5AccountSummary;
+  accountSource?: UserMt5AccountSource;
+  stats: {
+    runningCount: number;
+    floatingProfit: number;
+  };
+  refreshedAt: string;
+}
+
+export interface UserMt5HistoryItem {
+  id: string;
+  signalId: string;
+  symbol: string;
+  direction: string;
+  status: string;
+  entryMin: number;
+  entryMax: number;
+  stopLoss: number;
+  takeProfit: number;
+  entryPrice: number | null;
+  exitPrice: number | null;
+  pnl: number | null;
+  isWin: boolean | null;
+  submittedAt: string;
+  closedAt: string;
+}
+
+export interface UserMt5HistoryResult {
+  items: UserMt5HistoryItem[];
+  count: number;
+  dealCount?: number;
+  dayPnl?: number;
+  refreshedAt: string;
+  message?: string;
+}
+
+export interface UserMt5QuoteItem {
+  signalId: string;
+  symbol: string;
+  direction: string;
+  entryMin: number;
+  entryMax: number;
+  entryMid: number;
+  bid: number | null;
+  ask: number | null;
+  mid: number | null;
+  spread: number | null;
+  change: number | null;
+  changePct: number | null;
+  time: string | null;
+  submittedAt: string;
+}
+
+export interface UserMt5QuotesResult {
+  items: UserMt5QuoteItem[];
+  refreshedAt: string;
+}
+
+export interface UserMt5QuoteResult {
+  symbol: string;
+  resolvedSymbol: string;
+  bid: number;
+  ask: number;
+  mid: number;
+  spread: number;
+  time: string;
+  refreshedAt: string;
+}
+
+export interface UserMt5BatchQuoteItem {
+  symbol: string;
+  resolvedSymbol: string;
+  bid: number | null;
+  ask: number | null;
+  mid: number | null;
+  spread: number | null;
+  time: string | null;
+}
+
+export interface UserMt5BatchQuotesResult {
+  items: UserMt5BatchQuoteItem[];
+  refreshedAt: string;
+}
+
+export interface UserMt5OhlcBar {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
+export interface UserMt5OhlcResult {
+  symbol: string;
+  timeframe: string;
+  bars: UserMt5OhlcBar[];
+  source?: "metaapi";
+  refreshedAt: string;
+}
+
+export interface CloseAllMt5Result {
+  ok: boolean;
+  closed: number;
+  failed: number;
+  total: number;
+  results: {
+    symbol: string;
+    signalId?: string | null;
+    positionId?: string;
+    status: string;
+    error?: string;
+  }[];
+  refreshedAt: string;
+}
+
+export interface Mt5AssistantReply {
+  reply: string;
+  actionsTaken: string[];
+  configured: boolean;
+}
+
+export interface UserMt5AccountSummary {
+  startingBalance: number;
+  currency: string;
+  realizedProfit: number;
+  floatingProfit: number;
+  totalProfit: number;
+  equity: number;
+}
+
+export type UserMt5AccountSource =
+  | "virtual"
+  | "copy_live"
+  | "linked_live"
+  | "investor_live"
+  | "evaluation_live";
+
+export interface UserMt5InvestorSummary {
+  investmentDeposited: number;
+  investmentBalance: number;
+  enrollmentPaid: number;
+  walletDeposited: number;
+  walletBalance: number;
+  mt5Balance?: number;
+  mt5Equity?: number;
+  currency: string;
+}
+
+export interface UserMt5Terminal {
+  configured: boolean;
+  copyOwner?: boolean;
+  accountSource?: UserMt5AccountSource;
+  selectedEvaluationEnrollmentId?: string | null;
+  message?: string;
+  account?: UserMt5AccountSummary;
+  investor?: UserMt5InvestorSummary;
+  setups: {
+    items: OpenSetupItem[];
+    count: number;
+    claimableCount: number;
+  };
+  trades: UserMt5Trade[];
+  history: {
+    items: UserMt5HistoryItem[];
+    count: number;
+  };
+  stats: {
+    openSetupCount: number;
+    limitCount: number;
+    runningCount: number;
+    floatingProfit: number;
+    historyCount: number;
+  };
+  refreshedAt: string;
+}
+
+export interface PlaceTradeResult {
+  status: string;
+  signalId: string;
+  symbol: string;
+  direction: string;
+  entryPrice: number;
+  stopLoss: number;
+  takeProfit: number;
+  pending: boolean;
+  orderKind?: string;
+  quote: { symbol: string; bid: number; ask: number; time: string };
+  risk: {
+    volume: number;
+    riskPercent: number;
+    riskAmount: number;
+    estimatedLossAtSl: number;
+    accountEquity: number;
+    currency: string;
+    aiManaged: boolean;
+    notes: string[];
+  };
+  metaApi: {
+    accountId: string;
+    accountName: string;
+    orderId?: string;
+    positionId?: string;
+    message: string;
+    comment?: string;
+    orderKind?: string;
+  };
+}
+
+export interface Mt5MarketOrderPreview {
+  symbol: string;
+  direction: "BUY" | "SELL";
+  entry: number;
+  stopLoss: number;
+  takeProfit: number;
+  defaultSlPips: number;
+  riskRewardRatio: number;
+  quote: { symbol: string; bid: number; ask: number; time: string };
+  risk: {
+    volume: number;
+    riskPercent: number;
+    riskAmount: number;
+    estimatedLossAtSl: number;
+    accountEquity: number;
+    currency: string;
+  };
+  refreshedAt: string;
+}
+
+export interface OpenSetupItem {
+  id: string;
+  signalId: string;
+  symbol: string;
+  direction: string;
+  entryMin: number;
+  entryMax: number;
+  stopLoss: number;
+  takeProfit: number;
+  submittedAt: string;
+  activated: boolean;
+  resolution: SetupResolution;
+  liveTrade?: SetupLiveTrade | null;
+}
+
+export interface OpenSetupsResult {
+  items: OpenSetupItem[];
+  count: number;
+  claimableCount: number;
+}
+
+export interface ClaimableTpSetup {
+  signalId: string;
+  symbol: string;
+  direction: string;
+  entryMin: number;
+  entryMax: number;
+  stopLoss: number;
+  takeProfit: number;
+  submittedAt: string;
+  oneToOnePrice?: number;
+  currentPrice?: number | null;
+  canClaimFullTp: boolean;
+  canClaimTp1R1: boolean;
+  claimable: boolean;
+  executionPhase?: SetupExecutionPhase;
+  executionLabel?: string;
+  breakevenSet?: boolean;
+  tp1ClaimBlockedReason?: string;
+}
+
+export interface ClaimableTpsResult {
+  items: ClaimableTpSetup[];
+  count: number;
+}
+
+export interface PlatformNotification {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  linkUrl?: string | null;
+  signalId?: string | null;
+  readAt?: string | null;
+  createdAt: string;
+}
+
+export interface PlatformNotificationsResult {
+  unreadCount: number;
+  items: PlatformNotification[];
+}
+
+export interface ClaimSetupResult {
+  status: string;
+  signalId: string;
+  message?: string;
+  claimId?: string;
+  outcome?: "tp" | "sl";
+  exitPrice?: number;
+  reward?: number;
+  pointsAwarded?: number;
+}
+
+export interface InvalidateSetupResult {
+  status: "cancelled" | "archived";
+  signalId: string;
+  hub?: {
+    id: string;
+    status: string;
+    ok?: boolean;
+    duplicate?: boolean;
+    progress?: { stage: string; message: string; executed: boolean };
+  } | null;
+  hubNotFound?: boolean;
+  hubWarning?: string;
+}
+
+export interface TpClaimRecord {
+  id: string;
+  signalId: string;
+  symbol: string;
+  direction: string;
+  exitPrice: number;
+  beforeScreenshotUrl: string;
+  afterScreenshotUrl: string;
+  claimType?: "FULL_TP" | "RR_1_TO_1";
+  status: "PENDING_REVIEW" | "APPROVED" | "REJECTED";
+  adminNote?: string | null;
+  reviewedAt?: string | null;
+  submittedAt: string;
+  updatedAt: string;
+  rewardAmount?: number;
+  canRequestPayout?: boolean;
+  awaitsPayoutApproval?: boolean;
+  walletCredited?: boolean;
+  payout?: {
+    id: string;
+    status: string;
+    walletAddress?: string | null;
+    amount: number;
+    requestedAt: string;
+  } | null;
+  setup?: {
+    entryMin: number;
+    entryMax: number;
+    stopLoss: number;
+    takeProfit: number;
+    signalStatus: string;
+  };
+  canResubmit?: boolean;
+}
+
+export interface EvaluationPlanRules {
+  profitTargetPhase1: number | null;
+  profitTargetPhase2: number | null;
+  profitTargetMaster: number | null;
+  consistencyPercent: number | null;
+  maxLossPercent: number;
+  dailyLossPercent: number;
+  minTradingDays: number | null;
+  minProfitableDays: number | null;
+  profitSplitLabel: string;
+}
+
+export interface EvaluationPlanTier {
+  id: string;
+  evaluationSize: number;
+  feeUsdt: number;
+  avgFirstReward: number;
+  mostPopular?: boolean;
+}
+
+export interface EvaluationPlanCatalog {
+  type: string;
+  variant: string;
+  label: string;
+  description: string;
+  rules: EvaluationPlanRules;
+  tiers: EvaluationPlanTier[];
+}
+
+export interface EvaluationEnrollment {
+  id: string;
+  type: string;
+  variant: string;
+  planId: string;
+  evaluationSize: number;
+  feeUsdt: number;
+  status: string;
+  phase: string;
+  rules: {
+    maxLossPercent: number;
+    dailyLossPercent: number;
+    profitTargetPhase1: number | null;
+    profitTargetPhase2: number | null;
+    consistencyPercent: number | null;
+    profitSplitLabel: string;
+  };
+  startEquity: number | null;
+  currentEquity: number | null;
+  dayStartEquity: number | null;
+  maxLossFloor: number | null;
+  dailyLossFloor: number | null;
+  breachedAt: string | null;
+  breachReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  selected?: boolean;
+}
+
+export interface EvaluationMineResponse {
+  selectedEnrollmentId: string | null;
+  items: EvaluationEnrollment[];
+}
+
+export interface EvaluationSelectResult {
+  selectedEnrollmentId: string;
+  enrollment: EvaluationEnrollment;
+}
+
+export interface EvaluationCheckoutResult {
+  enrollmentId?: string;
+  paymentId?: string;
+  amount?: number;
+  currency?: string;
+  network?: string;
+  payAddress?: string;
+  payAmount?: number;
+  payCurrency?: string;
+  purpose?: string;
+  success?: boolean;
+  message?: string;
+  planId?: string;
+  evaluationSize?: number;
+  source?: string;
+}
+
+export const api = new ApiClient();

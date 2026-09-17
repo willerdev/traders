@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NowPaymentsService } from './nowpayments.service';
 import { BlockchainScannerService } from './blockchain-scanner.service';
 import { resolvePublicApiBaseUrl } from '../common/public-url.util';
+import { isSoloApp } from '../common/app-variant';
 
 const CUSTODY_ORDER_PREFIX = 'custody:';
 
@@ -37,11 +38,13 @@ export class CustodyDepositService {
   }
 
   async getWalletSummary() {
-    if (!this.nowPayments.isConfigured) {
+    if (!(await this.nowPayments.ensureConfigured())) {
       return {
         configured: false,
         payoutConfigured: false,
-        message: 'NOWPayments not configured — set NOWPAYMENTS_API_KEY',
+        message: isSoloApp()
+          ? 'NOWPayments not configured — save the shared API key in Settings'
+          : 'NOWPayments not configured — set NOWPAYMENTS_API_KEY',
         usdtBalance: 0,
         balances: {},
         pendingCryptoPayoutTotal: 0,
@@ -49,7 +52,7 @@ export class CustodyDepositService {
       };
     }
 
-    const payoutStatus = this.nowPayments.getPayoutConfigStatus();
+    const payoutStatus = await this.nowPayments.getPayoutConfigStatus();
     const missing: string[] = [];
     if (!payoutStatus.payoutEmailSet) missing.push('NOWPAYMENTS_PAYOUT_EMAIL');
     if (!payoutStatus.payoutPasswordSet) {
@@ -97,7 +100,7 @@ export class CustodyDepositService {
       },
     });
 
-    if (!this.nowPayments.isConfigured) {
+    if (!(await this.nowPayments.ensureConfigured())) {
       return {
         depositId: deposit.id,
         amount,
@@ -399,7 +402,7 @@ export class CustodyDepositService {
 
     const gatewayId = deposit.gatewayId;
 
-    if (gatewayId && this.nowPayments.isConfigured) {
+    if (gatewayId && (await this.nowPayments.ensureConfigured())) {
       try {
         const live = await this.nowPayments.getPaymentStatus(gatewayId);
         const status = live.payment_status?.toLowerCase();

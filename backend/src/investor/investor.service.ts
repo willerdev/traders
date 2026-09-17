@@ -419,7 +419,7 @@ export class InvestorService {
       },
     });
 
-    if (!this.nowPayments.isConfigured) {
+    if (!(await this.nowPayments.ensureConfigured())) {
       throw new ServiceUnavailableException(
         'Crypto payments are not configured — contact support',
       );
