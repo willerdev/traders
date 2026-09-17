@@ -11,14 +11,8 @@ import {
   Copy,
   Loader2,
   RefreshCw,
-  Smartphone,
   X,
 } from "lucide-react";
-import {
-  MomoPaymentFields,
-  formatLocalAmount,
-} from "@/components/payments/momo-payment-fields";
-import { useFlutterwaveConfig } from "@/hooks/use-flutterwave-config";
 
 const NETWORKS = [
   { id: "TRC20", label: "TRC20", hint: "Lowest fees" },
@@ -27,7 +21,6 @@ const NETWORKS = [
 ] as const;
 
 type Step = "amount" | "network" | "pay" | "confirming" | "done";
-type DepositMethod = "crypto" | "momo";
 type Progress = "waiting" | "confirming" | "partial" | "complete" | "failed";
 
 const PROGRESS_LABEL: Record<Progress, string> = {
@@ -64,11 +57,6 @@ export function WalletDepositModal({
   const [progress, setProgress] = useState<Progress>("waiting");
   const [copied, setCopied] = useState(false);
   const [depositMin, setDepositMin] = useState(10);
-  const [depositMethod, setDepositMethod] = useState<DepositMethod>("crypto");
-  const { config: flwConfig, momoEnabled } = useFlutterwaveConfig();
-  const [momoPhone, setMomoPhone] = useState("");
-  const [momoNetwork, setMomoNetwork] = useState("MTN");
-  const [momoInstruction, setMomoInstruction] = useState("");
   const [payStartedAt, setPayStartedAt] = useState<number | null>(null);
   const [cooldownLeft, setCooldownLeft] = useState(DEPOSIT_POLL_COOLDOWN_SEC);
 
@@ -89,10 +77,6 @@ export function WalletDepositModal({
     setProgress("waiting");
     setPayStartedAt(null);
     setCooldownLeft(DEPOSIT_POLL_COOLDOWN_SEC);
-    setDepositMethod("crypto");
-    setMomoPhone("");
-    setMomoNetwork("MTN");
-    setMomoInstruction("");
   }, []);
 
   useEffect(() => {
@@ -100,7 +84,7 @@ export function WalletDepositModal({
   }, [open, reset]);
 
   useEffect(() => {
-    if (!open || depositMethod !== "crypto") return;
+    if (!open) return;
     let cancelled = false;
     void api.wallet.depositMinimum(network).then((m) => {
       if (cancelled) return;
@@ -113,17 +97,7 @@ export function WalletDepositModal({
     return () => {
       cancelled = true;
     };
-  }, [open, network, depositMethod]);
-
-  useEffect(() => {
-    if (!open || depositMethod !== "momo" || !momoEnabled || !flwConfig) return;
-    const min = flwConfig.minDepositUsd;
-    setDepositMin(min);
-    setAmount((prev) => {
-      const n = Number(prev);
-      return !Number.isFinite(n) || n < min ? String(min) : prev;
-    });
-  }, [open, depositMethod, flwConfig, momoEnabled]);
+  }, [open, network]);
 
   const pollStatus = useCallback(async () => {
     if (!paymentId) return;
@@ -176,26 +150,14 @@ export function WalletDepositModal({
           `Earning plan requires at least ${formatCurrency(minPlanDeposit)} USDT`,
         );
       }
-      const res = await api.wallet.deposit(
-        depositMethod === "momo"
-          ? {
-              method: "momo",
-              amount: numAmount,
-              momoPhone,
-              momoNetwork,
-              momoCountryCode: flwConfig?.countryCode,
-              ...(startPlan ? { riskPercent: Number(riskPercent) } : {}),
-            }
-          : {
-              network,
-              amount: numAmount,
-              ...(startPlan ? { riskPercent: Number(riskPercent) } : {}),
-            },
-      );
+      const res = await api.wallet.deposit({
+        network,
+        amount: numAmount,
+        ...(startPlan ? { riskPercent: Number(riskPercent) } : {}),
+      });
       setPaymentId(res.paymentId);
       setPayAddress(res.payAddress ?? "");
       setPayAmount(res.payAmount ?? res.amount);
-      setMomoInstruction(res.instruction ?? "");
       setStep("pay");
       setProgress("waiting");
       setPayStartedAt(Date.now());
@@ -239,7 +201,7 @@ export function WalletDepositModal({
       >
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
           <h2 className="text-lg font-semibold text-white">
-            {depositMethod === "momo" ? "Deposit via MoMo" : "Deposit USDT"}
+            Deposit USDT
           </h2>
           <button
             type="button"
@@ -289,39 +251,10 @@ export function WalletDepositModal({
         <div className="space-y-4 p-5">
           {step === "amount" && (
             <>
-              {momoEnabled && flwConfig && (
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setDepositMethod("crypto")}
-                    className={cn(
-                      "rounded-xl border px-3 py-2 text-sm font-medium",
-                      depositMethod === "crypto"
-                        ? "border-primary bg-primary/10 text-white"
-                        : "border-white/10 text-gray-400",
-                    )}
-                  >
-                    USDT crypto
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDepositMethod("momo")}
-                    className={cn(
-                      "rounded-xl border px-3 py-2 text-sm font-medium inline-flex items-center justify-center gap-1.5",
-                      depositMethod === "momo"
-                        ? "border-emerald-500 bg-emerald-500/10 text-white"
-                        : "border-white/10 text-gray-400",
-                    )}
-                  >
-                    <Smartphone className="h-4 w-4" />
-                    MoMo
-                  </button>
-                </div>
-              )}
               <div>
                 <label className="mb-1 block text-xs text-gray-400">
-                  Amount (USDT) — minimum {formatCurrency(depositMin)}
-                  {depositMethod === "crypto" ? ` on ${network}` : ""}
+                  Amount (USDT) — minimum {formatCurrency(depositMin)} on{" "}
+                  {network}
                 </label>
                 <Input
                   type="number"
@@ -331,21 +264,7 @@ export function WalletDepositModal({
                   onChange={(e) => setAmount(e.target.value)}
                   className="text-lg font-semibold"
                 />
-                {depositMethod === "momo" && momoEnabled && flwConfig && (
-                  <p className="mt-1 text-xs text-emerald-400/90">
-                    ≈ {formatLocalAmount(Number(amount) || 0, flwConfig.usdRate, flwConfig.currency)} charged on your phone
-                  </p>
-                )}
               </div>
-              {depositMethod === "momo" && momoEnabled && flwConfig && (
-                <MomoPaymentFields
-                  phone={momoPhone}
-                  onPhoneChange={setMomoPhone}
-                  network={momoNetwork}
-                  onNetworkChange={setMomoNetwork}
-                  config={flwConfig}
-                />
-              )}
               <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 p-3">
                 <input
                   type="checkbox"
@@ -378,25 +297,18 @@ export function WalletDepositModal({
               {error && <p className="text-sm text-danger">{error}</p>}
               <Button
                 className="w-full"
-                onClick={() =>
-                  depositMethod === "momo"
-                    ? void createPayment()
-                    : setStep("network")
-                }
+                onClick={() => setStep("network")}
                 disabled={
-                  !amount ||
-                  Number(amount) < depositMin ||
-                  loading ||
-                  (depositMethod === "momo" && momoPhone.length < 8)
+                  !amount || Number(amount) < depositMin || loading
                 }
               >
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {depositMethod === "momo" ? "Send MoMo prompt" : "Continue"}
+                Continue
               </Button>
             </>
           )}
 
-          {step === "network" && depositMethod === "crypto" && (
+          {step === "network" && (
             <>
               <div className="grid gap-2">
                 {NETWORKS.map((n) => (
@@ -482,48 +394,25 @@ export function WalletDepositModal({
                     )}
                   </div>
                   <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
-                    {depositMethod === "momo" ? (
-                      <>
-                        <p className="text-xs uppercase tracking-wide text-muted">
-                          Approve on your phone
-                        </p>
-                        <p className="mt-2 text-sm text-white">
-                          {momoInstruction ||
-                            "Check your phone for the Mobile Money prompt and enter your PIN to approve."}
-                        </p>
-                        <p className="mt-3 text-xs text-muted">
-                          {formatCurrency(Number(amount))} USDT
-                          {momoEnabled && flwConfig &&
-                            ` (≈ ${formatLocalAmount(Number(amount), flwConfig.usdRate, flwConfig.currency)})`}
-                        </p>
-                        <p className="text-xs text-muted">
-                          {momoNetwork} · +{flwConfig?.countryCode ?? "256"}
-                          {momoPhone}
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-xs uppercase tracking-wide text-muted">
-                          Send exactly
-                        </p>
-                        <p className="text-2xl font-bold text-white">
-                          {payAmount ?? amount} USDT
-                        </p>
-                        <p className="text-xs text-muted">Network: {network}</p>
-                        <p className="mt-3 break-all font-mono text-xs text-primary">
-                          {payAddress}
-                        </p>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          className="mt-2 gap-1"
-                          onClick={() => void copyAddress()}
-                        >
-                          <Copy className="h-3.5 w-3.5" />
-                          {copied ? "Copied!" : "Copy address"}
-                        </Button>
-                      </>
-                    )}
+                    <p className="text-xs uppercase tracking-wide text-muted">
+                      Send exactly
+                    </p>
+                    <p className="text-2xl font-bold text-white">
+                      {payAmount ?? amount} USDT
+                    </p>
+                    <p className="text-xs text-muted">Network: {network}</p>
+                    <p className="mt-3 break-all font-mono text-xs text-primary">
+                      {payAddress}
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="mt-2 gap-1"
+                      onClick={() => void copyAddress()}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      {copied ? "Copied!" : "Copy address"}
+                    </Button>
                   </div>
                   <p className="text-xs text-gray-500">
                     We check automatically every 8 seconds. Manual refresh unlocks

@@ -11,6 +11,7 @@ import {
   WITHDRAWAL_WALLET_NETWORKS,
 } from '../common/payout.util';
 import { isMomoWithdrawalNetwork } from '../flutterwave/flutterwave.constants';
+import { isSoloApp } from '../common/app-variant';
 import { randomInt } from 'crypto';
 import * as bcrypt from 'bcrypt';
 
@@ -41,10 +42,87 @@ export class SavedWithdrawalWalletService {
     });
   }
 
+  async save(
+    userId: string,
+    input: { label: string; address: string; network: string },
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { status: true },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    if (user.status === 'BANNED' || user.status === 'SUSPENDED') {
+      throw new BadRequestException('Account cannot add withdrawal wallets');
+    }
+
+    const label = input.label.trim();
+    const network = input.network.trim().toUpperCase();
+    const address = input.address.trim();
+
+    if (!label || label.length < 2) {
+      throw new BadRequestException('Enter a wallet description (at least 2 characters)');
+    }
+    if (label.length > 64) {
+      throw new BadRequestException('Description is too long (max 64 characters)');
+    }
+    if (!WITHDRAWAL_WALLET_NETWORKS.includes(network as (typeof WITHDRAWAL_WALLET_NETWORKS)[number])) {
+      throw new BadRequestException(
+        `Choose a network: ${WITHDRAWAL_WALLET_NETWORKS.join(', ')}`,
+      );
+    }
+
+    validateWithdrawalWalletAddress(network, address);
+
+    const count = await this.prisma.savedWithdrawalWallet.count({
+      where: { userId },
+    });
+    if (count >= MAX_WALLETS_PER_USER) {
+      throw new BadRequestException(
+        `You can save up to ${MAX_WALLETS_PER_USER} withdrawal wallets`,
+      );
+    }
+
+    const existing = await this.prisma.savedWithdrawalWallet.findUnique({
+      where: {
+        userId_address_network: { userId, address, network },
+      },
+    });
+    if (existing) {
+      throw new BadRequestException('This wallet is already saved on that network');
+    }
+
+    const wallet = await this.prisma.savedWithdrawalWallet.create({
+      data: {
+        userId,
+        label,
+        address,
+        network,
+      },
+      select: {
+        id: true,
+        label: true,
+        address: true,
+        network: true,
+        verifiedAt: true,
+        createdAt: true,
+      },
+    });
+
+    return {
+      wallet,
+      message: 'Withdrawal wallet saved',
+    };
+  }
+
   async requestVerification(
     userId: string,
     input: { label: string; address: string; network: string },
   ) {
+    if (isSoloApp()) {
+      return this.save(userId, input);
+    }
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { email: true, status: true },
@@ -217,9 +295,14 @@ export class SavedWithdrawalWalletService {
     if (!wallet) {
       throw new NotFoundException('Saved withdrawal wallet not found');
     }
-    if (wallet.network !== 'TRC20' && !isMomoWithdrawalNetwork(wallet.network)) {
+    if (
+      wallet.network !== 'TRC20' &&
+      wallet.network !== 'BEP20' &&
+      wallet.network !== 'ERC20' &&
+      !isMomoWithdrawalNetwork(wallet.network)
+    ) {
       throw new BadRequestException(
-        'Withdrawals support TRC20 USDT or saved Mobile Money wallets',
+        'Withdrawals support USDT on TRC20, BEP20, or ERC20',
       );
     }
     return wallet;

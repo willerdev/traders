@@ -1301,6 +1301,18 @@ class ApiClient {
       }),
     withdrawalWallets: () =>
       this.request<SavedWithdrawalWallet[]>("/wallet/withdrawal-wallets"),
+    saveWithdrawalWallet: (data: {
+      label: string;
+      address: string;
+      network: string;
+    }) =>
+      this.request<{ wallet: SavedWithdrawalWallet; message: string }>(
+        "/wallet/withdrawal-wallets",
+        {
+          method: "POST",
+          body: JSON.stringify(data),
+        },
+      ),
     requestWithdrawalWalletVerification: (data: {
       label: string;
       address: string;

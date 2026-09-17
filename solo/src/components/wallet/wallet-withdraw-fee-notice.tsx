@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { formatCurrency } from "@/lib/utils";
 
 export const WALLET_WITHDRAWAL_FEE_USD = 3;
@@ -26,11 +25,13 @@ export function estimateWithdrawalFees(
   offSchedule: boolean;
 } {
   const processing = Math.max(0, processingFeeUsdt);
-  const enabled = schedule?.scheduleEnabled !== false;
-  const inWindow = schedule?.inPreferredWindow !== false;
-  const penaltyPercent = Math.max(0, Number(schedule?.offSchedulePenaltyPercent ?? 8));
+  const enabled = schedule?.scheduleEnabled === true;
+  const inWindow = schedule?.inPreferredWindow === true;
+  const penaltyPercent = Math.max(0, Number(schedule?.offSchedulePenaltyPercent ?? 0));
   const penaltyUsdt =
-    Math.round(((gross * penaltyPercent) / 100) * 100) / 100;
+    enabled && !inWindow && penaltyPercent > 0
+      ? Math.round(((gross * penaltyPercent) / 100) * 100) / 100
+      : 0;
   const totalFeesUsdt = Math.round((processing + penaltyUsdt) * 100) / 100;
   const netPayoutUsdt = Math.round((gross - totalFeesUsdt) * 100) / 100;
   return {
@@ -58,23 +59,13 @@ export function walletWithdrawNetAmount(
 export function WalletWithdrawFeeNotice({
   amount,
   feeUsdt = WALLET_WITHDRAWAL_FEE_USD,
-  schedule,
   className = "",
 }: {
   amount?: string | number;
   feeUsdt?: number;
-  schedule?: WithdrawalScheduleInfo | null;
   className?: string;
 }) {
   const fee = feeUsdt ?? WALLET_WITHDRAWAL_FEE_USD;
-  const scheduleEnabled = schedule?.scheduleEnabled !== false;
-  const windowLabel =
-    schedule?.preferredWindowLabel ??
-    (String(schedule?.preferredSchedule).toUpperCase() === "MONTHLY"
-      ? "the 1st of each month (UTC)"
-      : "Sundays (UTC)");
-  const inWindow = schedule?.inPreferredWindow !== false;
-  const penaltyPercent = Number(schedule?.offSchedulePenaltyPercent ?? 8);
   const gross =
     amount != null && amount !== ""
       ? typeof amount === "number"
@@ -83,58 +74,17 @@ export function WalletWithdrawFeeNotice({
       : null;
   const quote =
     gross != null && Number.isFinite(gross)
-      ? estimateWithdrawalFees(gross, fee, schedule)
+      ? estimateWithdrawalFees(gross, fee, null)
       : null;
   const net = quote && quote.netPayoutUsdt > 0 ? quote.netPayoutUsdt : null;
-  const nextAt = schedule?.nextPreferredWindowAt
-    ? new Date(schedule.nextPreferredWindowAt).toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-        timeZone: "UTC",
-      })
-    : null;
 
   return (
     <div
-      className={`space-y-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs leading-relaxed text-gray-400 ${className}`}
+      className={`rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs leading-relaxed text-gray-400 ${className}`}
     >
-      {scheduleEnabled ? (
-        <p>
-          Preferred withdrawals:{" "}
-          <strong className="text-gray-300">{windowLabel}</strong>
-          {inWindow ? (
-            <>
-              {" "}
-              — <span className="text-emerald-300">you are in-window</span> for
-              schedule (8% platform fee still applies).
-            </>
-          ) : (
-            <>
-              {" "}
-              — <span className="text-amber-300">off-schedule</span>
-              {penaltyPercent > 0 ? (
-                <>
-                  {" "}
-                  (+{penaltyPercent}% fee on gross)
-                </>
-              ) : null}
-              {nextAt ? <> · next preferred window {nextAt} UTC</> : null}.
-            </>
-          )}{" "}
-          <Link href="/terms#withdrawals" className="text-primary hover:underline">
-            Terms
-          </Link>
-        </p>
-      ) : (
-        <p>
-          A <strong className="text-gray-300">{penaltyPercent}%</strong> fee
-          applies to every wallet withdrawal.
-        </p>
-      )}
-
-      {fee <= 0 && !(quote?.penaltyUsdt) ? (
+      {fee <= 0 ? (
         <p className="text-emerald-200">
-          VIP benefit: <strong>$0</strong> processing fee
+          $0 processing fee
           {net != null ? (
             <>
               {" "}
@@ -147,32 +97,18 @@ export function WalletWithdrawFeeNotice({
       ) : (
         <p>
           Processing fee: {formatCurrency(fee)}
-          {quote && quote.penaltyUsdt > 0 ? (
-            <>
-              {" "}
-              + {penaltyPercent}% withdrawal fee {formatCurrency(quote.penaltyUsdt)}
-            </>
-          ) : null}
           {net != null && gross != null ? (
             <>
               {" "}
               → you receive{" "}
-              <strong className="text-gray-300">{formatCurrency(net)}</strong>{" "}
-              ({formatCurrency(gross)} − {formatCurrency(quote!.totalFeesUsdt)}).
+              <strong className="text-gray-300">{formatCurrency(net)}</strong>
             </>
           ) : gross != null && Number.isFinite(gross) && gross > 0 && quote ? (
             <>
               {" "}
-              Minimum withdrawal is{" "}
-              {formatCurrency(quote.totalFeesUsdt + 0.01)}.
+              Minimum withdrawal is {formatCurrency(quote.totalFeesUsdt + 0.01)}.
             </>
-          ) : (
-            <>
-              {" "}
-              Every withdrawal includes the {penaltyPercent}% platform fee above
-              {fee > 0 ? " plus processing" : ""}.
-            </>
-          )}
+          ) : null}
         </p>
       )}
     </div>

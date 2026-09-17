@@ -510,7 +510,9 @@ export class WalletService {
     const processingFeeUsdt = vipActive
       ? 0
       : Number(config?.walletWithdrawalFeeUsdt ?? WALLET_WITHDRAWAL_FEE_USD);
-    const scheduleEnabled = config?.withdrawalScheduleEnabled !== false;
+    const scheduleEnabled = isSoloApp()
+      ? false
+      : config?.withdrawalScheduleEnabled !== false;
     const preferredSchedule = normalizePreferredSchedule(
       config?.withdrawalPreferredSchedule,
     );
@@ -1468,7 +1470,9 @@ export class WalletService {
     const processingFee = isInvestorVipActive(vipUser)
       ? 0
       : Number(config?.walletWithdrawalFeeUsdt ?? WALLET_WITHDRAWAL_FEE_USD);
-    const scheduleEnabled = config?.withdrawalScheduleEnabled !== false;
+    const scheduleEnabled = isSoloApp()
+      ? false
+      : config?.withdrawalScheduleEnabled !== false;
     return quoteWithdrawalFees({
       grossUsdt: grossAmount,
       processingFeeUsdt: processingFee,

@@ -264,6 +264,15 @@ export class WalletController {
     return this.savedWallets.list(req.user.id);
   }
 
+  @Post('withdrawal-wallets')
+  @UseGuards(JwtAuthGuard, AuthRateLimitGuard)
+  saveWithdrawalWallet(
+    @Request() req: { user: { id: string } },
+    @Body() body: { label: string; address: string; network: string },
+  ) {
+    return this.savedWallets.save(req.user.id, body);
+  }
+
   @Post('withdrawal-wallets/request-verification')
   @UseGuards(JwtAuthGuard)
   requestWithdrawalWalletVerification(

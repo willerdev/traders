@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { api, PendingWalletWithdrawal } from "@/lib/api";
@@ -59,13 +58,7 @@ export function WalletPendingWithdrawals({ onCancelled }: Props) {
   }
 
   if (loading) {
-    return (
-      <Card>
-        <CardContent className="flex justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
-        </CardContent>
-      </Card>
-    );
+    return null;
   }
 
   if (items.length === 0 && !error) {
@@ -73,14 +66,12 @@ export function WalletPendingWithdrawals({ onCancelled }: Props) {
   }
 
   return (
-    <Card className="border-amber-500/30 bg-amber-500/5">
-      <CardHeader className="pb-2">
-        <div className="flex items-center gap-2">
-          <Clock className="h-5 w-5 text-amber-400" />
-          <CardTitle className="text-base">Pending withdrawals</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <div className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.06] p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <Clock className="h-4 w-4 text-amber-400" />
+        <p className="text-sm font-semibold text-white">Pending withdrawals</p>
+      </div>
+      <div className="space-y-3">
         {error ? (
           <p className="text-sm text-danger">{error}</p>
         ) : null}
@@ -95,8 +86,7 @@ export function WalletPendingWithdrawals({ onCancelled }: Props) {
                   {formatCurrency(item.grossAmount)} USDT
                 </p>
                 <p className="mt-1 text-xs text-gray-500">
-                  Net after fees: {formatCurrency(item.netAmount)} ·{" "}
-                  {item.payoutMethod === "MOBILE_MONEY" ? "MoMo" : "TRC20"}
+                  Net after fees: {formatCurrency(item.netAmount)} USDT
                 </p>
                 {item.walletAddress ? (
                   <p className="mt-1 truncate font-mono text-xs text-gray-600">
@@ -106,12 +96,6 @@ export function WalletPendingWithdrawals({ onCancelled }: Props) {
                 <p className="mt-1 text-xs text-gray-500">
                   Requested {new Date(item.requestedAt).toLocaleString()}
                 </p>
-                {item.scheduledApproveAt ? (
-                  <p className="mt-1 text-xs text-amber-400/90">
-                    Scheduled{" "}
-                    {new Date(item.scheduledApproveAt).toLocaleString()}
-                  </p>
-                ) : null}
               </div>
               <Badge variant="gold">Pending</Badge>
             </div>
@@ -132,7 +116,7 @@ export function WalletPendingWithdrawals({ onCancelled }: Props) {
             </Button>
           </div>
         ))}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

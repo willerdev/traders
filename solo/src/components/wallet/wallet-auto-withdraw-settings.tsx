@@ -250,7 +250,7 @@ export function WalletAutoWithdrawSettings({
               Add a TRC20 wallet
             </span>
             <span className="text-xs text-muted">
-              We email a code before the address can be used.
+              Add a TRC20 wallet for daily auto-withdraw.
             </span>
           </button>
         ) : (
