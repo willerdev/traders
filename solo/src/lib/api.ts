@@ -1206,8 +1206,8 @@ class ApiClient {
     withdraw: (
       amount: number,
       savedWalletId: string,
-      sessionId: string,
-      code: string,
+      sessionId?: string,
+      code?: string,
     ) =>
       this.request<{
         status: string;
@@ -1228,8 +1228,8 @@ class ApiClient {
         body: JSON.stringify({
           amount,
           savedWalletId: savedWalletId.trim(),
-          sessionId: sessionId.trim(),
-          code: code.trim(),
+          ...(sessionId?.trim() ? { sessionId: sessionId.trim() } : {}),
+          ...(code?.trim() ? { code: code.trim() } : {}),
         }),
       }),
     momoP2pQuote: (amountUsdt: number) =>

@@ -1671,6 +1671,13 @@ export class WalletService {
       );
     }
 
+    if (isSoloApp()) {
+      const grossAmount = Math.round(amount * 100) / 100;
+      return this.executeDepositorWithdraw(userId, grossAmount, savedWalletId, {
+        actor: 'user',
+      });
+    }
+
     if (auth?.pin?.trim()) {
       await this.consumeWithdrawPin(userId, auth.pin);
     } else {
