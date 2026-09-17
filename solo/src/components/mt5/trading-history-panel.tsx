@@ -10,6 +10,8 @@ type Props = {
   loading: boolean;
   error: string | null;
   dealCount?: number;
+  selectedId?: string | null;
+  onSelect?: (item: UserMt5HistoryItem) => void;
 };
 
 function formatWhen(iso: string) {
@@ -35,6 +37,8 @@ export function TradingHistoryPanel({
   loading,
   error,
   dealCount = 0,
+  selectedId = null,
+  onSelect,
 }: Props) {
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -58,10 +62,17 @@ export function TradingHistoryPanel({
       ) : (
         <ul className="mt-2 min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain pr-0.5">
           {items.map((row) => (
-            <li
-              key={row.id}
-              className="rounded-lg bg-navy/70 px-2.5 py-2 text-xs"
-            >
+            <li key={row.id}>
+              <button
+                type="button"
+                onClick={() => onSelect?.(row)}
+                className={cn(
+                  "w-full rounded-lg px-2.5 py-2 text-left text-xs transition-colors",
+                  selectedId === row.id
+                    ? "bg-primary/15 ring-1 ring-primary/40"
+                    : "bg-navy/70 hover:bg-navy",
+                )}
+              >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate font-semibold text-foreground">
@@ -88,6 +99,7 @@ export function TradingHistoryPanel({
                   </p>
                 </div>
               </div>
+              </button>
             </li>
           ))}
         </ul>

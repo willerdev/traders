@@ -12,6 +12,7 @@ import type {
   OpenSetupItem,
   UserMt5AccountSummary,
   UserMt5AccountSource,
+  UserMt5HistoryItem,
   UserMt5QuoteItem,
   UserMt5Trade,
 } from "@/lib/api";
@@ -27,7 +28,7 @@ import {
   type ChartTimeframe,
 } from "@/components/charts/chart-types";
 import { useChartWatchlist } from "@/components/charts/use-chart-watchlist";
-import { buildMt5ChartOverlays } from "@/components/mt5/build-mt5-chart-overlays";
+import { buildMt5ChartOverlays, historyEntryUnix } from "@/components/mt5/build-mt5-chart-overlays";
 import { persistStopChange } from "@/components/charts/persist-stop-change";
 import type { ChartPriceLine } from "@/components/charts/chart-types";
 import { ChartUserWatermark } from "@/components/mt5/chart-user-watermark";
@@ -91,6 +92,7 @@ type Props = {
   showTradeBar?: boolean;
   workspaceLayout?: boolean;
   canManageTrades?: boolean;
+  reviewedHistory?: UserMt5HistoryItem | null;
 };
 
 function toSetupSummary(setup: OpenSetupItem): SetupSummary {
@@ -133,6 +135,7 @@ export function Mt5ChartTerminal({
   showTradeBar = false,
   workspaceLayout = false,
   canManageTrades = true,
+  reviewedHistory = null,
 }: Props) {
   const chartRef = useRef<LightweightChartHandle>(null);
   const [orderModal, setOrderModal] = useState<"BUY" | "SELL" | null>(null);
@@ -280,6 +283,7 @@ export function Mt5ChartTerminal({
         runningTrades,
         limitTrades,
         setups,
+        reviewedHistory,
         options: {
           showOrders: chartSettings.showOrders,
           showLimits: chartSettings.showLimits,
@@ -292,6 +296,7 @@ export function Mt5ChartTerminal({
       runningTrades,
       limitTrades,
       setups,
+      reviewedHistory,
       chartSettings.showOrders,
       chartSettings.showLimits,
       chartSettings.showSlTp,
@@ -769,6 +774,12 @@ export function Mt5ChartTerminal({
             forceTheme={forceChartTheme}
             onLoadingChange={handleChartLoadingChange}
             onChartStatusChange={setChartStatus}
+            focusTime={
+              reviewedHistory &&
+              reviewedHistory.symbol.toUpperCase() === selectedSymbol.toUpperCase()
+                ? historyEntryUnix(reviewedHistory)
+                : null
+            }
           />
         </div>
         {chartLoading && chartLoadReason === "timeframe" && (

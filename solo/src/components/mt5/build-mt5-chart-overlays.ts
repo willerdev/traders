@@ -1,4 +1,4 @@
-import type { OpenSetupItem, UserMt5Trade } from "@/lib/api";
+import type { OpenSetupItem, UserMt5HistoryItem, UserMt5Trade } from "@/lib/api";
 import type { ChartMarker, ChartPriceLine, ChartTimeframe } from "@/components/charts/chart-types";
 import { MT5_BUY, MT5_SELL, fmtMt5Price } from "@/components/mt5/mt5-ui";
 
@@ -259,6 +259,100 @@ function addSetupOverlay(
   });
 }
 
+function alignIsoToBar(iso: string, intervalSec: number): number | null {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  const sec = Math.floor(ms / 1000);
+  return Math.floor(sec / intervalSec) * intervalSec;
+}
+
+export function historyEntryUnix(item: UserMt5HistoryItem): number | null {
+  const entry = Date.parse(item.submittedAt);
+  if (Number.isFinite(entry)) return Math.floor(entry / 1000);
+  const exit = Date.parse(item.closedAt);
+  if (Number.isFinite(exit)) return Math.floor(exit / 1000);
+  return null;
+}
+
+function addClosedTradeOverlay(
+  lines: ChartPriceLine[],
+  marks: ChartMarker[],
+  seenLines: Set<string>,
+  trade: UserMt5HistoryItem,
+  timeframe: ChartTimeframe,
+): void {
+  const isBuy = trade.direction.toUpperCase() === "BUY";
+  const dirColor = isBuy ? MT5_BUY : MT5_SELL;
+  const id = `hist-${trade.id}`;
+  const interval = TIMEFRAME_SECONDS[timeframe];
+  const entryTime = alignIsoToBar(trade.submittedAt, interval);
+  const exitTime = alignIsoToBar(trade.closedAt, interval);
+
+  if (trade.entryPrice != null && trade.entryPrice > 0) {
+    pushLine(lines, seenLines, {
+      id: `${id}-entry`,
+      price: trade.entryPrice,
+      color: dirColor,
+      title: `Entry · ${fmtMt5Price(trade.entryPrice)}`,
+      lineStyle: 0,
+      kind: "entry",
+      draggable: false,
+    });
+  }
+  if (trade.exitPrice != null && trade.exitPrice > 0) {
+    pushLine(lines, seenLines, {
+      id: `${id}-exit`,
+      price: trade.exitPrice,
+      color: "#c9a227",
+      title: `Exit · ${fmtMt5Price(trade.exitPrice)}`,
+      lineStyle: 2,
+      kind: "limit",
+      draggable: false,
+    });
+  }
+  if (trade.stopLoss > 0) {
+    pushLine(lines, seenLines, {
+      id: `${id}-sl`,
+      price: trade.stopLoss,
+      color: MT5_SELL,
+      title: `SL · ${fmtMt5Price(trade.stopLoss)}`,
+      lineStyle: 2,
+      kind: "sl",
+      draggable: false,
+    });
+  }
+  if (trade.takeProfit > 0) {
+    pushLine(lines, seenLines, {
+      id: `${id}-tp`,
+      price: trade.takeProfit,
+      color: MT5_BUY,
+      title: `TP · ${fmtMt5Price(trade.takeProfit)}`,
+      lineStyle: 2,
+      kind: "tp",
+      draggable: false,
+    });
+  }
+
+  if (entryTime != null) {
+    marks.push({
+      time: entryTime,
+      position: isBuy ? "belowBar" : "aboveBar",
+      color: dirColor,
+      shape: isBuy ? "arrowUp" : "arrowDown",
+      text: "Entry",
+    });
+  }
+  if (exitTime != null && exitTime !== entryTime) {
+    marks.push({
+      time: exitTime,
+      position: isBuy ? "aboveBar" : "belowBar",
+      color: "#c9a227",
+      shape: "circle",
+      text: "Exit",
+    });
+  }
+}
+
 export type Mt5ChartOverlaySummary = {
   running: number;
   limits: number;
@@ -278,6 +372,7 @@ export function buildMt5ChartOverlays(input: {
   runningTrades: UserMt5Trade[];
   limitTrades: UserMt5Trade[];
   setups: OpenSetupItem[];
+  reviewedHistory?: UserMt5HistoryItem | null;
   options?: Mt5ChartOverlayOptions;
 }): {
   priceLines: ChartPriceLine[];
@@ -323,6 +418,14 @@ export function buildMt5ChartOverlays(input: {
       addSetupOverlay(lines, marks, seenLines, setup, barTime);
       coveredSignals.add(setup.signalId);
     }
+  }
+
+  const reviewed = input.reviewedHistory;
+  if (
+    reviewed &&
+    normalizeSymbol(reviewed.symbol) === sym
+  ) {
+    addClosedTradeOverlay(lines, marks, seenLines, reviewed, input.timeframe);
   }
 
   const filteredLines = showSlTp

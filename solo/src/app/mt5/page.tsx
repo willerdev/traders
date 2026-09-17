@@ -10,7 +10,7 @@ import {
   Plus,
   Star,
 } from "lucide-react";
-import { api, type UserMt5Trade } from "@/lib/api";
+import { api, type UserMt5HistoryItem, type UserMt5Trade } from "@/lib/api";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { useAuthStore } from "@/stores/auth";
 import { canManageSoloTrades } from "@/lib/solo-admin";
@@ -44,6 +44,8 @@ export default function SoloMt5Page() {
   const [rightTab, setRightTab] = useState<RightTab>("alerts");
   const [orderModal, setOrderModal] = useState<"BUY" | "SELL" | null>(null);
   const [lotSize, setLotSize] = useState("0.01");
+  const [reviewedHistory, setReviewedHistory] =
+    useState<UserMt5HistoryItem | null>(null);
   const { watchlist, addSymbol } = useChartWatchlist();
   const { live, setPaused, seeLiveData } = useMetaApiLive();
 
@@ -223,7 +225,9 @@ export default function SoloMt5Page() {
                   account={data?.account}
                   accountSource={data?.accountSource}
                   selectedSymbol={chartSymbol}
+                  reviewedHistory={reviewedHistory}
                   onSelectSymbol={(sym) => {
+                    setReviewedHistory(null);
                     setSelectedChartSymbol(sym);
                     addSymbol(sym);
                   }}
@@ -325,7 +329,10 @@ export default function SoloMt5Page() {
                     <li key={sym}>
                       <button
                         type="button"
-                        onClick={() => setSelectedChartSymbol(sym)}
+                        onClick={() => {
+                          setReviewedHistory(null);
+                          setSelectedChartSymbol(sym);
+                        }}
                         className={cn(
                           "w-full rounded-lg px-3 py-2 text-left text-sm",
                           chartSymbol === sym
@@ -360,6 +367,12 @@ export default function SoloMt5Page() {
                   loading={historyLoading}
                   error={historyError}
                   dealCount={historyDealCount}
+                  selectedId={reviewedHistory?.id ?? null}
+                  onSelect={(item) => {
+                    setReviewedHistory(item);
+                    setSelectedChartSymbol(item.symbol);
+                    addSymbol(item.symbol);
+                  }}
                 />
                 </div>
               )}

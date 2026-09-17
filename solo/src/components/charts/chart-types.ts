@@ -9,6 +9,14 @@ export const CHART_TIMEFRAMES: ChartTimeframe[] = [
   "D1",
 ];
 
+export const CHART_TIMEFRAME_SECONDS: Record<ChartTimeframe, number> = {
+  M1: 60,
+  M5: 300,
+  M15: 900,
+  H1: 3600,
+  D1: 86400,
+};
+
 /** OHLC bar — `time` is UTCTimestamp (seconds). */
 export type OHLCBar = {
   time: number;

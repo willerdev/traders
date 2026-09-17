@@ -33,6 +33,7 @@ export type UseLightweightChartResult = {
   applyTheme: (mode: ChartThemeMode) => void;
   applySymbolFormat: (symbol: string) => void;
   fitContent: () => void;
+  showAroundTime: (unixSeconds: number, intervalSec?: number) => void;
   priceToCoordinate: (price: number) => number | null;
   coordinateToPrice: (y: number) => number | null;
   timeToCoordinate: (time: number) => number | null;
@@ -374,6 +375,21 @@ export function useLightweightChart(
     chartRef.current?.timeScale().fitContent();
   }, []);
 
+  const showAroundTime = useCallback((unixSeconds: number, intervalSec = 300) => {
+    const chart = chartRef.current;
+    const bars = barsRef.current;
+    if (!chart || bars.length === 0 || !Number.isFinite(unixSeconds)) return;
+    const first = bars[0].time;
+    const last = bars[bars.length - 1].time;
+    const t = Math.min(last, Math.max(first, unixSeconds));
+    const padLeft = intervalSec * 48;
+    const padRight = intervalSec * 16;
+    chart.timeScale().setVisibleRange({
+      from: Math.max(first, t - padLeft) as import("lightweight-charts").UTCTimestamp,
+      to: Math.min(last, t + padRight) as import("lightweight-charts").UTCTimestamp,
+    });
+  }, []);
+
   const priceToCoordinate = useCallback((price: number) => {
     const y = seriesRef.current?.priceToCoordinate(price);
     return y ?? null;
@@ -423,6 +439,7 @@ export function useLightweightChart(
     applyTheme,
     applySymbolFormat,
     fitContent,
+    showAroundTime,
     priceToCoordinate,
     coordinateToPrice,
     timeToCoordinate,
