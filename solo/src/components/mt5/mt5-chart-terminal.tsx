@@ -90,6 +90,7 @@ type Props = {
   forceChartTheme?: "dark" | "light";
   showTradeBar?: boolean;
   workspaceLayout?: boolean;
+  canManageTrades?: boolean;
 };
 
 function toSetupSummary(setup: OpenSetupItem): SetupSummary {
@@ -131,6 +132,7 @@ export function Mt5ChartTerminal({
   forceChartTheme,
   showTradeBar = false,
   workspaceLayout = false,
+  canManageTrades = true,
 }: Props) {
   const chartRef = useRef<LightweightChartHandle>(null);
   const [orderModal, setOrderModal] = useState<"BUY" | "SELL" | null>(null);
@@ -748,7 +750,11 @@ export function Mt5ChartTerminal({
             getQuote={() => getActiveQuote(selectedSymbol)}
             markers={markers}
             priceLines={chartPriceLines}
-            draggableLines={chartSettings.showSlTp && activeTool === "select"}
+            draggableLines={
+              canManageTrades &&
+              chartSettings.showSlTp &&
+              activeTool === "select"
+            }
             onPriceLineDragEnd={handlePriceLineDragEnd}
             onChartTap={workspaceLayout ? undefined : handleChartTap}
             chartTool={activeTool}
@@ -924,7 +930,7 @@ export function Mt5ChartTerminal({
                           Setup
                         </button>
                       )}
-                      {kind === "running" && onCloseTrade && (
+                      {onCloseTrade && canManageTrades && (
                         <button
                           type="button"
                           className="font-semibold text-[#ff5252] hover:underline"

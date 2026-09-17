@@ -10,6 +10,7 @@ interface User {
   role: string;
   status: string;
   avatarUrl?: string | null;
+  canManageTrades?: boolean;
   adminPermissions?: import("@/lib/api").AdminPermissionsView;
 }
 

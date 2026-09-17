@@ -10,6 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards';
+import { SoloTradingAdminGuard } from '../auth/guards/solo-trading-admin.guard';
 import { AuthRateLimitGuard } from '../auth/auth-rate-limit.guard';
 import { DerivService } from './deriv.service';
 import { DerivTransferDto, SaveDerivCryptoWalletDto, SaveDerivTokenDto } from './deriv.dto';
@@ -80,7 +81,7 @@ export class DerivController {
   }
 
   @Post('contracts/:id/sell')
-  @UseGuards(AuthRateLimitGuard)
+  @UseGuards(AuthRateLimitGuard, SoloTradingAdminGuard)
   sell(
     @Request() req: { user: { id: string } },
     @Param('id') id: string,

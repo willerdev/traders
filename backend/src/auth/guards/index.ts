@@ -7,6 +7,7 @@ import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 export const ROLES_KEY = 'roles';
 
 export { AdminPermissionGuard } from './admin-permission.guard';
+export { SoloTradingAdminGuard } from './solo-trading-admin.guard';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {

@@ -2008,6 +2008,7 @@ export interface DashboardData {
     tradingAccessActive?: boolean;
     tradingDaysRemaining?: number | null;
     adminPermissions?: AdminPermissionsView;
+    canManageTrades?: boolean;
   };
   onboarding?: OnboardingStatus;
   account: {

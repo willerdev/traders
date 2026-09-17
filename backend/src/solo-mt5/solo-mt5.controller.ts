@@ -8,7 +8,7 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/guards';
+import { JwtAuthGuard, SoloTradingAdminGuard } from '../auth/guards';
 import {
   ModifyMt5PositionStopsDto,
   PlaceMt5MarketOrderDto,
@@ -105,6 +105,7 @@ export class SoloMt5Controller {
   }
 
   @Post('mt5/orders')
+  @UseGuards(SoloTradingAdminGuard)
   place(
     @Request() req: { user: { id: string } },
     @Body() dto: PlaceMt5MarketOrderDto,
@@ -113,11 +114,13 @@ export class SoloMt5Controller {
   }
 
   @Post('mt5/positions/close-all')
+  @UseGuards(SoloTradingAdminGuard)
   closeAll(@Request() req: { user: { id: string } }) {
     return this.mt5.closeAll(req.user.id);
   }
 
   @Post('mt5/positions/:positionId/close')
+  @UseGuards(SoloTradingAdminGuard)
   close(
     @Request() req: { user: { id: string } },
     @Param('positionId') positionId: string,
@@ -126,6 +129,7 @@ export class SoloMt5Controller {
   }
 
   @Post('mt5/positions/:positionId/modify-stops')
+  @UseGuards(SoloTradingAdminGuard)
   modifyStops(
     @Request() req: { user: { id: string } },
     @Param('positionId') positionId: string,

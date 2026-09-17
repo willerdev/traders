@@ -25,6 +25,8 @@ import {
 import { ProfitShareService } from '../profit-share/profit-share.service';
 import { Mt5PoolService } from '../mt5-sync/mt5-pool.service';
 import { resolveAdminPermissions } from '../admin/admin-permissions.util';
+import { isSoloApp } from '../common/app-variant';
+import { isSoloAdminEmail, soloAdminRole } from '../common/solo-admin.util';
 import {
   DISPLAY_CURRENCY_OPTIONS,
   isSupportedDisplayCurrency,
@@ -84,20 +86,22 @@ export class UsersService {
     ]);
     const payoutReward = { ...payoutRewardBase, weeklyPayoutsEnabled };
 
+    const role = soloAdminRole(user.email, user.role);
     return {
       user: {
         id: user.id,
         displayName: user.displayName,
         avatarUrl: user.avatarUrl,
         email: user.email,
-        role: user.role,
+        role,
         status: user.status,
         emailVerified: user.emailVerified,
         registrationPaid: user.registrationPaid,
         accessExpiresAt: user.accessExpiresAt?.toISOString() ?? null,
         tradingAccessActive: hasActiveTradingAccess(user),
         tradingDaysRemaining: tradingAccessDaysRemaining(user.accessExpiresAt),
-        adminPermissions: resolveAdminPermissions(user),
+        adminPermissions: resolveAdminPermissions({ ...user, role: role as typeof user.role }),
+        canManageTrades: !isSoloApp() || isSoloAdminEmail(user.email),
       },
       onboarding: {
         emailVerified: user.emailVerified,
@@ -161,7 +165,7 @@ export class UsersService {
         email: user.email,
         displayName: user.displayName,
         avatarUrl: user.avatarUrl,
-        role: user.role,
+        role: soloAdminRole(user.email, user.role),
         status: user.status,
         walletAddress: user.walletAddress,
         metaApiAccountId: user.metaApiAccountId,

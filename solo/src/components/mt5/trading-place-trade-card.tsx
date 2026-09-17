@@ -5,6 +5,7 @@ import { MT5_BUY, MT5_SELL } from "@/components/mt5/mt5-ui";
 type Props = {
   linked: boolean;
   lotSize: string;
+  canTrade?: boolean;
   onLotSizeChange: (value: string) => void;
   onAdjustLot: (delta: number) => void;
   onBuy: () => void;
@@ -15,6 +16,7 @@ type Props = {
 export function TradingPlaceTradeCard({
   linked,
   lotSize,
+  canTrade = true,
   onLotSizeChange,
   onAdjustLot,
   onBuy,
@@ -22,6 +24,7 @@ export function TradingPlaceTradeCard({
   onNeedConnect,
 }: Props) {
   function requireLinked(action: () => void) {
+    if (!canTrade) return;
     if (!linked) {
       onNeedConnect();
       return;
@@ -38,8 +41,9 @@ export function TradingPlaceTradeCard({
         <button
           type="button"
           onClick={() => requireLinked(onBuy)}
-          className="min-w-[4.5rem] rounded-md px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-white hover:opacity-90"
+          className="min-w-[4.5rem] rounded-md px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           style={{ backgroundColor: MT5_BUY }}
+          disabled={!canTrade}
         >
           Buy
         </button>
@@ -76,12 +80,18 @@ export function TradingPlaceTradeCard({
         <button
           type="button"
           onClick={() => requireLinked(onSell)}
-          className="min-w-[4.5rem] rounded-md px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-white hover:opacity-90"
+          className="min-w-[4.5rem] rounded-md px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           style={{ backgroundColor: MT5_SELL }}
+          disabled={!canTrade}
         >
           Sell
         </button>
       </div>
+      {!canTrade ? (
+        <p className="mt-2 text-center text-[11px] text-muted">
+          Only the platform admin can place, close, or set limits on trades.
+        </p>
+      ) : null}
     </div>
   );
 }

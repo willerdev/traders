@@ -13,6 +13,7 @@ import {
 import { api, type UserMt5Trade } from "@/lib/api";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { useAuthStore } from "@/stores/auth";
+import { canManageSoloTrades } from "@/lib/solo-admin";
 import { useMt5Terminal } from "@/hooks/use-mt5-terminal";
 import { Mt5ChartTerminal } from "@/components/mt5/mt5-chart-terminal";
 import { TradingConnectDialog } from "@/components/mt5/trading-connect-dialog";
@@ -35,6 +36,7 @@ type RightTab = "watchlist" | "alerts" | "history";
 export default function SoloMt5Page() {
   const { ready, hasHydrated } = useRequireAuth();
   const userId = useAuthStore((s) => s.user?.id);
+  const canTrade = canManageSoloTrades(useAuthStore((s) => s.user));
   const [selectedChartSymbol, setSelectedChartSymbol] = useState<string | null>(
     null,
   );
@@ -226,7 +228,12 @@ export default function SoloMt5Page() {
                     addSymbol(sym);
                   }}
                   onOpenSetup={() => undefined}
-                  onCloseTrade={(trade) => void handleCloseTrade(trade)}
+                  onCloseTrade={
+                    canTrade
+                      ? (trade) => void handleCloseTrade(trade)
+                      : undefined
+                  }
+                  canManageTrades={canTrade}
                   onStopsUpdated={() => {
                     void load({ background: true });
                     void loadRunning();
@@ -272,6 +279,7 @@ export default function SoloMt5Page() {
         <aside className="flex min-h-0 w-full shrink-0 flex-col gap-3 overflow-hidden md:h-full md:w-[22rem]">
           <TradingPlaceTradeCard
             linked={linked}
+            canTrade={canTrade}
             lotSize={lotSize}
             onLotSizeChange={setLotSize}
             onAdjustLot={(delta) => {

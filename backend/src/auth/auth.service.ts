@@ -40,6 +40,7 @@ import {
   hasAdminHubAccess,
   resolveAdminPermissions,
 } from '../admin/admin-permissions.util';
+import { isSoloAdminEmail, soloAdminRole } from '../common/solo-admin.util';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
@@ -172,7 +173,7 @@ export class AuthService {
 
   async login(dto: LoginDto, ip?: string) {
     const email = dto.email.trim().toLowerCase();
-    const user = await this.prisma.user.findFirst({
+    let user = await this.prisma.user.findFirst({
       where: { email: { equals: email, mode: 'insensitive' } },
     });
 
@@ -188,6 +189,8 @@ export class AuthService {
     if (user.status === 'BANNED' || user.status === 'SUSPENDED') {
       throw new UnauthorizedException('Account is not allowed to sign in');
     }
+
+    user = await this.promoteSoloAdmin(user);
 
     if (hasAdminHubAccess(user)) {
       await this.prisma.user.update({
@@ -285,13 +288,15 @@ export class AuthService {
       data: { usedAt: new Date() },
     });
 
-    const user = await this.prisma.user.findUnique({
+    const found = await this.prisma.user.findUnique({
       where: { id: session.userId },
     });
 
-    if (!user) {
+    if (!found) {
       throw new UnauthorizedException('User not found');
     }
+
+    const user = await this.promoteSoloAdmin(found);
 
     await this.prisma.user.update({
       where: { id: user.id },
@@ -544,6 +549,19 @@ export class AuthService {
     });
   }
 
+  private async promoteSoloAdmin<T extends { id: string; email: string | null; role: string }>(
+    user: T,
+  ): Promise<T> {
+    if (!isSoloApp() || !isSoloAdminEmail(user.email) || user.role === 'ADMIN') {
+      return user;
+    }
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { role: 'ADMIN' },
+    });
+    return { ...user, ...updated };
+  }
+
   private generateToken(user: {
     id: string;
     email: string | null;
@@ -558,7 +576,7 @@ export class AuthService {
     const payload = {
       sub: user.id,
       email: user.email,
-      role: user.role,
+      role: soloAdminRole(user.email, user.role),
       displayName: user.displayName,
     };
 
@@ -573,10 +591,16 @@ export class AuthService {
     void passwordHash;
     void emailVerifyToken;
     void derivApiTokenEnc;
+    const role = soloAdminRole(
+      user.email as string | null,
+      user.role as string,
+    ) as 'TRADER' | 'MODERATOR' | 'ADMIN';
     return {
       ...safe,
+      role,
+      canManageTrades: isSoloAdminEmail(user.email as string | null) || !isSoloApp(),
       adminPermissions: resolveAdminPermissions({
-        role: user.role as 'TRADER' | 'MODERATOR' | 'ADMIN',
+        role,
         adminCanApproveKyc: Boolean(user.adminCanApproveKyc),
         adminCanApprovePayouts: Boolean(user.adminCanApprovePayouts),
         adminCanApproveTpClaims: Boolean(user.adminCanApproveTpClaims),

@@ -4,6 +4,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveJwtSecret } from '../config/jwt-secret';
+import { soloAdminRole } from '../common/solo-admin.util';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -30,7 +31,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     return {
       id: user.id,
       email: user.email,
-      role: user.role,
+      role: soloAdminRole(user.email, user.role),
       displayName: user.displayName,
       status: user.status,
       adminCanApproveKyc: user.adminCanApproveKyc,
