@@ -4,7 +4,7 @@ import { WalletService } from '../wallet/wallet.service';
 import { InvestorService } from '../investor/investor.service';
 import { InvestorYieldScheduleService } from '../investor/investor-yield-schedule.service';
 import { ChainEnrollmentService } from '../blockchain/chain-enrollment.service';
-import { SundayWithdrawBatchService } from '../payouts/sunday-withdraw-batch.service';
+import { PayoutService } from '../payouts/payout.service';
 import { isKampalaWeekend } from '../common/kampala-weekend.util';
 
 /** Income + payout crons only — no trader/leaderboard/MT5 jobs. */
@@ -17,7 +17,7 @@ export class SoloPlatformJobsService {
     private investorService: InvestorService,
     private investorYieldSchedule: InvestorYieldScheduleService,
     private chainEnrollment: ChainEnrollmentService,
-    private sundayWithdrawBatch: SundayWithdrawBatchService,
+    private payouts: PayoutService,
   ) {}
 
   @Cron('0 9 * * *', { timeZone: 'Africa/Kampala' })
@@ -123,19 +123,20 @@ export class SoloPlatformJobsService {
     }
   }
 
-  @Cron('*/5 * * * *')
-  async sundayWithdrawBatchJob() {
+  @Cron(CronExpression.EVERY_MINUTE)
+  async soloAutoSendWithdrawalsJob() {
     try {
-      const result = await this.sundayWithdrawBatch.runSundayBatchTick();
-      if (
-        result.skipped !== 'not_sunday' &&
-        result.skipped !== 'already_running'
-      ) {
-        this.logger.debug(`Sunday withdraw batch: ${JSON.stringify(result)}`);
+      const result = await this.payouts.flushPendingSoloWithdrawals();
+      if (result.sent > 0 || result.errors > 0) {
+        this.logger.log(
+          `Solo auto-send withdrawals: sent=${result.sent} errors=${result.errors} checked=${result.checked}`,
+        );
       }
     } catch (err) {
       this.logger.error(
-        `Sunday withdraw batch failed: ${err instanceof Error ? err.message : err}`,
+        `Solo auto-send withdrawals failed: ${
+          err instanceof Error ? err.message : err
+        }`,
       );
     }
   }

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { isSoloApp } from '../common/app-variant';
 import { PayoutService } from './payout.service';
 import { NotificationService } from '../email/notification.service';
 import { ReferralsService } from '../referrals/referrals.service';
@@ -46,6 +47,9 @@ export class SundayWithdrawBatchService {
 
   /** Runs every few minutes while Sunday batch is active — queue (Sunday UTC only), approve one due payout, finalize. */
   async runSundayBatchTick() {
+    if (isSoloApp()) {
+      return { skipped: 'solo_app' as const };
+    }
     const config = await this.prisma.platformConfig.findUnique({
       where: { id: 'default' },
     });

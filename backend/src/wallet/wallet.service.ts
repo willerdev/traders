@@ -1871,6 +1871,22 @@ export class WalletService {
         this.logger.error(
           `Instant withdraw failed for user ${userId} payout ${payout.id}: ${err instanceof Error ? err.message : err}`,
         );
+        if (isSoloApp()) {
+          return {
+            status: 'instant' as const,
+            payoutId: payout.id,
+            amount: grossAmount,
+            fee,
+            netPayout,
+            balance: newBalance,
+            payoutStatus: 'PENDING',
+            gatewayPayoutId: null,
+            instantFailure:
+              err instanceof Error ? err.message : 'Instant payout failed',
+            message:
+              'Withdrawal queued for automatic send. USDT will go to your saved wallet without admin approval.',
+          };
+        }
         // Fall back to the normal pending-approval flow — funds are already
         // debited to the payout so admin can still approve/refund by hand.
         this.notifications.walletWithdrawRequested(userId, {

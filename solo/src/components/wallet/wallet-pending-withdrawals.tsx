@@ -69,7 +69,7 @@ export function WalletPendingWithdrawals({ onCancelled }: Props) {
     <div className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.06] p-4">
       <div className="mb-3 flex items-center gap-2">
         <Clock className="h-4 w-4 text-amber-400" />
-        <p className="text-sm font-semibold text-white">Pending withdrawals</p>
+        <p className="text-sm font-semibold text-white">Sending automatically</p>
       </div>
       <div className="space-y-3">
         {error ? (
@@ -97,7 +97,7 @@ export function WalletPendingWithdrawals({ onCancelled }: Props) {
                   Requested {new Date(item.requestedAt).toLocaleString()}
                 </p>
               </div>
-              <Badge variant="gold">Pending</Badge>
+                  <Badge variant="gold">Sending</Badge>
             </div>
             <Button
               type="button"

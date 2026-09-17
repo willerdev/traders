@@ -336,6 +336,60 @@ export class PayoutService {
     return this.sendExternalWalletPayout(payout, adminId, settlement, network);
   }
 
+  private networkFromPayoutNotes(notes: string | null): 'TRC20' | 'BEP20' | 'ERC20' {
+    const n = notes?.toUpperCase() ?? '';
+    if (n.includes('BEP20') || n.includes('BEP')) return 'BEP20';
+    if (n.includes('ERC20') || n.includes('ERC')) return 'ERC20';
+    return 'TRC20';
+  }
+
+  /** Solo: send every pending USDT wallet withdrawal immediately — no admin queue. */
+  async flushPendingSoloWithdrawals() {
+    if (!isSoloApp()) {
+      return { checked: 0, sent: 0, errors: 0 };
+    }
+
+    const pending = await this.prisma.payout.findMany({
+      where: {
+        status: 'PENDING',
+        source: 'DEPOSITOR',
+        walletAddress: { not: null },
+        payoutMethod: { not: 'MOBILE_MONEY' },
+      },
+      orderBy: { requestedAt: 'asc' },
+      take: 25,
+    });
+
+    let sent = 0;
+    let errors = 0;
+    for (const payout of pending) {
+      if (payout.scheduledApproveAt) {
+        await this.prisma.payout.update({
+          where: { id: payout.id },
+          data: { scheduledApproveAt: null },
+        });
+      }
+      try {
+        await this.approveAndSendPayout(
+          payout.id,
+          `solo_auto_${payout.userId}`,
+          this.networkFromPayoutNotes(payout.notes),
+          { skipSafetyHold: true },
+        );
+        sent += 1;
+      } catch (err) {
+        errors += 1;
+        this.logger.error(
+          `Solo auto-send failed for payout ${payout.id}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+    }
+
+    return { checked: pending.length, sent, errors };
+  }
+
   private async sendExternalWalletPayout(
     payout: {
       id: string;
