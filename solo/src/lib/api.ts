@@ -1367,11 +1367,7 @@ class ApiClient {
         payoutConfigured: boolean;
         shared?: boolean;
       }>("/wallet/nowpayments-payout"),
-    saveNowpaymentsPayoutLogin: (data: {
-      email: string;
-      password: string;
-      apiKey?: string;
-    }) =>
+    saveNowpaymentsPayoutLogin: (data: { email: string; password: string }) =>
       this.request<{
         apiKeySet: boolean;
         payoutEmailSet: boolean;
