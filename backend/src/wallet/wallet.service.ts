@@ -1868,12 +1868,22 @@ export class WalletService {
               : 'Withdrawal is being sent to your saved wallet.',
         };
       } catch (err) {
+        const sendError = this.payouts.describeSendError(err);
         this.logger.error(
-          `Instant withdraw failed for user ${userId} payout ${payout.id}: ${err instanceof Error ? err.message : err}`,
+          `Instant withdraw failed for user ${userId} payout ${payout.id}: ${sendError}`,
         );
+        await this.prisma.payout.update({
+          where: { id: payout.id },
+          data: {
+            notes: `${payout.notes ?? ''} — NOWPayments send failed: ${sendError}`.slice(
+              0,
+              1800,
+            ),
+          },
+        });
         if (isSoloApp()) {
           return {
-            status: 'instant' as const,
+            status: 'queued' as const,
             payoutId: payout.id,
             amount: grossAmount,
             fee,
@@ -1881,10 +1891,8 @@ export class WalletService {
             balance: newBalance,
             payoutStatus: 'PENDING',
             gatewayPayoutId: null,
-            instantFailure:
-              err instanceof Error ? err.message : 'Instant payout failed',
-            message:
-              'Withdrawal queued for automatic send. USDT will go to your saved wallet without admin approval.',
+            instantFailure: sendError,
+            message: sendError,
           };
         }
         // Fall back to the normal pending-approval flow — funds are already

@@ -250,8 +250,8 @@ export class NowPaymentsService {
           },
         });
         const dbEmail = row?.nowpaymentsPayoutEmail?.trim();
-        if (dbEmail) email = dbEmail;
-        if (row?.nowpaymentsPayoutPasswordEnc) {
+        if (!email && dbEmail) email = dbEmail;
+        if (!password && row?.nowpaymentsPayoutPasswordEnc) {
           try {
             password = decryptCredential(
               row.nowpaymentsPayoutPasswordEnc,
@@ -261,7 +261,7 @@ export class NowPaymentsService {
             this.logger.warn('Could not decrypt shared NOWPayments payout password');
           }
         }
-        // Render env keys always win. Settings API key is only a fallback.
+        // Render env keys always win. Settings values are only a fallback.
         if (!apiKey && row?.nowpaymentsApiKeyEnc) {
           try {
             apiKey = decryptCredential(
@@ -562,23 +562,26 @@ export class NowPaymentsService {
     address: string;
     amount: number;
     currency: string;
+    extraId?: string;
     ipnCallbackUrl?: string;
   }) {
     const token = await this.getPayoutAuthToken();
+    const withdrawal: Record<string, unknown> = {
+      address: params.address,
+      currency: params.currency,
+      amount: params.amount,
+    };
+    if (params.extraId) withdrawal.extra_id = params.extraId;
+    if (params.ipnCallbackUrl) withdrawal.ipn_callback_url = params.ipnCallbackUrl;
 
     return this.request<{ id: string; withdrawals: unknown[] }>('/payout', {
       method: 'POST',
       headers: this.headers({ Authorization: `Bearer ${token}` }),
       body: JSON.stringify({
-        ipn_callback_url: params.ipnCallbackUrl,
-        withdrawals: [
-          {
-            address: params.address,
-            currency: params.currency,
-            amount: params.amount,
-            ipn_callback_url: params.ipnCallbackUrl,
-          },
-        ],
+        ...(params.ipnCallbackUrl
+          ? { ipn_callback_url: params.ipnCallbackUrl }
+          : {}),
+        withdrawals: [withdrawal],
       }),
     });
   }

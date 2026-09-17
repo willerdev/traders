@@ -88,8 +88,16 @@ export function WalletWithdrawModal({
     }
     setLoading(true);
     try {
-      await api.wallet.withdraw(Number(amount), selectedWalletId);
+      const result = await api.wallet.withdraw(Number(amount), selectedWalletId);
       onComplete?.();
+      if (result.instantFailure || result.status === "queued") {
+        setError(
+          result.instantFailure ||
+            result.message ||
+            "NOWPayments did not accept this withdrawal. Check payout login and try again.",
+        );
+        return;
+      }
       setSuccess(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Withdrawal failed");

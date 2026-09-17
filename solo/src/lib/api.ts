@@ -1222,6 +1222,9 @@ class ApiClient {
         momoPhone?: string;
         momoNetwork?: string;
         message?: string;
+        instantFailure?: string;
+        gatewayPayoutId?: string | null;
+        payoutStatus?: string;
         p2p?: MomoP2pWithdrawal;
       }>("/wallet/withdraw", {
         method: "POST",

@@ -7,6 +7,7 @@ import {
   ConflictException,
   Inject,
   forwardRef,
+  HttpException,
 } from '@nestjs/common';
 import { PayoutSource, WalletTxType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -16,6 +17,10 @@ import { ConfigService } from '@nestjs/config';
 import { ComplianceService } from '../compliance/compliance.service';
 import { NotificationService } from '../email/notification.service';
 import { resolvePayoutDestination } from '../common/payout.util';
+import {
+  isPublicHttpsUrl,
+  resolvePublicApiBaseUrl,
+} from '../common/public-url.util';
 import { TP_REWARD_USD } from '../common/constants';
 import {
   getPayoutRewardStatus,
@@ -55,10 +60,14 @@ export class PayoutService {
   ) {}
 
   private ipnUrl() {
-    const base =
-      this.config.get<string>('API_PUBLIC_URL') ||
-      `http://localhost:${this.config.get('PORT') || 4000}`;
-    return `${base}/api/v1/payouts/ipn`;
+    const url = `${resolvePublicApiBaseUrl(this.config)}/api/v1/payouts/ipn`;
+    if (process.env.NODE_ENV === 'production' && !isPublicHttpsUrl(url)) {
+      this.logger.warn(
+        `NOWPayments payout IPN is not public HTTPS (${url}). Set API_PUBLIC_URL on solo-api.`,
+      );
+      return undefined;
+    }
+    return url;
   }
 
   async getRewardTier(userId: string) {
@@ -336,6 +345,20 @@ export class PayoutService {
     return this.sendExternalWalletPayout(payout, adminId, settlement, network);
   }
 
+  describeSendError(err: unknown): string {
+    if (err instanceof HttpException) {
+      const res = err.getResponse();
+      if (typeof res === 'string' && res.trim()) return res.trim();
+      if (res && typeof res === 'object' && 'message' in res) {
+        const message = (res as { message: unknown }).message;
+        if (Array.isArray(message)) return message.filter(Boolean).join('; ');
+        if (typeof message === 'string' && message.trim()) return message.trim();
+      }
+    }
+    if (err instanceof Error && err.message.trim()) return err.message.trim();
+    return 'NOWPayments payout failed';
+  }
+
   private networkFromPayoutNotes(notes: string | null): 'TRC20' | 'BEP20' | 'ERC20' {
     const n = notes?.toUpperCase() ?? '';
     if (n.includes('BEP20') || n.includes('BEP')) return 'BEP20';
@@ -379,11 +402,19 @@ export class PayoutService {
         sent += 1;
       } catch (err) {
         errors += 1;
+        const message = this.describeSendError(err);
         this.logger.error(
-          `Solo auto-send failed for payout ${payout.id}: ${
-            err instanceof Error ? err.message : err
-          }`,
+          `Solo auto-send failed for payout ${payout.id}: ${message}`,
         );
+        await this.prisma.payout.update({
+          where: { id: payout.id },
+          data: {
+            notes: `${payout.notes ?? ''} — NOWPayments send failed: ${message}`.slice(
+              0,
+              1800,
+            ),
+          },
+        });
       }
     }
 
@@ -576,6 +607,7 @@ export class PayoutService {
         address: destination,
         amount,
         currency,
+        extraId: payout.id,
         ipnCallbackUrl: this.ipnUrl(),
       });
     } catch (err) {
