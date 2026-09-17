@@ -58,12 +58,16 @@ export class NowPaymentsService {
     this.apiUrl =
       this.config.get<string>('NOWPAYMENTS_API_URL') ||
       'https://api.nowpayments.io/v1';
-    this.apiKey = this.config.get<string>('NOWPAYMENTS_API_KEY') || '';
+    this.apiKey = this.envApiKey();
     if (this.apiKey) {
       this.logger.log(
-        `NOWPayments API key loaded · payout email ${
+        `NOWPayments API key loaded from Render env · payout email ${
           this.envPayoutEmail() ? 'set' : 'MISSING'
         } · payout password ${this.envPayoutPassword() ? 'set' : 'MISSING'}`,
+      );
+    } else {
+      this.logger.warn(
+        'NOWPayments API key not found in env (NOWPAYMENTS_API_KEY or NOWPAYMENTS_PUBLIC_KEY)',
       );
     }
   }
@@ -206,6 +210,24 @@ export class NowPaymentsService {
     );
   }
 
+  /** API key from Render. Public key is accepted as a fallback (same merchant). */
+  private envApiKey(): string {
+    return (
+      this.envValue(
+        'NOWPAYMENTS_API_KEY',
+        'NOW_PAYMENTS_API_KEY',
+        'NOWPAYMENTS_KEY',
+        'NP_API_KEY',
+      ) ||
+      this.envValue(
+        'NOWPAYMENTS_PUBLIC_KEY',
+        'NOW_PAYMENTS_PUBLIC_KEY',
+        'NOWPAYMENTS_PUB_KEY',
+        'NP_PUBLIC_KEY',
+      )
+    );
+  }
+
   private async resolvePayoutCreds(): Promise<{
     apiKey: string;
     email: string;
@@ -214,7 +236,7 @@ export class NowPaymentsService {
     if (this.credsCache && Date.now() - this.credsCache.at < 15_000) {
       return this.credsCache;
     }
-    let apiKey = this.envValue('NOWPAYMENTS_API_KEY', 'NOW_PAYMENTS_API_KEY');
+    let apiKey = this.envApiKey();
     let email = this.envPayoutEmail();
     let password = this.envPayoutPassword();
     if (isSoloApp()) {
@@ -239,7 +261,8 @@ export class NowPaymentsService {
             this.logger.warn('Could not decrypt shared NOWPayments payout password');
           }
         }
-        if (row?.nowpaymentsApiKeyEnc) {
+        // Render env keys always win. Settings API key is only a fallback.
+        if (!apiKey && row?.nowpaymentsApiKeyEnc) {
           try {
             apiKey = decryptCredential(
               row.nowpaymentsApiKeyEnc,
