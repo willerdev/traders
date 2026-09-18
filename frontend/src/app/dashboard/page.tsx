@@ -7,6 +7,7 @@ import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { Button } from "@/components/ui/button";
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
 import { DashboardAnnouncement } from "@/components/dashboard/dashboard-announcement";
+import { WithdrawPolicyAgreeModal } from "@/components/dashboard/withdraw-policy-agree-modal";
 import { InvestmentHome } from "@/components/dashboard/investment-home";
 import {
   PerformanceDashboard,
@@ -156,6 +157,7 @@ function DashboardBody() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-5 px-4 py-4 sm:px-6 sm:py-6">
+      <WithdrawPolicyAgreeModal />
       <DashboardAnnouncement />
 
       {data?.onboarding && (
