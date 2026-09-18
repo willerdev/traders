@@ -723,7 +723,7 @@ export class NowPaymentsService {
       return this.payoutToken;
     }
 
-    const { email, password } = await this.resolvePayoutCreds();
+    const { email, password, privateApiKey } = await this.resolvePayoutCreds();
 
     if (!email || !password) {
       throw new Error(
@@ -733,23 +733,36 @@ export class NowPaymentsService {
       );
     }
 
-    const result = await this.request<{ token: string }>(
-      '/auth',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      },
-      { skipApiKey: true },
-    );
+    const attempts: Array<{ skipApiKey: boolean; apiKeyOverride?: string }> = [];
+    if (privateApiKey) {
+      attempts.push({ skipApiKey: false, apiKeyOverride: privateApiKey });
+    }
+    attempts.push({ skipApiKey: true });
 
-    if (!result?.token) {
-      throw new Error('NOWPayments payout login did not return a token');
+    let lastError: unknown;
+    for (const flags of attempts) {
+      try {
+        const result = await this.request<{ token: string }>(
+          '/auth',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          },
+          flags,
+        );
+        if (result?.token) {
+          this.payoutToken = result.token;
+          this.payoutTokenExpiry = Date.now() + 4 * 60 * 1000;
+          return this.payoutToken;
+        }
+      } catch (err) {
+        lastError = err;
+      }
     }
 
-    this.payoutToken = result.token;
-    this.payoutTokenExpiry = Date.now() + 4 * 60 * 1000;
-    return this.payoutToken;
+    if (lastError instanceof Error) throw lastError;
+    throw new Error('NOWPayments payout login did not return a token');
   }
 
   async createPayout(params: {
@@ -802,7 +815,7 @@ export class NowPaymentsService {
       payoutEmailSet: boolean;
       payoutPasswordSet: boolean;
       auth: { ok: boolean; error?: string };
-      balance: { ok: boolean; error?: string };
+      balance: { ok: boolean; error?: string; skipped?: boolean };
     } = {
       source: creds.source,
       privateApiKeySet: Boolean(creds.privateApiKey),
@@ -810,7 +823,7 @@ export class NowPaymentsService {
       payoutEmailSet: Boolean(creds.email),
       payoutPasswordSet: Boolean(creds.password),
       auth: { ok: false },
-      balance: { ok: false },
+      balance: { ok: false, skipped: true },
     };
 
     try {

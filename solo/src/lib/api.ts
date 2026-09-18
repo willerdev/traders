@@ -1399,7 +1399,7 @@ class ApiClient {
         payoutEmailSet: boolean;
         payoutPasswordSet: boolean;
         auth: { ok: boolean; error?: string };
-        balance: { ok: boolean; error?: string };
+        balance: { ok: boolean; error?: string; skipped?: boolean };
       }>("/wallet/nowpayments-payout/test", { method: "POST" }),
     autoWithdrawSettings: () =>
       this.request<AutoWithdrawSettings>("/wallet/auto-withdraw"),

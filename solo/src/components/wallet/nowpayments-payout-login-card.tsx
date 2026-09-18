@@ -118,12 +118,20 @@ export function NowpaymentsPayoutLoginCard() {
         setNotice("Payout login and secret API key both work. Try a small withdrawal.");
         return;
       }
+      if (!r.auth.ok) {
+        setError(
+          `Payout login failed on ${r.source === "env" ? "Render env" : "Settings"}: ${r.auth.error ?? "unknown"}. This tests the active source, not the form below until you switch to Settings.`,
+        );
+        return;
+      }
       const parts = [
-        r.auth.ok ? "Login OK" : `Login failed: ${r.auth.error ?? "unknown"}`,
+        "Login OK",
         r.balance.ok
           ? "Secret API key OK"
           : `Payout key failed: ${r.balance.error ?? "unknown"}`,
-        r.privateApiKeySet ? null : "Secret API key is missing (public key is not enough for withdrawals).",
+        r.privateApiKeySet
+          ? null
+          : "Secret API key is missing (public key is not enough for withdrawals).",
       ].filter(Boolean);
       setError(parts.join(" "));
     } catch (err) {
@@ -198,7 +206,9 @@ export function NowpaymentsPayoutLoginCard() {
                     disabled={testing || switching}
                     onClick={() => void testConnection()}
                   >
-                    {testing ? "Testing…" : "Test payout login"}
+                    {testing
+                      ? "Testing…"
+                      : `Test ${source === "env" ? "Render env" : "Settings"} payout login`}
                   </Button>
                 </div>
               ) : (
