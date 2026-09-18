@@ -18,6 +18,7 @@ import {
   MessageCircle,
   MessagesSquare,
   LineChart,
+  Globe,
   ScrollText,
   TrendingUp,
   Blocks,
@@ -172,6 +173,13 @@ const NAV_GROUPS: NavGroup[] = [
         shortLabel: "MT5",
         icon: LineChart,
         keywords: "trading charts",
+      },
+      {
+        href: "/deriv",
+        label: "Deriv",
+        shortLabel: "Deriv",
+        icon: Globe,
+        keywords: "deriv mt5 balances",
       },
       {
         href: "/messages",

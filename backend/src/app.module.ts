@@ -39,6 +39,7 @@ import { UnitrustModule } from './unitrust/unitrust.module';
 import { AirfarmingModule } from './airfarming/airfarming.module';
 import { LoansModule } from './loans/loans.module';
 import { CashAgentsModule } from './cash-agents/cash-agents.module';
+import { DerivModule } from './deriv/deriv.module';
 
 @Module({
   imports: [
@@ -82,6 +83,7 @@ import { CashAgentsModule } from './cash-agents/cash-agents.module';
     AccountTransferModule,
     SmsModule,
     BlockchainModule,
+    DerivModule,
   ],
 })
 export class AppModule {}

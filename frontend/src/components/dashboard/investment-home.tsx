@@ -6,6 +6,8 @@ import {
   ArrowRight,
   Landmark,
   ScrollText,
+  Send,
+  Trophy,
   TrendingUp,
   Wallet,
 } from "lucide-react";
@@ -71,7 +73,56 @@ const PRODUCTS = [
   },
 ] as const;
 
-export function InvestmentHome({ displayName }: { displayName?: string }) {
+export function InvestmentHome({
+  displayName,
+  compact = false,
+}: {
+  displayName?: string;
+  compact?: boolean;
+}) {
+  if (compact) {
+    return (
+      <div className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3">
+        <Link href="/invest">
+          <Button size="sm" variant="secondary" className="gap-1.5">
+            <TrendingUp className="h-3.5 w-3.5" />
+            Invest
+          </Button>
+        </Link>
+        <Link href="/leaderboard">
+          <Button size="sm" variant="secondary" className="gap-1.5">
+            <Trophy className="h-3.5 w-3.5" />
+            Leaderboard
+          </Button>
+        </Link>
+        <Link href="/submit">
+          <Button size="sm" variant="secondary" className="gap-1.5">
+            <Send className="h-3.5 w-3.5" />
+            Submit
+          </Button>
+        </Link>
+        <Link href="/unitrust">
+          <Button size="sm" variant="secondary" className="gap-1.5">
+            <ScrollText className="h-3.5 w-3.5" />
+            Unitrust
+          </Button>
+        </Link>
+        <Link href="/loans">
+          <Button size="sm" variant="secondary" className="gap-1.5">
+            <Landmark className="h-3.5 w-3.5" />
+            Loans
+          </Button>
+        </Link>
+        <Link href="/wallet">
+          <Button size="sm" variant="secondary" className="gap-1.5">
+            <Wallet className="h-3.5 w-3.5" />
+            Wallet
+          </Button>
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <motion.div

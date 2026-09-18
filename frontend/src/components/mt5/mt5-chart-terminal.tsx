@@ -1,10 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import type {
   OpenSetupItem,
   UserMt5AccountSummary,
   UserMt5AccountSource,
+  UserMt5HistoryItem,
   UserMt5QuoteItem,
   UserMt5Trade,
 } from "@/lib/api";
@@ -20,7 +28,7 @@ import {
   type ChartTimeframe,
 } from "@/components/charts/chart-types";
 import { useChartWatchlist } from "@/components/charts/use-chart-watchlist";
-import { buildMt5ChartOverlays } from "@/components/mt5/build-mt5-chart-overlays";
+import { buildMt5ChartOverlays, historyEntryUnix } from "@/components/mt5/build-mt5-chart-overlays";
 import { persistStopChange } from "@/components/charts/persist-stop-change";
 import type { ChartPriceLine } from "@/components/charts/chart-types";
 import { ChartUserWatermark } from "@/components/mt5/chart-user-watermark";
@@ -34,11 +42,9 @@ import {
 import { useMt5ChartDisplaySettings } from "@/hooks/use-mt5-chart-display-settings";
 import { useAuthStore } from "@/stores/auth";
 import {
-  mt5BalanceLabel,
   mt5DisplayBalance,
   MT5_BUY,
   MT5_SELL,
-  Mt5DirectionTag,
   Mt5Pnl,
   fmtMt5Price,
 } from "@/components/mt5/mt5-ui";
@@ -53,6 +59,18 @@ import {
 } from "@/components/charts/chart-tools-toolbar";
 import { useChartTools } from "@/hooks/use-chart-tools";
 import { useChartLiveQuotes } from "@/hooks/use-chart-live-quotes";
+
+const TF_DESK_LABEL: Record<ChartTimeframe, string> = {
+  M1: "1m",
+  M5: "5m",
+  M15: "15m",
+  H1: "1h",
+  D1: "1D",
+};
+
+const ACCOUNT_PANEL_FRAC = 0.3;
+const ACCOUNT_PANEL_MIN = 0.16;
+const ACCOUNT_PANEL_MAX = 0.62;
 
 type Props = {
   quotes: UserMt5QuoteItem[];
@@ -70,6 +88,11 @@ type Props = {
   chartOnly?: boolean;
   onStopsUpdated?: () => void;
   onTradePlaced?: () => void;
+  forceChartTheme?: "dark" | "light";
+  showTradeBar?: boolean;
+  workspaceLayout?: boolean;
+  canManageTrades?: boolean;
+  reviewedHistory?: UserMt5HistoryItem | null;
 };
 
 function toSetupSummary(setup: OpenSetupItem): SetupSummary {
@@ -108,11 +131,19 @@ export function Mt5ChartTerminal({
   chartOnly = false,
   onStopsUpdated,
   onTradePlaced,
+  forceChartTheme,
+  showTradeBar = false,
+  workspaceLayout = false,
+  canManageTrades = true,
+  reviewedHistory = null,
 }: Props) {
   const chartRef = useRef<LightweightChartHandle>(null);
   const [orderModal, setOrderModal] = useState<"BUY" | "SELL" | null>(null);
   const [lotSize, setLotSize] = useState("0.01");
   const chartAreaRef = useRef<HTMLDivElement>(null);
+  const splitRef = useRef<HTMLDivElement>(null);
+  const [panelFrac, setPanelFrac] = useState(ACCOUNT_PANEL_FRAC);
+  const [isResizingSplit, setIsResizingSplit] = useState(false);
   const symbolSearchRef = useRef<HTMLInputElement>(null);
   const [timeframe, setTimeframe] = useState<ChartTimeframe>("M5");
   const [radialOpen, setRadialOpen] = useState(false);
@@ -163,20 +194,37 @@ export function Mt5ChartTerminal({
   );
 
   useEffect(() => {
+    if (!isResizingSplit) return;
+    const prev = document.body.style.cursor;
+    document.body.style.cursor = "ns-resize";
+    return () => {
+      document.body.style.cursor = prev;
+    };
+  }, [isResizingSplit]);
+
+  useEffect(() => {
+    if (workspaceLayout) return;
     if (liveQuote?.mid != null) {
       checkPriceAlerts(selectedSymbol, liveQuote.mid);
     }
     for (const [sym, quote] of Object.entries(watchlistQuotes)) {
       if (quote.mid != null) checkPriceAlerts(sym, quote.mid);
     }
-  }, [liveQuote?.mid, watchlistQuotes, selectedSymbol, checkPriceAlerts]);
+  }, [
+    workspaceLayout,
+    liveQuote?.mid,
+    watchlistQuotes,
+    selectedSymbol,
+    checkPriceAlerts,
+  ]);
 
   useEffect(() => {
+    if (workspaceLayout) return;
     const others = watchlist.filter((sym) => sym !== selectedSymbol);
     for (const sym of others) {
       prefetchChartBarCache(sym, timeframe, () => loadChartData(sym, timeframe));
     }
-  }, [watchlist, selectedSymbol, timeframe]);
+  }, [watchlist, selectedSymbol, timeframe, workspaceLayout]);
 
   const openOrders = useMemo((): OrderRow[] => {
     const rows: OrderRow[] = [];
@@ -235,6 +283,7 @@ export function Mt5ChartTerminal({
         runningTrades,
         limitTrades,
         setups,
+        reviewedHistory,
         options: {
           showOrders: chartSettings.showOrders,
           showLimits: chartSettings.showLimits,
@@ -247,6 +296,7 @@ export function Mt5ChartTerminal({
       runningTrades,
       limitTrades,
       setups,
+      reviewedHistory,
       chartSettings.showOrders,
       chartSettings.showLimits,
       chartSettings.showSlTp,
@@ -355,6 +405,43 @@ export function Mt5ChartTerminal({
 
   const desktopTerminal = showOrdersPanel && !chartOnly;
 
+  const applyPanelFracFromPointer = useCallback((clientY: number) => {
+    const box = splitRef.current?.getBoundingClientRect();
+    if (!box || box.height < 80) return;
+    const next = (box.bottom - clientY) / box.height;
+    setPanelFrac(
+      Math.min(ACCOUNT_PANEL_MAX, Math.max(ACCOUNT_PANEL_MIN, next)),
+    );
+  }, []);
+
+  const onSplitPointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      setIsResizingSplit(true);
+      applyPanelFracFromPointer(e.clientY);
+    },
+    [applyPanelFracFromPointer],
+  );
+
+  const onSplitPointerMove = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+      applyPanelFracFromPointer(e.clientY);
+    },
+    [applyPanelFracFromPointer],
+  );
+
+  const onSplitPointerUp = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+      setIsResizingSplit(false);
+    },
+    [],
+  );
+
   function adjustLotSize(delta: number) {
     setLotSize((prev) => {
       const next = Math.max(0.01, Number(prev) + delta);
@@ -425,16 +512,14 @@ export function Mt5ChartTerminal({
   return (
     <div
       className={cn(
-        "flex min-h-0 flex-col bg-[var(--mt5-bg)]",
+        "mt5-shell flex min-h-0 flex-col bg-[var(--mt5-bg)]",
         chartOnly
           ? "h-full min-h-0 flex-1 overflow-hidden pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] md:pb-0"
-          : desktopTerminal
-            ? "shrink-0 border-b border-[var(--mt5-divider)] md:min-h-0 md:flex-1 md:overflow-hidden md:border-b-0"
-            : "h-full min-h-0 flex-1 overflow-hidden",
+          : "h-full min-h-0 flex-1 overflow-hidden",
       )}
       data-mt5-chart-terminal
     >
-      {/* Toolbar — pair search + settings (timeframes via radial on chart) */}
+      {!workspaceLayout && (
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-2 py-1.5 lg:px-3">
         <ChartSymbolPicker
           compact
@@ -490,8 +575,82 @@ export function Mt5ChartTerminal({
           <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--mt5-muted)]" />
         )}
       </div>
+      )}
 
-        {overlaySummary.total > 0 && (
+      <div
+        ref={splitRef}
+        className={cn(
+          "grid min-h-0 flex-1",
+          isResizingSplit && "select-none",
+        )}
+        style={{
+          gridTemplateRows: desktopTerminal
+            ? `minmax(0, ${(1 - panelFrac).toFixed(3)}fr) 8px minmax(0, ${panelFrac.toFixed(3)}fr)`
+            : "minmax(0, 1fr)",
+        }}
+      >
+      <div
+        className={cn(
+          "flex min-h-0 min-w-0 overflow-hidden",
+          workspaceLayout ? "flex-row" : "flex-col",
+        )}
+      >
+        {workspaceLayout && (
+          <div className="flex w-11 shrink-0 flex-col items-center border-r border-[var(--mt5-divider)] bg-[var(--mt5-surface)] py-2">
+            <ChartToolsToolbar
+              orientation="vertical"
+              activeTool={activeTool}
+              onToolChange={setActiveTool}
+              onDone={cancelTool}
+              alerts={alerts}
+              pendingTrend={pendingTrend != null}
+              onRemoveAlert={removeAlert}
+              onClearTriggered={clearTriggeredAlerts}
+            />
+          </div>
+        )}
+        <div
+          className={
+            workspaceLayout
+              ? "flex h-full min-h-0 min-w-0 flex-1 flex-col"
+              : "contents"
+          }
+        >
+          {workspaceLayout && (
+            <div className="flex shrink-0 items-center gap-1 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-2 py-1.5">
+              {CHART_TIMEFRAMES.map((tf) => (
+                <button
+                  key={tf}
+                  type="button"
+                  onClick={() => handleTimeframeChange(tf)}
+                  className={cn(
+                    "rounded-md px-2 py-1 text-xs font-medium",
+                    timeframe === tf
+                      ? "bg-primary text-white"
+                      : "text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)]",
+                  )}
+                >
+                  {TF_DESK_LABEL[tf]}
+                </button>
+              ))}
+              <ChartSymbolPicker
+                compact
+                selectedSymbol={selectedSymbol}
+                watchlist={watchlist}
+                onSelect={handleSymbolChange}
+                onAdd={handleAddSymbol}
+                onRemove={removeSymbol}
+                searchInputRef={symbolSearchRef}
+                className="ml-2 min-w-0 max-w-[14rem]"
+                hideChips
+              />
+              <span className="ml-auto hidden text-xs text-[var(--mt5-muted)] sm:inline">
+                Indicators
+              </span>
+            </div>
+          )}
+
+        {overlaySummary.total > 0 && !workspaceLayout && (
           <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-2 py-1 text-[9px] font-medium text-[var(--mt5-muted)]">
             {overlaySummary.running > 0 && (
               <span className="rounded bg-[#4a9eff]/15 px-1.5 py-0.5 text-[#4a9eff]">
@@ -531,18 +690,18 @@ export function Mt5ChartTerminal({
       <div
         ref={chartAreaRef}
         className={cn(
-          "relative w-full",
-          chartOnly
-            ? "min-h-0 flex-1"
-            : desktopTerminal
-              ? "min-h-[200px] h-[min(42vh,280px)] flex-1 lg:min-h-0"
-              : "min-h-0 flex-1",
+          "relative h-full min-h-0 w-full flex-1",
+          !workspaceLayout &&
+            !chartOnly &&
+            desktopTerminal &&
+            "min-h-[200px]",
         )}
       >
         <ChartUserWatermark
           name={userDisplayName}
-          visible={chartSettings.showWatermark}
+          visible={chartSettings.showWatermark && !workspaceLayout}
         />
+        {!workspaceLayout && (
         <Mt5ChartSymbolOverlay
           symbol={selectedSymbol}
           timeframe={timeframe}
@@ -550,10 +709,12 @@ export function Mt5ChartTerminal({
           chartError={chartStatus.error}
           onSymbolClick={focusSymbolSearch}
         />
+        )}
         <ChartAlertToastStack
           toasts={alertToasts}
           onDismiss={dismissToast}
         />
+        {!workspaceLayout && (
         <div className="absolute left-2 right-2 top-10 z-[12] flex md:hidden">
           <ChartToolsToolbar
             activeTool={activeTool}
@@ -565,6 +726,8 @@ export function Mt5ChartTerminal({
             onClearTriggered={clearTriggeredAlerts}
           />
         </div>
+        )}
+        {!workspaceLayout && (
         <Mt5ChartRadialMenu
           open={radialOpen}
           anchor={radialAnchor}
@@ -577,6 +740,7 @@ export function Mt5ChartTerminal({
           }}
           onTool={handleRadialTool}
         />
+        )}
         <div
           className={cn(
             "relative z-[2] h-full w-full transition-opacity duration-300",
@@ -591,9 +755,13 @@ export function Mt5ChartTerminal({
             getQuote={() => getActiveQuote(selectedSymbol)}
             markers={markers}
             priceLines={chartPriceLines}
-            draggableLines={chartSettings.showSlTp && activeTool === "select"}
+            draggableLines={
+              canManageTrades &&
+              chartSettings.showSlTp &&
+              activeTool === "select"
+            }
             onPriceLineDragEnd={handlePriceLineDragEnd}
-            onChartTap={handleChartTap}
+            onChartTap={workspaceLayout ? undefined : handleChartTap}
             chartTool={activeTool}
             onChartPointClick={handleChartPoint}
             drawings={drawings}
@@ -603,8 +771,15 @@ export function Mt5ChartTerminal({
             onEraseAlert={removeAlert}
             eraseTargets={eraseTargets}
             className="h-full w-full"
+            forceTheme={forceChartTheme}
             onLoadingChange={handleChartLoadingChange}
             onChartStatusChange={setChartStatus}
+            focusTime={
+              reviewedHistory &&
+              reviewedHistory.symbol.toUpperCase() === selectedSymbol.toUpperCase()
+                ? historyEntryUnix(reviewedHistory)
+                : null
+            }
           />
         </div>
         {chartLoading && chartLoadReason === "timeframe" && (
@@ -629,12 +804,58 @@ export function Mt5ChartTerminal({
           </div>
         )}
       </div>
+        </div>
+      </div>
 
-      {chartOnly && orderActionBar}
+      {desktopTerminal && (
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize account panel"
+          aria-valuemin={Math.round(ACCOUNT_PANEL_MIN * 100)}
+          aria-valuemax={Math.round(ACCOUNT_PANEL_MAX * 100)}
+          aria-valuenow={Math.round(panelFrac * 100)}
+          tabIndex={0}
+          onPointerDown={onSplitPointerDown}
+          onPointerMove={onSplitPointerMove}
+          onPointerUp={onSplitPointerUp}
+          onPointerCancel={onSplitPointerUp}
+          onDoubleClick={() => setPanelFrac(ACCOUNT_PANEL_FRAC)}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setPanelFrac((v) =>
+                Math.min(ACCOUNT_PANEL_MAX, v + 0.02),
+              );
+            } else if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setPanelFrac((v) =>
+                Math.max(ACCOUNT_PANEL_MIN, v - 0.02),
+              );
+            } else if (e.key === "Home") {
+              e.preventDefault();
+              setPanelFrac(ACCOUNT_PANEL_FRAC);
+            }
+          }}
+          className={cn(
+            "group relative z-[5] flex h-full cursor-ns-resize touch-none items-center justify-center",
+            "border-t border-[var(--mt5-divider)] bg-[var(--mt5-surface)]",
+            !workspaceLayout && "hidden md:flex",
+            isResizingSplit && "bg-primary/20",
+          )}
+        >
+          <span className="h-1 w-10 rounded-full bg-[var(--mt5-muted)]/50 group-hover:bg-primary/70 group-focus-visible:bg-primary" />
+        </div>
+      )}
 
       {/* Desktop MT5-style terminal — hidden on phone */}
       {showOrdersPanel && (
-        <div className="hidden md:flex md:max-h-[32vh] md:shrink-0 md:flex-col md:border-t md:border-[var(--mt5-divider)]">
+        <div
+          className={cn(
+            "flex min-h-0 flex-col overflow-hidden border-t border-[var(--mt5-divider)]",
+            !workspaceLayout && "hidden md:flex",
+          )}
+        >
           <div className="grid grid-cols-[1.1fr_0.75fr_0.55fr_0.45fr_0.65fr_0.65fr_0.6fr_0.6fr_0.65fr_0.55fr] gap-2 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--mt5-muted)]">
             <span>Symbol</span>
             <span>Ticket</span>
@@ -648,9 +869,9 @@ export function Mt5ChartTerminal({
             <span className="text-right">Action</span>
           </div>
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-x-auto overflow-y-auto">
             {openOrders.length === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+              <div className="flex flex-col items-center justify-center gap-2 py-6 text-center">
                 <p className="text-sm text-[var(--mt5-muted)]">
                   You don&apos;t have any open positions
                 </p>
@@ -720,7 +941,7 @@ export function Mt5ChartTerminal({
                           Setup
                         </button>
                       )}
-                      {kind === "running" && onCloseTrade && (
+                      {onCloseTrade && canManageTrades && (
                         <button
                           type="button"
                           className="font-semibold text-[#ff5252] hover:underline"
@@ -742,11 +963,13 @@ export function Mt5ChartTerminal({
           {/* Account summary bar — MT5 terminal footer */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-2 text-[11px] text-[var(--mt5-muted)]">
             <span>
-              {mt5BalanceLabel(accountSource)}:{" "}
+              Balance:{" "}
               <strong className="text-[var(--mt5-text)]">
                 {fmtMt5Price(
                   account
-                    ? mt5DisplayBalance(account, accountSource)
+                    ? accountSource === "linked_live"
+                      ? account.startingBalance + (account.floatingProfit ?? 0)
+                      : mt5DisplayBalance(account, accountSource)
                     : 0,
                 )}
               </strong>
@@ -771,10 +994,14 @@ export function Mt5ChartTerminal({
               />
             </span>
           </div>
+          {showTradeBar && orderActionBar}
         </div>
       )}
+      </div>
 
-      {showOrdersPanel && !chartOnly && orderActionBar}
+      {chartOnly && orderActionBar}
+
+      {showTradeBar && !showOrdersPanel && !chartOnly && orderActionBar}
 
       {orderModal && (
         <Mt5PlaceOrderModal

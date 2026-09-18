@@ -181,3 +181,40 @@ export function fireChartAlertNotification(
     }
   }
 }
+
+export function addChartAlert(input: {
+  symbol: string;
+  price: number;
+  direction?: ChartAlertDirection;
+}): ChartPriceAlert {
+  const next: ChartPriceAlert = {
+    id: createAlertId(),
+    symbol: input.symbol.trim().toUpperCase(),
+    price: input.price,
+    direction: input.direction ?? "cross",
+    triggered: false,
+    createdAt: new Date().toISOString(),
+  };
+  writeChartAlerts([...readChartAlerts(), next]);
+  return next;
+}
+
+export function removeChartAlert(id: string) {
+  writeChartAlerts(readChartAlerts().filter((a) => a.id !== id));
+}
+
+export function markChartAlertsTriggered(
+  updates: Array<{ id: string; price: number }>,
+): ChartPriceAlert[] {
+  if (updates.length === 0) return readChartAlerts();
+  const at = new Date().toISOString();
+  const byId = new Map(updates.map((u) => [u.id, u.price]));
+  const next = readChartAlerts().map((alert) => {
+    if (!byId.has(alert.id) || alert.triggered) return alert;
+    const price = byId.get(alert.id)!;
+    fireChartAlertNotification(alert, price);
+    return { ...alert, triggered: true, triggeredAt: at };
+  });
+  writeChartAlerts(next);
+  return next;
+}

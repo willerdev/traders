@@ -19,6 +19,7 @@ type Props = {
   compact?: boolean;
   className?: string;
   searchInputRef?: RefObject<HTMLInputElement | null>;
+  hideChips?: boolean;
 };
 
 export function ChartSymbolPicker({
@@ -30,6 +31,7 @@ export function ChartSymbolPicker({
   compact = false,
   className,
   searchInputRef,
+  hideChips = false,
 }: Props) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -78,7 +80,7 @@ export function ChartSymbolPicker({
           compact ? "min-w-0 flex-1 overflow-x-auto" : "flex-wrap",
         )}
       >
-        {tabs.map((sym) => (
+        {!hideChips && tabs.map((sym) => (
           <button
             key={sym}
             type="button"

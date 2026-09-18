@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   User,
@@ -152,6 +153,12 @@ export default function SettingsPage() {
   const [tradingAccountId, setTradingAccountId] = useState<string>("");
   const [tradingSaving, setTradingSaving] = useState(false);
   const [claimingAccount, setClaimingAccount] = useState(false);
+  const [derivToken, setDerivToken] = useState("");
+  const [derivConnected, setDerivConnected] = useState(false);
+  const [derivMasked, setDerivMasked] = useState<string | null>(null);
+  const [derivMsg, setDerivMsg] = useState("");
+  const [derivErr, setDerivErr] = useState("");
+  const [derivSaving, setDerivSaving] = useState(false);
 
   const [profileForm, setProfileForm] = useState({
     displayName: "",
@@ -193,6 +200,13 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!ready) return;
     void loadSettings();
+    void api.deriv
+      .status()
+      .then((s) => {
+        setDerivConnected(s.connected);
+        setDerivMasked(s.tokenMasked);
+      })
+      .catch(() => undefined);
   }, [ready]);
 
   if (!ready) {
@@ -408,6 +422,39 @@ export default function SettingsPage() {
       );
     } finally {
       setTradingSaving(false);
+    }
+  }
+
+  async function saveDerivToken(e: React.FormEvent) {
+    e.preventDefault();
+    setDerivSaving(true);
+    setDerivErr("");
+    setDerivMsg("");
+    try {
+      const res = await api.deriv.saveToken(derivToken.trim());
+      setDerivConnected(true);
+      setDerivMasked(res.tokenMasked);
+      setDerivToken("");
+      setDerivMsg("Token saved. Open Deriv to see balances.");
+    } catch (err) {
+      setDerivErr(err instanceof Error ? err.message : "Could not save token");
+    } finally {
+      setDerivSaving(false);
+    }
+  }
+
+  async function disconnectDeriv() {
+    setDerivSaving(true);
+    setDerivErr("");
+    try {
+      await api.deriv.disconnect();
+      setDerivConnected(false);
+      setDerivMasked(null);
+      setDerivMsg("Disconnected.");
+    } catch (err) {
+      setDerivErr(err instanceof Error ? err.message : "Could not disconnect");
+    } finally {
+      setDerivSaving(false);
     }
   }
 
@@ -1076,6 +1123,58 @@ export default function SettingsPage() {
           tradingActive={settings?.user.status === "ACTIVE"}
           linkedAccountId={tradingAccountId || settings?.user.metaApiAccountId}
         />
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Deriv / MT5</CardTitle>
+            <CardDescription>
+              Create a Native PAT app on developers.deriv.com, set DERIV_APP_ID
+              on traders-api, then paste a PAT with Trade, Payments, and Account
+              management. The full token is never shown again after save.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {derivConnected && (
+              <p className="text-sm text-success">
+                Connected {derivMasked ? `(${derivMasked})` : ""}
+              </p>
+            )}
+            <form onSubmit={(e) => void saveDerivToken(e)} className="space-y-2">
+              <Label htmlFor="deriv-token">API token</Label>
+              <Input
+                id="deriv-token"
+                type="password"
+                autoComplete="off"
+                placeholder="Paste token"
+                value={derivToken}
+                onChange={(e) => setDerivToken(e.target.value)}
+                required
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button type="submit" disabled={derivSaving}>
+                  {derivSaving ? "Saving…" : "Save token"}
+                </Button>
+                {derivConnected && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={derivSaving}
+                    onClick={() => void disconnectDeriv()}
+                  >
+                    Disconnect
+                  </Button>
+                )}
+                <Link href="/deriv">
+                  <Button type="button" variant="ghost">
+                    Open Deriv
+                  </Button>
+                </Link>
+              </div>
+            </form>
+            {derivMsg && <p className="text-sm text-success">{derivMsg}</p>}
+            {derivErr && <p className="text-sm text-danger">{derivErr}</p>}
+          </CardContent>
+        </Card>
         </SettingsSection>
 
         <SettingsSection

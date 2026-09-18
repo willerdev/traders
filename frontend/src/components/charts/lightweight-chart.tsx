@@ -25,6 +25,7 @@ import type {
   ChartTimeframe,
   OHLCBar,
 } from "@/components/charts/chart-types";
+import { CHART_TIMEFRAME_SECONDS } from "@/components/charts/chart-types";
 import {
   useLightweightChart,
   type SetChartDataOptions,
@@ -50,6 +51,7 @@ export type LightweightChartHandle = {
   setPriceLines: (lines: ChartPriceLine[]) => void;
   reload: () => void;
   fitContent: () => void;
+  showAroundTime: (unixSeconds: number) => void;
 };
 
 export type ChartLoadReason = "initial" | "symbol" | "timeframe";
@@ -78,6 +80,9 @@ type Props = {
     source?: "metaapi" | "quote-fallback";
     error?: string | null;
   }) => void;
+  forceTheme?: "dark" | "light";
+  /** UTC seconds — pan the loaded bars around this time (closed-trade entry). */
+  focusTime?: number | null;
 };
 
 function dataOptionsForLoad(reason: ChartLoadReason): SetChartDataOptions {
@@ -114,10 +119,13 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
       eraseTargets = [],
       onLoadingChange,
       onChartStatusChange,
+      forceTheme,
+      focusTime = null,
     },
     ref,
   ) {
-    const theme = useThemeStore((s) => s.theme);
+    const storeTheme = useThemeStore((s) => s.theme);
+    const theme = forceTheme ?? storeTheme;
     const chart = useLightweightChart(theme, symbol);
     const [dragPrices, setDragPrices] = useState<Record<string, number>>({});
     const [dragError, setDragError] = useState<string | null>(null);
@@ -157,6 +165,8 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
     const setMarkersRef = useRef(chart.setMarkers);
     const clearMarkersRef = useRef(chart.clearMarkers);
     const setPriceLinesRef = useRef(chart.setPriceLines);
+    const focusTimeRef = useRef(focusTime);
+    const showAroundTimeRef = useRef(chart.showAroundTime);
 
     symbolRef.current = symbol;
     timeframeRef.current = timeframe;
@@ -170,6 +180,8 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
     setMarkersRef.current = chart.setMarkers;
     clearMarkersRef.current = chart.clearMarkers;
     setPriceLinesRef.current = chart.setPriceLines;
+    focusTimeRef.current = focusTime;
+    showAroundTimeRef.current = chart.showAroundTime;
     onPriceLineDragEndRef.current = onPriceLineDragEnd;
     onChartTapRef.current = onChartTap;
     onChartPointClickRef.current = onChartPointClick;
@@ -286,7 +298,14 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
           const cached = readChartBarCache(sym, tf);
           if (cached && cached.bars.length > 0) {
             const safeBars = sanitizeOhlcBars(sym, cached.bars);
-            setDataRef.current(safeBars, dataOptionsForLoad(reason));
+            const focus = focusTimeRef.current;
+            setDataRef.current(
+              safeBars,
+              focus != null ? {} : dataOptionsForLoad(reason),
+            );
+            if (focus != null) {
+              showAroundTimeRef.current(focus, CHART_TIMEFRAME_SECONDS[tf]);
+            }
             historyReadyRef.current = true;
             onChartStatusChangeRef.current?.({
               source: cached.source,
@@ -301,7 +320,14 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
           if (gen !== loadGenRef.current) return;
 
           if (result.bars.length > 0) {
-            setDataRef.current(result.bars, dataOptionsForLoad(reason));
+            const focus = focusTimeRef.current;
+            setDataRef.current(
+              result.bars,
+              focus != null ? {} : dataOptionsForLoad(reason),
+            );
+            if (focus != null) {
+              showAroundTimeRef.current(focus, CHART_TIMEFRAME_SECONDS[tf]);
+            }
             historyReadyRef.current = true;
             onChartStatusChangeRef.current?.({
               source: result.source,
@@ -369,6 +395,11 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
         );
       },
       fitContent: () => chart.fitContent(),
+      showAroundTime: (unixSeconds) =>
+        chart.showAroundTime(
+          unixSeconds,
+          CHART_TIMEFRAME_SECONDS[timeframeRef.current],
+        ),
     }));
 
     useEffect(() => {
@@ -391,6 +422,11 @@ export const LightweightChart = forwardRef<LightweightChartHandle, Props>(
         reason,
       );
     }, [chart.ready, symbol, timeframe, loadBars]);
+
+    useEffect(() => {
+      if (!chart.ready || focusTime == null) return;
+      chart.showAroundTime(focusTime, CHART_TIMEFRAME_SECONDS[timeframe]);
+    }, [chart.ready, chart.showAroundTime, focusTime, timeframe, symbol]);
 
     useEffect(() => {
       if (!chart.ready) return;

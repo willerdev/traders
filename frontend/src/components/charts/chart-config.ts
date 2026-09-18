@@ -14,11 +14,11 @@ const MT5_DARK = {
 };
 
 const MT5_LIGHT = {
-  background: "#f0f2f5",
+  background: "#ffffff",
   surface: "#ffffff",
   text: "#1a1a2e",
   muted: "#6b7280",
-  grid: "#e5e7eb",
+  grid: "#eef0f4",
 };
 
 function palette(mode: ChartThemeMode) {
@@ -59,17 +59,20 @@ export function createChartOptions(mode: ChartThemeMode): DeepPartial<import("li
   };
 }
 
-/** Candlestick series colors — buy blue / sell red from MT5 palette. */
+/** Candlestick series colors — green/red on light desk, MT5 blue/red on dark. */
 export function createCandlestickSeriesOptions(
   priceFormat?: SymbolPriceFormat,
+  mode: ChartThemeMode = "dark",
 ): DeepPartial<import("lightweight-charts").CandlestickSeriesOptions> {
+  const upColor = mode === "light" ? "#22C55E" : MT5_BUY;
+  const downColor = mode === "light" ? "#EF4444" : MT5_SELL;
   return {
-    upColor: MT5_BUY,
-    downColor: MT5_SELL,
-    borderUpColor: MT5_BUY,
-    borderDownColor: MT5_SELL,
-    wickUpColor: MT5_BUY,
-    wickDownColor: MT5_SELL,
+    upColor,
+    downColor,
+    borderUpColor: upColor,
+    borderDownColor: downColor,
+    wickUpColor: upColor,
+    wickDownColor: downColor,
     borderVisible: true,
     wickVisible: true,
     ...(priceFormat

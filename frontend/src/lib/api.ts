@@ -300,6 +300,72 @@ class ApiClient {
       }),
   };
 
+  deriv = {
+    status: () =>
+      this.request<{
+        connected: boolean;
+        connectedAt: string | null;
+        tokenMasked: string | null;
+      }>("/deriv/status"),
+    saveToken: (token: string) =>
+      this.request<{
+        connected: boolean;
+        connectedAt: string;
+        tokenMasked: string;
+        loginid: string | null;
+      }>("/deriv/token", {
+        method: "PUT",
+        body: JSON.stringify({ token }),
+      }),
+    disconnect: () =>
+      this.request<{ connected: boolean }>("/deriv/token", {
+        method: "DELETE",
+      }),
+    accounts: () =>
+      this.request<{
+        wallet: DerivAccount | null;
+        wallets?: DerivAccount[];
+        options?: DerivAccount[];
+        mt5: DerivAccount[];
+      }>("/deriv/accounts"),
+    trades: () =>
+      this.request<{
+        open: Record<string, unknown>[];
+        statement: Record<string, unknown>[];
+      }>("/deriv/trades"),
+    transfer: (data: {
+      accountFrom: string;
+      accountTo: string;
+      amount: number;
+      currency: string;
+    }) =>
+      this.request<Record<string, unknown>>("/deriv/transfer", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    sellContract: (id: string | number) =>
+      this.request<Record<string, unknown>>(`/deriv/contracts/${id}/sell`, {
+        method: "POST",
+      }),
+    cryptoWallets: () =>
+      this.request<DerivCryptoWalletsResult>("/deriv/crypto-wallets"),
+    saveCryptoWallet: (data: {
+      purpose: "DEPOSIT" | "WITHDRAW";
+      network: string;
+      address: string;
+      label?: string;
+    }) =>
+      this.request<DerivCryptoWalletsResult>("/deriv/crypto-wallets", {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    deleteCryptoWallet: (purpose: "DEPOSIT" | "WITHDRAW") =>
+      this.request<DerivCryptoWalletsResult>(
+        `/deriv/crypto-wallets/${purpose}`,
+        { method: "DELETE" },
+      ),
+  };
+
   users = {
     dashboard: () => this.request<DashboardData>("/users/dashboard"),
     profile: () => this.request("/users/profile"),
@@ -1870,6 +1936,29 @@ export interface AdminKycItem {
     displayName: string;
     profile: UserProfileRecord | null;
   };
+}
+
+export interface DerivAccount {
+  login: string;
+  kind: "deriv" | "mt5" | "options";
+  accountType: string | null;
+  currency: string;
+  balance: number;
+}
+
+export interface DerivCryptoWallet {
+  id: string;
+  purpose: "DEPOSIT" | "WITHDRAW" | string;
+  network: string;
+  address: string;
+  label: string | null;
+  updatedAt: string;
+}
+
+export interface DerivCryptoWalletsResult {
+  deposit: DerivCryptoWallet | null;
+  withdraw: DerivCryptoWallet | null;
+  saved?: DerivCryptoWallet;
 }
 
 export interface AdminSession {

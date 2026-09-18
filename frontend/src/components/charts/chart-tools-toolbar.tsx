@@ -41,6 +41,7 @@ type Props = {
   onRemoveAlert: (id: string) => void;
   onClearTriggered: () => void;
   className?: string;
+  orientation?: "horizontal" | "vertical";
 };
 
 export function ChartToolsToolbar({
@@ -52,14 +53,30 @@ export function ChartToolsToolbar({
   onRemoveAlert,
   onClearTriggered,
   className,
+  orientation = "horizontal",
 }: Props) {
   const [alertsOpen, setAlertsOpen] = useState(false);
   const activeAlerts = alerts.filter((a) => !a.triggered);
   const triggeredCount = alerts.filter((a) => a.triggered).length;
 
+  const vertical = orientation === "vertical";
+
   return (
-    <div className={cn("relative flex shrink-0 items-center gap-1", className)}>
-      <div className="flex items-center gap-0.5 rounded-lg border border-[var(--mt5-divider)] bg-[var(--mt5-surface)] p-0.5">
+    <div
+      className={cn(
+        "relative flex shrink-0",
+        vertical ? "flex-col items-center gap-1" : "items-center gap-1",
+        className,
+      )}
+    >
+      <div
+        className={cn(
+          "flex gap-0.5 p-0.5",
+          vertical
+            ? "flex-col rounded-xl border border-[var(--mt5-divider)] bg-[var(--mt5-surface)]"
+            : "items-center rounded-lg border border-[var(--mt5-divider)] bg-[var(--mt5-surface)]",
+        )}
+      >
         {TOOLS.map(({ id, label, icon: Icon, hint }) => (
           <button
             key={id}
@@ -67,7 +84,8 @@ export function ChartToolsToolbar({
             title={hint}
             onClick={() => onToolChange(id)}
             className={cn(
-              "flex h-7 w-7 items-center justify-center rounded-md transition-colors",
+              "flex items-center justify-center rounded-md transition-colors",
+              vertical ? "h-8 w-8" : "h-7 w-7",
               activeTool === id
                 ? "bg-primary text-white"
                 : "text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)] hover:text-[var(--mt5-text)]",
@@ -80,7 +98,7 @@ export function ChartToolsToolbar({
         ))}
       </div>
 
-      {pendingTrend && (
+      {pendingTrend && !vertical && (
         <span className="hidden text-[10px] text-[var(--mt5-muted)] sm:inline">
           2nd point… · Esc to cancel
         </span>
@@ -90,92 +108,96 @@ export function ChartToolsToolbar({
         <button
           type="button"
           onClick={() => onDone?.()}
-          className="rounded-md border border-[var(--mt5-divider)] px-2 py-1 text-[10px] font-semibold text-[var(--mt5-text)] hover:bg-[var(--mt5-row-hover)]"
+          className={cn(
+            "rounded-md px-2 py-1 text-[10px] font-semibold border border-[var(--mt5-divider)] text-[var(--mt5-text)] hover:bg-[var(--mt5-row-hover)]",
+          )}
         >
           Done
         </button>
       )}
 
-      {activeTool === "select" && (
+      {activeTool === "select" && !vertical && (
         <span className="hidden text-[10px] text-[var(--mt5-muted)] lg:inline">
           Pan & zoom
         </span>
       )}
 
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => setAlertsOpen((o) => !o)}
-          className={cn(
-            "flex h-7 items-center gap-1 rounded-md border px-2 text-[10px] font-semibold transition-colors",
-            activeAlerts.length > 0
-              ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
-              : "border-[var(--mt5-divider)] text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)]",
-          )}
-          aria-expanded={alertsOpen}
-        >
-          <Bell className="h-3.5 w-3.5" />
-          {activeAlerts.length > 0 ? activeAlerts.length : null}
-        </button>
+      {!vertical && (
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setAlertsOpen((o) => !o)}
+            className={cn(
+              "flex h-7 items-center gap-1 rounded-md border px-2 text-[10px] font-semibold transition-colors",
+              activeAlerts.length > 0
+                ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                : "border-[var(--mt5-divider)] text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)]",
+            )}
+            aria-expanded={alertsOpen}
+          >
+            <Bell className="h-3.5 w-3.5" />
+            {activeAlerts.length > 0 ? activeAlerts.length : null}
+          </button>
 
-        {alertsOpen && (
-          <div className="absolute right-0 top-9 z-50 w-[min(16rem,calc(100vw-2rem))] rounded-xl border border-[var(--mt5-divider)] bg-[var(--mt5-surface)] p-2 shadow-xl">
-            <div className="mb-2 flex items-center justify-between gap-2 px-1">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--mt5-muted)]">
-                Price alerts
-              </p>
-              <button
-                type="button"
-                onClick={() => setAlertsOpen(false)}
-                className="rounded p-0.5 text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)]"
-                aria-label="Close alerts"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-            {alerts.length === 0 ? (
-              <p className="px-1 py-2 text-[11px] text-[var(--mt5-muted)]">
-                Use the bell tool and click a price on the chart.
-              </p>
-            ) : (
-              <ul className="max-h-48 space-y-1 overflow-y-auto">
-                {alerts.map((alert) => (
-                  <li
-                    key={alert.id}
-                    className={cn(
-                      "flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-[11px]",
-                      alert.triggered
-                        ? "bg-[var(--mt5-row-hover)] text-[var(--mt5-muted)] line-through"
-                        : "text-[var(--mt5-text)]",
-                    )}
-                  >
-                    <span className="min-w-0 truncate">
-                      {fmtMt5Price(alert.price)} ·{" "}
-                      {alertDirectionLabel(alert.direction)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => onRemoveAlert(alert.id)}
-                      className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold text-[#ff5252] hover:bg-[#ff5252]/10"
+          {alertsOpen && (
+            <div className="absolute right-0 top-9 z-50 w-[min(16rem,calc(100vw-2rem))] rounded-xl border border-[var(--mt5-divider)] bg-[var(--mt5-surface)] p-2 shadow-xl">
+              <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--mt5-muted)]">
+                  Price alerts
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setAlertsOpen(false)}
+                  className="rounded p-0.5 text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)]"
+                  aria-label="Close alerts"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              {alerts.length === 0 ? (
+                <p className="px-1 py-2 text-[11px] text-[var(--mt5-muted)]">
+                  Use the bell tool and click a price on the chart.
+                </p>
+              ) : (
+                <ul className="max-h-48 space-y-1 overflow-y-auto">
+                  {alerts.map((alert) => (
+                    <li
+                      key={alert.id}
+                      className={cn(
+                        "flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-[11px]",
+                        alert.triggered
+                          ? "bg-[var(--mt5-row-hover)] text-[var(--mt5-muted)] line-through"
+                          : "text-[var(--mt5-text)]",
+                      )}
                     >
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {triggeredCount > 0 && (
-              <button
-                type="button"
-                onClick={onClearTriggered}
-                className="mt-2 w-full rounded-md border border-[var(--mt5-divider)] px-2 py-1.5 text-[10px] font-semibold text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)]"
-              >
-                Clear triggered ({triggeredCount})
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+                      <span className="min-w-0 truncate">
+                        {fmtMt5Price(alert.price)} ·{" "}
+                        {alertDirectionLabel(alert.direction)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onRemoveAlert(alert.id)}
+                        className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold text-[#ff5252] hover:bg-[#ff5252]/10"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {triggeredCount > 0 && (
+                <button
+                  type="button"
+                  onClick={onClearTriggered}
+                  className="mt-2 w-full rounded-md border border-[var(--mt5-divider)] px-2 py-1.5 text-[10px] font-semibold text-[var(--mt5-muted)] hover:bg-[var(--mt5-row-hover)]"
+                >
+                  Clear triggered ({triggeredCount})
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

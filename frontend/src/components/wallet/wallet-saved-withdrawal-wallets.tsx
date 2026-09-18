@@ -225,9 +225,11 @@ export function WalletAddWithdrawalWalletModal({
 export function WalletSavedWithdrawalWallets({
   onChanged,
   trc20Only = false,
+  hideHeader = false,
 }: {
   onChanged?: () => void;
   trc20Only?: boolean;
+  hideHeader?: boolean;
 }) {
   const [wallets, setWallets] = useState<SavedWithdrawalWallet[]>([]);
   const [loading, setLoading] = useState(true);
@@ -269,12 +271,19 @@ export function WalletSavedWithdrawalWallets({
   return (
     <>
       <div className="space-y-3">
+        {!hideHeader && (
         <div className="flex items-center justify-between gap-2">
           <p className="text-sm font-medium text-white">Saved withdrawal wallets</p>
           <Button size="sm" variant="secondary" onClick={() => setAddOpen(true)}>
             Add wallet
           </Button>
         </div>
+        )}
+        {hideHeader && (
+          <Button className="w-full" onClick={() => setAddOpen(true)}>
+            Add wallet
+          </Button>
+        )}
         {loading ? (
           <p className="text-sm text-gray-400">Loading wallets…</p>
         ) : wallets.length === 0 ? (
@@ -324,5 +333,48 @@ export function WalletSavedWithdrawalWallets({
         }}
       />
     </>
+  );
+}
+
+export function WalletSavedWalletsModal({
+  open,
+  onClose,
+  onChanged,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onChanged?: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div
+      className="modal-overlay fixed inset-0 z-[120] flex items-end justify-center p-0 sm:items-center sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        className="modal-panel flex max-h-[88vh] w-full max-w-md flex-col rounded-t-2xl border border-white/10 shadow-2xl sm:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Withdrawal wallets</h2>
+            <p className="mt-0.5 text-xs text-gray-400">
+              Saved USDT and MoMo destinations. New wallets are verified by email.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-gray-400 hover:bg-white/5 hover:text-white"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="overflow-y-auto p-5">
+          <WalletSavedWithdrawalWallets hideHeader onChanged={onChanged} />
+        </div>
+      </div>
+    </div>
   );
 }

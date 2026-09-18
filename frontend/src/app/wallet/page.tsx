@@ -9,15 +9,10 @@ import { WalletDepositModal } from "@/components/wallet/wallet-deposit-modal";
 import { WalletWithdrawModal } from "@/components/wallet/wallet-withdraw-modal";
 import { WalletTransferModal } from "@/components/wallet/wallet-transfer-modal";
 import { WalletWithdrawFeeNotice } from "@/components/wallet/wallet-withdraw-fee-notice";
-import { WalletSavedWithdrawalWallets } from "@/components/wallet/wallet-saved-withdrawal-wallets";
+import { WalletSavedWalletsModal } from "@/components/wallet/wallet-saved-withdrawal-wallets";
 import { WalletPendingWithdrawals } from "@/components/wallet/wallet-pending-withdrawals";
 import { CurrencySwitcher } from "@/components/currency-switcher";
-import {
-  cn,
-  formatCurrency,
-  formatMoney,
-  isLocalCurrencyDisplay,
-} from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { syncApiAuthToken, useAuthStore } from "@/stores/auth";
 import { Loader2, RefreshCw } from "lucide-react";
@@ -38,12 +33,13 @@ export default function WalletPage() {
   const token = useAuthStore((s) => s.token);
   const [summary, setSummary] = useState<WalletSummary | null>(null);
   const [txs, setTxs] = useState<WalletLedgerItem[]>([]);
+  const [walletCount, setWalletCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
-  const localCurrency = isLocalCurrencyDisplay(summary?.displayCurrency);
+  const [walletsOpen, setWalletsOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     const authToken = syncApiAuthToken();
@@ -58,12 +54,14 @@ export default function WalletPage() {
     setLoading(true);
     setError(null);
     try {
-      const [s, t] = await Promise.all([
+      const [s, t, wallets] = await Promise.all([
         api.wallet.summary(),
         api.wallet.transactions(),
+        api.wallet.withdrawalWallets().catch(() => []),
       ]);
       setSummary(s);
       setTxs(t.items);
+      setWalletCount(wallets.length);
     } catch (err) {
       setSummary(null);
       setTxs([]);
@@ -86,13 +84,15 @@ export default function WalletPage() {
     const onResume = () => void refresh();
     window.addEventListener("pageshow", onResume);
     window.addEventListener("focus", onResume);
-    document.addEventListener("visibilitychange", () => {
+    const onVis = () => {
       if (document.visibilityState === "visible") onResume();
-    });
+    };
+    document.addEventListener("visibilitychange", onVis);
 
     return () => {
       window.removeEventListener("pageshow", onResume);
       window.removeEventListener("focus", onResume);
+      document.removeEventListener("visibilitychange", onVis);
     };
   }, [ready, token, refresh]);
 
@@ -107,15 +107,15 @@ export default function WalletPage() {
   }
 
   return (
-    <div className="mx-auto max-w-lg space-y-4 px-4 py-4 sm:max-w-xl sm:px-6 sm:py-6 xl:max-w-7xl xl:px-8 xl:py-8">
-      <div className="flex items-start justify-between gap-3">
+    <div className="mx-auto w-full max-w-xl px-4 py-6 sm:px-6 sm:py-10">
+      <div className="mb-6 flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">Wallet</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Wallet</h1>
           <p className="mt-1 text-sm text-gray-400">
-            Balance and earnings — USDT ledger with optional local display
+            Deposit, transfer, and request withdrawals (admin approved)
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1">
           <CurrencySwitcher
             displayCurrency={summary?.displayCurrency}
             onChanged={refresh}
@@ -123,10 +123,11 @@ export default function WalletPage() {
           <Button
             type="button"
             variant="ghost"
-            size="sm"
-            className="shrink-0 text-muted"
+            size="icon"
+            className="text-muted"
             onClick={() => void refresh()}
             disabled={loading}
+            aria-label="Refresh"
           >
             <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
           </Button>
@@ -134,7 +135,7 @@ export default function WalletPage() {
       </div>
 
       {error && (
-        <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+        <div className="mb-4 rounded-2xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
           <p>{error}</p>
           <button
             type="button"
@@ -146,166 +147,67 @@ export default function WalletPage() {
         </div>
       )}
 
-      <div className="space-y-4 xl:grid xl:grid-cols-12 xl:items-start xl:gap-5 xl:space-y-0">
-        {summary && (
-          <div className="xl:col-span-7 xl:row-start-1">
-            <WalletBalanceCard
-              balance={summary.availableBalance}
-              totalEarned={summary.totalEarned}
-              totalDeposited={summary.totalDeposited}
-              displayCurrency={summary.displayCurrency}
-              onWithdraw={() => setWithdrawOpen(true)}
-              onDeposit={() => setDepositOpen(true)}
-              onTransfer={() => setTransferOpen(true)}
-            />
-          </div>
-        )}
-
-        {summary && (
-          <div className="xl:col-span-7 xl:row-start-2">
-            <WalletPendingWithdrawals onCancelled={() => void refresh()} />
-          </div>
-        )}
-
-        {summary && (
-          <div className="xl:col-span-7 xl:row-start-3">
-            <WalletWithdrawFeeNotice
-              feeUsdt={summary.withdrawalFeeUsdt ?? 3}
-              schedule={{
-                scheduleEnabled: summary.withdrawalScheduleEnabled,
-                preferredSchedule: summary.withdrawalPreferredSchedule,
-                offSchedulePenaltyPercent:
-                  summary.withdrawalOffSchedulePenaltyPercent,
-                inPreferredWindow: summary.withdrawalInPreferredWindow,
-                preferredWindowLabel: summary.withdrawalPreferredWindowLabel,
-                nextPreferredWindowAt: summary.withdrawalNextPreferredWindowAt,
-              }}
-            />
-          </div>
-        )}
-
-        {summary && (
-          <Card className="xl:col-span-5 xl:row-span-2 xl:row-start-1 xl:h-full">
+      {summary && (
+        <div className="space-y-4">
+          <WalletBalanceCard
+            balance={summary.availableBalance}
+            displayCurrency={summary.displayCurrency}
+            savedWalletCount={walletCount}
+            onWithdraw={() => setWithdrawOpen(true)}
+            onDeposit={() => setDepositOpen(true)}
+            onTransfer={() => setTransferOpen(true)}
+            onManageWallets={() => setWalletsOpen(true)}
+          />
+          <WalletPendingWithdrawals onCancelled={() => void refresh()} />
+          <WalletWithdrawFeeNotice
+            feeUsdt={summary.withdrawalFeeUsdt ?? 3}
+            schedule={{
+              scheduleEnabled: summary.withdrawalScheduleEnabled,
+              preferredSchedule: summary.withdrawalPreferredSchedule,
+              offSchedulePenaltyPercent:
+                summary.withdrawalOffSchedulePenaltyPercent,
+              inPreferredWindow: summary.withdrawalInPreferredWindow,
+              preferredWindowLabel: summary.withdrawalPreferredWindowLabel,
+              nextPreferredWindowAt: summary.withdrawalNextPreferredWindowAt,
+            }}
+          />
+          <Card id="wallet-activity">
             <CardHeader>
-              <CardTitle className="text-base">Withdrawal wallets</CardTitle>
+              <CardTitle className="text-base">Transactions</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <WalletSavedWithdrawalWallets />
+            <CardContent className="space-y-2">
+              {txs.length === 0 ? (
+                <p className="text-sm text-gray-500">No transactions yet.</p>
+              ) : (
+                txs.map((tx) => (
+                  <div
+                    key={tx.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-white/5 px-3 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm text-white">{tx.description}</p>
+                      <p className="text-[10px] text-gray-500">
+                        {walletTxTypeLabel(tx.type)} ·{" "}
+                        {new Date(tx.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                    <span
+                      className={
+                        tx.amount >= 0
+                          ? "text-sm font-bold text-success"
+                          : "text-sm font-bold text-danger"
+                      }
+                    >
+                      {tx.amount >= 0 ? "+" : ""}
+                      {formatCurrency(tx.amount)}
+                    </span>
+                  </div>
+                ))
+              )}
             </CardContent>
           </Card>
-        )}
-
-        {summary && (
-          <div className="grid grid-cols-3 gap-2 xl:col-span-7 xl:row-start-4">
-            {[
-              { label: "Deposited", value: summary.totalDeposited },
-              { label: "Earned", value: summary.totalEarned },
-              { label: "Locked", value: summary.lockedBalance },
-            ].map((item) => (
-              <div
-                key={item.label}
-                className="rounded-xl border border-white/5 bg-white/[0.02] px-3 py-3"
-              >
-                <p className="text-[10px] uppercase tracking-wide text-gray-500">
-                  {item.label}
-                </p>
-                <p
-                  className={cn(
-                    "font-bold text-white",
-                    localCurrency ? "text-xs sm:text-sm" : "text-sm",
-                  )}
-                >
-                  {formatMoney(item.value, summary.displayCurrency)}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <Card className="xl:col-span-5 xl:row-start-3">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-base">Assets</CardTitle>
-            <span className="text-xs text-gray-500">
-              {summary?.displayCurrency?.code ?? "USDT"}
-            </span>
-          </CardHeader>
-          <CardContent>
-            {summary ? (
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-white/5 px-3 py-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20 text-sm font-bold text-emerald-400">
-                    ₮
-                  </div>
-                  <div>
-                    <p className="font-medium text-white">USDT</p>
-                    <p className="text-xs text-gray-500">
-                      Shown as {summary.displayCurrency?.code ?? "USDT"}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p
-                    className={cn(
-                      "font-bold text-white",
-                      localCurrency ? "text-sm" : "text-base",
-                    )}
-                  >
-                    {formatMoney(
-                      summary.availableBalance,
-                      summary.displayCurrency,
-                    )}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {formatCurrency(summary.availableBalance)} USDT
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500">
-                Balance unavailable — tap Retry above.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card id="wallet-activity" className="xl:col-span-12 xl:row-start-5">
-          <CardHeader>
-            <CardTitle className="text-base">Transactions</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 xl:grid xl:grid-cols-2 xl:gap-3 xl:space-y-0">
-            {txs.length === 0 ? (
-              <p className="text-sm text-gray-500 xl:col-span-2">
-                {summary ? "No transactions yet." : "Transactions unavailable."}
-              </p>
-            ) : (
-              txs.map((tx) => (
-                <div
-                  key={tx.id}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-white/5 px-3 py-2.5"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm text-white">{tx.description}</p>
-                    <p className="text-[10px] text-gray-500">
-                      {walletTxTypeLabel(tx.type)} ·{" "}
-                      {new Date(tx.createdAt).toLocaleString()}
-                    </p>
-                  </div>
-                  <span
-                    className={
-                      tx.amount >= 0
-                        ? "text-sm font-bold text-success"
-                        : "text-sm font-bold text-danger"
-                    }
-                  >
-                    {tx.amount >= 0 ? "+" : ""}
-                    {formatCurrency(tx.amount)}
-                  </span>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </div>
+        </div>
+      )}
 
       <WalletDepositModal
         open={depositOpen}
@@ -338,6 +240,11 @@ export default function WalletPage() {
         onClose={() => setTransferOpen(false)}
         availableBalance={summary?.availableBalance ?? 0}
         onComplete={() => void refresh()}
+      />
+      <WalletSavedWalletsModal
+        open={walletsOpen}
+        onClose={() => setWalletsOpen(false)}
+        onChanged={() => void refresh()}
       />
     </div>
   );
