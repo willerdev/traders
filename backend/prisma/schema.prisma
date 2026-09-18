@@ -1198,6 +1198,9 @@ model PlatformConfig {
   nowpaymentsPayoutUpdatedAt     DateTime?
   nowpaymentsPayoutUpdatedById   String?
   nowpaymentsApiKeyEnc           String?
+  nowpaymentsPublicKeyEnc        String?
+  /// Solo admin: "env" uses Render NOWPayments keys; "settings" uses saved login/keys.
+  nowpaymentsCredsSource         String    @default("env")
 
   /// Launch / vault contract config (Remix deploy) — preferred over env when set.
   contractAddress      String?

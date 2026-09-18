@@ -572,7 +572,7 @@ export class PayoutService {
     if (!(await this.nowPayments.ensureConfigured())) {
       throw new BadRequestException(
         isSoloApp()
-          ? 'NOWPayments is not configured — save the shared API key in Settings so both of you can withdraw'
+          ? 'NOWPayments is not configured — pick Render env keys or save an API key in Settings'
           : 'NOWPayments is not configured — set NOWPAYMENTS_API_KEY before approving wallet withdrawals',
       );
     }
@@ -587,7 +587,7 @@ export class PayoutService {
         isSoloApp()
           ? `NOWPayments payout login is not configured — save ${missing.join(
               ' and ',
-            )} in Settings (shared for both users)`
+            )} in Settings, or switch the source to Render env if those keys are set`
           : `NOWPayments payout login is not configured on traders-api — set ${missing
               .map((m) =>
                 m === 'payout email'

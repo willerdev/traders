@@ -49,8 +49,8 @@ export function WalletWithdrawResultModal({
           <p className="text-sm leading-relaxed text-gray-300">{result.body}</p>
           {result.missingCredentials ? (
             <p className="text-sm text-amber-200">
-              Save the NOWPayments payout username and password in Settings.
-              The API key must already be on the server.
+              Save NOWPayments credentials in Settings, or ask the admin to
+              switch the source to Render env.
             </p>
           ) : null}
           <div className="flex w-full flex-col gap-2 sm:flex-row">

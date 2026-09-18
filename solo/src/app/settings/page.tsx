@@ -82,7 +82,7 @@ export default function SettingsPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-white">Settings</h1>
         <p className="mt-1 text-sm text-gray-400">
-          Account, MetaAPI, Deriv, and shared NOWPayments (deposits + withdrawals)
+          Account, MetaAPI, Deriv, and NOWPayments (Render env or Settings)
         </p>
       </div>
 

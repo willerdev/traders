@@ -1375,25 +1375,21 @@ class ApiClient {
         body: JSON.stringify({ year, month }),
       }),
     nowpaymentsPayoutLogin: () =>
-      this.request<{
-        apiKeySet: boolean;
-        payoutEmailSet: boolean;
-        payoutEmailMasked: string | null;
-        payoutPasswordSet: boolean;
-        payoutConfigured: boolean;
-        shared?: boolean;
-      }>("/wallet/nowpayments-payout"),
-    saveNowpaymentsPayoutLogin: (data: { email: string; password: string }) =>
-      this.request<{
-        apiKeySet: boolean;
-        payoutEmailSet: boolean;
-        payoutEmailMasked: string | null;
-        payoutPasswordSet: boolean;
-        payoutConfigured: boolean;
-        shared?: boolean;
-      }>("/wallet/nowpayments-payout", {
+      this.request<NowpaymentsPayoutStatus>("/wallet/nowpayments-payout"),
+    saveNowpaymentsPayoutLogin: (data: {
+      email: string;
+      password: string;
+      apiKey?: string;
+      publicKey?: string;
+    }) =>
+      this.request<NowpaymentsPayoutStatus>("/wallet/nowpayments-payout", {
         method: "PUT",
         body: JSON.stringify(data),
+      }),
+    setNowpaymentsPayoutSource: (source: "env" | "settings") =>
+      this.request<NowpaymentsPayoutStatus>("/wallet/nowpayments-payout/source", {
+        method: "PATCH",
+        body: JSON.stringify({ source }),
       }),
     autoWithdrawSettings: () =>
       this.request<AutoWithdrawSettings>("/wallet/auto-withdraw"),
@@ -2225,6 +2221,29 @@ export interface SavedWithdrawalWallet {
   network: WithdrawalWalletNetwork;
   verifiedAt: string;
   createdAt: string;
+}
+
+export type NowpaymentsCredsSource = "env" | "settings";
+
+export interface NowpaymentsCredsSide {
+  apiKeySet: boolean;
+  publicKeySet: boolean;
+  payoutEmailSet: boolean;
+  payoutEmailMasked: string | null;
+  payoutPasswordSet: boolean;
+}
+
+export interface NowpaymentsPayoutStatus {
+  source: NowpaymentsCredsSource;
+  apiKeySet: boolean;
+  publicKeySet: boolean;
+  payoutEmailSet: boolean;
+  payoutEmailMasked: string | null;
+  payoutPasswordSet: boolean;
+  payoutConfigured: boolean;
+  shared?: boolean;
+  env?: NowpaymentsCredsSide;
+  settings?: NowpaymentsCredsSide;
 }
 
 export interface AutoWithdrawSettings {

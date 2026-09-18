@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards';
 import { AuthRateLimitGuard } from '../auth/auth-rate-limit.guard';
+import { SoloTradingAdminGuard } from '../auth/guards/solo-trading-admin.guard';
 import { WalletService } from './wallet.service';
 import { SavedWithdrawalWalletService } from './saved-withdrawal-wallet.service';
 import { PayoutService } from '../payouts/payout.service';
@@ -314,13 +315,33 @@ export class WalletController {
   @UseGuards(JwtAuthGuard, AuthRateLimitGuard)
   saveNowpaymentsPayout(
     @Request() req: { user: { id: string } },
-    @Body() body: { email?: string; password?: string; apiKey?: string },
+    @Body()
+    body: {
+      email?: string;
+      password?: string;
+      apiKey?: string;
+      publicKey?: string;
+    },
   ) {
     return this.wallet.saveNowpaymentsPayoutLogin(
       req.user.id,
       body.email ?? '',
       body.password ?? '',
       body.apiKey,
+      body.publicKey,
+    );
+  }
+
+  @Patch('nowpayments-payout/source')
+  @UseGuards(JwtAuthGuard, AuthRateLimitGuard, SoloTradingAdminGuard)
+  setNowpaymentsPayoutSource(
+    @Request() req: { user: { id: string; email?: string | null } },
+    @Body() body: { source?: string },
+  ) {
+    return this.wallet.setNowpaymentsCredsSource(
+      req.user.id,
+      req.user.email,
+      body.source ?? '',
     );
   }
 

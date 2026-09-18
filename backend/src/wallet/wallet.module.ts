@@ -7,6 +7,7 @@ import { EmailModule } from '../email/email.module';
 import { ComplianceModule } from '../compliance/compliance.module';
 import { FlutterwaveModule } from '../flutterwave/flutterwave.module';
 import { PayoutsModule } from '../payouts/payouts.module';
+import { SoloTradingAdminGuard } from '../auth/guards/solo-trading-admin.guard';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { PayoutsModule } from '../payouts/payouts.module';
     forwardRef(() => PayoutsModule),
   ],
   controllers: [WalletController],
-  providers: [WalletService, SavedWithdrawalWalletService],
+  providers: [WalletService, SavedWithdrawalWalletService, SoloTradingAdminGuard],
   exports: [WalletService, SavedWithdrawalWalletService],
 })
 export class WalletModule {}

@@ -38,6 +38,7 @@ import { BinanceC2cService } from '../fx/binance-c2c.service';
 import { resolvePreferredDisplayCurrency } from '../fx/country-currency.util';
 import { isInvestorVipActive } from '../investor/investor-vip.util';
 import { isSoloApp } from '../common/app-variant';
+import { assertSoloCanManageTrades } from '../common/solo-admin.util';
 import {
   isInvestorVvipActive,
   vvipWithdrawFeeQuote,
@@ -1772,10 +1773,14 @@ export class WalletService {
           !payoutStatus.payoutEmailSet ? 'payout username' : null,
           !payoutStatus.payoutPasswordSet ? 'payout password' : null,
         ].filter(Boolean);
+        const where =
+          payoutStatus.source === 'settings'
+            ? 'Save them in Settings and keep the source on Settings.'
+            : 'Set them on solo-api Render env, or switch the source to Settings after saving credentials.';
         throw new BadRequestException(
           `Withdrawal not sent — missing NOWPayments ${missing.join(
             ' and ',
-          )}. Save the payout username and password in Settings. The API key must be set on the server.`,
+          )}. ${where}`,
         );
       }
     }
@@ -2100,6 +2105,7 @@ export class WalletService {
     email: string,
     password: string,
     apiKey?: string,
+    publicKey?: string,
   ) {
     if (!isSoloApp()) {
       throw new ForbiddenException(
@@ -2110,8 +2116,24 @@ export class WalletService {
       email,
       password,
       apiKey,
+      publicKey,
       userId,
     });
+  }
+
+  async setNowpaymentsCredsSource(
+    userId: string,
+    email: string | null | undefined,
+    source: string,
+  ) {
+    if (!isSoloApp()) {
+      throw new ForbiddenException(
+        'Shared payout login is only available on soloEmma.',
+      );
+    }
+    assertSoloCanManageTrades(email);
+    const next = source.trim().toLowerCase() === 'settings' ? 'settings' : 'env';
+    return this.nowPayments.setCredsSource(next, userId);
   }
 
   async getAutoWithdrawSettings(userId: string) {

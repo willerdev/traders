@@ -26,6 +26,16 @@ export class NowPaymentsApiError extends Error {
   }
 }
 
+export type NowPaymentsCredsSource = 'env' | 'settings';
+
+type NowPaymentsCredsSnapshot = {
+  apiKeySet: boolean;
+  publicKeySet: boolean;
+  payoutEmailSet: boolean;
+  payoutEmailMasked: string | null;
+  payoutPasswordSet: boolean;
+};
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -48,6 +58,8 @@ export class NowPaymentsService {
     apiKey: string;
     email: string;
     password: string;
+    publicKey: string;
+    source: NowPaymentsCredsSource;
     at: number;
   } | null = null;
 
@@ -91,16 +103,22 @@ export class NowPaymentsService {
 
   /** Safe diagnostics — never returns secret values. */
   async getPayoutConfigStatus() {
-    const { apiKey, email, password } = await this.resolvePayoutCreds();
-    const emailSet = Boolean(email);
-    const passwordSet = Boolean(password);
+    const resolved = await this.resolvePayoutCreds();
+    const snapshot = await this.credsSnapshot();
+    const emailSet = Boolean(resolved.email);
+    const passwordSet = Boolean(resolved.password);
     return {
-      apiKeySet: Boolean(apiKey),
+      source: resolved.source,
+      apiKeySet: Boolean(resolved.apiKey),
+      publicKeySet: Boolean(resolved.publicKey),
       payoutEmailSet: emailSet,
-      payoutEmailMasked: emailSet ? this.maskEmail(email) : null,
+      payoutEmailMasked: emailSet ? this.maskEmail(resolved.email) : null,
       payoutPasswordSet: passwordSet,
-      payoutConfigured: Boolean(apiKey) && emailSet && passwordSet,
+      payoutConfigured:
+        Boolean(resolved.apiKey) && emailSet && passwordSet,
       shared: isSoloApp(),
+      env: snapshot.env,
+      settings: snapshot.settings,
     };
   }
 
@@ -126,11 +144,13 @@ export class NowPaymentsService {
     email: string;
     password: string;
     apiKey?: string;
+    publicKey?: string;
     userId: string;
   }) {
     const email = input.email.trim().toLowerCase();
     const password = input.password.trim();
     const apiKey = input.apiKey?.trim() ?? '';
+    const publicKey = input.publicKey?.trim() ?? '';
     if (!email.includes('@') || email.length < 5) {
       throw new HttpException(
         'Enter the NOWPayments account email.',
@@ -147,6 +167,9 @@ export class NowPaymentsService {
     const apiEnc = apiKey
       ? encryptCredential(apiKey, this.cryptoSecret())
       : undefined;
+    const pubEnc = publicKey
+      ? encryptCredential(publicKey, this.cryptoSecret())
+      : undefined;
     await this.prisma.platformConfig.upsert({
       where: { id: 'default' },
       create: {
@@ -154,6 +177,7 @@ export class NowPaymentsService {
         nowpaymentsPayoutEmail: email,
         nowpaymentsPayoutPasswordEnc: enc,
         nowpaymentsApiKeyEnc: apiEnc,
+        nowpaymentsPublicKeyEnc: pubEnc,
         nowpaymentsPayoutUpdatedAt: new Date(),
         nowpaymentsPayoutUpdatedById: input.userId,
       },
@@ -161,8 +185,29 @@ export class NowPaymentsService {
         nowpaymentsPayoutEmail: email,
         nowpaymentsPayoutPasswordEnc: enc,
         ...(apiEnc ? { nowpaymentsApiKeyEnc: apiEnc } : {}),
+        ...(pubEnc ? { nowpaymentsPublicKeyEnc: pubEnc } : {}),
         nowpaymentsPayoutUpdatedAt: new Date(),
         nowpaymentsPayoutUpdatedById: input.userId,
+      },
+    });
+    this.invalidatePayoutCredsCache();
+    return this.getPayoutConfigStatus();
+  }
+
+  async setCredsSource(source: NowPaymentsCredsSource, userId: string) {
+    const normalized = this.normalizeSource(source);
+    await this.prisma.platformConfig.upsert({
+      where: { id: 'default' },
+      create: {
+        id: 'default',
+        nowpaymentsCredsSource: normalized,
+        nowpaymentsPayoutUpdatedAt: new Date(),
+        nowpaymentsPayoutUpdatedById: userId,
+      },
+      update: {
+        nowpaymentsCredsSource: normalized,
+        nowpaymentsPayoutUpdatedAt: new Date(),
+        nowpaymentsPayoutUpdatedById: userId,
       },
     });
     this.invalidatePayoutCredsCache();
@@ -218,28 +263,57 @@ export class NowPaymentsService {
         'NOW_PAYMENTS_API_KEY',
         'NOWPAYMENTS_KEY',
         'NP_API_KEY',
-      ) ||
-      this.envValue(
-        'NOWPAYMENTS_PUBLIC_KEY',
-        'NOW_PAYMENTS_PUBLIC_KEY',
-        'NOWPAYMENTS_PUB_KEY',
-        'NP_PUBLIC_KEY',
-      )
+      ) || this.envPublicKey()
     );
   }
 
-  private async resolvePayoutCreds(): Promise<{
-    apiKey: string;
-    email: string;
-    password: string;
-  }> {
-    if (this.credsCache && Date.now() - this.credsCache.at < 15_000) {
-      return this.credsCache;
+  private envPublicKey(): string {
+    return this.envValue(
+      'NOWPAYMENTS_PUBLIC_KEY',
+      'NOW_PAYMENTS_PUBLIC_KEY',
+      'NOWPAYMENTS_PUB_KEY',
+      'NP_PUBLIC_KEY',
+    );
+  }
+
+  private normalizeSource(raw?: string | null): NowPaymentsCredsSource {
+    return raw?.trim().toLowerCase() === 'settings' ? 'settings' : 'env';
+  }
+
+  private decryptEnc(enc?: string | null): string {
+    if (!enc?.trim()) return '';
+    try {
+      return decryptCredential(enc, this.cryptoSecret());
+    } catch {
+      this.logger.warn('Could not decrypt a saved NOWPayments credential');
+      return '';
     }
-    let apiKey = this.envApiKey();
-    let email = this.envPayoutEmail();
-    let password = this.envPayoutPassword();
-    if (isSoloApp()) {
+  }
+
+  private async loadSettingsRow(): Promise<{
+    nowpaymentsPayoutEmail: string | null;
+    nowpaymentsPayoutPasswordEnc: string | null;
+    nowpaymentsApiKeyEnc: string | null;
+    nowpaymentsPublicKeyEnc: string | null;
+    nowpaymentsCredsSource: string | null;
+  } | null> {
+    if (!isSoloApp()) return null;
+    try {
+      return await this.prisma.platformConfig.findUnique({
+        where: { id: 'default' },
+        select: {
+          nowpaymentsPayoutEmail: true,
+          nowpaymentsPayoutPasswordEnc: true,
+          nowpaymentsApiKeyEnc: true,
+          nowpaymentsPublicKeyEnc: true,
+          nowpaymentsCredsSource: true,
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      if (!/nowpaymentsPayout|nowpaymentsApiKey|nowpaymentsPublicKey|nowpaymentsCreds|Unknown arg|column/i.test(msg)) {
+        this.logger.warn(`Payout creds DB read failed: ${msg}`);
+      }
       try {
         const row = await this.prisma.platformConfig.findUnique({
           where: { id: 'default' },
@@ -249,38 +323,80 @@ export class NowPaymentsService {
             nowpaymentsApiKeyEnc: true,
           },
         });
-        const dbEmail = row?.nowpaymentsPayoutEmail?.trim();
-        if (!email && dbEmail) email = dbEmail;
-        if (!password && row?.nowpaymentsPayoutPasswordEnc) {
-          try {
-            password = decryptCredential(
-              row.nowpaymentsPayoutPasswordEnc,
-              this.cryptoSecret(),
-            );
-          } catch {
-            this.logger.warn('Could not decrypt shared NOWPayments payout password');
-          }
-        }
-        // Render env keys always win. Settings values are only a fallback.
-        if (!apiKey && row?.nowpaymentsApiKeyEnc) {
-          try {
-            apiKey = decryptCredential(
-              row.nowpaymentsApiKeyEnc,
-              this.cryptoSecret(),
-            );
-          } catch {
-            this.logger.warn('Could not decrypt shared NOWPayments API key');
-          }
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : '';
-        if (!/nowpaymentsPayout|nowpaymentsApiKey|Unknown arg|column/i.test(msg)) {
-          this.logger.warn(`Payout creds DB read failed: ${msg}`);
-        }
+        return row
+          ? {
+              ...row,
+              nowpaymentsPublicKeyEnc: null,
+              nowpaymentsCredsSource: 'env',
+            }
+          : null;
+      } catch {
+        return null;
       }
     }
+  }
+
+  private async credsSnapshot(): Promise<{
+    env: NowPaymentsCredsSnapshot;
+    settings: NowPaymentsCredsSnapshot;
+  }> {
+    const envEmail = this.envPayoutEmail();
+    const env: NowPaymentsCredsSnapshot = {
+      apiKeySet: Boolean(
+        this.envValue(
+          'NOWPAYMENTS_API_KEY',
+          'NOW_PAYMENTS_API_KEY',
+          'NOWPAYMENTS_KEY',
+          'NP_API_KEY',
+        ),
+      ),
+      publicKeySet: Boolean(this.envPublicKey()),
+      payoutEmailSet: Boolean(envEmail),
+      payoutEmailMasked: envEmail ? this.maskEmail(envEmail) : null,
+      payoutPasswordSet: Boolean(this.envPayoutPassword()),
+    };
+    const row = await this.loadSettingsRow();
+    const settingsEmail = row?.nowpaymentsPayoutEmail?.trim() ?? '';
+    const settings: NowPaymentsCredsSnapshot = {
+      apiKeySet: Boolean(this.decryptEnc(row?.nowpaymentsApiKeyEnc)),
+      publicKeySet: Boolean(this.decryptEnc(row?.nowpaymentsPublicKeyEnc)),
+      payoutEmailSet: Boolean(settingsEmail),
+      payoutEmailMasked: settingsEmail ? this.maskEmail(settingsEmail) : null,
+      payoutPasswordSet: Boolean(this.decryptEnc(row?.nowpaymentsPayoutPasswordEnc)),
+    };
+    return { env, settings };
+  }
+
+  private async resolvePayoutCreds(): Promise<{
+    apiKey: string;
+    email: string;
+    password: string;
+    publicKey: string;
+    source: NowPaymentsCredsSource;
+  }> {
+    if (this.credsCache && Date.now() - this.credsCache.at < 15_000) {
+      return this.credsCache;
+    }
+    const row = await this.loadSettingsRow();
+    const source = this.normalizeSource(row?.nowpaymentsCredsSource);
+    let apiKey = '';
+    let email = '';
+    let password = '';
+    let publicKey = '';
+    if (source === 'settings') {
+      email = row?.nowpaymentsPayoutEmail?.trim() ?? '';
+      password = this.decryptEnc(row?.nowpaymentsPayoutPasswordEnc);
+      apiKey = this.decryptEnc(row?.nowpaymentsApiKeyEnc);
+      publicKey = this.decryptEnc(row?.nowpaymentsPublicKeyEnc);
+      if (!apiKey && publicKey) apiKey = publicKey;
+    } else {
+      apiKey = this.envApiKey();
+      email = this.envPayoutEmail();
+      password = this.envPayoutPassword();
+      publicKey = this.envPublicKey();
+    }
     if (apiKey) this.apiKey = apiKey;
-    this.credsCache = { apiKey, email, password, at: Date.now() };
+    this.credsCache = { apiKey, email, password, publicKey, source, at: Date.now() };
     return this.credsCache;
   }
 
