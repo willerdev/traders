@@ -2136,6 +2136,16 @@ export class WalletService {
     return this.nowPayments.setCredsSource(next, userId);
   }
 
+  async probeNowpaymentsPayout(email: string | null | undefined) {
+    if (!isSoloApp()) {
+      throw new ForbiddenException(
+        'Shared payout login is only available on soloEmma.',
+      );
+    }
+    assertSoloCanManageTrades(email);
+    return this.nowPayments.probePayoutConnection();
+  }
+
   async getAutoWithdrawSettings(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },

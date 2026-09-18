@@ -345,6 +345,14 @@ export class WalletController {
     );
   }
 
+  @Post('nowpayments-payout/test')
+  @UseGuards(JwtAuthGuard, AuthRateLimitGuard, SoloTradingAdminGuard)
+  testNowpaymentsPayout(
+    @Request() req: { user: { email?: string | null } },
+  ) {
+    return this.wallet.probeNowpaymentsPayout(req.user.email);
+  }
+
   @Get('auto-withdraw')
   @UseGuards(JwtAuthGuard)
   autoWithdrawSettings(@Request() req: { user: { id: string } }) {

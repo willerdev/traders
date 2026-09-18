@@ -607,7 +607,7 @@ export class PayoutService {
         address: destination,
         amount,
         currency,
-        extraId: payout.id,
+        extraId: undefined,
         ipnCallbackUrl: this.ipnUrl(),
       });
     } catch (err) {

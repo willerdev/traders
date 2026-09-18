@@ -1391,6 +1391,16 @@ class ApiClient {
         method: "PATCH",
         body: JSON.stringify({ source }),
       }),
+    testNowpaymentsPayout: () =>
+      this.request<{
+        source: "env" | "settings";
+        privateApiKeySet: boolean;
+        publicKeySet: boolean;
+        payoutEmailSet: boolean;
+        payoutPasswordSet: boolean;
+        auth: { ok: boolean; error?: string };
+        balance: { ok: boolean; error?: string };
+      }>("/wallet/nowpayments-payout/test", { method: "POST" }),
     autoWithdrawSettings: () =>
       this.request<AutoWithdrawSettings>("/wallet/auto-withdraw"),
     updateAutoWithdrawSettings: (data: {

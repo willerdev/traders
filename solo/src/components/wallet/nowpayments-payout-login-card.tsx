@@ -45,6 +45,7 @@ export function NowpaymentsPayoutLoginCard() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -107,6 +108,31 @@ export function NowpaymentsPayoutLoginCard() {
     }
   }
 
+  async function testConnection() {
+    setTesting(true);
+    setError("");
+    setNotice("");
+    try {
+      const r = await api.wallet.testNowpaymentsPayout();
+      if (r.auth.ok && r.balance.ok) {
+        setNotice("Payout login and secret API key both work. Try a small withdrawal.");
+        return;
+      }
+      const parts = [
+        r.auth.ok ? "Login OK" : `Login failed: ${r.auth.error ?? "unknown"}`,
+        r.balance.ok
+          ? "Secret API key OK"
+          : `Payout key failed: ${r.balance.error ?? "unknown"}`,
+        r.privateApiKeySet ? null : "Secret API key is missing (public key is not enough for withdrawals).",
+      ].filter(Boolean);
+      setError(parts.join(" "));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not test NOWPayments");
+    } finally {
+      setTesting(false);
+    }
+  }
+
   const source = status?.source ?? "env";
 
   return (
@@ -165,6 +191,15 @@ export function NowpaymentsPayoutLoginCard() {
                       {sideLabel(status?.settings)}
                     </span>
                   </button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="sm:col-span-2"
+                    disabled={testing || switching}
+                    onClick={() => void testConnection()}
+                  >
+                    {testing ? "Testing…" : "Test payout login"}
+                  </Button>
                 </div>
               ) : (
                 <p className="text-xs text-muted">

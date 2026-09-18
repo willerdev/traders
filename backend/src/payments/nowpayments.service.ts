@@ -56,6 +56,7 @@ export class NowPaymentsService {
 
   private credsCache: {
     apiKey: string;
+    privateApiKey: string;
     email: string;
     password: string;
     publicKey: string;
@@ -109,13 +110,13 @@ export class NowPaymentsService {
     const passwordSet = Boolean(resolved.password);
     return {
       source: resolved.source,
-      apiKeySet: Boolean(resolved.apiKey),
+      apiKeySet: Boolean(resolved.privateApiKey),
       publicKeySet: Boolean(resolved.publicKey),
       payoutEmailSet: emailSet,
       payoutEmailMasked: emailSet ? this.maskEmail(resolved.email) : null,
       payoutPasswordSet: passwordSet,
       payoutConfigured:
-        Boolean(resolved.apiKey) && emailSet && passwordSet,
+        Boolean(resolved.privateApiKey) && emailSet && passwordSet,
       shared: isSoloApp(),
       env: snapshot.env,
       settings: snapshot.settings,
@@ -255,16 +256,19 @@ export class NowPaymentsService {
     );
   }
 
-  /** API key from Render. Public key is accepted as a fallback (same merchant). */
-  private envApiKey(): string {
-    return (
-      this.envValue(
-        'NOWPAYMENTS_API_KEY',
-        'NOW_PAYMENTS_API_KEY',
-        'NOWPAYMENTS_KEY',
-        'NP_API_KEY',
-      ) || this.envPublicKey()
+  /** Secret API key only — payouts reject the public key with 403. */
+  private envPrivateApiKey(): string {
+    return this.envValue(
+      'NOWPAYMENTS_API_KEY',
+      'NOW_PAYMENTS_API_KEY',
+      'NOWPAYMENTS_KEY',
+      'NP_API_KEY',
     );
+  }
+
+  /** API key from Render. Public key is accepted as a fallback for deposits only. */
+  private envApiKey(): string {
+    return this.envPrivateApiKey() || this.envPublicKey();
   }
 
   private envPublicKey(): string {
@@ -342,14 +346,7 @@ export class NowPaymentsService {
   }> {
     const envEmail = this.envPayoutEmail();
     const env: NowPaymentsCredsSnapshot = {
-      apiKeySet: Boolean(
-        this.envValue(
-          'NOWPAYMENTS_API_KEY',
-          'NOW_PAYMENTS_API_KEY',
-          'NOWPAYMENTS_KEY',
-          'NP_API_KEY',
-        ),
-      ),
+      apiKeySet: Boolean(this.envPrivateApiKey()),
       publicKeySet: Boolean(this.envPublicKey()),
       payoutEmailSet: Boolean(envEmail),
       payoutEmailMasked: envEmail ? this.maskEmail(envEmail) : null,
@@ -369,6 +366,7 @@ export class NowPaymentsService {
 
   private async resolvePayoutCreds(): Promise<{
     apiKey: string;
+    privateApiKey: string;
     email: string;
     password: string;
     publicKey: string;
@@ -379,24 +377,32 @@ export class NowPaymentsService {
     }
     const row = await this.loadSettingsRow();
     const source = this.normalizeSource(row?.nowpaymentsCredsSource);
-    let apiKey = '';
+    let privateApiKey = '';
+    let publicKey = '';
     let email = '';
     let password = '';
-    let publicKey = '';
     if (source === 'settings') {
       email = row?.nowpaymentsPayoutEmail?.trim() ?? '';
       password = this.decryptEnc(row?.nowpaymentsPayoutPasswordEnc);
-      apiKey = this.decryptEnc(row?.nowpaymentsApiKeyEnc);
+      privateApiKey = this.decryptEnc(row?.nowpaymentsApiKeyEnc);
       publicKey = this.decryptEnc(row?.nowpaymentsPublicKeyEnc);
-      if (!apiKey && publicKey) apiKey = publicKey;
     } else {
-      apiKey = this.envApiKey();
+      privateApiKey = this.envPrivateApiKey();
       email = this.envPayoutEmail();
       password = this.envPayoutPassword();
       publicKey = this.envPublicKey();
     }
+    const apiKey = privateApiKey || publicKey;
     if (apiKey) this.apiKey = apiKey;
-    this.credsCache = { apiKey, email, password, publicKey, source, at: Date.now() };
+    this.credsCache = {
+      apiKey,
+      privateApiKey,
+      email,
+      password,
+      publicKey,
+      source,
+      at: Date.now(),
+    };
     return this.credsCache;
   }
 
@@ -415,11 +421,20 @@ export class NowPaymentsService {
   private async requestOnce<T>(
     path: string,
     options: RequestInit = {},
+    flags?: { skipApiKey?: boolean; apiKeyOverride?: string },
   ): Promise<T> {
     await this.resolvePayoutCreds();
     const headers = new Headers(options.headers ?? undefined);
-    if (this.apiKey) {
-      headers.set('x-api-key', this.apiKey);
+    const key = flags?.skipApiKey
+      ? ''
+      : flags?.apiKeyOverride || this.apiKey;
+    if (key) {
+      headers.set('x-api-key', key);
+    } else {
+      headers.delete('x-api-key');
+    }
+    if (!headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json');
     }
     const init: RequestInit = { ...options, headers };
     let res: Response;
@@ -438,21 +453,7 @@ export class NowPaymentsService {
     const body = await res.json().catch(() => ({}));
 
     if (!res.ok) {
-      const payload = body as {
-        message?: string;
-        status?: boolean;
-        code?: string;
-      };
-      let message =
-        payload.message ||
-        payload.code ||
-        `NOWPayments request failed (${res.status})`;
-
-      if (res.status === 429) {
-        message =
-          'Payment service is temporarily busy — wait 30 seconds and try again';
-      }
-
+      const message = this.friendlyNowpaymentsError(path, res.status, body);
       this.logger.error(`NOWPayments error ${path}: ${JSON.stringify(body)}`);
       throw new NowPaymentsApiError(message, res.status, body);
     }
@@ -460,15 +461,84 @@ export class NowPaymentsService {
     return body as T;
   }
 
+  private rawNowpaymentsMessage(body: unknown): string {
+    if (!body || typeof body !== 'object') return '';
+    const payload = body as Record<string, unknown>;
+    const nested =
+      payload.error && typeof payload.error === 'object'
+        ? (payload.error as Record<string, unknown>)
+        : null;
+    const parts = [
+      payload.message,
+      payload.code,
+      payload.error,
+      nested?.message,
+      nested?.code,
+    ]
+      .filter((v) => typeof v === 'string' && v.trim())
+      .map((v) => String(v).trim());
+    return parts[0] ?? '';
+  }
+
+  private friendlyNowpaymentsError(
+    path: string,
+    status: number,
+    body: unknown,
+  ): string {
+    const raw = this.rawNowpaymentsMessage(body);
+    const blob = `${path} ${status} ${raw} ${JSON.stringify(body)}`.toLowerCase();
+
+    if (status === 429) {
+      return 'Payment service is temporarily busy — wait 30 seconds and try again';
+    }
+
+    if (path.startsWith('/auth')) {
+      return (
+        raw ||
+        `NOWPayments payout login failed (${status}). Deposits can work with only an API key; withdrawals also need this account’s email and password, with 2FA off for API payouts.`
+      );
+    }
+
+    if (status === 403 && path.startsWith('/payout')) {
+      if (/invalid ip|ip address/i.test(blob)) {
+        return 'NOWPayments blocked this payout because the solo-api IP is not whitelisted.';
+      }
+      return (
+        raw ||
+        'NOWPayments rejected the payout (403). Use the secret API key (not the public key) from the same account as the payout email/password. Do not send a TRC20 memo. 2FA on API payouts must be off.'
+      );
+    }
+
+    if (/invalid ip|access denied|not whitelisted|whitelist/i.test(raw)) {
+      if (/invalid ip|ip address/i.test(blob)) {
+        return 'NOWPayments blocked this payout because the solo-api IP is not whitelisted. In NOWPayments: Settings → Payments → IP addresses, add Render outbound IPv4 and IPv6, or email whitelist@nowpayments.io to turn IP whitelist off.';
+      }
+      if (/wallet|address/i.test(blob) && /whitelist/i.test(blob)) {
+        return 'NOWPayments blocked this payout because the destination wallet is not on the payout whitelist. Add it under Mass Payouts → Whitelist, or ask NOWPayments to disable wallet whitelisting.';
+      }
+    }
+
+    if (status === 401 || /invalid token|unauthorized|jwt/i.test(raw)) {
+      return 'NOWPayments rejected the payout login. Check that the secret API key, email, and password all belong to the same NOWPayments account.';
+    }
+
+    if (/2fa|verification_code|verify/i.test(blob)) {
+      return 'NOWPayments created the payout but 2FA is still required. Turn payout 2FA off with whitelist@nowpayments.io, or confirm the batch in the NOWPayments dashboard.';
+    }
+
+    return raw || `NOWPayments request failed (${status})`;
+  }
+
   private async request<T>(
     path: string,
     options: RequestInit = {},
+    flags?: { skipApiKey?: boolean; apiKeyOverride?: string },
   ): Promise<T> {
     let lastError: NowPaymentsApiError | undefined;
 
     for (let attempt = 0; attempt <= NowPaymentsService.MAX_429_RETRIES; attempt++) {
       try {
-        return await this.requestOnce<T>(path, options);
+        return await this.requestOnce<T>(path, options, flags);
       } catch (err) {
         if (!(err instanceof NowPaymentsApiError)) throw err;
         lastError = err;
@@ -663,15 +733,23 @@ export class NowPaymentsService {
       );
     }
 
-    const result = await this.request<{ token: string }>('/auth', {
-      method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify({ email, password }),
-    });
+    const result = await this.request<{ token: string }>(
+      '/auth',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      },
+      { skipApiKey: true },
+    );
+
+    if (!result?.token) {
+      throw new Error('NOWPayments payout login did not return a token');
+    }
 
     this.payoutToken = result.token;
     this.payoutTokenExpiry = Date.now() + 4 * 60 * 1000;
-    return result.token;
+    return this.payoutToken;
   }
 
   async createPayout(params: {
@@ -681,25 +759,99 @@ export class NowPaymentsService {
     extraId?: string;
     ipnCallbackUrl?: string;
   }) {
+    const { privateApiKey } = await this.resolvePayoutCreds();
+    if (!privateApiKey) {
+      throw new Error(
+        'Withdrawals need the secret NOWPayments API key, not the public key. Deposits can work with the public key; payouts cannot.',
+      );
+    }
     const token = await this.getPayoutAuthToken();
     const withdrawal: Record<string, unknown> = {
       address: params.address,
       currency: params.currency,
       amount: params.amount,
     };
-    if (params.extraId) withdrawal.extra_id = params.extraId;
+    if (params.extraId && !/^usdt/i.test(params.currency)) {
+      withdrawal.extra_id = params.extraId;
+    }
     if (params.ipnCallbackUrl) withdrawal.ipn_callback_url = params.ipnCallbackUrl;
 
-    return this.request<{ id: string; withdrawals: unknown[] }>('/payout', {
-      method: 'POST',
-      headers: this.headers({ Authorization: `Bearer ${token}` }),
-      body: JSON.stringify({
-        ...(params.ipnCallbackUrl
-          ? { ipn_callback_url: params.ipnCallbackUrl }
-          : {}),
-        withdrawals: [withdrawal],
-      }),
-    });
+    return this.request<{ id: string; withdrawals: unknown[] }>(
+      '/payout',
+      {
+        method: 'POST',
+        headers: this.headers({ Authorization: `Bearer ${token}` }),
+        body: JSON.stringify({
+          ...(params.ipnCallbackUrl
+            ? { ipn_callback_url: params.ipnCallbackUrl }
+            : {}),
+          withdrawals: [withdrawal],
+        }),
+      },
+      { apiKeyOverride: privateApiKey },
+    );
+  }
+
+  async probePayoutConnection() {
+    this.invalidatePayoutCredsCache();
+    const creds = await this.resolvePayoutCreds();
+    const result: {
+      source: NowPaymentsCredsSource;
+      privateApiKeySet: boolean;
+      publicKeySet: boolean;
+      payoutEmailSet: boolean;
+      payoutPasswordSet: boolean;
+      auth: { ok: boolean; error?: string };
+      balance: { ok: boolean; error?: string };
+    } = {
+      source: creds.source,
+      privateApiKeySet: Boolean(creds.privateApiKey),
+      publicKeySet: Boolean(creds.publicKey),
+      payoutEmailSet: Boolean(creds.email),
+      payoutPasswordSet: Boolean(creds.password),
+      auth: { ok: false },
+      balance: { ok: false },
+    };
+
+    try {
+      const token = await this.getPayoutAuthToken();
+      result.auth = { ok: Boolean(token) };
+    } catch (err) {
+      result.auth = {
+        ok: false,
+        error: err instanceof Error ? err.message : 'Payout login failed',
+      };
+      return result;
+    }
+
+    if (!creds.privateApiKey) {
+      result.balance = {
+        ok: false,
+        error:
+          'Secret API key is missing. The public key is enough for deposits, not for withdrawals.',
+      };
+      return result;
+    }
+
+    try {
+      await this.request(
+        '/balance',
+        {
+          method: 'GET',
+          headers: this.headers({
+            Authorization: `Bearer ${this.payoutToken ?? ''}`,
+          }),
+        },
+        { apiKeyOverride: creds.privateApiKey },
+      );
+      result.balance = { ok: true };
+    } catch (err) {
+      result.balance = {
+        ok: false,
+        error: err instanceof Error ? err.message : 'Balance check failed',
+      };
+    }
+    return result;
   }
 
   async verifyPayout(payoutId: string, verificationCode: string) {
