@@ -64,7 +64,7 @@ export function Mt5PositionModifyModal({
     setVolumeText(((openVolume * next) / 100).toFixed(2));
   }
 
-  async function run(kind: typeof busy, fn: () => Promise<void>) {
+  async function run(kind: typeof busy, fn: () => Promise<unknown>) {
     if (!id || !canManage) return;
     setBusy(kind);
     setError(null);

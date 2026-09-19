@@ -913,7 +913,6 @@ export function Mt5ChartTerminal({
                 const setup = trade.signalId
                   ? setups.find((s) => s.signalId === trade.signalId)
                   : undefined;
-                const active = symbol === selectedSymbol;
                 const ticket = trade.positionId ?? trade.orderId ?? "—";
                 const typeLabel =
                   kind === "limit"
