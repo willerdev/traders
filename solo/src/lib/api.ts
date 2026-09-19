@@ -681,6 +681,31 @@ class ApiClient {
         `/signals/mt5/positions/${encodeURIComponent(positionId)}/close`,
         { method: "POST" },
       ),
+    partialCloseMt5Position: (
+      positionId: string,
+      body: { volume?: number; percent?: number },
+    ) =>
+      this.request<{
+        ok: boolean;
+        positionId: string;
+        status?: string;
+        volume?: number;
+        remainingVolume?: number;
+      }>(
+        `/signals/mt5/positions/${encodeURIComponent(positionId)}/partial-close`,
+        { method: "POST", body: JSON.stringify(body) },
+      ),
+    setMt5PositionBreakeven: (positionId: string) =>
+      this.request<{
+        ok: boolean;
+        positionId: string;
+        status?: string;
+        stopLoss?: number;
+        message?: string;
+      }>(
+        `/signals/mt5/positions/${encodeURIComponent(positionId)}/breakeven`,
+        { method: "POST" },
+      ),
     modifyMt5PositionStops: (
       positionId: string,
       stops: { stopLoss?: number; takeProfit?: number },

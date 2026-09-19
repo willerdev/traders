@@ -1855,11 +1855,13 @@ export class MetaApiService {
     volume: number,
   ): Promise<MetaApiTradeResult> {
     const ready = await this.ensureAccountReady(account.id);
-    return this.submitTrade(ready, {
+    const result = await this.submitTrade(ready, {
       actionType: 'POSITION_CLOSE_ID',
       positionId,
       volume,
     });
+    this.terminalSnapshotCache.delete(this.snapshotCacheKey('history', account.id));
+    return result;
   }
 
   async modifyPositionStops(

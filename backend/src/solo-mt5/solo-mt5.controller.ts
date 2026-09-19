@@ -11,6 +11,7 @@ import {
 import { JwtAuthGuard, SoloTradingAdminGuard } from '../auth/guards';
 import {
   ModifyMt5PositionStopsDto,
+  PartialCloseMt5PositionDto,
   PlaceMt5MarketOrderDto,
 } from '../common/dto';
 import { SoloMt5Service } from './solo-mt5.service';
@@ -126,6 +127,25 @@ export class SoloMt5Controller {
     @Param('positionId') positionId: string,
   ) {
     return this.mt5.closePosition(req.user.id, positionId);
+  }
+
+  @Post('mt5/positions/:positionId/partial-close')
+  @UseGuards(SoloTradingAdminGuard)
+  partialClose(
+    @Request() req: { user: { id: string } },
+    @Param('positionId') positionId: string,
+    @Body() dto: PartialCloseMt5PositionDto,
+  ) {
+    return this.mt5.partialClose(req.user.id, positionId, dto);
+  }
+
+  @Post('mt5/positions/:positionId/breakeven')
+  @UseGuards(SoloTradingAdminGuard)
+  setBreakeven(
+    @Request() req: { user: { id: string } },
+    @Param('positionId') positionId: string,
+  ) {
+    return this.mt5.setBreakeven(req.user.id, positionId);
   }
 
   @Post('mt5/positions/:positionId/modify-stops')

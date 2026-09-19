@@ -53,6 +53,7 @@ import { Loader2 } from "lucide-react";
 import { prefetchChartBarCache } from "@/lib/chart-bar-cache";
 import { loadChartData, isPlausibleQuotePrice } from "@/components/charts/chart-data.service";
 import { Mt5PlaceOrderModal } from "@/components/mt5/mt5-place-order-modal";
+import { Mt5PositionModifyModal } from "@/components/mt5/mt5-position-modify-modal";
 import {
   ChartAlertToastStack,
   ChartToolsToolbar,
@@ -140,6 +141,8 @@ export function Mt5ChartTerminal({
   const chartRef = useRef<LightweightChartHandle>(null);
   const [orderModal, setOrderModal] = useState<"BUY" | "SELL" | null>(null);
   const [lotSize, setLotSize] = useState("0.01");
+  const [focusedTrade, setFocusedTrade] = useState<UserMt5Trade | null>(null);
+  const [modifyOpen, setModifyOpen] = useState(false);
   const chartAreaRef = useRef<HTMLDivElement>(null);
   const splitRef = useRef<HTMLDivElement>(null);
   const [panelFrac, setPanelFrac] = useState(ACCOUNT_PANEL_FRAC);
@@ -247,6 +250,21 @@ export function Mt5ChartTerminal({
     return rows;
   }, [runningTrades, limitTrades]);
 
+  useEffect(() => {
+    if (!focusedTrade) return;
+    const id = focusedTrade.positionId ?? focusedTrade.orderId;
+    if (!id) return;
+    const next = [...runningTrades, ...limitTrades].find(
+      (t) => (t.positionId ?? t.orderId) === id,
+    );
+    if (!next) {
+      setFocusedTrade(null);
+      setModifyOpen(false);
+      return;
+    }
+    if (next !== focusedTrade) setFocusedTrade(next);
+  }, [runningTrades, limitTrades, focusedTrade]);
+
   const symbolOrders = useMemo(
     () => openOrders.filter((o) => o.symbol === selectedSymbol),
     [openOrders, selectedSymbol],
@@ -288,6 +306,8 @@ export function Mt5ChartTerminal({
           showOrders: chartSettings.showOrders,
           showLimits: chartSettings.showLimits,
           showSlTp: chartSettings.showSlTp,
+          focusPositionId:
+            focusedTrade?.positionId ?? focusedTrade?.orderId ?? null,
         },
       }),
     [
@@ -300,6 +320,8 @@ export function Mt5ChartTerminal({
       chartSettings.showOrders,
       chartSettings.showLimits,
       chartSettings.showSlTp,
+      focusedTrade?.positionId,
+      focusedTrade?.orderId,
     ],
   );
 
@@ -364,6 +386,16 @@ export function Mt5ChartTerminal({
 
   function handleSymbolChange(symbol: string) {
     onSelectSymbol(symbol);
+    if (focusedTrade && focusedTrade.symbol !== symbol) {
+      setFocusedTrade(null);
+      setModifyOpen(false);
+    }
+  }
+
+  function openPosition(trade: UserMt5Trade) {
+    onSelectSymbol(trade.symbol);
+    setFocusedTrade(trade);
+    setModifyOpen(true);
   }
 
   function handleAddSymbol(symbol: string) {
@@ -887,15 +919,23 @@ export function Mt5ChartTerminal({
                   kind === "limit"
                     ? `${trade.direction.toLowerCase()} limit`
                     : trade.direction.toLowerCase();
+                const focusedId =
+                  focusedTrade?.positionId ?? focusedTrade?.orderId;
+                const rowId = trade.positionId ?? trade.orderId;
+                const active = Boolean(
+                  focusedId && rowId && focusedId === rowId,
+                );
 
                 return (
                   <div
                     key={key}
                     role="button"
                     tabIndex={0}
-                    onClick={() => handleSymbolChange(symbol)}
+                    onClick={() => openPosition(trade)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") handleSymbolChange(symbol);
+                      if (e.key === "Enter" || e.key === " ") {
+                        openPosition(trade);
+                      }
                     }}
                     className={cn(
                       "grid grid-cols-[1.1fr_0.75fr_0.55fr_0.45fr_0.65fr_0.65fr_0.6fr_0.6fr_0.65fr_0.55fr] gap-2 border-b border-[var(--mt5-divider)] px-3 py-2 text-xs tabular-nums transition-colors hover:bg-[var(--mt5-row-hover)]",
@@ -941,18 +981,16 @@ export function Mt5ChartTerminal({
                           Setup
                         </button>
                       )}
-                      {onCloseTrade && canManageTrades && (
-                        <button
-                          type="button"
-                          className="font-semibold text-[#ff5252] hover:underline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onCloseTrade(trade);
-                          }}
-                        >
-                          Close
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        className="font-semibold text-primary hover:underline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openPosition(trade);
+                        }}
+                      >
+                        Modify
+                      </button>
                     </span>
                   </div>
                 );
@@ -1016,6 +1054,16 @@ export function Mt5ChartTerminal({
           }}
         />
       )}
+      <Mt5PositionModifyModal
+        trade={focusedTrade}
+        open={modifyOpen}
+        canManage={canManageTrades}
+        onClose={() => setModifyOpen(false)}
+        onChanged={() => {
+          onStopsUpdated?.();
+          onTradePlaced?.();
+        }}
+      />
     </div>
   );
 }

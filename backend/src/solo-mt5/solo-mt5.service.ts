@@ -29,6 +29,7 @@ import {
 } from '../common/pip.util';
 import {
   ModifyMt5PositionStopsDto,
+  PartialCloseMt5PositionDto,
   PlaceMt5MarketOrderDto,
 } from '../common/dto';
 
@@ -721,6 +722,127 @@ export class SoloMt5Service {
     return this.withCloud(userId, () => this.loadClosePosition(userId, positionId));
   }
 
+  async partialClose(
+    userId: string,
+    positionId: string,
+    dto: PartialCloseMt5PositionDto,
+  ) {
+    return this.withCloud(userId, () =>
+      this.loadPartialClose(userId, positionId, dto),
+    );
+  }
+
+  async setBreakeven(userId: string, positionId: string) {
+    return this.withCloud(userId, () =>
+      this.loadSetBreakeven(userId, positionId),
+    );
+  }
+
+  private roundVolume(
+    volume: number,
+    spec: { volumeStep: number; minVolume: number; maxVolume: number },
+  ) {
+    const step = spec.volumeStep > 0 ? spec.volumeStep : 0.01;
+    const min = spec.minVolume > 0 ? spec.minVolume : step;
+    const max = spec.maxVolume > 0 ? spec.maxVolume : volume;
+    const steps = Math.round(volume / step);
+    const rounded = Number((steps * step).toFixed(8));
+    if (rounded < min) return min;
+    if (rounded > max) return max;
+    return rounded;
+  }
+
+  private async loadPartialClose(
+    userId: string,
+    positionId: string,
+    dto: PartialCloseMt5PositionDto,
+  ) {
+    const ctx = await this.requireAccount(userId);
+    const positions = await this.metaApi.getPositions(ctx.account);
+    const pos = positions.find((p) => p.id === positionId);
+    if (!pos) {
+      throw new NotFoundException('Open position not found');
+    }
+    const spec = await this.metaApi.getSymbolSpecification(
+      ctx.account,
+      pos.symbol,
+    );
+    let requested =
+      dto.volume != null && Number.isFinite(dto.volume)
+        ? dto.volume
+        : dto.percent != null && Number.isFinite(dto.percent)
+          ? (pos.volume * dto.percent) / 100
+          : NaN;
+    if (!Number.isFinite(requested) || requested <= 0) {
+      throw new BadRequestException(
+        'Provide volume or percent (1–100) to close',
+      );
+    }
+    requested = this.roundVolume(requested, spec);
+    if (requested >= pos.volume - spec.volumeStep / 2) {
+      await this.metaApi.closePositionById(ctx.account, positionId);
+      return {
+        ok: true,
+        positionId,
+        status: 'closed',
+        volume: pos.volume,
+        remainingVolume: 0,
+      };
+    }
+    await this.metaApi.closePositionPartialById(
+      ctx.account,
+      positionId,
+      requested,
+    );
+    return {
+      ok: true,
+      positionId,
+      status: 'partial',
+      volume: requested,
+      remainingVolume: Number((pos.volume - requested).toFixed(8)),
+    };
+  }
+
+  private async loadSetBreakeven(userId: string, positionId: string) {
+    const ctx = await this.requireAccount(userId);
+    const positions = await this.metaApi.getPositions(ctx.account);
+    const pos = positions.find((p) => p.id === positionId);
+    if (!pos) {
+      throw new NotFoundException('Open position not found');
+    }
+    const spec = await this.metaApi.getSymbolSpecification(
+      ctx.account,
+      pos.symbol,
+    );
+    const digits = spec.digits ?? 5;
+    const tick = spec.tickSize > 0 ? spec.tickSize : 10 ** -digits;
+    const be = roundToSymbolDigits(pos.openPrice, digits);
+    const currentSl =
+      pos.stopLoss != null ? roundToSymbolDigits(pos.stopLoss, digits) : null;
+    if (currentSl != null && Math.abs(currentSl - be) < tick / 2) {
+      return {
+        ok: true,
+        positionId,
+        status: 'already_set',
+        stopLoss: currentSl,
+        message: 'Stop loss is already at breakeven',
+      };
+    }
+    await this.metaApi.modifyPositionStops(ctx.account, {
+      positionId,
+      stopLoss: be,
+      takeProfit: pos.takeProfit,
+      specDigits: digits,
+    });
+    return {
+      ok: true,
+      positionId,
+      status: 'set',
+      stopLoss: be,
+      message: `Stop loss moved to breakeven (${be})`,
+    };
+  }
+
   private async loadClosePosition(userId: string, positionId: string) {
     const ctx = await this.requireAccount(userId);
     const positions = await this.metaApi.getPositions(ctx.account);
@@ -988,6 +1110,7 @@ export class SoloMt5Service {
       canClose: true,
       canAdjustStops: true,
       canPartialClose: pos.volume > 0,
+      canSetBreakeven: true,
       executionLabel: 'Running on your linked MT5',
     };
   }

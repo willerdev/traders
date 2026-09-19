@@ -364,6 +364,7 @@ export type Mt5ChartOverlayOptions = {
   showOrders?: boolean;
   showLimits?: boolean;
   showSlTp?: boolean;
+  focusPositionId?: string | null;
 };
 
 export function buildMt5ChartOverlays(input: {
@@ -393,10 +394,18 @@ export function buildMt5ChartOverlays(input: {
   const showOrders = input.options?.showOrders !== false;
   const showLimits = input.options?.showLimits !== false;
   const showSlTp = input.options?.showSlTp !== false;
+  const focusId = input.options?.focusPositionId?.trim() || null;
 
   if (showOrders) {
     for (const trade of input.runningTrades) {
       if (normalizeSymbol(trade.symbol) !== sym) continue;
+      if (
+        focusId &&
+        trade.positionId !== focusId &&
+        trade.orderId !== focusId
+      ) {
+        continue;
+      }
       running += 1;
       if (trade.signalId) coveredSignals.add(trade.signalId);
       addTradeOverlay(lines, marks, seenLines, trade, "running", barTime);

@@ -797,6 +797,21 @@ export class ModifyMt5PositionStopsDto {
   takeProfit?: number;
 }
 
+export class PartialCloseMt5PositionDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.01)
+  volume?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  percent?: number;
+}
+
 export class PlaceMt5MarketOrderDto {
   @IsString()
   @MaxLength(32)
