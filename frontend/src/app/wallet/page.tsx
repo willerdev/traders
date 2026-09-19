@@ -161,6 +161,8 @@ export default function WalletPage() {
           <WalletPendingWithdrawals onCancelled={() => void refresh()} />
           <WalletWithdrawFeeNotice
             feeUsdt={summary.withdrawalFeeUsdt ?? 3}
+            maxWithdrawUsdt={summary.maxWithdrawUsdt}
+            maintenance={summary.withdrawMaintenance}
             schedule={{
               scheduleEnabled: summary.withdrawalScheduleEnabled,
               preferredSchedule: summary.withdrawalPreferredSchedule,
@@ -219,6 +221,8 @@ export default function WalletPage() {
         open={withdrawOpen}
         onClose={() => setWithdrawOpen(false)}
         availableBalance={summary?.availableBalance ?? 0}
+        maxWithdrawUsdt={summary?.maxWithdrawUsdt}
+        maintenance={summary?.withdrawMaintenance}
         feeUsdt={summary?.withdrawalFeeUsdt ?? 3}
         schedule={
           summary

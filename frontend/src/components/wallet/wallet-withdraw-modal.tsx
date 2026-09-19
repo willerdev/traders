@@ -30,6 +30,8 @@ export function WalletWithdrawModal({
   open,
   onClose,
   availableBalance,
+  maxWithdrawUsdt,
+  maintenance,
   feeUsdt = WALLET_WITHDRAWAL_FEE_USD,
   schedule,
   onComplete,
@@ -37,6 +39,12 @@ export function WalletWithdrawModal({
   open: boolean;
   onClose: () => void;
   availableBalance: number;
+  maxWithdrawUsdt?: number;
+  maintenance?: {
+    maxFraction: number;
+    feesWaived: boolean;
+    message: string;
+  } | null;
   feeUsdt?: number;
   schedule?: WithdrawalScheduleInfo | null;
   onComplete?: () => void;
@@ -102,6 +110,10 @@ export function WalletWithdrawModal({
   const selectedWallet = wallets.find((w) => w.id === selectedWalletId);
   const isMomo = isMomoNetwork(selectedWallet?.network);
   const gross = Number(amount);
+  const withdrawCap =
+    maxWithdrawUsdt != null && Number.isFinite(maxWithdrawUsdt)
+      ? Math.min(availableBalance, maxWithdrawUsdt)
+      : availableBalance;
   const fee = feeUsdt ?? WALLET_WITHDRAWAL_FEE_USD;
   const preview =
     Number.isFinite(gross) && gross > 0
@@ -260,7 +272,7 @@ export function WalletWithdrawModal({
     Boolean(selectedWalletId) &&
     Number.isFinite(gross) &&
     gross >= minWithdraw &&
-    gross <= availableBalance;
+    gross <= withdrawCap;
 
   return (
     <>
@@ -413,6 +425,15 @@ export function WalletWithdrawModal({
                   <strong className="text-white">
                     {formatCurrency(availableBalance)}
                   </strong>
+                  {withdrawCap < availableBalance ? (
+                    <>
+                      {" "}
+                      · max now{" "}
+                      <strong className="text-amber-200">
+                        {formatCurrency(withdrawCap)}
+                      </strong>
+                    </>
+                  ) : null}
                 </p>
                 <div>
                   <label className="mb-1 block text-xs text-gray-400">
@@ -420,7 +441,7 @@ export function WalletWithdrawModal({
                   </label>
                   <Input
                     type="number"
-                    max={availableBalance}
+                    max={withdrawCap}
                     min={minWithdraw}
                     step={0.01}
                     value={amount}
@@ -430,6 +451,8 @@ export function WalletWithdrawModal({
                     amount={amount}
                     feeUsdt={fee}
                     schedule={schedule}
+                    maxWithdrawUsdt={maxWithdrawUsdt}
+                    maintenance={maintenance}
                     className="mt-2"
                   />
                 </div>

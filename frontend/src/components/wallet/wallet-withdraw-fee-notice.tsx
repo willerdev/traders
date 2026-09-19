@@ -59,11 +59,19 @@ export function WalletWithdrawFeeNotice({
   amount,
   feeUsdt = WALLET_WITHDRAWAL_FEE_USD,
   schedule,
+  maxWithdrawUsdt,
+  maintenance,
   className = "",
 }: {
   amount?: string | number;
   feeUsdt?: number;
   schedule?: WithdrawalScheduleInfo | null;
+  maxWithdrawUsdt?: number;
+  maintenance?: {
+    maxFraction: number;
+    feesWaived: boolean;
+    message: string;
+  } | null;
   className?: string;
 }) {
   const fee = feeUsdt ?? WALLET_WITHDRAWAL_FEE_USD;
@@ -93,6 +101,29 @@ export function WalletWithdrawFeeNotice({
         timeZone: "UTC",
       })
     : null;
+
+  if (maintenance) {
+    return (
+      <div
+        className={`space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-50 ${className}`}
+      >
+        <p>{maintenance.message}</p>
+        {maxWithdrawUsdt != null ? (
+          <p>
+            Maximum you can request now:{" "}
+            <strong>{formatCurrency(maxWithdrawUsdt)}</strong>
+            {maintenance.feesWaived ? " · withdrawal fees waived" : null}.
+          </p>
+        ) : null}
+        {net != null && gross != null ? (
+          <p>
+            Requested {formatCurrency(gross)} → you receive{" "}
+            <strong>{formatCurrency(net)}</strong>.
+          </p>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div

@@ -2082,6 +2082,12 @@ export interface WalletSummary {
   withdrawalInPreferredWindow?: boolean;
   withdrawalNextPreferredWindowAt?: string;
   withdrawalPreferredWindowLabel?: string;
+  maxWithdrawUsdt?: number;
+  withdrawMaintenance?: {
+    maxFraction: number;
+    feesWaived: boolean;
+    message: string;
+  } | null;
   vipActive?: boolean;
   autoWithdrawEligible?: boolean;
   activePlan: {
