@@ -481,17 +481,51 @@ export class SoloMt5Service {
   }
 
   async running(userId: string) {
-    const terminal = await this.terminal(userId);
-    const trades = (terminal.trades ?? []).filter((t) => t.kind === 'running');
+    return this.withCloud(userId, () => this.loadRunning(userId));
+  }
+
+  private async loadRunning(userId: string) {
+    const empty = {
+      trades: [] as ReturnType<SoloMt5Service['mapPosition']>[],
+      account: undefined as
+        | {
+            startingBalance: number;
+            currency: string;
+            realizedProfit: number;
+            floatingProfit: number;
+            totalProfit: number;
+            equity: number;
+          }
+        | undefined,
+      accountSource: 'linked_live' as const,
+      stats: { runningCount: 0, floatingProfit: 0 },
+      refreshedAt: new Date().toISOString(),
+    };
+    if (!this.metaApi.isConfigured) return empty;
+    const ctx = await this.readyAccountOrNull(userId);
+    if (!ctx) return empty;
+    const [information, positions] = await Promise.all([
+      this.metaApi.getAccountInformation(ctx.account),
+      this.metaApi.getPositions(ctx.account),
+    ]);
+    const trades = positions.map((p) => this.mapPosition(p));
+    const floatingProfit = trades.reduce((sum, t) => sum + (t.profit ?? 0), 0);
     return {
       trades,
-      account: terminal.account,
-      accountSource: terminal.accountSource,
+      accountSource: 'linked_live' as const,
+      account: {
+        startingBalance: information.balance - floatingProfit,
+        currency: information.currency || 'USD',
+        realizedProfit: 0,
+        floatingProfit,
+        totalProfit: floatingProfit,
+        equity: information.equity,
+      },
       stats: {
         runningCount: trades.length,
-        floatingProfit: terminal.stats.floatingProfit,
+        floatingProfit,
       },
-      refreshedAt: terminal.refreshedAt,
+      refreshedAt: new Date().toISOString(),
     };
   }
 

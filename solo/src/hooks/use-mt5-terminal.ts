@@ -10,6 +10,10 @@ import {
 } from "@/lib/mt5-cache";
 import { useMetaApiLive } from "@/hooks/use-metaapi-live";
 
+const RUNNING_POLL_MS = 2500;
+const QUOTES_POLL_MS = 5000;
+const TERMINAL_POLL_MS = 20000;
+
 type Tab = "quotes" | "chart" | "trades" | "history" | "setups";
 
 function bootstrapFromCache(userId: string | undefined) {
@@ -33,6 +37,7 @@ export function useMt5Terminal(
   const [error, setError] = useState<string | null>(null);
   const dataRef = useRef<UserMt5Terminal | null>(null);
   const cacheHydratedRef = useRef(false);
+  const runningInFlight = useRef(false);
 
   useEffect(() => {
     dataRef.current = data;
@@ -90,6 +95,8 @@ export function useMt5Terminal(
   );
 
   const loadRunning = useCallback(async () => {
+    if (runningInFlight.current) return;
+    runningInFlight.current = true;
     try {
       const res = await api.signals.mt5Running();
       const running = res.trades;
@@ -116,6 +123,8 @@ export function useMt5Terminal(
       });
     } catch {
       /* keep frozen snapshot on poll errors */
+    } finally {
+      runningInFlight.current = false;
     }
   }, [userId]);
 
@@ -154,8 +163,8 @@ export function useMt5Terminal(
     if (!canLoad || !live || (tab !== "trades" && tab !== "chart")) return;
     const start = window.setTimeout(() => {
       void loadRunning();
-    }, 2500);
-    const id = window.setInterval(() => void loadRunning(), 8000);
+    }, 0);
+    const id = window.setInterval(() => void loadRunning(), RUNNING_POLL_MS);
     return () => {
       window.clearTimeout(start);
       window.clearInterval(id);
@@ -167,7 +176,7 @@ export function useMt5Terminal(
     const start = window.setTimeout(() => {
       void loadQuotes();
     }, 4000);
-    const id = window.setInterval(() => void loadQuotes(), 8000);
+    const id = window.setInterval(() => void loadQuotes(), QUOTES_POLL_MS);
     return () => {
       window.clearTimeout(start);
       window.clearInterval(id);
@@ -176,7 +185,7 @@ export function useMt5Terminal(
 
   useEffect(() => {
     if (!canLoad || !live || tab !== "chart") return;
-    const id = window.setInterval(() => void load({ background: true }), 20000);
+    const id = window.setInterval(() => void load({ background: true }), TERMINAL_POLL_MS);
     return () => window.clearInterval(id);
   }, [canLoad, live, tab, load]);
 

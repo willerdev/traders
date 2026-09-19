@@ -229,6 +229,7 @@ export class MetaApiService {
     string,
     { expiresAt: number; value: unknown }
   >();
+  private readonly snapshotInflight = new Map<string, Promise<unknown>>();
   private readonly requestToken = new AsyncLocalStorage<string>();
 
   constructor(
@@ -290,6 +291,12 @@ export class MetaApiService {
     return `${kind}:${accountId}:${this.activeToken().slice(-12)}`;
   }
 
+  private invalidateAccountSnapshots(accountId: string) {
+    for (const kind of ['positions', 'orders', 'info', 'history'] as const) {
+      this.terminalSnapshotCache.delete(this.snapshotCacheKey(kind, accountId));
+    }
+  }
+
   private async cachedSnapshot<T>(
     key: string,
     ttlMs: number,
@@ -299,17 +306,26 @@ export class MetaApiService {
     if (hit && hit.expiresAt > Date.now()) {
       return hit.value as T;
     }
-    try {
-      const value = await loader();
-      this.terminalSnapshotCache.set(key, {
-        value,
-        expiresAt: Date.now() + ttlMs,
-      });
-      return value;
-    } catch (err) {
-      if (hit) return hit.value as T;
-      throw err;
-    }
+    const pending = this.snapshotInflight.get(key);
+    if (pending) return pending as Promise<T>;
+
+    const task = (async () => {
+      try {
+        const value = await loader();
+        this.terminalSnapshotCache.set(key, {
+          value,
+          expiresAt: Date.now() + ttlMs,
+        });
+        return value;
+      } catch (err) {
+        if (hit) return hit.value as T;
+        throw err;
+      } finally {
+        this.snapshotInflight.delete(key);
+      }
+    })();
+    this.snapshotInflight.set(key, task);
+    return task;
   }
 
   runWithToken<T>(token: string, fn: () => Promise<T>): Promise<T> {
@@ -974,7 +990,7 @@ export class MetaApiService {
   ): Promise<MetaApiAccountInformation> {
     return this.cachedSnapshot(
       this.snapshotCacheKey('info', account.id),
-      6_000,
+      2_000,
       () => this.fetchAccountInformation(account),
     );
   }
@@ -1035,7 +1051,7 @@ export class MetaApiService {
   async getPositions(account: MetaApiAccount): Promise<MetaApiPosition[]> {
     return this.cachedSnapshot(
       this.snapshotCacheKey('positions', account.id),
-      6_000,
+      2_000,
       () => this.fetchPositions(account),
     );
   }
@@ -1547,6 +1563,8 @@ export class MetaApiService {
         'The broker rejected this order. Please review your levels and try again.',
       );
     }
+
+    this.invalidateAccountSnapshots(account.id);
 
     return {
       numericCode: Number(body.numericCode ?? 0),
