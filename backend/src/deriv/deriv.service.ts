@@ -9,6 +9,7 @@ import { randomUUID } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveJwtSecret } from '../config/jwt-secret';
+import { resolveSoloSharedOwnerUserId } from '../common/solo-admin.util';
 import {
   decryptCredential,
   encryptCredential,
@@ -90,9 +91,18 @@ export class DerivService {
     return resolveJwtSecret(this.config.get<string>('JWT_SECRET'));
   }
 
+  private async ownerUserId(userId: string): Promise<string> {
+    const { ownerUserId } = await resolveSoloSharedOwnerUserId(
+      this.prisma,
+      userId,
+    );
+    return ownerUserId;
+  }
+
   async status(userId: string) {
+    const shared = await resolveSoloSharedOwnerUserId(this.prisma, userId);
     const user = await this.prisma.user.findUnique({
-      where: { id: userId },
+      where: { id: shared.ownerUserId },
       select: { derivApiTokenEnc: true, derivConnectedAt: true },
     });
     const connected = Boolean(user?.derivApiTokenEnc);
@@ -100,6 +110,8 @@ export class DerivService {
       connected,
       connectedAt: user?.derivConnectedAt?.toISOString() ?? null,
       tokenMasked: connected ? '••••••••' : null,
+      shared: shared.shared,
+      ownerEmail: shared.shared ? shared.ownerEmail : null,
     };
   }
 
@@ -116,8 +128,9 @@ export class DerivService {
         options[0]?.account_id || wallets[0]?.wallet_id || null;
 
       const enc = encryptCredential(trimmed, this.cryptoSecret());
+      const ownerId = await this.ownerUserId(userId);
       await this.prisma.user.update({
-        where: { id: userId },
+        where: { id: ownerId },
         data: { derivApiTokenEnc: enc, derivConnectedAt: new Date() },
       });
 
@@ -148,8 +161,9 @@ export class DerivService {
   }
 
   async disconnect(userId: string) {
+    const ownerId = await this.ownerUserId(userId);
     await this.prisma.user.update({
-      where: { id: userId },
+      where: { id: ownerId },
       data: { derivApiTokenEnc: null, derivConnectedAt: null },
     });
     return { connected: false };
@@ -175,8 +189,9 @@ export class DerivService {
 
   async cryptoWallets(userId: string) {
     try {
+      const ownerId = await this.ownerUserId(userId);
       const rows = await this.prisma.derivCryptoWallet.findMany({
-        where: { userId },
+        where: { userId: ownerId },
       });
       const deposit = rows.find((r) => r.purpose === 'DEPOSIT') ?? null;
       const withdraw = rows.find((r) => r.purpose === 'WITHDRAW') ?? null;
@@ -202,9 +217,10 @@ export class DerivService {
       throw new BadRequestException('That wallet address looks too short.');
     }
     try {
+      const ownerId = await this.ownerUserId(userId);
       const row = await this.prisma.derivCryptoWallet.upsert({
-        where: { userId_purpose: { userId, purpose } },
-        create: { userId, purpose, network, address, label },
+        where: { userId_purpose: { userId: ownerId, purpose } },
+        create: { userId: ownerId, purpose, network, address, label },
         update: { network, address, label },
       });
       const all = await this.cryptoWallets(userId);
@@ -225,8 +241,9 @@ export class DerivService {
     if (purpose !== 'DEPOSIT' && purpose !== 'WITHDRAW') {
       throw new BadRequestException('Purpose must be DEPOSIT or WITHDRAW.');
     }
+    const ownerId = await this.ownerUserId(userId);
     await this.prisma.derivCryptoWallet.deleteMany({
-      where: { userId, purpose },
+      where: { userId: ownerId, purpose },
     });
     return this.cryptoWallets(userId);
   }
@@ -494,8 +511,9 @@ export class DerivService {
     userId: string,
     fn: (client: DerivPatClient) => Promise<T>,
   ): Promise<T> {
+    const ownerId = await this.ownerUserId(userId);
     const user = await this.prisma.user.findUnique({
-      where: { id: userId },
+      where: { id: ownerId },
       select: { derivApiTokenEnc: true },
     });
     if (!user?.derivApiTokenEnc) {

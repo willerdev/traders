@@ -8,6 +8,7 @@ import {
 import { TradeDirection } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveJwtSecret } from '../config/jwt-secret';
+import { resolveSoloSharedOwnerUserId } from '../common/solo-admin.util';
 import {
   decryptCredential,
   encryptCredential,
@@ -61,9 +62,18 @@ export class SoloMt5Service {
     return `${t.slice(0, 4)}••••${t.slice(-2)}`;
   }
 
+  private async ownerUserId(userId: string): Promise<string> {
+    const { ownerUserId } = await resolveSoloSharedOwnerUserId(
+      this.prisma,
+      userId,
+    );
+    return ownerUserId;
+  }
+
   private async decryptCloudToken(userId: string): Promise<string | null> {
+    const ownerId = await this.ownerUserId(userId);
     const user = await this.prisma.user.findUnique({
-      where: { id: userId },
+      where: { id: ownerId },
       select: { metaApiTokenEnc: true },
     });
     if (!user?.metaApiTokenEnc) return null;
@@ -85,8 +95,9 @@ export class SoloMt5Service {
   }
 
   async cloudStatus(userId: string) {
+    const shared = await resolveSoloSharedOwnerUserId(this.prisma, userId);
     const user = await this.prisma.user.findUnique({
-      where: { id: userId },
+      where: { id: shared.ownerUserId },
       select: {
         metaApiTokenEnc: true,
         metaApiTokenSavedAt: true,
@@ -99,6 +110,8 @@ export class SoloMt5Service {
       connectedAt: user?.metaApiTokenSavedAt?.toISOString() ?? null,
       tokenMasked: connected ? '••••••••' : null,
       accountId: user?.metaApiAccountId ?? null,
+      shared: shared.shared,
+      ownerEmail: shared.shared ? shared.ownerEmail : null,
     };
   }
 
@@ -125,8 +138,9 @@ export class SoloMt5Service {
     }
 
     const enc = encryptCredential(trimmed, this.cryptoSecret());
+    const ownerId = await this.ownerUserId(userId);
     await this.prisma.user.update({
-      where: { id: userId },
+      where: { id: ownerId },
       data: { metaApiTokenEnc: enc, metaApiTokenSavedAt: new Date() },
     });
     return {
@@ -137,8 +151,9 @@ export class SoloMt5Service {
   }
 
   async disconnectCloudToken(userId: string) {
+    const ownerId = await this.ownerUserId(userId);
     await this.prisma.user.update({
-      where: { id: userId },
+      where: { id: ownerId },
       data: {
         metaApiTokenEnc: null,
         metaApiTokenSavedAt: null,
@@ -158,8 +173,9 @@ export class SoloMt5Service {
     const listed = await this.metaApi.runWithToken(token, () =>
       this.metaApi.listAccounts({ limit: 100 }),
     );
+    const ownerId = await this.ownerUserId(userId);
     const user = await this.prisma.user.findUnique({
-      where: { id: userId },
+      where: { id: ownerId },
       select: { metaApiAccountId: true },
     });
     const selectedId = user?.metaApiAccountId?.trim() || null;
@@ -209,8 +225,9 @@ export class SoloMt5Service {
       );
     }
 
+    const ownerId = await this.ownerUserId(userId);
     await this.prisma.user.update({
-      where: { id: userId },
+      where: { id: ownerId },
       data: {
         metaApiAccountId: account.id,
         mt5SyncActive: true,
@@ -1162,8 +1179,9 @@ export class SoloMt5Service {
   }
 
   private async linkedAccountId(userId: string): Promise<string | null> {
+    const ownerId = await this.ownerUserId(userId);
     const user = await this.prisma.user.findUnique({
-      where: { id: userId },
+      where: { id: ownerId },
       select: { metaApiAccountId: true },
     });
     return user?.metaApiAccountId?.trim() || null;

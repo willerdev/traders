@@ -15,11 +15,13 @@ import { api } from "@/lib/api";
 import { MetaApiTokenCard } from "@/components/mt5/metaapi-token-card";
 import { MetaApiAccountPicker } from "@/components/mt5/metaapi-account-picker";
 import { NowpaymentsPayoutLoginCard } from "@/components/wallet/nowpayments-payout-login-card";
+import { canManageSoloTrades } from "@/lib/solo-admin";
 
 export default function SettingsPage() {
   const { ready } = useRequireAuth();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
+  const canManage = canManageSoloTrades(user);
   const logout = useAuthStore((s) => s.logout);
   const theme = useThemeStore((s) => s.theme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
@@ -133,8 +135,9 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle>Monitor a MetaAPI account</CardTitle>
               <CardDescription>
-                Paste the account ID from the top of the card in app.metaapi.cloud.
-                You do not enter MT5 login or password.
+                {canManage
+                  ? "Paste the account ID from the top of the card in app.metaapi.cloud. You do not enter MT5 login or password."
+                  : "You are watching the same MetaAPI account the admin connected."}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -146,8 +149,9 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle>Monitor a MetaAPI account</CardTitle>
               <CardDescription>
-                Save a MetaAPI token first, then paste the Cloud account UUID
-                here to watch that terminal.
+                {canManage
+                  ? "Save a MetaAPI token first, then paste the Cloud account UUID here to watch that terminal."
+                  : "Waiting for the admin to connect MetaAPI. You will see the same live account once it is linked."}
               </CardDescription>
             </CardHeader>
           </Card>
@@ -168,9 +172,12 @@ export default function SettingsPage() {
           <CardContent className="space-y-3">
             {connected && (
               <p className="text-sm text-success">
-                Connected {masked ? `(${masked})` : ""}
+                {canManage
+                  ? `Connected ${masked ? `(${masked})` : ""}`
+                  : "Connected — live Deriv account shared from the admin"}
               </p>
             )}
+            {canManage ? (
             <form onSubmit={saveToken} className="space-y-2">
               <Label htmlFor="deriv-token">API token</Label>
               <Input
@@ -203,6 +210,13 @@ export default function SettingsPage() {
                 </Link>
               </div>
             </form>
+            ) : (
+              <Link href="/deriv">
+                <Button type="button" variant="ghost">
+                  Open Deriv
+                </Button>
+              </Link>
+            )}
             {derivMsg && <p className="text-sm text-success">{derivMsg}</p>}
             {derivErr && <p className="text-sm text-danger">{derivErr}</p>}
           </CardContent>

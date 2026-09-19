@@ -9,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DerivCryptoWallets } from "@/components/deriv/deriv-crypto-wallets";
+import { useAuthStore } from "@/stores/auth";
+import { canManageSoloTrades } from "@/lib/solo-admin";
 
 function money(n: number, currency: string) {
   return `${n.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency}`;
@@ -22,6 +24,7 @@ function contractId(row: Record<string, unknown>): string | null {
 
 export default function DerivPage() {
   const { ready } = useRequireAuth();
+  const canManage = canManageSoloTrades(useAuthStore((s) => s.user));
   const [connected, setConnected] = useState(false);
   const [wallet, setWallet] = useState<DerivAccount | null>(null);
   const [mt5, setMt5] = useState<DerivAccount[]>([]);
@@ -145,14 +148,18 @@ export default function DerivPage() {
           <CardHeader>
             <CardTitle>Not connected</CardTitle>
             <CardDescription>
-              Paste your Deriv API token in Settings, then come back here.
+              {canManage
+                ? "Paste your Deriv API token in Settings, then come back here."
+                : "Waiting for the admin to connect Deriv. You will see the same live accounts once it is linked."}
             </CardDescription>
           </CardHeader>
+          {canManage ? (
           <CardContent>
             <Link href="/settings">
               <Button>Open Settings</Button>
             </Link>
           </CardContent>
+          ) : null}
         </Card>
       ) : loading ? (
         <div className="flex justify-center py-16">
@@ -183,8 +190,9 @@ export default function DerivPage() {
             ))}
           </div>
 
-          <DerivCryptoWallets />
+          <DerivCryptoWallets canEdit={canManage} />
 
+          {canManage ? (
           <Card>
             <CardHeader>
               <CardTitle>Transfer</CardTitle>
@@ -259,11 +267,16 @@ export default function DerivPage() {
               </form>
             </CardContent>
           </Card>
+          ) : null}
 
           <Card>
             <CardHeader>
               <CardTitle>Open contracts</CardTitle>
-              <CardDescription>Close stops a Deriv contract (not MT5 stop-loss).</CardDescription>
+              <CardDescription>
+                {canManage
+                  ? "Close stops a Deriv contract (not MT5 stop-loss)."
+                  : "Shared live contracts. Only the admin can close them."}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
               {open.length === 0 ? (
@@ -280,7 +293,7 @@ export default function DerivPage() {
                         {String(row.display_name ?? row.contract_type ?? "Contract")}{" "}
                         <span className="text-muted">#{id}</span>
                       </p>
-                      {id && (
+                      {id && canManage && (
                         <Button
                           size="sm"
                           variant="secondary"

@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
+import { useAuthStore } from "@/stores/auth";
+import { canManageSoloTrades } from "@/lib/solo-admin";
 
 type Props = {
   enabled?: boolean;
@@ -19,6 +21,7 @@ export function MetaApiAccountPicker({
   onLinked,
   bare = false,
 }: Props) {
+  const canManage = canManageSoloTrades(useAuthStore((s) => s.user));
   const [token, setToken] = useState("");
   const [tokenSaved, setTokenSaved] = useState(false);
   const [accountId, setAccountId] = useState("");
@@ -88,7 +91,7 @@ export function MetaApiAccountPicker({
       </div>
       )}
 
-      {showTokenField && (
+      {canManage && showTokenField && (
         <div className="space-y-1.5">
           <Label htmlFor="metaapi-token-connect">
             MetaAPI API token {tokenSaved ? "(already saved)" : ""}
@@ -109,6 +112,7 @@ export function MetaApiAccountPicker({
         </div>
       )}
 
+      {canManage ? (
       <div className="space-y-1.5">
         <Label htmlFor="metaapi-account-id">MetaAPI account ID</Label>
         <Input
@@ -120,17 +124,25 @@ export function MetaApiAccountPicker({
           required
         />
       </div>
+      ) : null}
 
       {selectedId && (
         <p className="font-mono text-xs text-success">Watching {selectedId}</p>
       )}
 
+      {canManage ? (
       <Button
         type="submit"
         disabled={linking || !accountId.trim() || (needToken && !token.trim())}
       >
         {linking ? "Connecting…" : "Monitor this account"}
       </Button>
+      ) : (
+        <p className="text-xs text-muted">
+          Shared live account — only the admin can change which MetaAPI account
+          is monitored.
+        </p>
+      )}
 
       {msg && <p className="text-sm text-success">{msg}</p>}
       {err && <p className="text-sm text-danger">{err}</p>}

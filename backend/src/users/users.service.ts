@@ -26,7 +26,12 @@ import { ProfitShareService } from '../profit-share/profit-share.service';
 import { Mt5PoolService } from '../mt5-sync/mt5-pool.service';
 import { resolveAdminPermissions } from '../admin/admin-permissions.util';
 import { isSoloApp } from '../common/app-variant';
-import { isSoloAdminEmail, soloAdminRole } from '../common/solo-admin.util';
+import {
+  assertSoloCanManageTrades,
+  isSoloAdminEmail,
+  resolveSoloSharedOwnerUserId,
+  soloAdminRole,
+} from '../common/solo-admin.util';
 import {
   DISPLAY_CURRENCY_OPTIONS,
   isSupportedDisplayCurrency,
@@ -159,6 +164,16 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
+    const shared = await resolveSoloSharedOwnerUserId(this.prisma, userId);
+    let metaApiAccountId = user.metaApiAccountId;
+    if (shared.shared && shared.ownerUserId !== userId) {
+      const owner = await this.prisma.user.findUnique({
+        where: { id: shared.ownerUserId },
+        select: { metaApiAccountId: true },
+      });
+      metaApiAccountId = owner?.metaApiAccountId ?? metaApiAccountId;
+    }
+
     return {
       user: {
         id: user.id,
@@ -168,7 +183,7 @@ export class UsersService {
         role: soloAdminRole(user.email, user.role),
         status: user.status,
         walletAddress: user.walletAddress,
-        metaApiAccountId: user.metaApiAccountId,
+        metaApiAccountId,
         createdAt: user.createdAt,
         tier: user.virtualAccount?.tier ?? 'BRONZE',
         instantWithdraw: user.instantWithdraw,
@@ -225,6 +240,15 @@ export class UsersService {
   }
 
   async updateTradingAccount(userId: string, dto: UpdateTradingAccountDto) {
+    const actor = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    assertSoloCanManageTrades(actor?.email);
+    const { ownerUserId } = await resolveSoloSharedOwnerUserId(
+      this.prisma,
+      userId,
+    );
     const nextId =
       dto.metaApiAccountId === null || dto.metaApiAccountId === ''
         ? null
@@ -234,12 +258,12 @@ export class UsersService {
       if (!this.metaApi.isConfigured) {
         throw new BadRequestException('Live trading is not available yet');
       }
-      await this.mt5Pool.assertAccountLinkable(userId, nextId);
+      await this.mt5Pool.assertAccountLinkable(ownerUserId, nextId);
       await this.metaApi.getAccount(nextId);
     }
 
     await this.prisma.user.update({
-      where: { id: userId },
+      where: { id: ownerUserId },
       data: { metaApiAccountId: nextId },
     });
 

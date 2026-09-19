@@ -31,12 +31,14 @@ function Slot({
   purpose,
   saved,
   onSaved,
+  canEdit,
 }: {
   title: string;
   hint: string;
   purpose: "DEPOSIT" | "WITHDRAW";
   saved: DerivCryptoWallet | null;
   onSaved: (next: DerivCryptoWalletsResult) => void;
+  canEdit: boolean;
 }) {
   const [network, setNetwork] = useState<(typeof NETWORKS)[number]>(
     (saved?.network as (typeof NETWORKS)[number]) || "TRC20",
@@ -93,6 +95,7 @@ function Slot({
           {saved.network} · {maskAddress(saved.address)}
         </p>
       )}
+      {canEdit ? (
       <form onSubmit={(e) => void save(e)} className="mt-3 space-y-2">
         <div className="space-y-1">
           <Label>Network</Label>
@@ -139,11 +142,14 @@ function Slot({
           )}
         </div>
       </form>
+      ) : !saved ? (
+        <p className="mt-2 text-xs text-muted">Not set by admin yet.</p>
+      ) : null}
     </div>
   );
 }
 
-export function DerivCryptoWallets() {
+export function DerivCryptoWallets({ canEdit = true }: { canEdit?: boolean }) {
   const [wallets, setWallets] = useState<DerivCryptoWalletsResult>({
     deposit: null,
     withdraw: null,
@@ -183,6 +189,7 @@ export function DerivCryptoWallets() {
               purpose="DEPOSIT"
               saved={wallets.deposit}
               onSaved={setWallets}
+              canEdit={canEdit}
             />
             <Slot
               title="Auto-withdraw address"
@@ -190,6 +197,7 @@ export function DerivCryptoWallets() {
               purpose="WITHDRAW"
               saved={wallets.withdraw}
               onSaved={setWallets}
+              canEdit={canEdit}
             />
           </>
         )}

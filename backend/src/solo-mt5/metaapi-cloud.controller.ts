@@ -7,7 +7,7 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/guards';
+import { JwtAuthGuard, SoloTradingAdminGuard } from '../auth/guards';
 import { AuthRateLimitGuard } from '../auth/auth-rate-limit.guard';
 import { LinkMetaApiAccountDto, SaveMetaApiTokenDto } from './solo-mt5.dto';
 import { SoloMt5Service } from './solo-mt5.service';
@@ -23,7 +23,7 @@ export class MetaApiCloudController {
   }
 
   @Put('token')
-  @UseGuards(AuthRateLimitGuard)
+  @UseGuards(AuthRateLimitGuard, SoloTradingAdminGuard)
   saveToken(
     @Request() req: { user: { id: string } },
     @Body() dto: SaveMetaApiTokenDto,
@@ -32,6 +32,7 @@ export class MetaApiCloudController {
   }
 
   @Delete('token')
+  @UseGuards(SoloTradingAdminGuard)
   disconnect(@Request() req: { user: { id: string } }) {
     return this.mt5.disconnectCloudToken(req.user.id);
   }
@@ -42,7 +43,7 @@ export class MetaApiCloudController {
   }
 
   @Put('account')
-  @UseGuards(AuthRateLimitGuard)
+  @UseGuards(AuthRateLimitGuard, SoloTradingAdminGuard)
   linkAccount(
     @Request() req: { user: { id: string } },
     @Body() dto: LinkMetaApiAccountDto,

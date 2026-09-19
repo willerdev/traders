@@ -257,13 +257,16 @@ export default function SoloMt5Page() {
             {needsConnect && (
               <div className="border-t border-border px-4 py-8 text-center sm:px-8">
                 <h2 className="text-lg font-semibold text-foreground">
-                  Connect your trading account before you trade
+                  {canTrade
+                    ? "Connect your trading account before you trade"
+                    : "Waiting for the admin to connect MetaAPI"}
                 </h2>
                 <p className="mx-auto mt-2 max-w-lg text-sm text-muted">
-                  To use the trading workspace, you&apos;ll need to connect your
-                  trading account first. Once connected, you can start taking
-                  trades inside your workflow.
+                  {canTrade
+                    ? "To use the trading workspace, you will need to connect the MetaAPI account first. Once connected, both of you see the same live positions."
+                    : "The admin connects MetaAPI once. You will then see the same live chart, balance, and open positions. Only the admin can close or modify trades."}
                 </p>
+                {canTrade ? (
                 <button
                   type="button"
                   onClick={() => setConnectOpen(true)}
@@ -272,9 +275,12 @@ export default function SoloMt5Page() {
                   <Plus className="h-4 w-4" />
                   Connect Trading Account
                 </button>
+                ) : null}
+                {canTrade ? (
                 <p className="mt-3 text-xs text-muted">
                   Need help connecting?
                 </p>
+                ) : null}
               </div>
             )}
           </div>

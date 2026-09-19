@@ -41,3 +41,62 @@ export function soloAdminRole(
   if (isSoloApp() && isSoloAdminEmail(email)) return 'ADMIN';
   return role;
 }
+
+type PrismaUserLookup = {
+  user: {
+    findFirst: (args: {
+      where: {
+        OR: Array<{ email: { equals: string; mode: 'insensitive' } }>;
+      };
+      select: { id: true; email: true };
+      orderBy: { createdAt: 'asc' };
+    }) => Promise<{ id: string; email: string | null } | null>;
+  };
+};
+
+/** On soloEmma, every viewer uses the admin's linked MetaAPI / Deriv account. */
+export async function resolveSoloSharedOwnerUserId(
+  prisma: PrismaUserLookup,
+  fallbackUserId: string,
+): Promise<{
+  ownerUserId: string;
+  shared: boolean;
+  ownerEmail: string | null;
+}> {
+  if (!isSoloApp()) {
+    return {
+      ownerUserId: fallbackUserId,
+      shared: false,
+      ownerEmail: null,
+    };
+  }
+  const emails = getSoloAdminEmails();
+  if (emails.length === 0) {
+    return {
+      ownerUserId: fallbackUserId,
+      shared: false,
+      ownerEmail: null,
+    };
+  }
+  const admin = await prisma.user.findFirst({
+    where: {
+      OR: emails.map((email) => ({
+        email: { equals: email, mode: 'insensitive' },
+      })),
+    },
+    select: { id: true, email: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (!admin) {
+    return {
+      ownerUserId: fallbackUserId,
+      shared: false,
+      ownerEmail: null,
+    };
+  }
+  return {
+    ownerUserId: admin.id,
+    shared: true,
+    ownerEmail: admin.email,
+  };
+}

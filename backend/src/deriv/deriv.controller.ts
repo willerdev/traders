@@ -26,7 +26,7 @@ export class DerivController {
   }
 
   @Put('token')
-  @UseGuards(AuthRateLimitGuard)
+  @UseGuards(AuthRateLimitGuard, SoloTradingAdminGuard)
   saveToken(
     @Request() req: { user: { id: string } },
     @Body() dto: SaveDerivTokenDto,
@@ -35,6 +35,7 @@ export class DerivController {
   }
 
   @Delete('token')
+  @UseGuards(SoloTradingAdminGuard)
   disconnect(@Request() req: { user: { id: string } }) {
     return this.deriv.disconnect(req.user.id);
   }
@@ -55,7 +56,7 @@ export class DerivController {
   }
 
   @Put('crypto-wallets')
-  @UseGuards(AuthRateLimitGuard)
+  @UseGuards(AuthRateLimitGuard, SoloTradingAdminGuard)
   saveCryptoWallet(
     @Request() req: { user: { id: string } },
     @Body() dto: SaveDerivCryptoWalletDto,
@@ -64,6 +65,7 @@ export class DerivController {
   }
 
   @Delete('crypto-wallets/:purpose')
+  @UseGuards(SoloTradingAdminGuard)
   deleteCryptoWallet(
     @Request() req: { user: { id: string } },
     @Param('purpose') purpose: string,
@@ -72,7 +74,7 @@ export class DerivController {
   }
 
   @Post('transfer')
-  @UseGuards(AuthRateLimitGuard)
+  @UseGuards(AuthRateLimitGuard, SoloTradingAdminGuard)
   transfer(
     @Request() req: { user: { id: string } },
     @Body() dto: DerivTransferDto,

@@ -309,6 +309,8 @@ class ApiClient {
         connected: boolean;
         connectedAt: string | null;
         tokenMasked: string | null;
+        shared?: boolean;
+        ownerEmail?: string | null;
       }>("/deriv/status"),
     saveToken: (token: string) =>
       this.request<{
@@ -376,6 +378,8 @@ class ApiClient {
         connectedAt: string | null;
         tokenMasked: string | null;
         accountId: string | null;
+        shared?: boolean;
+        ownerEmail?: string | null;
       }>("/metaapi/status"),
     saveToken: (token: string) =>
       this.request<{

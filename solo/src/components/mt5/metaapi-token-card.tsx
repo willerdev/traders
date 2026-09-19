@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/stores/auth";
+import { canManageSoloTrades } from "@/lib/solo-admin";
 
 type Props = {
   compact?: boolean;
@@ -16,8 +18,10 @@ type Props = {
 };
 
 export function MetaApiTokenCard({ compact = false, onChanged, className }: Props) {
+  const canManage = canManageSoloTrades(useAuthStore((s) => s.user));
   const [token, setToken] = useState("");
   const [connected, setConnected] = useState(false);
+  const [shared, setShared] = useState(false);
   const [masked, setMasked] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
@@ -28,6 +32,7 @@ export function MetaApiTokenCard({ compact = false, onChanged, className }: Prop
       .status()
       .then((s) => {
         setConnected(s.connected);
+        setShared(Boolean(s.shared));
         setMasked(s.tokenMasked);
         onChanged?.(s.connected);
       })
@@ -73,9 +78,12 @@ export function MetaApiTokenCard({ compact = false, onChanged, className }: Prop
     <div className="space-y-3">
       {connected && (
         <p className="text-sm text-success">
-          Connected {masked ? `(${masked})` : ""}
+          {shared && !canManage
+            ? "Connected — live account shared from the admin"
+            : `Connected ${masked ? `(${masked})` : ""}`}
         </p>
       )}
+      {canManage ? (
       <form onSubmit={saveToken} className="space-y-2">
         <Label htmlFor="metaapi-token">MetaAPI API token</Label>
         <Input
@@ -110,6 +118,13 @@ export function MetaApiTokenCard({ compact = false, onChanged, className }: Prop
           )}
         </div>
       </form>
+      ) : (
+        <Link href="/mt5">
+          <Button type="button" variant="ghost">
+            Open charts
+          </Button>
+        </Link>
+      )}
       {msg && <p className="text-sm text-success">{msg}</p>}
       {err && <p className="text-sm text-danger">{err}</p>}
     </div>
@@ -133,9 +148,9 @@ export function MetaApiTokenCard({ compact = false, onChanged, className }: Prop
       <CardHeader>
         <CardTitle>MetaAPI</CardTitle>
         <CardDescription>
-          Sign in at app.metaapi.cloud, copy your API token, then paste the
-          account ID from the account card (the UUID at the top). You do not
-          enter MT5 login or password.
+          {canManage
+            ? "Sign in at app.metaapi.cloud, copy your API token, then paste the account ID from the account card (the UUID at the top). You do not enter MT5 login or password."
+            : "You see the same live MetaAPI account the admin connected. Only the admin can change the token or close trades."}
         </CardDescription>
       </CardHeader>
       <CardContent>{body}</CardContent>
