@@ -569,6 +569,7 @@ export class WalletService {
           ? {
               maxFraction: WITHDRAW_MAINTENANCE.maxFraction,
               feesWaived: WITHDRAW_MAINTENANCE.feesWaived,
+              cancelDisabled: WITHDRAW_MAINTENANCE.cancelDisabled,
               message: WITHDRAW_MAINTENANCE.userMessage,
             }
           : null,

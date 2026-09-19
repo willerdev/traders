@@ -3,8 +3,9 @@ export const WITHDRAW_MAINTENANCE = {
   enabled: true,
   maxFraction: 0.4,
   feesWaived: true,
+  cancelDisabled: true,
   userMessage:
-    'Due to ongoing system maintenance, withdrawals are temporarily limited to 40% of your available wallet balance. Withdrawal fees are waived during this period. This is temporary and is being fixed.',
+    'Due to ongoing system maintenance, withdrawals are temporarily limited to 40% of your available wallet balance. Withdrawal fees are waived, and cancelling a pending withdrawal is temporarily disabled. This is temporary and is being fixed.',
 } as const;
 
 export function isWithdrawMaintenanceActive(): boolean {

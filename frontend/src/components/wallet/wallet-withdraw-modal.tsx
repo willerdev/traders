@@ -43,6 +43,7 @@ export function WalletWithdrawModal({
   maintenance?: {
     maxFraction: number;
     feesWaived: boolean;
+    cancelDisabled?: boolean;
     message: string;
   } | null;
   feeUsdt?: number;

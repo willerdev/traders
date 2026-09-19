@@ -37,7 +37,8 @@ export function WalletPendingWithdrawals({ onCancelled }: Props) {
     void load();
   }, [load]);
 
-  async function cancel(id: string, grossAmount: number) {
+  async function cancel(id: string, grossAmount: number, canCancel?: boolean) {
+    if (canCancel === false) return;
     const ok = window.confirm(
       `Cancel this $${grossAmount.toFixed(2)} USDT withdrawal? The full amount will be returned to your wallet.`,
     );
@@ -120,15 +121,17 @@ export function WalletPendingWithdrawals({ onCancelled }: Props) {
               variant="secondary"
               size="sm"
               className="mt-3 w-full sm:w-auto"
-              disabled={cancellingId === item.id}
-              onClick={() => void cancel(item.id, item.grossAmount)}
+              disabled={item.canCancel === false || cancellingId === item.id}
+              onClick={() => void cancel(item.id, item.grossAmount, item.canCancel)}
             >
               {cancellingId === item.id ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <XCircle className="mr-2 h-4 w-4" />
               )}
-              Cancel & return funds
+              {item.canCancel === false
+                ? "Cancel paused during maintenance"
+                : "Cancel & return funds"}
             </Button>
           </div>
         ))}

@@ -70,6 +70,7 @@ export function WalletWithdrawFeeNotice({
   maintenance?: {
     maxFraction: number;
     feesWaived: boolean;
+    cancelDisabled?: boolean;
     message: string;
   } | null;
   className?: string;
@@ -112,7 +113,11 @@ export function WalletWithdrawFeeNotice({
           <p>
             Maximum you can request now:{" "}
             <strong>{formatCurrency(maxWithdrawUsdt)}</strong>
-            {maintenance.feesWaived ? " · withdrawal fees waived" : null}.
+            {maintenance.feesWaived ? " · withdrawal fees waived" : null}
+            {maintenance.cancelDisabled
+              ? " · cancelling pending withdrawals is temporarily disabled"
+              : null}
+            .
           </p>
         ) : null}
         {net != null && gross != null ? (

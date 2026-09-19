@@ -7,7 +7,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
-import { api, PayoutRecord, UserSettings, PayoutRewardStatus } from "@/lib/api";
+import {
+  api,
+  PayoutRecord,
+  UserSettings,
+  PayoutRewardStatus,
+  PendingWalletWithdrawal,
+} from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { Wallet, Info, ShieldAlert, Loader2 } from "lucide-react";
 import { PayoutRequestForm } from "@/components/payments/payout-request-form";
@@ -30,17 +36,22 @@ export default function PayoutsPage() {
   const [kycStatus, setKycStatus] = useState<string>("NOT_STARTED");
   const [loading, setLoading] = useState(true);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [pendingWalletRows, setPendingWalletRows] = useState<
+    PendingWalletWithdrawal[]
+  >([]);
 
   function reload() {
     return Promise.all([
       api.payouts.history().catch(() => [] as PayoutRecord[]),
       api.users.settings().catch(() => null),
       api.payouts.rewardTier().catch(() => null),
-    ]).then(([history, userSettings, tier]) => {
+      api.wallet.pendingWithdrawals().catch(() => [] as PendingWalletWithdrawal[]),
+    ]).then(([history, userSettings, tier, pending]) => {
       setPayouts(history);
       setSettings(userSettings);
       setRewardTier(tier);
       setKycStatus(userSettings?.kyc?.status ?? "NOT_STARTED");
+      setPendingWalletRows(pending);
     });
   }
 
@@ -76,6 +87,11 @@ export default function PayoutsPage() {
   );
 
   async function cancelWalletWithdrawal(payoutId: string, amount: number) {
+    if (
+      pendingWalletRows.find((row) => row.id === payoutId)?.canCancel === false
+    ) {
+      return;
+    }
     const ok = window.confirm(
       `Cancel this $${amount.toFixed(2)} USDT withdrawal? The full amount will be returned to your wallet.`,
     );
@@ -130,7 +146,9 @@ export default function PayoutsPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-lg">Pending wallet withdrawals</CardTitle>
               <CardDescription>
-                Cancel anytime before processing — funds return to your wallet
+                {pendingWalletRows.some((row) => row.canCancel === false)
+                  ? "Cancelling withdrawals is temporarily disabled during maintenance"
+                  : "Cancel anytime before processing — funds return to your wallet"}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -160,7 +178,10 @@ export default function PayoutsPage() {
                     variant="secondary"
                     size="sm"
                     className="mt-3"
-                    disabled={cancellingId === payout.id}
+                    disabled={
+                      pendingWalletRows.find((row) => row.id === payout.id)
+                        ?.canCancel === false || cancellingId === payout.id
+                    }
                     onClick={() =>
                       void cancelWalletWithdrawal(
                         payout.id,
@@ -171,7 +192,10 @@ export default function PayoutsPage() {
                     {cancellingId === payout.id ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : null}
-                    Cancel & return funds
+                    {pendingWalletRows.find((row) => row.id === payout.id)
+                      ?.canCancel === false
+                      ? "Cancel paused during maintenance"
+                      : "Cancel & return funds"}
                   </Button>
                 </div>
               ))}

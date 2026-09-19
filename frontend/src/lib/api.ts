@@ -1780,6 +1780,7 @@ export interface PendingWalletWithdrawal {
   walletAddress?: string | null;
   requestedAt: string;
   scheduledApproveAt?: string | null;
+  canCancel?: boolean;
 }
 
 export interface PayoutRewardTierDef {
@@ -2086,6 +2087,7 @@ export interface WalletSummary {
   withdrawMaintenance?: {
     maxFraction: number;
     feesWaived: boolean;
+    cancelDisabled?: boolean;
     message: string;
   } | null;
   vipActive?: boolean;

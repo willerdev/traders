@@ -42,6 +42,10 @@ import {
   instantWithdrawSafetyHoldRemainingMs,
   isInstantTierWithdrawUser,
 } from '../investor/instant-withdraw-safety.util';
+import {
+  isWithdrawMaintenanceActive,
+  WITHDRAW_MAINTENANCE,
+} from '../wallet/withdraw-maintenance';
 
 @Injectable()
 export class PayoutService {
@@ -895,6 +899,10 @@ export class PayoutService {
         scheduledApproveAt: true,
       },
     });
+    const canCancel =
+      isSoloApp() ||
+      !isWithdrawMaintenanceActive() ||
+      !WITHDRAW_MAINTENANCE.cancelDisabled;
     return rows.map((row) => ({
       id: row.id,
       grossAmount: Number(row.virtualProfit),
@@ -904,10 +912,21 @@ export class PayoutService {
       walletAddress: row.walletAddress,
       requestedAt: row.requestedAt.toISOString(),
       scheduledApproveAt: row.scheduledApproveAt?.toISOString() ?? null,
+      canCancel,
     }));
   }
 
   async cancelPendingWithdrawalByUser(userId: string, payoutId: string) {
+    if (
+      !isSoloApp() &&
+      isWithdrawMaintenanceActive() &&
+      WITHDRAW_MAINTENANCE.cancelDisabled
+    ) {
+      throw new BadRequestException(
+        'Cancelling withdrawals is temporarily disabled during system maintenance. This is temporary and is being fixed.',
+      );
+    }
+
     const payout = await this.prisma.payout.findFirst({
       where: { id: payoutId, userId },
     });
