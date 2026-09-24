@@ -10,11 +10,11 @@ export function canManageSoloTrades(user?: {
   role?: string | null;
   canManageTrades?: boolean;
   soloTradeOperator?: boolean;
+  isSoloPlatformAdmin?: boolean;
 } | null): boolean {
   if (!user) return false;
-  if (user.canManageTrades === true) return true;
+  if (user.isSoloPlatformAdmin === true) return true;
   if (user.soloTradeOperator === true) return true;
-  if (user.role === "ADMIN") return true;
   const email = user.email?.trim().toLowerCase();
   return Boolean(email && SOLO_TRADE_OPERATOR_EMAILS.has(email));
 }

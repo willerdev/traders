@@ -6,6 +6,9 @@ const DEFAULT_SOLO_ADMIN_EMAIL = 'willeratmit12@gmail.com';
 export const SOLO_TRADE_FORBIDDEN =
   'You cannot place or manage live trades on this account.';
 
+export const SOLO_REGISTRATION_CLOSED =
+  'New accounts are no longer accepted. Sign in if you already have an account.';
+
 export function getSoloAdminEmails(): string[] {
   const raw = (
     process.env.ADMIN_EMAIL ||
@@ -32,7 +35,6 @@ export function canSoloManageTrades(
   },
 ): boolean {
   if (!isSoloApp()) return true;
-  if (extra?.canManageTrades === true) return true;
   if (isSoloAdminEmail(email)) return true;
   return Boolean(extra?.soloTradeOperator);
 }

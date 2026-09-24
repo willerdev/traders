@@ -16,7 +16,7 @@ type Props = {
 export function TradingPlaceTradeCard({
   linked,
   lotSize,
-  canTrade = true,
+  canTrade = false,
   onLotSizeChange,
   onAdjustLot,
   onBuy,
@@ -89,7 +89,7 @@ export function TradingPlaceTradeCard({
       </div>
       {!canTrade ? (
         <p className="mt-2 text-center text-[11px] text-muted">
-          You can view this book. Trading is limited to assigned traders.
+          You can view this book. Only the platform admin and assigned traders can place, close, or change trades.
         </p>
       ) : null}
     </div>

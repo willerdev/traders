@@ -89,6 +89,7 @@ export class SoloMt5Controller {
   }
 
   @Get('mt5/order-preview')
+  @UseGuards(SoloTradingAdminGuard)
   preview(
     @Request() req: { user: { id: string } },
     @Query('symbol') symbol: string,

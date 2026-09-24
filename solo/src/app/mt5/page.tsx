@@ -281,7 +281,7 @@ export default function SoloMt5Page() {
                 <p className="mx-auto mt-2 max-w-lg text-sm text-muted">
                   {canTrade
                     ? "To use the trading workspace, you will need to connect the MetaAPI account first. Once connected, both of you see the same live positions."
-                    : "The admin connects MetaAPI once. You will then see the same live chart, balance, and open positions. Only the admin can close or modify trades."}
+                    : "You will then see the same live chart, balance, and open positions. Only the platform admin and assigned traders can place, close, or modify trades."}
                 </p>
                 {canTrade ? (
                 <button

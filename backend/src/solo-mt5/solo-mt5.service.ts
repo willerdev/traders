@@ -9,7 +9,7 @@ import {
 import { TradeDirection } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveJwtSecret } from '../config/jwt-secret';
-import { resolveSoloSharedOwnerUserId } from '../common/solo-admin.util';
+import { resolveSoloSharedOwnerUserId, assertSoloCanManageTrades } from '../common/solo-admin.util';
 import {
   decryptCredential,
   encryptCredential,
@@ -812,6 +812,7 @@ export class SoloMt5Service {
     directionRaw: string,
     volumeRaw?: number,
   ) {
+    await this.assertCanManageTrades(userId);
     return this.withCloud(userId, () =>
       this.loadPreviewOrder(userId, symbolRaw, directionRaw, volumeRaw),
     );
@@ -878,6 +879,7 @@ export class SoloMt5Service {
   }
 
   async placeOrder(userId: string, dto: PlaceMt5MarketOrderDto) {
+    await this.assertCanManageTrades(userId);
     return this.withCloud(userId, () => this.loadPlaceOrder(userId, dto));
   }
 
@@ -1002,6 +1004,7 @@ export class SoloMt5Service {
     positionId: string,
     dto: ModifyMt5PositionStopsDto,
   ) {
+    await this.assertCanManageTrades(userId);
     return this.withCloud(userId, () =>
       this.loadModifyStops(userId, positionId, dto),
     );
@@ -1077,6 +1080,7 @@ export class SoloMt5Service {
   }
 
   async closePosition(userId: string, positionId: string) {
+    await this.assertCanManageTrades(userId);
     return this.withCloud(userId, () => this.loadClosePosition(userId, positionId));
   }
 
@@ -1085,12 +1089,14 @@ export class SoloMt5Service {
     positionId: string,
     dto: PartialCloseMt5PositionDto,
   ) {
+    await this.assertCanManageTrades(userId);
     return this.withCloud(userId, () =>
       this.loadPartialClose(userId, positionId, dto),
     );
   }
 
   async setBreakeven(userId: string, positionId: string) {
+    await this.assertCanManageTrades(userId);
     return this.withCloud(userId, () =>
       this.loadSetBreakeven(userId, positionId),
     );
@@ -1275,6 +1281,7 @@ export class SoloMt5Service {
   }
 
   async closeAll(userId: string) {
+    await this.assertCanManageTrades(userId);
     return this.withCloud(userId, () => this.loadCloseAll(userId));
   }
 
@@ -1568,6 +1575,16 @@ export class SoloMt5Service {
         scope.owns(row.signalId, comments.get(row.signalId)) ||
         scope.owns(row.id, comments.get(row.id)),
     );
+  }
+
+  private async assertCanManageTrades(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, soloTradeOperator: true },
+    });
+    assertSoloCanManageTrades(user?.email, {
+      soloTradeOperator: user?.soloTradeOperator,
+    });
   }
 
   private async assertOwnsOpen(
