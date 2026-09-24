@@ -23,6 +23,8 @@ import { TradingHistoryPanel } from "@/components/mt5/trading-history-panel";
 import { useMt5History } from "@/hooks/use-mt5-history";
 import { TradingLiveBalance } from "@/components/mt5/trading-live-balance";
 import { Mt5PlaceOrderModal } from "@/components/mt5/mt5-place-order-modal";
+import { Mt5PositionModifyModal } from "@/components/mt5/mt5-position-modify-modal";
+import { Mt5MobileTradeBoard } from "@/components/mt5/mt5-mobile-trade-board";
 import type { Mt5PlaceKind } from "@/lib/mt5-place-kind";
 import { pickDefaultChartSymbol } from "@/lib/chart-market-status";
 import { useChartWatchlist } from "@/components/charts/use-chart-watchlist";
@@ -32,6 +34,7 @@ import { setMetaApiHasOpenTrades } from "@/lib/metaapi-live";
 import { cn } from "@/lib/utils";
 
 type RightTab = "watchlist" | "alerts" | "history";
+type MobileTab = "trade" | "history";
 
 export default function SoloMt5Page() {
   const { ready, hasHydrated } = useRequireAuth();
@@ -64,7 +67,9 @@ export default function SoloMt5Page() {
   );
   const [connectOpen, setConnectOpen] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>("alerts");
+  const [mobileTab, setMobileTab] = useState<MobileTab>("trade");
   const [orderModal, setOrderModal] = useState<Mt5PlaceKind | null>(null);
+  const [modifyTrade, setModifyTrade] = useState<UserMt5Trade | null>(null);
   const [lotSize, setLotSize] = useState("0.01");
   const [reviewedHistory, setReviewedHistory] =
     useState<UserMt5HistoryItem | null>(null);
@@ -99,6 +104,10 @@ export default function SoloMt5Page() {
     }
     return [...merged.values()];
   }, [data?.trades, runningTrades]);
+  const openTrades = useMemo(
+    () => [...displayRunningTrades, ...limitTrades],
+    [displayRunningTrades, limitTrades],
+  );
 
   const chartSymbol = useMemo(
     () =>
@@ -178,8 +187,8 @@ export default function SoloMt5Page() {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground">
-      <header className="flex shrink-0 flex-wrap items-center gap-3 px-4 py-3 md:px-5">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+      <header className="flex shrink-0 flex-wrap items-center gap-3 px-4 py-2 md:px-5 md:py-3">
+        <h1 className="text-lg font-semibold tracking-tight text-foreground md:text-2xl">
           Trading
         </h1>
         <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -216,18 +225,101 @@ export default function SoloMt5Page() {
         <p className="px-4 pb-2 text-sm text-danger md:px-5">{error}</p>
       )}
 
-      <TradingLiveBalance
-        equity={equity}
-        balance={walletBalance}
-        currency={account?.currency ?? "USD"}
-        live={live}
-        linked={linked}
-        floating={account?.floatingProfit ?? 0}
-        dayPnl={dayPnl}
-      />
+      <div className="hidden md:block">
+        <TradingLiveBalance
+          equity={equity}
+          balance={walletBalance}
+          currency={account?.currency ?? "USD"}
+          live={live}
+          linked={linked}
+          floating={account?.floatingProfit ?? 0}
+          dayPnl={dayPnl}
+        />
+      </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 px-3 pb-4 pt-3 md:flex-row md:px-5">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row md:gap-3 md:px-5 md:pb-4 md:pt-3">
+        <div className="flex min-h-0 flex-1 flex-col md:hidden">
+          <div className="flex shrink-0 border-b border-border bg-[var(--mt5-surface)] text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setMobileTab("trade")}
+              className={cn(
+                "relative flex-1 py-2.5",
+                mobileTab === "trade" ? "text-foreground" : "text-muted",
+              )}
+            >
+              Trade
+              {openTrades.length > 0 ? (
+                <span className="ml-1 tabular-nums text-[10px] text-muted">
+                  {openTrades.length}
+                </span>
+              ) : null}
+              {mobileTab === "trade" ? (
+                <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-primary" />
+              ) : null}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileTab("history")}
+              className={cn(
+                "relative flex-1 py-2.5",
+                mobileTab === "history" ? "text-foreground" : "text-muted",
+              )}
+            >
+              History
+              {mobileTab === "history" ? (
+                <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-primary" />
+              ) : null}
+            </button>
+          </div>
+          {mobileTab === "trade" ? (
+            loading && !data ? (
+              <div className="flex flex-1 items-center justify-center py-16">
+                <Loader2 className="h-7 w-7 animate-spin text-muted" />
+              </div>
+            ) : (
+              <Mt5MobileTradeBoard
+                trades={openTrades}
+                account={data?.account}
+                canTrade={canTrade}
+                onModify={setModifyTrade}
+                onClose={(trade) => void handleCloseTrade(trade)}
+              />
+            )
+          ) : (
+            <div className="min-h-0 flex-1 overflow-hidden p-3">
+              <TradingHistoryPanel
+                items={historyItems}
+                loading={historyLoading}
+                error={historyError}
+                dealCount={historyDealCount}
+                selectedId={reviewedHistory?.id ?? null}
+                onSelect={(item) => {
+                  setReviewedHistory(item);
+                }}
+              />
+            </div>
+          )}
+          <div className="shrink-0 border-t border-border bg-surface [&>div]:rounded-none [&>div]:border-0">
+            <TradingPlaceTradeCard
+              linked={linked}
+              canTrade={canTrade}
+              lotSize={lotSize}
+              onLotSizeChange={setLotSize}
+              onAdjustLot={(delta) => {
+                setLotSize((prev) => {
+                  const next = Math.max(0.01, Number(prev) + delta);
+                  if (!Number.isFinite(next)) return "0.01";
+                  return next.toFixed(2);
+                });
+              }}
+              onPlace={(kind) => setOrderModal(kind)}
+              onNeedConnect={() => setConnectOpen(true)}
+            />
+          </div>
+        </div>
+
+        <div className="hidden min-h-0 min-w-0 flex-1 flex-col md:flex">
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-surface">
             {loading && !data ? (
               <div className="flex flex-1 items-center justify-center py-24">
@@ -304,7 +396,7 @@ export default function SoloMt5Page() {
           </div>
         </div>
 
-        <aside className="flex min-h-0 w-full shrink-0 flex-col gap-3 overflow-hidden md:h-full md:w-[22rem]">
+        <aside className="hidden min-h-0 w-full shrink-0 flex-col gap-3 overflow-hidden md:flex md:h-full md:w-[22rem]">
           <TradingPlaceTradeCard
             linked={linked}
             canTrade={canTrade}
@@ -417,6 +509,21 @@ export default function SoloMt5Page() {
           onClose={() => setOrderModal(null)}
           onPlaced={() => {
             setOrderModal(null);
+            void load({ background: true });
+            void loadRunning();
+            void loadHistory({ fresh: true });
+          }}
+        />
+      )}
+
+      {modifyTrade && (
+        <Mt5PositionModifyModal
+          trade={modifyTrade}
+          open
+          canManage={canTrade}
+          onClose={() => setModifyTrade(null)}
+          onChanged={() => {
+            setModifyTrade(null);
             void load({ background: true });
             void loadRunning();
             void loadHistory({ fresh: true });
