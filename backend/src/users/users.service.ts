@@ -26,7 +26,10 @@ import { ProfitShareService } from '../profit-share/profit-share.service';
 import { Mt5PoolService } from '../mt5-sync/mt5-pool.service';
 import { resolveAdminPermissions } from '../admin/admin-permissions.util';
 import { isSoloApp } from '../common/app-variant';
-import { resolveSoloMaxRiskPercent } from '../common/solo-trade-operator.util';
+import {
+  defaultSoloTraderLabel,
+  resolveSoloMaxRiskPercent,
+} from '../common/solo-trade-operator.util';
 import {
   assertSoloCanManageTrades,
   isSoloAdminEmail,
@@ -291,9 +294,36 @@ export class UsersService {
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
-    const userUpdate: { displayName?: string } = {};
+    const current = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        displayName: true,
+        email: true,
+        soloTradeComment: true,
+      },
+    });
+    if (!current) throw new NotFoundException('User not found');
+
+    const userUpdate: {
+      displayName?: string;
+      soloTradeComment?: string;
+    } = {};
     if (dto.displayName?.trim()) {
       userUpdate.displayName = assertAllowedDisplayName(dto.displayName);
+    }
+
+    if (isSoloApp() && userUpdate.displayName) {
+      const oldDefault = defaultSoloTraderLabel({
+        displayName: current.displayName,
+        email: current.email,
+      });
+      const saved = current.soloTradeComment?.trim() || '';
+      if (!saved || saved === oldDefault) {
+        userUpdate.soloTradeComment = defaultSoloTraderLabel({
+          displayName: userUpdate.displayName,
+          email: current.email,
+        });
+      }
     }
 
     if (Object.keys(userUpdate).length > 0) {

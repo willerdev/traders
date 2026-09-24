@@ -12,6 +12,7 @@ import { useAuthStore } from "@/stores/auth";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { useThemeStore } from "@/stores/theme";
 import { api } from "@/lib/api";
+import { validateDisplayName } from "@/lib/display-name";
 import { MetaApiTokenCard } from "@/components/mt5/metaapi-token-card";
 import { MetaApiAccountPicker } from "@/components/mt5/metaapi-account-picker";
 import { NowpaymentsPayoutLoginCard } from "@/components/wallet/nowpayments-payout-login-card";
@@ -22,6 +23,7 @@ export default function SettingsPage() {
   const { ready } = useRequireAuth();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
+  const setAuth = useAuthStore((s) => s.setAuth);
   const canManage = canManageSoloTrades(user);
   const logout = useAuthStore((s) => s.logout);
   const theme = useThemeStore((s) => s.theme);
@@ -33,6 +35,11 @@ export default function SettingsPage() {
   const [derivErr, setDerivErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [metaOk, setMetaOk] = useState(false);
+  const [profileName, setProfileName] = useState(user?.displayName ?? "");
+  const [tradingName, setTradingName] = useState("");
+  const [nameMsg, setNameMsg] = useState("");
+  const [nameErr, setNameErr] = useState("");
+  const [savingName, setSavingName] = useState(false);
 
   useEffect(() => {
     if (!ready) return;
@@ -43,7 +50,56 @@ export default function SettingsPage() {
         setMasked(s.tokenMasked);
       })
       .catch(() => undefined);
+    void api.soloTraders
+      .me()
+      .then((me) => {
+        setTradingName(me.tradeComment || me.defaultComment || "");
+      })
+      .catch(() => undefined);
   }, [ready]);
+
+  useEffect(() => {
+    if (user?.displayName) setProfileName(user.displayName);
+  }, [user?.displayName]);
+
+  async function saveNames(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingName(true);
+    setNameErr("");
+    setNameMsg("");
+    const nameError = validateDisplayName(profileName);
+    if (nameError) {
+      setNameErr(nameError);
+      setSavingName(false);
+      return;
+    }
+    try {
+      const updated = await api.users.updateProfile({
+        displayName: profileName.trim(),
+      });
+      const auth = useAuthStore.getState();
+      if (auth.user && auth.token) {
+        setAuth(auth.token, {
+          ...auth.user,
+          displayName: updated.user.displayName,
+        });
+      }
+      setProfileName(updated.user.displayName);
+      const nextTrading = tradingName.trim();
+      if (nextTrading) {
+        const me = await api.soloTraders.setComment(nextTrading);
+        setTradingName(me.tradeComment || nextTrading);
+      } else {
+        const me = await api.soloTraders.me().catch(() => null);
+        if (me) setTradingName(me.tradeComment || me.defaultComment || "");
+      }
+      setNameMsg("Name saved. New live trades will use your trading name.");
+    } catch (err) {
+      setNameErr(err instanceof Error ? err.message : "Could not save name");
+    } finally {
+      setSavingName(false);
+    }
+  }
 
   async function saveToken(e: React.FormEvent) {
     e.preventDefault();
@@ -97,9 +153,44 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-gray-300">
             <p>
-              Display name:{" "}
-              <span className="text-white">{user?.displayName ?? "—"}</span>
+              Email:{" "}
+              <span className="text-white">{user?.email ?? "—"}</span>
             </p>
+            <form onSubmit={(e) => void saveNames(e)} className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="profileName">Profile name</Label>
+                <Input
+                  id="profileName"
+                  value={profileName}
+                  maxLength={40}
+                  onChange={(e) => setProfileName(e.target.value)}
+                  placeholder="Name shown in the app"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="tradingName">Trading name</Label>
+                <Input
+                  id="tradingName"
+                  value={tradingName}
+                  maxLength={31}
+                  onChange={(e) => setTradingName(e.target.value)}
+                  placeholder="Name stamped on live trades"
+                />
+                <p className="text-xs text-gray-500">
+                  Profile name is what you see in the app. Trading name is the
+                  comment on orders you open (letters, numbers, _ and -).
+                </p>
+              </div>
+              {nameErr ? (
+                <p className="text-sm text-danger">{nameErr}</p>
+              ) : null}
+              {nameMsg ? (
+                <p className="text-sm text-success">{nameMsg}</p>
+              ) : null}
+              <Button type="submit" disabled={savingName}>
+                {savingName ? "Saving…" : "Save names"}
+              </Button>
+            </form>
             <Button
               variant="secondary"
               className="gap-2"
