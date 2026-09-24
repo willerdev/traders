@@ -52,6 +52,7 @@ import { Loader2 } from "lucide-react";
 import { prefetchChartBarCache } from "@/lib/chart-bar-cache";
 import { loadChartData, isPlausibleQuotePrice } from "@/components/charts/chart-data.service";
 import { Mt5PlaceOrderModal } from "@/components/mt5/mt5-place-order-modal";
+import type { Mt5PlaceKind } from "@/lib/mt5-place-kind";
 import { Mt5PositionModifyModal } from "@/components/mt5/mt5-position-modify-modal";
 import {
   ChartAlertToastStack,
@@ -138,7 +139,7 @@ export function Mt5ChartTerminal({
   reviewedHistory = null,
 }: Props) {
   const chartRef = useRef<LightweightChartHandle>(null);
-  const [orderModal, setOrderModal] = useState<"BUY" | "SELL" | null>(null);
+  const [orderModal, setOrderModal] = useState<Mt5PlaceKind | null>(null);
   const [lotSize, setLotSize] = useState("0.01");
   const [focusedTrade, setFocusedTrade] = useState<UserMt5Trade | null>(null);
   const [modifyOpen, setModifyOpen] = useState(false);
@@ -1038,7 +1039,7 @@ export function Mt5ChartTerminal({
       {orderModal && canManageTrades && (
         <Mt5PlaceOrderModal
           symbol={selectedSymbol}
-          direction={orderModal}
+          kind={orderModal}
           volume={orderVolume}
           open
           onClose={() => setOrderModal(null)}

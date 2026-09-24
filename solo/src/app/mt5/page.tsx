@@ -23,6 +23,7 @@ import { TradingHistoryPanel } from "@/components/mt5/trading-history-panel";
 import { useMt5History } from "@/hooks/use-mt5-history";
 import { TradingLiveBalance } from "@/components/mt5/trading-live-balance";
 import { Mt5PlaceOrderModal } from "@/components/mt5/mt5-place-order-modal";
+import type { Mt5PlaceKind } from "@/lib/mt5-place-kind";
 import { pickDefaultChartSymbol } from "@/lib/chart-market-status";
 import { useChartWatchlist } from "@/components/charts/use-chart-watchlist";
 import { usePriceAlertMonitor } from "@/hooks/use-price-alert-monitor";
@@ -63,7 +64,7 @@ export default function SoloMt5Page() {
   );
   const [connectOpen, setConnectOpen] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>("alerts");
-  const [orderModal, setOrderModal] = useState<"BUY" | "SELL" | null>(null);
+  const [orderModal, setOrderModal] = useState<Mt5PlaceKind | null>(null);
   const [lotSize, setLotSize] = useState("0.01");
   const [reviewedHistory, setReviewedHistory] =
     useState<UserMt5HistoryItem | null>(null);
@@ -316,8 +317,7 @@ export default function SoloMt5Page() {
                 return next.toFixed(2);
               });
             }}
-            onBuy={() => setOrderModal("BUY")}
-            onSell={() => setOrderModal("SELL")}
+            onPlace={(kind) => setOrderModal(kind)}
             onNeedConnect={() => setConnectOpen(true)}
           />
           <div className="flex max-h-[min(28rem,50dvh)] min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-surface md:max-h-none">
@@ -407,7 +407,7 @@ export default function SoloMt5Page() {
       {orderModal && (
         <Mt5PlaceOrderModal
           symbol={chartSymbol}
-          direction={orderModal}
+          kind={orderModal}
           volume={
             Number.isFinite(Number(lotSize)) && Number(lotSize) >= 0.01
               ? Number(lotSize)

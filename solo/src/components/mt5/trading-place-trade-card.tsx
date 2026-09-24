@@ -1,6 +1,7 @@
 "use client";
 
 import { MT5_BUY, MT5_SELL } from "@/components/mt5/mt5-ui";
+import type { Mt5PlaceKind } from "@/lib/mt5-place-kind";
 
 type Props = {
   linked: boolean;
@@ -8,8 +9,7 @@ type Props = {
   canTrade?: boolean;
   onLotSizeChange: (value: string) => void;
   onAdjustLot: (delta: number) => void;
-  onBuy: () => void;
-  onSell: () => void;
+  onPlace: (kind: Mt5PlaceKind) => void;
   onNeedConnect: () => void;
 };
 
@@ -19,17 +19,16 @@ export function TradingPlaceTradeCard({
   canTrade = false,
   onLotSizeChange,
   onAdjustLot,
-  onBuy,
-  onSell,
+  onPlace,
   onNeedConnect,
 }: Props) {
-  function requireLinked(action: () => void) {
+  function requireLinked(kind: Mt5PlaceKind) {
     if (!canTrade) return;
     if (!linked) {
       onNeedConnect();
       return;
     }
-    action();
+    onPlace(kind);
   }
 
   return (
@@ -40,7 +39,7 @@ export function TradingPlaceTradeCard({
       <div className="flex items-center justify-center gap-2">
         <button
           type="button"
-          onClick={() => requireLinked(onBuy)}
+          onClick={() => requireLinked("BUY")}
           className="min-w-[4.5rem] rounded-md px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           style={{ backgroundColor: MT5_BUY }}
           disabled={!canTrade}
@@ -79,13 +78,34 @@ export function TradingPlaceTradeCard({
         </div>
         <button
           type="button"
-          onClick={() => requireLinked(onSell)}
+          onClick={() => requireLinked("SELL")}
           className="min-w-[4.5rem] rounded-md px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           style={{ backgroundColor: MT5_SELL }}
           disabled={!canTrade}
         >
           Sell
         </button>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        {(
+          [
+            ["BUY_LIMIT", "Buy Limit", MT5_BUY],
+            ["SELL_LIMIT", "Sell Limit", MT5_SELL],
+            ["BUY_STOP", "Buy Stop", MT5_BUY],
+            ["SELL_STOP", "Sell Stop", MT5_SELL],
+          ] as const
+        ).map(([kind, label, color]) => (
+          <button
+            key={kind}
+            type="button"
+            onClick={() => requireLinked(kind)}
+            className="rounded-md px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            style={{ backgroundColor: color }}
+            disabled={!canTrade}
+          >
+            {label}
+          </button>
+        ))}
       </div>
       {!canTrade ? (
         <p className="mt-2 text-center text-[11px] text-muted">

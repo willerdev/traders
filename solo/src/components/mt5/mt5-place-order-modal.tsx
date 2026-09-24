@@ -8,12 +8,17 @@ import { computeOneToOneTakeProfit } from "@/lib/mt5-order-stops";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MT5_BUY, MT5_SELL, fmtMt5Price } from "@/components/mt5/mt5-ui";
-
-type Direction = "BUY" | "SELL";
+import {
+  isMt5PendingKind,
+  mt5ApiOrderKind,
+  mt5PlaceDirection,
+  mt5PlaceLabel,
+  type Mt5PlaceKind,
+} from "@/lib/mt5-place-kind";
 
 type Props = {
   symbol: string;
-  direction: Direction;
+  kind: Mt5PlaceKind;
   volume?: number;
   open: boolean;
   onClose: () => void;
@@ -22,12 +27,14 @@ type Props = {
 
 export function Mt5PlaceOrderModal({
   symbol,
-  direction,
+  kind,
   volume,
   open,
   onClose,
   onPlaced,
 }: Props) {
+  const direction = mt5PlaceDirection(kind);
+  const pending = isMt5PendingKind(kind);
   const [preview, setPreview] = useState<Mt5MarketOrderPreview | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -40,6 +47,7 @@ export function Mt5PlaceOrderModal({
   );
   const user = useAuthStore((s) => s.user);
   const [comment, setComment] = useState("");
+  const [openPrice, setOpenPrice] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -74,8 +82,27 @@ export function Mt5PlaceOrderModal({
       try {
         const next = await api.signals.mt5OrderPreview(symbol, direction, vol);
         setPreview(next);
-        setStopLoss(String(next.stopLoss));
-        setTakeProfit(String(next.takeProfit));
+        const offset =
+          Math.abs(next.entry - next.stopLoss) /
+          Math.max(next.defaultSlPips || 10, 1);
+        let at = next.entry;
+        if (kind === "BUY_LIMIT") at = next.quote.bid - offset;
+        if (kind === "SELL_LIMIT") at = next.quote.ask + offset;
+        if (kind === "BUY_STOP") at = next.quote.ask + offset;
+        if (kind === "SELL_STOP") at = next.quote.bid - offset;
+        setOpenPrice(String(Number(at.toFixed(5))));
+        const entry = pending ? at : next.entry;
+        const slDist = Math.abs(next.entry - next.stopLoss);
+        const sl =
+          direction === "BUY" ? entry - slDist : entry + slDist;
+        setStopLoss(String(Number(sl.toFixed(5))));
+        setTakeProfit(
+          String(
+            Number(
+              computeOneToOneTakeProfit(direction, entry, sl).toFixed(5),
+            ),
+          ),
+        );
         setTpManual(false);
         if (vol == null) {
           setOrderVolume(String(next.risk.volume));
@@ -89,20 +116,31 @@ export function Mt5PlaceOrderModal({
         setLoading(false);
       }
     },
-    [symbol, direction, orderVolume],
+    [symbol, direction, kind, pending, orderVolume],
   );
 
   useEffect(() => {
     if (!open) return;
     void loadPreview(volume);
-  }, [open, symbol, direction, volume, loadPreview]);
+  }, [open, symbol, direction, kind, volume, loadPreview]);
 
   function handleStopLossChange(value: string) {
     setStopLoss(value);
     if (tpManual || !preview) return;
-    const entry = preview.entry;
+    const entry = pending ? Number(openPrice) : preview.entry;
     const sl = Number(value);
     if (!Number.isFinite(sl) || sl <= 0) return;
+    if (!Number.isFinite(entry) || entry <= 0) return;
+    const tp = computeOneToOneTakeProfit(direction, entry, sl);
+    setTakeProfit(String(Number(tp.toFixed(5))));
+  }
+
+  function handleOpenPriceChange(value: string) {
+    setOpenPrice(value);
+    if (tpManual || !preview) return;
+    const entry = Number(value);
+    const sl = Number(stopLoss);
+    if (!Number.isFinite(entry) || !Number.isFinite(sl) || entry <= 0) return;
     const tp = computeOneToOneTakeProfit(direction, entry, sl);
     setTakeProfit(String(Number(tp.toFixed(5))));
   }
@@ -121,6 +159,11 @@ export function Mt5PlaceOrderModal({
       setError("Enter a valid lot size (minimum 0.01)");
       return;
     }
+    const at = Number(openPrice);
+    if (pending && (!Number.isFinite(at) || at <= 0)) {
+      setError("Enter a valid pending order price");
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -132,6 +175,8 @@ export function Mt5PlaceOrderModal({
         takeProfit: tp,
         volume: effectiveVolume,
         comment: comment.trim() || undefined,
+        orderKind: mt5ApiOrderKind(kind),
+        openPrice: pending ? at : undefined,
       });
       onPlaced?.();
       onClose();
@@ -166,10 +211,12 @@ export function Mt5PlaceOrderModal({
               id="mt5-place-order-title"
               className="text-lg font-semibold text-white"
             >
-              {isBuy ? "Buy" : "Sell"} {symbol}
+              {mt5PlaceLabel(kind)} {symbol}
             </h2>
             <p className="mt-0.5 text-xs text-gray-400">
-              Market order · SL &amp; TP default to 1:1 RR from entry
+              {pending
+                ? "Pending order · set the price, then SL & TP"
+                : "Market order · SL & TP default to 1:1 RR from entry"}
             </p>
           </div>
           <button
@@ -192,7 +239,7 @@ export function Mt5PlaceOrderModal({
             <div className="mb-4 grid grid-cols-2 gap-3 text-sm">
               <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
                 <p className="text-[10px] uppercase tracking-wide text-gray-500">
-                  Entry (market)
+                  {pending ? "Current market" : "Entry (market)"}
                 </p>
                 <p className="mt-0.5 font-semibold tabular-nums text-white">
                   {preview ? fmtMt5Price(preview.entry) : "—"}
@@ -213,6 +260,19 @@ export function Mt5PlaceOrderModal({
                 />
               </div>
             </div>
+
+            {pending ? (
+              <label className="mb-3 block text-xs text-gray-400">
+                {mt5PlaceLabel(kind)} price
+                <Input
+                  type="number"
+                  step="any"
+                  value={openPrice}
+                  onChange={(e) => handleOpenPriceChange(e.target.value)}
+                  className="mt-1 border-white/10 bg-black/30 text-white"
+                />
+              </label>
+            ) : null}
 
             <div className="space-y-3">
               <label className="block text-xs text-gray-400">
@@ -294,7 +354,7 @@ export function Mt5PlaceOrderModal({
                 Placing…
               </>
             ) : (
-              `Place ${isBuy ? "Buy" : "Sell"}`
+              `Place ${mt5PlaceLabel(kind)}`
             )}
           </Button>
         </div>

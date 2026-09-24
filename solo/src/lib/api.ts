@@ -757,6 +757,13 @@ class ApiClient {
       takeProfit: number;
       volume?: number;
       comment?: string;
+      orderKind?:
+        | "MARKET"
+        | "BUY_LIMIT"
+        | "SELL_LIMIT"
+        | "BUY_STOP"
+        | "SELL_STOP";
+      openPrice?: number;
     }) =>
       this.request<PlaceTradeResult>("/signals/mt5/orders", {
         method: "POST",

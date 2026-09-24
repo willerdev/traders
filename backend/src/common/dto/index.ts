@@ -835,6 +835,15 @@ export class PlaceMt5MarketOrderDto {
   @IsString()
   @MaxLength(31)
   comment?: string;
+
+  @IsOptional()
+  @IsIn(['MARKET', 'BUY_LIMIT', 'SELL_LIMIT', 'BUY_STOP', 'SELL_STOP'])
+  orderKind?: 'MARKET' | 'BUY_LIMIT' | 'SELL_LIMIT' | 'BUY_STOP' | 'SELL_STOP';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  openPrice?: number;
 }
 
 export class PartialCloseSetupDto {

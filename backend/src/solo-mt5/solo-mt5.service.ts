@@ -32,7 +32,10 @@ import {
   MetaApiService,
   MetaApiSymbolSpec,
 } from '../metaapi/metaapi.service';
-import { roundToSymbolDigits } from '../metaapi/metaapi-order.util';
+import {
+  roundToSymbolDigits,
+  type MetaApiPendingAction,
+} from '../metaapi/metaapi-order.util';
 import {
   classifyBrokerError,
   humanizeBrokerError,
@@ -61,6 +64,63 @@ function normalizeChartSymbol(raw: string): string {
 
 function isSellType(type: string): boolean {
   return type.toLowerCase().includes('sell');
+}
+
+function resolveSoloOrderPlacement(dto: PlaceMt5MarketOrderDto): {
+  direction: TradeDirection;
+  pendingKind: MetaApiPendingAction | null;
+} {
+  const kind = (dto.orderKind || 'MARKET').trim().toUpperCase();
+  if (kind === 'MARKET' || kind === '') {
+    return { direction: dto.direction, pendingKind: null };
+  }
+  if (kind === 'BUY_LIMIT') {
+    return {
+      direction: TradeDirection.BUY,
+      pendingKind: 'ORDER_TYPE_BUY_LIMIT',
+    };
+  }
+  if (kind === 'SELL_LIMIT') {
+    return {
+      direction: TradeDirection.SELL,
+      pendingKind: 'ORDER_TYPE_SELL_LIMIT',
+    };
+  }
+  if (kind === 'BUY_STOP') {
+    return {
+      direction: TradeDirection.BUY,
+      pendingKind: 'ORDER_TYPE_BUY_STOP',
+    };
+  }
+  if (kind === 'SELL_STOP') {
+    return {
+      direction: TradeDirection.SELL,
+      pendingKind: 'ORDER_TYPE_SELL_STOP',
+    };
+  }
+  throw new BadRequestException(
+    'Order type must be market, buy limit, sell limit, buy stop, or sell stop',
+  );
+}
+
+function assertPendingVsQuote(
+  pendingKind: MetaApiPendingAction,
+  openPrice: number,
+  bid: number,
+  ask: number,
+) {
+  if (pendingKind === 'ORDER_TYPE_BUY_LIMIT' && openPrice >= ask) {
+    throw new BadRequestException('Buy limit must be below the current ask');
+  }
+  if (pendingKind === 'ORDER_TYPE_SELL_LIMIT' && openPrice <= bid) {
+    throw new BadRequestException('Sell limit must be above the current bid');
+  }
+  if (pendingKind === 'ORDER_TYPE_BUY_STOP' && openPrice <= ask) {
+    throw new BadRequestException('Buy stop must be above the current ask');
+  }
+  if (pendingKind === 'ORDER_TYPE_SELL_STOP' && openPrice >= bid) {
+    throw new BadRequestException('Sell stop must be below the current bid');
+  }
 }
 
 function brokerMinStopDistance(spec: MetaApiSymbolSpec): number {
@@ -889,8 +949,24 @@ export class SoloMt5Service {
     const spec = await this.metaApi.getSymbolSpecification(ctx.account, symbol);
     const price = await this.metaApi.getSymbolPrice(ctx.account, symbol);
     const volume = dto.volume ?? 0.01;
-    const entry =
-      dto.direction === TradeDirection.BUY ? price.ask : price.bid;
+    const placement = resolveSoloOrderPlacement(dto);
+    const digits = spec.digits ?? 5;
+    const marketEntry =
+      placement.direction === TradeDirection.BUY ? price.ask : price.bid;
+    let entry = marketEntry;
+    if (placement.pendingKind) {
+      if (dto.openPrice == null || !Number.isFinite(dto.openPrice)) {
+        throw new BadRequestException('Enter a price for this pending order');
+      }
+      entry = roundToSymbolDigits(dto.openPrice, digits);
+      assertPendingVsQuote(placement.pendingKind, entry, price.bid, price.ask);
+    }
+    this.assertStops(
+      placement.direction,
+      entry,
+      dto.stopLoss,
+      dto.takeProfit,
+    );
     await this.assertOperatorRisk(userId, {
       entry,
       stopLoss: dto.stopLoss,
@@ -912,17 +988,31 @@ export class SoloMt5Service {
       email: opener?.email,
       chosen: chosenRaw,
     });
-    const { trade } = await this.metaApi.placeMarketOrder({
-      account: ctx.account,
-      symbol,
-      direction: dto.direction,
-      volume,
-      stopLoss: dto.stopLoss,
-      takeProfit: dto.takeProfit,
-      comment,
-      price,
-      specDigits: spec.digits,
-    });
+    const placed = placement.pendingKind
+      ? await this.metaApi.placePendingOrder({
+          account: ctx.account,
+          symbol,
+          orderKind: placement.pendingKind,
+          volume,
+          openPrice: entry,
+          stopLoss: dto.stopLoss,
+          takeProfit: dto.takeProfit,
+          comment,
+          price,
+          specDigits: spec.digits,
+        })
+      : await this.metaApi.placeMarketOrder({
+          account: ctx.account,
+          symbol,
+          direction: placement.direction,
+          volume,
+          stopLoss: dto.stopLoss,
+          takeProfit: dto.takeProfit,
+          comment,
+          price,
+          specDigits: spec.digits,
+        });
+    const trade = placed.trade;
     const preferred = sanitizeSoloCommentPart(chosenRaw || '');
     if (preferred) {
       await this.prisma.user.update({
@@ -940,11 +1030,11 @@ export class SoloMt5Service {
       status: 'placed',
       signalId: trade.positionId ?? trade.orderId ?? symbol,
       symbol,
-      direction: dto.direction,
+      direction: placement.direction,
       entryPrice: entry,
       stopLoss: dto.stopLoss,
       takeProfit: dto.takeProfit,
-      pending: Boolean(trade.orderId && !trade.positionId),
+      pending: Boolean(placement.pendingKind || (trade.orderId && !trade.positionId)),
       quote: price,
       risk: {
         volume,
