@@ -26,6 +26,7 @@ import { ProfitShareService } from '../profit-share/profit-share.service';
 import { Mt5PoolService } from '../mt5-sync/mt5-pool.service';
 import { resolveAdminPermissions } from '../admin/admin-permissions.util';
 import { isSoloApp } from '../common/app-variant';
+import { resolveSoloMaxRiskPercent } from '../common/solo-trade-operator.util';
 import {
   assertSoloCanManageTrades,
   isSoloAdminEmail,
@@ -108,7 +109,7 @@ export class UsersService {
         adminPermissions: resolveAdminPermissions({ ...user, role: role as typeof user.role }),
         canManageTrades: !isSoloApp() || isSoloAdminEmail(user.email) || Boolean(user.soloTradeOperator),
         soloTradeOperator: Boolean(user.soloTradeOperator),
-        soloMaxRiskPercent: Number(user.soloMaxRiskPercent ?? 1) || 1,
+        soloMaxRiskPercent: resolveSoloMaxRiskPercent(user.soloMaxRiskPercent),
         isSoloPlatformAdmin: isSoloAdminEmail(user.email),
       },
       onboarding: {

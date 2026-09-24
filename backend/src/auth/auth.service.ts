@@ -36,6 +36,7 @@ import { verifyMessage } from 'viem';
 import { NotificationService } from '../email/notification.service';
 import { ReferralsService } from '../referrals/referrals.service';
 import { isSoloApp } from '../common/app-variant';
+import { resolveSoloMaxRiskPercent } from '../common/solo-trade-operator.util';
 import {
   hasAdminHubAccess,
   resolveAdminPermissions,
@@ -604,7 +605,7 @@ export class AuthService {
         isSoloAdminEmail(user.email as string | null) ||
         Boolean(user.soloTradeOperator),
       soloTradeOperator: Boolean(user.soloTradeOperator),
-      soloMaxRiskPercent: Number(user.soloMaxRiskPercent ?? 1) || 1,
+      soloMaxRiskPercent: resolveSoloMaxRiskPercent(user.soloMaxRiskPercent),
       isSoloPlatformAdmin: isSoloAdminEmail(user.email as string | null),
       adminPermissions: resolveAdminPermissions({
         role,

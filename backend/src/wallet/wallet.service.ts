@@ -39,6 +39,7 @@ import { BinanceC2cService } from '../fx/binance-c2c.service';
 import { resolvePreferredDisplayCurrency } from '../fx/country-currency.util';
 import { isInvestorVipActive } from '../investor/investor-vip.util';
 import { isSoloApp } from '../common/app-variant';
+import { resolveSoloMaxRiskPercent } from '../common/solo-trade-operator.util';
 import {
   SOLO_WALLET_WITHDRAW_PAUSED_LABEL,
   isSoloWalletWithdrawEnabledForUser,
@@ -639,7 +640,7 @@ export class WalletService {
       soloWithdrawEnabled: isSoloWalletWithdrawEnabledForUser(vipUser ?? {}),
       tradingProfit: {
         realizedPnl: Number(vipUser?.soloRealizedPnl ?? 0),
-        maxRiskPercent: Number(vipUser?.soloMaxRiskPercent ?? 1) || 1,
+        maxRiskPercent: resolveSoloMaxRiskPercent(vipUser?.soloMaxRiskPercent),
         availableToWithdraw: await this.spendableAvailable(
           userId,
           Number(wallet.availableBalance),

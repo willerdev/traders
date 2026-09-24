@@ -355,8 +355,8 @@ model User {
   metaApiTokenSavedAt            DateTime?
   /// Soloema: live trading/settings like admin, but User.role stays TRADER.
   soloTradeOperator              Boolean    @default(false)
-  /// Soloema: max % of live equity risked per order (real admin sets this).
-  soloMaxRiskPercent             Decimal    @default(1) @db.Decimal(6, 2)
+  /// Soloema: max % of live equity risked per order (real admin sets this; floor 5%).
+  soloMaxRiskPercent             Decimal    @default(5) @db.Decimal(6, 2)
   /// Soloema: signed closed P&L attributed to this operator (can be negative).
   soloRealizedPnl                Decimal    @default(0) @db.Decimal(12, 2)
   /// Soloema: preferred MT5 order comment (identity still always stamped).

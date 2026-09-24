@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveJwtSecret } from '../config/jwt-secret';
 import { canSoloManageTrades, soloAdminRole } from '../common/solo-admin.util';
+import { resolveSoloMaxRiskPercent } from '../common/solo-trade-operator.util';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -43,7 +44,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       adminCanManageSetups: user.adminCanManageSetups,
       adminCanManageCopy: user.adminCanManageCopy,
       soloTradeOperator: user.soloTradeOperator,
-      soloMaxRiskPercent: Number(user.soloMaxRiskPercent ?? 1),
+      soloMaxRiskPercent: resolveSoloMaxRiskPercent(user.soloMaxRiskPercent),
       canManageTrades,
     };
   }

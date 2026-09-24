@@ -17,6 +17,7 @@ import {
   roundSoloUsdt,
   sanitizeSoloCommentPart,
   soloTradeComment,
+  resolveSoloMaxRiskPercent,
 } from '../common/solo-trade-operator.util';
 import { isAfterSoloMt5HistoryReset } from '../common/solo-mt5-history-since';
 import type { MetaApiDeal } from '../metaapi/metaapi.service';
@@ -52,8 +53,8 @@ export class SoloTraderService {
     maxRiskPercent: number,
   ) {
     assertSoloPlatformAdmin(actorEmail);
-    if (!Number.isFinite(maxRiskPercent) || maxRiskPercent <= 0 || maxRiskPercent > 100) {
-      throw new BadRequestException('Max risk must be between 0.01 and 100');
+    if (!Number.isFinite(maxRiskPercent) || maxRiskPercent < 5 || maxRiskPercent > 100) {
+      throw new BadRequestException('Max risk must be between 5 and 100');
     }
     const target = await this.prisma.user.findUnique({
       where: { id: targetUserId },
@@ -86,7 +87,7 @@ export class SoloTraderService {
     return {
       isOperator: Boolean(user?.soloTradeOperator),
       isPlatformAdmin: isSoloAdminEmail(user?.email),
-      maxRiskPercent: Number(user?.soloMaxRiskPercent ?? 1) || 1,
+      maxRiskPercent: resolveSoloMaxRiskPercent(user?.soloMaxRiskPercent),
     };
   }
 
@@ -240,7 +241,7 @@ export class SoloTraderService {
       email: user.email,
       displayName: user.displayName,
       soloTradeOperator: user.soloTradeOperator,
-      maxRiskPercent: Number(user.soloMaxRiskPercent ?? 1) || 1,
+      maxRiskPercent: resolveSoloMaxRiskPercent(user.soloMaxRiskPercent),
       realizedPnl: roundSoloUsdt(realized),
       availableToWithdraw: roundSoloUsdt(Math.max(0, available)),
       defaultComment,

@@ -82,3 +82,12 @@ export function commentBelongsToUser(
 export function roundSoloUsdt(n: number): number {
   return Math.round(n * 100) / 100;
 }
+
+/** Operators may risk at least this % of live equity per order. */
+export const SOLO_MIN_OPERATOR_RISK_PERCENT = 5;
+
+export function resolveSoloMaxRiskPercent(raw: unknown): number {
+  const n = Number(raw ?? SOLO_MIN_OPERATOR_RISK_PERCENT);
+  if (!Number.isFinite(n) || n <= 0) return SOLO_MIN_OPERATOR_RISK_PERCENT;
+  return Math.max(SOLO_MIN_OPERATOR_RISK_PERCENT, n);
+}
