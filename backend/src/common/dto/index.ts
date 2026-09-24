@@ -830,6 +830,11 @@ export class PlaceMt5MarketOrderDto {
   @IsNumber()
   @Min(0.01)
   volume?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(31)
+  comment?: string;
 }
 
 export class PartialCloseSetupDto {

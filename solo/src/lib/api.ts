@@ -481,6 +481,11 @@ class ApiClient {
         method: "PATCH",
         body: JSON.stringify({ maxRiskPercent }),
       }),
+    setComment: (comment: string) =>
+      this.request<SoloTraderSnapshot>("/solo/traders/me/comment", {
+        method: "PATCH",
+        body: JSON.stringify({ comment }),
+      }),
   };
 
   chainEnrollment = {
@@ -751,6 +756,7 @@ class ApiClient {
       stopLoss: number;
       takeProfit: number;
       volume?: number;
+      comment?: string;
     }) =>
       this.request<PlaceTradeResult>("/signals/mt5/orders", {
         method: "POST",
@@ -2223,6 +2229,8 @@ export interface SoloTraderSnapshot {
   maxRiskPercent: number;
   realizedPnl: number;
   availableToWithdraw: number;
+  defaultComment?: string;
+  tradeComment?: string;
 }
 
 export interface WalletSummary {
@@ -3450,6 +3458,8 @@ export interface UserMt5Trade {
   canPartialClose?: boolean;
   canAdjustStops?: boolean;
   executionLabel?: string;
+  comment?: string | null;
+  submittedAt?: string;
 }
 
 export interface UserMt5RunningResult {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { api, type Mt5MarketOrderPreview } from "@/lib/api";
+import { useAuthStore } from "@/stores/auth";
 import { computeOneToOneTakeProfit } from "@/lib/mt5-order-stops";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,25 @@ export function Mt5PlaceOrderModal({
   const [orderVolume, setOrderVolume] = useState(
     volume != null ? String(volume) : "0.01",
   );
+  const user = useAuthStore((s) => s.user);
+  const [comment, setComment] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    const fallback = defaultCommentFromUser(user);
+    setComment(fallback);
+    void api.soloTraders
+      .me()
+      .then((me) => {
+        if (cancelled) return;
+        setComment(me.tradeComment || me.defaultComment || fallback);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [open, user]);
 
   useEffect(() => {
     if (volume != null) setOrderVolume(String(volume));
@@ -111,6 +131,7 @@ export function Mt5PlaceOrderModal({
         stopLoss: sl,
         takeProfit: tp,
         volume: effectiveVolume,
+        comment: comment.trim() || undefined,
       });
       onPlaced?.();
       onClose();
@@ -195,6 +216,17 @@ export function Mt5PlaceOrderModal({
 
             <div className="space-y-3">
               <label className="block text-xs text-gray-400">
+                Trade comment
+                <span className="ml-1 text-gray-500">(who opened this trade)</span>
+                <Input
+                  maxLength={31}
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  className="mt-1 border-white/10 bg-black/30 text-white"
+                  placeholder="Your name"
+                />
+              </label>
+              <label className="block text-xs text-gray-400">
                 Stop loss
                 {preview?.defaultSlPips != null && (
                   <span className="ml-1 text-gray-500">
@@ -269,4 +301,20 @@ export function Mt5PlaceOrderModal({
       </div>
     </div>
   );
+}
+
+function defaultCommentFromUser(user?: {
+  displayName?: string | null;
+  email?: string | null;
+} | null): string {
+  const name = (user?.displayName || "")
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-zA-Z0-9_-]/g, "");
+  if (name.length >= 2 && name.toLowerCase() !== "trader") {
+    return name.slice(0, 12);
+  }
+  const local = (user?.email || "").split("@")[0] || "";
+  const cleaned = local.replace(/[^a-zA-Z0-9_-]/g, "");
+  return (cleaned || "trader").slice(0, 12);
 }

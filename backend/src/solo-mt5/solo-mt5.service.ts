@@ -45,7 +45,10 @@ import {
   getPipSize,
 } from '../common/pip.util';
 import { SoloTraderService } from './solo-trader.service';
-import { soloTradeComment } from '../common/solo-trade-operator.util';
+import {
+  buildSoloOpenComment,
+  sanitizeSoloCommentPart,
+} from '../common/solo-trade-operator.util';
 import {
   ModifyMt5PositionStopsDto,
   PartialCloseMt5PositionDto,
@@ -892,6 +895,21 @@ export class SoloMt5Service {
       volume,
       contractSize: spec.contractSize,
     });
+    const opener = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        displayName: true,
+        email: true,
+        soloTradeComment: true,
+      },
+    });
+    const chosenRaw = dto.comment?.trim() || opener?.soloTradeComment || null;
+    const comment = buildSoloOpenComment({
+      userId,
+      displayName: opener?.displayName,
+      email: opener?.email,
+      chosen: chosenRaw,
+    });
     const { trade } = await this.metaApi.placeMarketOrder({
       account: ctx.account,
       symbol,
@@ -899,14 +917,22 @@ export class SoloMt5Service {
       volume,
       stopLoss: dto.stopLoss,
       takeProfit: dto.takeProfit,
-      comment: soloTradeComment(userId),
+      comment,
       price,
       specDigits: spec.digits,
     });
+    const preferred = sanitizeSoloCommentPart(chosenRaw || '');
+    if (preferred) {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { soloTradeComment: preferred },
+      }).catch(() => undefined);
+    }
     await this.traders?.recordOpen({
       userId,
       positionId: trade.positionId,
       orderId: trade.orderId,
+      comment,
     });
     return {
       status: 'placed',
@@ -1574,7 +1600,8 @@ export class SoloMt5Service {
       canAdjustStops: true,
       canPartialClose: pos.volume > 0,
       canSetBreakeven: true,
-      executionLabel: 'Your live trade',
+      executionLabel: pos.comment?.trim() || 'Your live trade',
+      comment: pos.comment ?? null,
     };
   }
 
@@ -1594,7 +1621,8 @@ export class SoloMt5Service {
       orderType: order.type,
       canClose: true,
       canAdjustStops: true,
-      executionLabel: 'Pending on your linked MT5',
+      executionLabel: order.comment?.trim() || 'Pending on your linked MT5',
+      comment: order.comment ?? null,
     };
   }
 

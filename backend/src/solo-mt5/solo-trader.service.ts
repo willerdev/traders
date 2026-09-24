@@ -12,8 +12,10 @@ import {
 } from '../common/solo-admin.util';
 import {
   commentBelongsToUser,
+  defaultSoloTraderLabel,
   parseSoloTradeUserId,
   roundSoloUsdt,
+  sanitizeSoloCommentPart,
   soloTradeComment,
 } from '../common/solo-trade-operator.util';
 import { isAfterSoloMt5HistoryReset } from '../common/solo-mt5-history-since';
@@ -93,8 +95,16 @@ export class SoloTraderService {
     isolate: boolean;
     owns: (id?: string | null, comment?: string | null) => boolean;
   }> {
-    const risk = await this.loadOperatorRisk(userId);
-    if (!risk.isOperator || risk.isPlatformAdmin) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        email: true,
+        displayName: true,
+        soloTradeOperator: true,
+        soloMaxRiskPercent: true,
+      },
+    });
+    if (!user?.soloTradeOperator || isSoloAdminEmail(user.email)) {
       return { isolate: false, owns: () => true };
     }
     const rows = await this.prisma.soloTradeAttribution.findMany({
@@ -104,11 +114,15 @@ export class SoloTraderService {
     const ids = new Set(
       rows.flatMap((r) => [r.positionId, r.orderId].filter(Boolean) as string[]),
     );
+    const identity = defaultSoloTraderLabel({
+      displayName: user.displayName,
+      email: user.email,
+    });
     return {
       isolate: true,
       owns: (id, comment) => {
         if (id && ids.has(id)) return true;
-        return commentBelongsToUser(comment, userId);
+        return commentBelongsToUser(comment, userId, identity);
       },
     };
   }
@@ -117,11 +131,12 @@ export class SoloTraderService {
     userId: string;
     positionId?: string | null;
     orderId?: string | null;
+    comment?: string | null;
   }) {
     if (!isSoloApp()) return;
     const positionId = (input.positionId || input.orderId || '').trim();
     if (!positionId) return;
-    const comment = soloTradeComment(input.userId);
+    const comment = input.comment?.trim() || soloTradeComment(input.userId);
     await this.prisma.soloTradeAttribution.upsert({
       where: { positionId },
       create: {
@@ -211,10 +226,15 @@ export class SoloTraderService {
     soloTradeOperator: boolean;
     soloMaxRiskPercent: unknown;
     soloRealizedPnl: unknown;
+    soloTradeComment?: string | null;
     platformWallet: { availableBalance: unknown } | null;
   }) {
     const realized = Number(user.soloRealizedPnl ?? 0);
     const available = Number(user.platformWallet?.availableBalance ?? 0);
+    const defaultComment = defaultSoloTraderLabel({
+      displayName: user.displayName,
+      email: user.email,
+    });
     return {
       userId: user.id,
       email: user.email,
@@ -223,7 +243,28 @@ export class SoloTraderService {
       maxRiskPercent: Number(user.soloMaxRiskPercent ?? 1) || 1,
       realizedPnl: roundSoloUsdt(realized),
       availableToWithdraw: roundSoloUsdt(Math.max(0, available)),
+      defaultComment,
+      tradeComment: user.soloTradeComment?.trim() || defaultComment,
     };
+  }
+
+  async setPreferredComment(userId: string, comment: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { displayName: true, email: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    const next =
+      sanitizeSoloCommentPart(comment) ||
+      defaultSoloTraderLabel({
+        displayName: user.displayName,
+        email: user.email,
+      });
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { soloTradeComment: next },
+    });
+    return this.getMe(userId);
   }
 
   private async applyPnl(input: {

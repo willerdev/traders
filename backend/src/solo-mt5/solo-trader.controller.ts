@@ -20,6 +20,17 @@ export class SoloTraderController {
     return this.traders.getMe(req.user.id);
   }
 
+  @Patch('me/comment')
+  setComment(
+    @Request() req: { user: { id: string } },
+    @Body() body: { comment?: string },
+  ) {
+    return this.traders.setPreferredComment(
+      req.user.id,
+      String(body.comment ?? ''),
+    );
+  }
+
   @Get()
   list(
     @Request() req: { user: { email?: string | null } },

@@ -352,6 +352,11 @@ export function PerformanceDashboard({
                       <span className="font-semibold text-foreground">
                         {t.symbol}{" "}
                         <span className="font-normal text-muted">{t.direction}</span>
+                        {t.comment ? (
+                          <span className="ml-1 font-normal text-muted">
+                            · {t.comment}
+                          </span>
+                        ) : null}
                       </span>
                       <span
                         className={cn(

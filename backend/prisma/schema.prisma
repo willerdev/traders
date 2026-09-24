@@ -359,6 +359,8 @@ model User {
   soloMaxRiskPercent             Decimal    @default(1) @db.Decimal(6, 2)
   /// Soloema: signed closed P&L attributed to this operator (can be negative).
   soloRealizedPnl                Decimal    @default(0) @db.Decimal(12, 2)
+  /// Soloema: preferred MT5 order comment (identity still always stamped).
+  soloTradeComment               String?
   createdAt                      DateTime   @default(now())
   updatedAt                      DateTime   @updatedAt
 
