@@ -106,7 +106,10 @@ export class UsersService {
         tradingAccessActive: hasActiveTradingAccess(user),
         tradingDaysRemaining: tradingAccessDaysRemaining(user.accessExpiresAt),
         adminPermissions: resolveAdminPermissions({ ...user, role: role as typeof user.role }),
-        canManageTrades: !isSoloApp() || isSoloAdminEmail(user.email),
+        canManageTrades: !isSoloApp() || isSoloAdminEmail(user.email) || Boolean(user.soloTradeOperator),
+        soloTradeOperator: Boolean(user.soloTradeOperator),
+        soloMaxRiskPercent: Number(user.soloMaxRiskPercent ?? 1) || 1,
+        isSoloPlatformAdmin: isSoloAdminEmail(user.email),
       },
       onboarding: {
         emailVerified: user.emailVerified,
@@ -242,9 +245,11 @@ export class UsersService {
   async updateTradingAccount(userId: string, dto: UpdateTradingAccountDto) {
     const actor = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { email: true },
+      select: { email: true, soloTradeOperator: true },
     });
-    assertSoloCanManageTrades(actor?.email);
+    assertSoloCanManageTrades(actor?.email, {
+      soloTradeOperator: actor?.soloTradeOperator,
+    });
     const { ownerUserId } = await resolveSoloSharedOwnerUserId(
       this.prisma,
       userId,

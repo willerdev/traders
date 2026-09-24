@@ -25,6 +25,11 @@ export default function DashboardPage() {
   const [running, setRunning] = useState<UserMt5Trade[]>([]);
   const [floating, setFloating] = useState(0);
   const [dayPnl, setDayPnl] = useState(0);
+  const [tradingProfit, setTradingProfit] = useState<{
+    realizedPnl: number;
+    maxRiskPercent: number;
+    availableToWithdraw: number;
+  } | null>(null);
   const [apiReady, setApiReady] = useState<ApiReadiness>({
     platform: false,
     metaApi: false,
@@ -45,12 +50,14 @@ export default function DashboardPage() {
       api.wallet.summary(),
       api.wallet.dailyCalendar(now.getUTCFullYear(), now.getUTCMonth() + 1),
       api.signals.mt5Running(),
-      api.signals.mt5History(false, 2),
+      api.signals.mt5History(false, 1),
       api.metaApi.status(),
       api.deriv.status(),
+      api.soloTraders.me(),
     ]).then((results) => {
       if (cancelled) return;
-      const [wallet, calendar, runningRes, history, meta, deriv] = results;
+      const [wallet, calendar, runningRes, history, meta, deriv, trader] =
+        results;
       const readyState: ApiReadiness = {
         platform: wallet.status === "fulfilled",
         metaApi: false,
@@ -63,6 +70,16 @@ export default function DashboardPage() {
         setWithdrawn(wallet.value.totalWithdrawn);
         setEarned(wallet.value.totalEarned);
         setAvailable(wallet.value.availableBalance);
+        if (wallet.value.tradingProfit && wallet.value.soloTradeOperator) {
+          setTradingProfit(wallet.value.tradingProfit);
+        }
+      }
+      if (trader.status === "fulfilled" && trader.value.soloTradeOperator) {
+        setTradingProfit({
+          realizedPnl: trader.value.realizedPnl,
+          maxRiskPercent: trader.value.maxRiskPercent,
+          availableToWithdraw: trader.value.availableToWithdraw,
+        });
       }
       if (calendar.status === "fulfilled") {
         const nets = (calendar.value.summary?.dailyNets ?? []).map((d) => ({
@@ -146,6 +163,7 @@ export default function DashboardPage() {
         floating={floating}
         dayPnl={dayPnl}
         apiReady={apiReady}
+        tradingProfit={tradingProfit}
       />
     </div>
   );

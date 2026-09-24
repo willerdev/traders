@@ -353,6 +353,12 @@ model User {
   /// Encrypted MetaAPI Cloud token (user-owned). Used on Solo instead of METAAPI_TOKEN.
   metaApiTokenEnc                String?
   metaApiTokenSavedAt            DateTime?
+  /// Soloema: live trading/settings like admin, but User.role stays TRADER.
+  soloTradeOperator              Boolean    @default(false)
+  /// Soloema: max % of live equity risked per order (real admin sets this).
+  soloMaxRiskPercent             Decimal    @default(1) @db.Decimal(6, 2)
+  /// Soloema: signed closed P&L attributed to this operator (can be negative).
+  soloRealizedPnl                Decimal    @default(0) @db.Decimal(12, 2)
   createdAt                      DateTime   @default(now())
   updatedAt                      DateTime   @updatedAt
 
@@ -429,6 +435,7 @@ model User {
   chainReferralsAsReferrer     ChainReferral[]          @relation("ChainReferralReferrer")
   chainReferralsAsReferee      ChainReferral[]          @relation("ChainReferralReferee")
   chainContractEnrollment      ChainContractEnrollment?
+  soloTradeAttributions        SoloTradeAttribution[]
 
   @@index([status])
   @@index([role])
@@ -2314,4 +2321,20 @@ model ChainContractEnrollment {
 
   @@index([status])
   @@map("chain_contract_enrollments")
+}
+
+/// Soloema: which operator opened a shared-book position (comment may truncate).
+model SoloTradeAttribution {
+  id         String   @id @default(cuid())
+  userId     String
+  positionId String   @unique
+  orderId    String?
+  comment    String
+  openedAt   DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("solo_trade_attributions")
 }

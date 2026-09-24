@@ -29,14 +29,35 @@ import { usePriceAlertMonitor } from "@/hooks/use-price-alert-monitor";
 import { useMetaApiLive } from "@/hooks/use-metaapi-live";
 import { setMetaApiHasOpenTrades } from "@/lib/metaapi-live";
 import { cn } from "@/lib/utils";
-import { mt5DisplayBalance } from "@/components/mt5/mt5-ui";
 
 type RightTab = "watchlist" | "alerts" | "history";
 
 export default function SoloMt5Page() {
   const { ready, hasHydrated } = useRequireAuth();
   const userId = useAuthStore((s) => s.user?.id);
-  const canTrade = canManageSoloTrades(useAuthStore((s) => s.user));
+  const user = useAuthStore((s) => s.user);
+  const canTrade = canManageSoloTrades(user);
+
+  useEffect(() => {
+    if (!ready) return;
+    void api.users
+      .dashboard()
+      .then((data) => {
+        const auth = useAuthStore.getState();
+        if (!auth.user || !auth.token || !data?.user) return;
+        useAuthStore.getState().setAuth(auth.token, {
+          ...auth.user,
+          role: data.user.role ?? auth.user.role,
+          canManageTrades:
+            data.user.canManageTrades ?? auth.user.canManageTrades,
+          soloTradeOperator:
+            data.user.soloTradeOperator ?? auth.user.soloTradeOperator,
+          isSoloPlatformAdmin:
+            data.user.isSoloPlatformAdmin ?? auth.user.isSoloPlatformAdmin,
+        });
+      })
+      .catch(() => undefined);
+  }, [ready]);
   const [selectedChartSymbol, setSelectedChartSymbol] = useState<string | null>(
     null,
   );
@@ -100,11 +121,7 @@ export default function SoloMt5Page() {
 
   const account = data?.account;
   const equity = account?.equity ?? account?.startingBalance ?? 0;
-  const walletBalance = account
-    ? data?.accountSource === "linked_live"
-      ? account.startingBalance + (account.floatingProfit ?? 0)
-      : mt5DisplayBalance(account, data?.accountSource)
-    : 0;
+  const walletBalance = account?.startingBalance ?? 0;
   const {
     alerts,
     addAlert,

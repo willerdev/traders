@@ -592,7 +592,13 @@ export class AuthService {
     return {
       ...safe,
       role,
-      canManageTrades: isSoloAdminEmail(user.email as string | null) || !isSoloApp(),
+      canManageTrades:
+        !isSoloApp() ||
+        isSoloAdminEmail(user.email as string | null) ||
+        Boolean(user.soloTradeOperator),
+      soloTradeOperator: Boolean(user.soloTradeOperator),
+      soloMaxRiskPercent: Number(user.soloMaxRiskPercent ?? 1) || 1,
+      isSoloPlatformAdmin: isSoloAdminEmail(user.email as string | null),
       adminPermissions: resolveAdminPermissions({
         role,
         adminCanApproveKyc: Boolean(user.adminCanApproveKyc),

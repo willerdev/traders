@@ -197,6 +197,7 @@ export function PerformanceDashboard({
   floating,
   dayPnl,
   apiReady,
+  tradingProfit,
 }: {
   displayName: string;
   email?: string;
@@ -210,6 +211,11 @@ export function PerformanceDashboard({
   floating: number;
   dayPnl: number;
   apiReady: ApiReadiness;
+  tradingProfit?: {
+    realizedPnl: number;
+    maxRiskPercent: number;
+    availableToWithdraw: number;
+  } | null;
 }) {
   const slices = [
     { value: deposited, color: "#38bdf8", label: "Deposits" },
@@ -258,6 +264,21 @@ export function PerformanceDashboard({
           </span>
         </div>
       </div>
+
+      {tradingProfit ? (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+            Your trading profit
+          </p>
+          <p className="mt-1 text-2xl font-bold tabular-nums text-white">
+            {formatCurrency(tradingProfit.realizedPnl)}
+          </p>
+          <p className="text-xs text-muted">
+            Available to withdraw {formatCurrency(tradingProfit.availableToWithdraw)}{" "}
+            · max risk {tradingProfit.maxRiskPercent}%
+          </p>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 lg:col-span-1">
@@ -362,7 +383,7 @@ export function PerformanceDashboard({
 
         <div className="flex items-center justify-around rounded-2xl border border-white/10 bg-white/[0.03] p-4">
           <Gauge value={floating} label="Floating" />
-          <Gauge value={dayPnl + floating} label="Day + float" />
+          <Gauge value={dayPnl} label="Closed PnL" />
         </div>
       </div>
     </div>

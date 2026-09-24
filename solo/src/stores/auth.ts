@@ -11,6 +11,9 @@ interface User {
   status: string;
   avatarUrl?: string | null;
   canManageTrades?: boolean;
+  soloTradeOperator?: boolean;
+  soloMaxRiskPercent?: number;
+  isSoloPlatformAdmin?: boolean;
   adminPermissions?: import("@/lib/api").AdminPermissionsView;
 }
 
@@ -145,6 +148,11 @@ export const useDashboardStore = create<DashboardState>((set) => ({
           displayName: data.user.displayName,
           avatarUrl: data.user.avatarUrl ?? null,
           adminPermissions: data.user.adminPermissions ?? auth.user.adminPermissions,
+          canManageTrades: data.user.canManageTrades ?? auth.user.canManageTrades,
+          soloTradeOperator: data.user.soloTradeOperator ?? auth.user.soloTradeOperator,
+          isSoloPlatformAdmin:
+            data.user.isSoloPlatformAdmin ?? auth.user.isSoloPlatformAdmin,
+          role: data.user.role ?? auth.user.role,
         });
       }
     } catch (err) {

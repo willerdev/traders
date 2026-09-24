@@ -7,6 +7,10 @@ import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { WalletAutoWithdrawSettings } from "@/components/wallet/wallet-auto-withdraw-settings";
 import { NowpaymentsPayoutLoginCard } from "@/components/wallet/nowpayments-payout-login-card";
 import { api, type WalletSummary } from "@/lib/api";
+import {
+  SOLO_WALLET_WITHDRAW_PAUSED_LABEL,
+  isSoloWalletWithdrawEnabled,
+} from "@/lib/solo-wallet-withdraw";
 import { ArrowLeft, Clock, Loader2 } from "lucide-react";
 
 export default function AutoWithdrawPage() {
@@ -65,6 +69,11 @@ export default function AutoWithdrawPage() {
               Kampala time. This is the soloEmma platform wallet. Deriv
               cashout addresses are saved under Journal or Deriv.
             </p>
+            {!isSoloWalletWithdrawEnabled(summary) ? (
+              <p className="mt-2 text-sm font-medium text-amber-300">
+                {SOLO_WALLET_WITHDRAW_PAUSED_LABEL}
+              </p>
+            ) : null}
           </div>
         </div>
       </motion.div>

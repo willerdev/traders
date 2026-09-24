@@ -473,6 +473,16 @@ class ApiClient {
       this.request<KycRecord>("/users/kyc/retry", { method: "POST" }),
   };
 
+  soloTraders = {
+    me: () => this.request<SoloTraderSnapshot>("/solo/traders/me"),
+    list: () => this.request<{ traders: SoloTraderSnapshot[] }>("/solo/traders"),
+    setRisk: (userId: string, maxRiskPercent: number) =>
+      this.request<SoloTraderSnapshot>(`/solo/traders/${userId}/risk`, {
+        method: "PATCH",
+        body: JSON.stringify({ maxRiskPercent }),
+      }),
+  };
+
   chainEnrollment = {
     get: () => this.request<ChainContractEnrollment>("/blockchain/enrollment"),
     acceptTerms: () =>
@@ -2044,6 +2054,9 @@ export interface DashboardData {
     tradingDaysRemaining?: number | null;
     adminPermissions?: AdminPermissionsView;
     canManageTrades?: boolean;
+    soloTradeOperator?: boolean;
+    soloMaxRiskPercent?: number;
+    isSoloPlatformAdmin?: boolean;
   };
   onboarding?: OnboardingStatus;
   account: {
@@ -2202,6 +2215,16 @@ export interface DisplayCurrencyInfo {
   localCurrencyCode?: string | null;
 }
 
+export interface SoloTraderSnapshot {
+  userId: string;
+  email: string | null;
+  displayName: string;
+  soloTradeOperator: boolean;
+  maxRiskPercent: number;
+  realizedPnl: number;
+  availableToWithdraw: number;
+}
+
 export interface WalletSummary {
   availableBalance: number;
   lockedBalance: number;
@@ -2224,6 +2247,13 @@ export interface WalletSummary {
   withdrawalPreferredWindowLabel?: string;
   vipActive?: boolean;
   autoWithdrawEligible?: boolean;
+  soloTradeOperator?: boolean;
+  soloWithdrawEnabled?: boolean;
+  tradingProfit?: {
+    realizedPnl: number;
+    maxRiskPercent: number;
+    availableToWithdraw: number;
+  };
   activePlan: {
     id: string;
     amount: number;

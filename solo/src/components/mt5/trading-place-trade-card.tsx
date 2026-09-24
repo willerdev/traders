@@ -89,7 +89,7 @@ export function TradingPlaceTradeCard({
       </div>
       {!canTrade ? (
         <p className="mt-2 text-center text-[11px] text-muted">
-          Only the platform admin can place, close, or set limits on trades.
+          You can view this book. Trading is limited to assigned traders.
         </p>
       ) : null}
     </div>

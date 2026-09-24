@@ -4,7 +4,7 @@ import { isSoloApp } from './app-variant';
 const DEFAULT_SOLO_ADMIN_EMAIL = 'willeratmit12@gmail.com';
 
 export const SOLO_TRADE_FORBIDDEN =
-  'Only the soloEmma admin can place trades, close trades, set limits, or add signals to execute.';
+  'You cannot place or manage live trades on this account.';
 
 export function getSoloAdminEmails(): string[] {
   const raw = (
@@ -23,15 +23,36 @@ export function isSoloAdminEmail(email?: string | null): boolean {
   return getSoloAdminEmails().includes(email.trim().toLowerCase());
 }
 
-/** Solo: only ADMIN_EMAIL may place/close/limit/signal. Other apps: anyone authenticated. */
-export function canSoloManageTrades(email?: string | null): boolean {
+/** Solo: platform admin or flagged trade operator. Other apps: anyone authenticated. */
+export function canSoloManageTrades(
+  email?: string | null,
+  extra?: {
+    soloTradeOperator?: boolean | null;
+    canManageTrades?: boolean | null;
+  },
+): boolean {
   if (!isSoloApp()) return true;
-  return isSoloAdminEmail(email);
+  if (extra?.canManageTrades === true) return true;
+  if (isSoloAdminEmail(email)) return true;
+  return Boolean(extra?.soloTradeOperator);
 }
 
-export function assertSoloCanManageTrades(email?: string | null): void {
-  if (canSoloManageTrades(email)) return;
+export function assertSoloCanManageTrades(
+  email?: string | null,
+  extra?: {
+    soloTradeOperator?: boolean | null;
+    canManageTrades?: boolean | null;
+  },
+): void {
+  if (canSoloManageTrades(email, extra)) return;
   throw new ForbiddenException(SOLO_TRADE_FORBIDDEN);
+}
+
+export function assertSoloPlatformAdmin(email?: string | null): void {
+  if (isSoloAdminEmail(email)) return;
+  throw new ForbiddenException(
+    'Only the platform admin can change trader risk limits.',
+  );
 }
 
 export function soloAdminRole(

@@ -12,6 +12,10 @@ import { CurrencySwitcher } from "@/components/currency-switcher";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { syncApiAuthToken, useAuthStore } from "@/stores/auth";
 import { Loader2, RefreshCw } from "lucide-react";
+import {
+  SOLO_WALLET_WITHDRAW_PAUSED_LABEL,
+  isSoloWalletWithdrawEnabled,
+} from "@/lib/solo-wallet-withdraw";
 
 export default function WalletPage() {
   const { ready } = useRequireAuth();
@@ -135,10 +139,34 @@ export default function WalletPage() {
             balance={summary.availableBalance}
             displayCurrency={summary.displayCurrency}
             savedWalletCount={walletCount}
-            onWithdraw={() => setWithdrawOpen(true)}
+            onWithdraw={() => {
+              if (!isSoloWalletWithdrawEnabled(summary)) return;
+              setWithdrawOpen(true);
+            }}
             onDeposit={() => setDepositOpen(true)}
             onManageWallets={() => setWalletsOpen(true)}
+            withdrawDisabled={!isSoloWalletWithdrawEnabled(summary)}
+            withdrawDisabledLabel={SOLO_WALLET_WITHDRAW_PAUSED_LABEL}
           />
+          {summary.soloTradeOperator || summary.tradingProfit ? (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                Trading profit
+              </p>
+              <p className="mt-1 text-lg font-semibold tabular-nums text-white">
+                {(summary.tradingProfit?.realizedPnl ?? 0).toFixed(2)} USDT
+              </p>
+              <p className="text-xs text-muted">
+                Available to withdraw{" "}
+                {(
+                  summary.tradingProfit?.availableToWithdraw ??
+                  summary.availableBalance
+                ).toFixed(2)}{" "}
+                USDT · max risk{" "}
+                {summary.tradingProfit?.maxRiskPercent ?? 1}%
+              </p>
+            </div>
+          ) : null}
           <WalletPendingWithdrawals onCancelled={() => void refresh()} />
         </div>
       )}
@@ -153,7 +181,7 @@ export default function WalletPage() {
         open={withdrawOpen}
         onClose={() => setWithdrawOpen(false)}
         availableBalance={summary?.availableBalance ?? 0}
-        feeUsdt={summary?.withdrawalFeeUsdt ?? 3}
+        feeUsdt={summary?.withdrawalFeeUsdt ?? 0}
         onComplete={() => void refresh()}
       />
       <WalletSavedWalletsModal

@@ -3,16 +3,45 @@ import {
   ExecutionContext,
   Injectable,
 } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
 import { assertSoloCanManageTrades } from '../../common/solo-admin.util';
+import { isSoloApp } from '../../common/app-variant';
 
-/** Solo: only ADMIN_EMAIL may mutate trades. No-op on traders-api. */
 @Injectable()
 export class SoloTradingAdminGuard implements CanActivate {
-  canActivate(context: ExecutionContext): boolean {
+  constructor(private prisma: PrismaService) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const { user } = context.switchToHttp().getRequest<{
-      user?: { email?: string | null };
+      user?: {
+        id?: string;
+        email?: string | null;
+        canManageTrades?: boolean;
+        soloTradeOperator?: boolean;
+      };
     }>();
-    assertSoloCanManageTrades(user?.email);
+    if (!isSoloApp()) return true;
+    if (
+      user?.canManageTrades === true ||
+      user?.soloTradeOperator === true
+    ) {
+      assertSoloCanManageTrades(user?.email, {
+        canManageTrades: user.canManageTrades,
+        soloTradeOperator: user.soloTradeOperator,
+      });
+      return true;
+    }
+    let operator = false;
+    if (user?.id) {
+      const row = await this.prisma.user.findUnique({
+        where: { id: user.id },
+        select: { soloTradeOperator: true, email: true },
+      });
+      operator = Boolean(row?.soloTradeOperator);
+    }
+    assertSoloCanManageTrades(user?.email, {
+      soloTradeOperator: operator,
+    });
     return true;
   }
 }

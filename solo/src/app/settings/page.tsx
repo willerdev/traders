@@ -16,6 +16,7 @@ import { MetaApiTokenCard } from "@/components/mt5/metaapi-token-card";
 import { MetaApiAccountPicker } from "@/components/mt5/metaapi-account-picker";
 import { NowpaymentsPayoutLoginCard } from "@/components/wallet/nowpayments-payout-login-card";
 import { canManageSoloTrades } from "@/lib/solo-admin";
+import { SoloTraderRiskAdmin } from "@/components/settings/solo-trader-risk-admin";
 
 export default function SettingsPage() {
   const { ready } = useRequireAuth();
@@ -222,6 +223,12 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {user?.isSoloPlatformAdmin ? (
+        <div className="mt-5">
+          <SoloTraderRiskAdmin />
+        </div>
+      ) : null}
 
       <div className="mt-6">
         <Button
