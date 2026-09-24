@@ -11,6 +11,7 @@ import {
   isSoloAdminEmail,
 } from '../common/solo-admin.util';
 import {
+  commentBelongsToUser,
   parseSoloTradeUserId,
   roundSoloUsdt,
   soloTradeComment,
@@ -84,6 +85,31 @@ export class SoloTraderService {
       isOperator: Boolean(user?.soloTradeOperator),
       isPlatformAdmin: isSoloAdminEmail(user?.email),
       maxRiskPercent: Number(user?.soloMaxRiskPercent ?? 1) || 1,
+    };
+  }
+
+  /** Operators see only their book. Platform admin and other viewers see the full shared book. */
+  async tradeScope(userId: string): Promise<{
+    isolate: boolean;
+    owns: (id?: string | null, comment?: string | null) => boolean;
+  }> {
+    const risk = await this.loadOperatorRisk(userId);
+    if (!risk.isOperator || risk.isPlatformAdmin) {
+      return { isolate: false, owns: () => true };
+    }
+    const rows = await this.prisma.soloTradeAttribution.findMany({
+      where: { userId },
+      select: { positionId: true, orderId: true },
+    });
+    const ids = new Set(
+      rows.flatMap((r) => [r.positionId, r.orderId].filter(Boolean) as string[]),
+    );
+    return {
+      isolate: true,
+      owns: (id, comment) => {
+        if (id && ids.has(id)) return true;
+        return commentBelongsToUser(comment, userId);
+      },
     };
   }
 

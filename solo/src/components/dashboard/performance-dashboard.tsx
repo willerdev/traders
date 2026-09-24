@@ -268,14 +268,15 @@ export function PerformanceDashboard({
       {tradingProfit ? (
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-            Your trading profit
+            Your profit and loss
           </p>
           <p className="mt-1 text-2xl font-bold tabular-nums text-white">
             {formatCurrency(tradingProfit.realizedPnl)}
           </p>
           <p className="text-xs text-muted">
-            Available to withdraw {formatCurrency(tradingProfit.availableToWithdraw)}{" "}
-            · max risk {tradingProfit.maxRiskPercent}%
+            Closed P&amp;L · open float {fmtMt5Price(floating)} · available{" "}
+            {formatCurrency(tradingProfit.availableToWithdraw)} · max risk{" "}
+            {tradingProfit.maxRiskPercent}%
           </p>
         </div>
       ) : null}
@@ -330,7 +331,7 @@ export function PerformanceDashboard({
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-              Running trades
+              {tradingProfit ? "Your open trades" : "Running trades"}
             </p>
             <span className="text-xs tabular-nums text-muted">
               {running.length} · float {fmtMt5Price(floating)}
@@ -338,7 +339,7 @@ export function PerformanceDashboard({
           </div>
           {running.length === 0 ? (
             <div className="mt-6 flex h-24 items-center justify-center text-xs text-muted">
-              No open positions
+              {tradingProfit ? "You have no open trades" : "No open positions"}
             </div>
           ) : (
             <ul className="mt-3 space-y-2">
