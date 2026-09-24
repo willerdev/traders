@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { TradeDirection } from '@prisma/client';
@@ -14,15 +15,30 @@ import {
   encryptCredential,
 } from '../common/credential-crypto.util';
 import { ConfigService } from '@nestjs/config';
+import { DerivService } from '../deriv/deriv.service';
+import {
+  computeAllocatedWallet,
+  isSharedLiveBook,
+  isSoloAllocatedTraderEmail,
+  roundAllocatedUsdt,
+  sumLedgerDepositsAndProfits,
+  tradingCapitalLockUsdt,
+} from '../common/solo-allocated-trader.util';
 import {
   MetaApiAccount,
   MetaApiDeal,
   MetaApiOrder,
   MetaApiPosition,
   MetaApiService,
+  MetaApiSymbolSpec,
 } from '../metaapi/metaapi.service';
 import { roundToSymbolDigits } from '../metaapi/metaapi-order.util';
+import {
+  classifyBrokerError,
+  humanizeBrokerError,
+} from '../common/broker-error.util';
 import { normalizeDerivSymbol } from '../ai/deriv-symbols';
+import { isAfterSoloMt5HistoryReset } from '../common/solo-mt5-history-since';
 import { computeOneToOnePrice } from '../common/rr.util';
 import {
   defaultMt5ChartSlPips,
@@ -42,6 +58,30 @@ function isSellType(type: string): boolean {
   return type.toLowerCase().includes('sell');
 }
 
+function brokerMinStopDistance(spec: MetaApiSymbolSpec): number {
+  const digits = spec.digits ?? 5;
+  const tick = spec.tickSize > 0 ? spec.tickSize : 10 ** -digits;
+  const points = Math.max(spec.stopsLevel ?? 0, spec.freezeLevel ?? 0, 0);
+  return Math.max(points * tick, tick);
+}
+
+function formatStopDistance(
+  priceDist: number,
+  spec: MetaApiSymbolSpec,
+  symbol: string,
+): string {
+  const digits = spec.digits ?? 5;
+  const tick = spec.tickSize > 0 ? spec.tickSize : 10 ** -digits;
+  const points = priceDist / tick;
+  const pipSize = getPipSize(symbol);
+  const pips = pipSize > 0 ? priceDist / pipSize : 0;
+  const price = priceDist.toFixed(Math.min(digits, 5));
+  if (pipSize >= tick * 5) {
+    return `${price} (${points.toFixed(0)} points / ~${pips.toFixed(1)} pips)`;
+  }
+  return `${price} (${points.toFixed(0)} points)`;
+}
+
 @Injectable()
 export class SoloMt5Service {
   private readonly logger = new Logger(SoloMt5Service.name);
@@ -50,6 +90,7 @@ export class SoloMt5Service {
     private prisma: PrismaService,
     private metaApi: MetaApiService,
     private config: ConfigService,
+    @Optional() private deriv?: DerivService,
   ) {}
 
   private cryptoSecret() {
@@ -92,6 +133,186 @@ export class SoloMt5Service {
     const token = await this.decryptCloudToken(userId);
     if (token) return this.metaApi.runWithToken(token, fn);
     return fn();
+  }
+
+  private async isAllocatedTrader(userId: string): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    return isSoloAllocatedTraderEmail(user?.email);
+  }
+
+  /**
+   * Trading book shown to users: locked capital + open floating only.
+   * Closed-trade history is a separate feed and must not change this balance.
+   */
+  private syntheticTradingAccount(
+    currency: string,
+    floatingProfit: number,
+  ): {
+    startingBalance: number;
+    currency: string;
+    realizedProfit: number;
+    floatingProfit: number;
+    totalProfit: number;
+    equity: number;
+  } {
+    const lock = tradingCapitalLockUsdt();
+    const floating = roundAllocatedUsdt(floatingProfit);
+    return {
+      startingBalance: lock,
+      currency: currency || 'USD',
+      realizedProfit: 0,
+      floatingProfit: floating,
+      totalProfit: floating,
+      equity: roundAllocatedUsdt(lock + floating),
+    };
+  }
+
+  async allocatedBook(userId: string): Promise<{
+    deposit: number;
+    liveTradingBalance: number;
+    profitsMade: number;
+    remaining: number;
+    dedicatedLive: boolean;
+    source: 'metaapi' | 'deriv' | 'pnl';
+    currency: string;
+    tradingEquity: number;
+    withdrawn: number;
+    metaApiCapital: number;
+    tradingCapitalLock: number;
+  } | null> {
+    if (!(await this.isAllocatedTrader(userId))) return null;
+    return this.withCloud(userId, () => this.loadAllocatedBook(userId));
+  }
+
+  async allocatedWalletAvailable(
+    userId: string,
+    ledgerAvailable: number,
+  ): Promise<number | null> {
+    if (!(await this.isAllocatedTrader(userId))) return null;
+    // Show the Soloema ledger. Deriv/MetaAPI capital is not deducted from wallet.
+    return roundAllocatedUsdt(Math.max(0, ledgerAvailable));
+  }
+
+  private async loadAllocatedBook(userId: string) {
+    if (!(await this.isAllocatedTrader(userId))) return null;
+    const tradingCapitalLock = tradingCapitalLockUsdt();
+    const cutoffDeposit = await this.prisma.walletTransaction.findFirst({
+      where: {
+        userId,
+        type: { in: ['DEPOSITOR_DEPOSIT', 'DEPOSIT'] },
+        amount: { gte: 499.99 },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { createdAt: true },
+    });
+    const txs = await this.prisma.walletTransaction.findMany({
+      where: {
+        userId,
+        ...(cutoffDeposit
+          ? { createdAt: { gte: cutoffDeposit.createdAt } }
+          : {}),
+      },
+      select: { amount: true, type: true },
+    });
+    const { deposits, profits, withdrawn } = sumLedgerDepositsAndProfits(txs);
+
+    let mt5Balance = 0;
+    let mt5Equity = 0;
+    let floating = 0;
+    let currency = 'USD';
+    try {
+      const ctx = await this.readyAccountOrNull(userId);
+      if (ctx) {
+        const [information, positions] = await Promise.all([
+          this.metaApi.getAccountInformation(ctx.account),
+          this.metaApi.getPositions(ctx.account),
+        ]);
+        mt5Balance = Number(information.balance ?? 0);
+        mt5Equity = Number(information.equity ?? mt5Balance);
+        currency = information.currency || 'USD';
+        floating = positions.reduce(
+          (sum, p) =>
+            sum + Number(p.unrealizedProfit || p.profit || 0),
+          0,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Allocated MetaAPI book failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+
+    let derivBalance = 0;
+    if (this.deriv && mt5Equity <= 0) {
+      derivBalance = await this.deriv.tradingUsdBalance(userId);
+    }
+
+    const liveEquity = mt5Equity > 0 ? mt5Equity : derivBalance;
+    const dedicatedLive =
+      liveEquity > 0 && !isSharedLiveBook(liveEquity, tradingCapitalLock);
+    // Deriv/MetaAPI capital is not Soloema wallet funds — never subtract it here.
+    const metaApiCapital = 0;
+    const source: 'metaapi' | 'deriv' | 'pnl' = dedicatedLive
+      ? mt5Equity > 0
+        ? 'metaapi'
+        : 'deriv'
+      : 'pnl';
+
+    const remaining = computeAllocatedWallet({
+      deposits,
+      profits,
+      withdrawn,
+      tradingCapitalLock,
+      metaApiCapital,
+    });
+
+    return {
+      deposit: deposits,
+      liveTradingBalance: roundAllocatedUsdt(tradingCapitalLock + metaApiCapital),
+      profitsMade: profits,
+      remaining,
+      dedicatedLive,
+      source,
+      currency,
+      tradingEquity: roundAllocatedUsdt(tradingCapitalLock + floating),
+      withdrawn,
+      metaApiCapital,
+      tradingCapitalLock,
+    };
+  }
+
+  private applyAllocatedAccount<T extends {
+    startingBalance: number;
+    realizedProfit: number;
+    floatingProfit: number;
+    totalProfit: number;
+    equity: number;
+    currency: string;
+  }>(
+    account: T,
+    book: {
+      tradingEquity: number;
+      profitsMade: number;
+      tradingCapitalLock: number;
+      currency: string;
+    },
+  ): T {
+    return {
+      ...account,
+      startingBalance: book.tradingCapitalLock,
+      realizedProfit: 0,
+      floatingProfit: roundAllocatedUsdt(
+        book.tradingEquity - book.tradingCapitalLock,
+      ),
+      totalProfit: roundAllocatedUsdt(
+        book.tradingEquity - book.tradingCapitalLock,
+      ),
+      equity: book.tradingEquity,
+      currency: book.currency || account.currency,
+    };
   }
 
   async cloudStatus(userId: string) {
@@ -278,28 +499,28 @@ export class SoloMt5Service {
       const limits = orders.map((o) => this.mapOrder(o));
       const trades = [...running, ...limits];
       const floatingProfit = running.reduce((sum, t) => sum + (t.profit ?? 0), 0);
-      const startingBalance = information.balance - floatingProfit;
+      const displayAccount = this.syntheticTradingAccount(
+        information.currency || 'USD',
+        floatingProfit,
+      );
+      const book = await this.loadAllocatedBook(userId);
 
       return {
         configured: true,
         accountSource: 'linked_live' as const,
-        account: {
-          startingBalance,
-          currency: information.currency || 'USD',
-          realizedProfit: 0,
-          floatingProfit,
-          totalProfit: floatingProfit,
-          equity: information.equity,
-        },
+        account: displayAccount,
         investor: {
-          investmentDeposited: 0,
-          investmentBalance: 0,
+          investmentDeposited: book?.deposit ?? 0,
+          investmentBalance: book?.remaining ?? 0,
           enrollmentPaid: 0,
-          walletDeposited: 0,
-          walletBalance: 0,
+          walletDeposited: book?.deposit ?? 0,
+          walletBalance: book?.remaining ?? 0,
           mt5Balance: information.balance,
           mt5Equity: information.equity,
           currency: information.currency || 'USD',
+          allocatedDeposit: book?.deposit ?? null,
+          liveTradingBalance: book?.liveTradingBalance ?? null,
+          profitsMade: book?.profitsMade ?? null,
         },
         setups: { items: [], count: 0, claimableCount: 0 },
         trades,
@@ -510,17 +731,14 @@ export class SoloMt5Service {
     ]);
     const trades = positions.map((p) => this.mapPosition(p));
     const floatingProfit = trades.reduce((sum, t) => sum + (t.profit ?? 0), 0);
+    const book = await this.loadAllocatedBook(userId);
     return {
       trades,
       accountSource: 'linked_live' as const,
-      account: {
-        startingBalance: information.balance - floatingProfit,
-        currency: information.currency || 'USD',
-        realizedProfit: 0,
+      account: this.syntheticTradingAccount(
+        information.currency || 'USD',
         floatingProfit,
-        totalProfit: floatingProfit,
-        equity: information.equity,
-      },
+      ),
       stats: {
         runningCount: trades.length,
         floatingProfit,
@@ -625,6 +843,7 @@ export class SoloMt5Service {
         ? volumeRaw
         : 0.01;
     const info = await this.metaApi.getAccountInformation(ctx.account);
+    const book = await this.loadAllocatedBook(userId);
 
     return {
       symbol,
@@ -640,7 +859,7 @@ export class SoloMt5Service {
         riskPercent: 1,
         riskAmount: Math.abs(entry - stopLoss) * volume,
         estimatedLossAtSl: Math.abs(entry - stopLoss) * volume,
-        accountEquity: info.equity,
+        accountEquity: book?.tradingEquity ?? info.equity,
         currency: info.currency || 'USD',
       },
       refreshedAt: new Date().toISOString(),
@@ -661,6 +880,7 @@ export class SoloMt5Service {
       volume: dto.volume ?? 0.01,
       stopLoss: dto.stopLoss,
       takeProfit: dto.takeProfit,
+      comment: 'SOLO Expert',
     });
     return {
       status: 'placed',
@@ -854,6 +1074,25 @@ export class SoloMt5Service {
     };
   }
 
+  private breakevenBlockedMessage(
+    pos: MetaApiPosition,
+    spec: MetaApiSymbolSpec,
+    be: number,
+    mark: number,
+    profitDistance: number,
+  ): string {
+    const minDist = brokerMinStopDistance(spec);
+    const sell = isSellType(pos.type);
+    const stopPoints = Math.max(spec.stopsLevel ?? 0, spec.freezeLevel ?? 0, 1);
+    const needed = formatStopDistance(minDist, spec, pos.symbol);
+    const have = formatStopDistance(Math.max(0, profitDistance), spec, pos.symbol);
+    const markLabel = sell ? 'ask' : 'bid';
+    if (profitDistance <= 0) {
+      return `Cannot set breakeven yet — this ${sell ? 'SELL' : 'BUY'} is not far enough in profit. The broker will not place stop loss at entry (${be}) while price (${markLabel} ${mark}) is at or against entry. Price must first move at least ${needed} in profit.`;
+    }
+    return `Cannot set breakeven yet — broker stop level is ${stopPoints} points. Stop loss at entry (${be}) must stay at least ${needed} away from the current ${markLabel} (${mark}). This trade has only moved ${have}. Wait until price is further in profit, then try Set B.E. again.`;
+  }
+
   private async loadSetBreakeven(userId: string, positionId: string) {
     const ctx = await this.requireAccount(userId);
     const positions = await this.metaApi.getPositions(ctx.account);
@@ -879,12 +1118,44 @@ export class SoloMt5Service {
         message: 'Stop loss is already at breakeven',
       };
     }
-    await this.metaApi.modifyPositionStops(ctx.account, {
-      positionId,
-      stopLoss: be,
-      takeProfit: pos.takeProfit,
-      specDigits: digits,
-    });
+
+    const live = await this.metaApi.getSymbolPrice(ctx.account, pos.symbol);
+    const sell = isSellType(pos.type);
+    const mark = sell ? live.ask : live.bid;
+    const profitDistance = sell ? be - mark : mark - be;
+    const minDist = brokerMinStopDistance(spec);
+    if (profitDistance + tick / 2 < minDist) {
+      throw new BadRequestException(
+        this.breakevenBlockedMessage(pos, spec, be, mark, profitDistance),
+      );
+    }
+
+    try {
+      await this.metaApi.modifyPositionStops(ctx.account, {
+        positionId,
+        stopLoss: be,
+        takeProfit: pos.takeProfit,
+        specDigits: digits,
+      });
+    } catch (err) {
+      const raw =
+        err instanceof BadRequestException
+          ? Array.isArray(err.message)
+            ? err.message.join(' ')
+            : String(err.message)
+          : err instanceof Error
+            ? err.message
+            : String(err);
+      if (classifyBrokerError(raw) === 'invalid_stops') {
+        throw new BadRequestException(
+          this.breakevenBlockedMessage(pos, spec, be, mark, profitDistance),
+        );
+      }
+      throw err instanceof BadRequestException
+        ? err
+        : new BadRequestException(humanizeBrokerError(raw));
+    }
+
     return {
       ok: true,
       positionId,
@@ -979,7 +1250,9 @@ export class SoloMt5Service {
         message: err instanceof Error ? err.message : 'Could not load history',
       };
     }
-    const items = this.mapClosedDeals(deals);
+    const items = this.mapClosedDeals(deals).filter((row) =>
+      isAfterSoloMt5HistoryReset(row.closedAt),
+    );
     this.logger.log(
       `Solo MT5 history deals=${deals.length} closed=${items.length}`,
     );
@@ -987,7 +1260,7 @@ export class SoloMt5Service {
       items,
       count: items.length,
       dealCount: deals.length,
-      dayPnl: this.sumDealDayPnl(deals),
+      dayPnl: items.reduce((sum, row) => sum + (row.pnl ?? 0), 0),
       refreshedAt: new Date().toISOString(),
     };
   }

@@ -76,12 +76,6 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto, ip?: string) {
-    if (isSoloApp()) {
-      throw new ForbiddenException(
-        'New accounts are no longer accepted. Sign in with an existing account.',
-      );
-    }
-
     const email = dto.email.trim().toLowerCase();
 
     if (!isRegistrationEmailAllowed(email)) {

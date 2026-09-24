@@ -75,7 +75,7 @@ export class SoloMt5Controller {
     @Query('fresh') fresh?: string,
     @Query('days') days?: string,
   ) {
-    const parsed = days ? Number.parseInt(days, 10) : 2;
+    const parsed = days ? Number.parseInt(days, 10) : 1;
     return this.mt5.history(
       req.user.id,
       fresh === '1' || fresh === 'true',

@@ -20,7 +20,7 @@ async function bootstrap() {
     origin: (origin, callback) => {
       const allowed = (process.env.FRONTEND_URL || 'http://localhost:3001')
         .split(',')
-        .map((o) => o.trim())
+        .map((o) => o.trim().replace(/\/$/, ''))
         .filter(Boolean);
 
       if (process.env.NODE_ENV !== 'production') {
@@ -32,8 +32,18 @@ async function bootstrap() {
         );
       }
 
-      const extra = process.env.SOLO_FRONTEND_URL?.trim();
-      if (extra) allowed.push(extra.replace(/\/$/, ''));
+      const extra = (process.env.SOLO_FRONTEND_URL || '')
+        .split(',')
+        .map((o) => o.trim().replace(/\/$/, ''))
+        .filter(Boolean);
+      allowed.push(...extra);
+
+      for (const known of [
+        'https://soloema-1.onrender.com',
+        'https://soloema-web.onrender.com',
+      ]) {
+        if (!allowed.includes(known)) allowed.push(known);
+      }
 
       if (!origin || allowed.includes(origin)) {
         callback(null, origin ?? allowed[0]);
