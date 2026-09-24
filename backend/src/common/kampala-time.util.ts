@@ -72,5 +72,5 @@ export function investorYieldDeliveryWindowLabel(): string {
     Math.floor(INVESTOR_YIELD_DELIVERY_END_MINUTE / 60),
     INVESTOR_YIELD_DELIVERY_END_MINUTE % 60,
   );
-  return `${start}–${end} Africa/Kampala (weekdays)`;
+  return `${start}–${end} on weekdays`;
 }

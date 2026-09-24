@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { InvestHub } from "@/components/investor/invest-hub";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 
@@ -15,7 +16,12 @@ export default function InvestPage() {
           <h1 className="text-2xl font-bold text-white xl:text-3xl">Smart Invest</h1>
           <p className="mt-1 text-sm text-gray-400">
             Capital, daily yield projections, and returns history. New
-            investment allocations earn yield only after 24 hours.
+            investment allocations earn yield only after 24 hours. To fully
+            exit, use{" "}
+            <Link href="/redeem" className="text-[#E8D4D6] underline underline-offset-2">
+              Redeem
+            </Link>
+            .
           </p>
         </div>
         <p className="mt-2 hidden text-xs uppercase tracking-[0.18em] text-emerald-300/70 xl:block">

@@ -1361,6 +1361,30 @@ class ApiClient {
       this.request<{ paused: boolean }>("/investor/resume", {
         method: "POST",
       }),
+    /** Smart Invest full exit — UI lives on /redeem (not Invest). */
+    optOutStatus: () => this.request<InvestorOptOutStatus>("/investor/opt-out"),
+    /** Emails a 6-digit code used on /redeem before submit. */
+    sendOptOutVerifyEmail: () =>
+      this.request<{
+        email: string;
+        emailMasked: string | null;
+        expiresIn: number;
+        cooldownSec: number;
+        message: string;
+      }>("/investor/opt-out/verify-email", {
+        method: "POST",
+      }),
+    /** Starts the 5-day redeem on /redeem after email verification + signed-for ack. */
+    requestOptOut: (body: {
+      reasonCode: string;
+      reasonNote?: string;
+      acknowledged: boolean;
+      verificationCode: string;
+    }) =>
+      this.request<InvestorOptOutStatus>("/investor/opt-out", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
     allocate: (amount: number) =>
       this.request<{
         direction: string;
@@ -2331,6 +2355,60 @@ export interface InvestorStatus {
     executedAt: string | null;
     closedAt: string | null;
   }>;
+}
+
+export interface InvestorOptOutStatus {
+  eligible: boolean;
+  investorActive: boolean;
+  policy: {
+    title: string;
+    businessDays: number;
+    day3Report: number;
+    bullets: string[];
+  };
+  reasons: Array<{ code: string; label: string }>;
+  books: {
+    capitalUsdt: number;
+    profitToDateUsdt: number;
+    walletUsdt: number;
+    investUsdt: number;
+  };
+  maintenance: {
+    active: boolean;
+    until: string | null;
+    weeklyProfitPercent: number;
+    withdraw40By: string;
+  };
+  request: {
+    id: string;
+    status: string;
+    reasonCode: string;
+    reasonNote: string | null;
+    reasonLabel?: string;
+    capitalUsdt: number;
+    profitToDateUsdt: number;
+    walletUsdt: number;
+    investUsdt: number;
+    requestedAt: string;
+    requestedAtLabel?: string;
+    day3At: string;
+    settleAt: string;
+    day3AtLabel: string;
+    settleAtLabel: string;
+    day3ReportSentAt: string | null;
+    settledAt: string | null;
+    report: {
+      capitalRefundUsdt?: number;
+      profitsKeptUsdt?: number;
+      profitsNotPaidUsdt?: number;
+      settleAtLabel?: string;
+    } | null;
+  } | null;
+  verify?: {
+    emailMasked: string | null;
+    cooldownSec: number;
+    pending: boolean;
+  };
 }
 
 export interface UnitrustStatus {

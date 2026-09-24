@@ -242,6 +242,7 @@ export function InvestHub() {
   const [transferAmount, setTransferAmount] = useState("");
   const [transferLoading, setTransferLoading] = useState(false);
   const [investmentAmount, setInvestmentAmount] = useState("100");
+  const [optOutCooling, setOptOutCooling] = useState(false);
   const [vipLoading, setVipLoading] = useState(false);
 
   const tiers = status?.feeTiers?.length ? status.feeTiers : DEFAULT_FEE_TIERS;
@@ -263,12 +264,14 @@ export function InvestHub() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, w] = await Promise.all([
+      const [s, w, o] = await Promise.all([
         api.investor.status(),
         api.wallet.summary(),
+        api.investor.optOutStatus().catch(() => null),
       ]);
       setStatus(s);
       setWalletBalance(w.availableBalance);
+      setOptOutCooling(o?.request?.status === "COOLING");
       if (s.settings) setRisk(String(s.settings.riskPercent));
     } finally {
       setLoading(false);
@@ -569,6 +572,13 @@ export function InvestHub() {
             </div>
           )}
         </motion.div>
+        <p className="text-sm text-gray-400">
+          To fully exit after you enroll, use{" "}
+          <Link href="/redeem" className="text-[#E8D4D6] underline underline-offset-2">
+            Redeem
+          </Link>
+          .
+        </p>
       </div>
     );
   }
@@ -671,6 +681,11 @@ export function InvestHub() {
           Wallet {formatMoney(status.walletBalance, display)} · Investment{" "}
           {formatMoney(status.investmentBalance ?? 0, display)}. Daily yield only
           applies to capital that has been invested for at least 24 hours.
+          To fully exit, use{" "}
+          <Link href="/redeem" className="text-[#E8D4D6] underline underline-offset-2">
+            Redeem
+          </Link>
+          .{" "}
           {(status.selfReinvestFeePercent ?? 0) > 0 ? (
             <>
               {" "}
@@ -696,7 +711,7 @@ export function InvestHub() {
           <Button
             type="button"
             disabled={
-              transferLoading || Boolean(status.reinvestBlocked)
+              transferLoading || Boolean(status.reinvestBlocked) || optOutCooling
             }
             onClick={() => {
               const amount = Number(transferAmount);
@@ -725,7 +740,7 @@ export function InvestHub() {
           <Button
             type="button"
             variant="secondary"
-            disabled={transferLoading}
+            disabled={transferLoading || optOutCooling}
             onClick={() => {
               const amount = Number(transferAmount);
               setTransferLoading(true);
@@ -745,7 +760,12 @@ export function InvestHub() {
             Investment → Wallet
           </Button>
         </div>
-        {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+        {optOutCooling && (
+          <p className="mt-2 text-sm text-amber-400/90">
+            Smart Invest opt-out is in progress. Transfers are paused until
+            capital is returned on business day 5.
+          </p>
+        )}
         {status.reinvestBlocked && (
           <p className="mt-2 text-sm text-amber-400/90">
             {status.reinvestBlockedReason ??
@@ -911,6 +931,7 @@ export function InvestHub() {
             <Button
               size="sm"
               variant="secondary"
+              disabled={optOutCooling}
               onClick={() => void api.investor.resume().then(refresh)}
             >
               Resume trading

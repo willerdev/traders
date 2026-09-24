@@ -34,6 +34,7 @@ import { resolveAdminPermissions } from './admin-permissions.util';
 import { PresenceService } from '../presence/presence.service';
 import { WalletService } from '../wallet/wallet.service';
 import { InvestorService } from '../investor/investor.service';
+import { InvestorOptOutService } from '../investor/investor-opt-out.service';
 import {
   INVESTOR_INVESTMENT_MAX,
   INVESTOR_INVESTMENT_MIN,
@@ -66,6 +67,7 @@ export class AdminService {
     private presence: PresenceService,
     private walletService: WalletService,
     private investorService: InvestorService,
+    private investorOptOut: InvestorOptOutService,
   ) {}
 
   getLivePresence() {
@@ -2392,6 +2394,10 @@ export class AdminService {
       limit: take,
       offset: skip,
     };
+  }
+
+  listInvestorOptOuts(limit = 50) {
+    return this.investorOptOut.listAdmin(limit);
   }
 
   async updateInvestorYield(

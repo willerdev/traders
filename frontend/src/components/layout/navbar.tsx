@@ -35,6 +35,7 @@ import {
   Sprout,
   ShieldCheck,
   Clock,
+  Undo2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore, useDashboardStore } from "@/stores/auth";
@@ -60,6 +61,7 @@ type NavItem = {
   shortLabel: string;
   icon: NavIcon;
   keywords?: string;
+  accent?: "redeem";
 };
 
 type NavGroup = {
@@ -98,6 +100,14 @@ const NAV_GROUPS: NavGroup[] = [
         shortLabel: "Invest",
         icon: TrendingUp,
         keywords: "yield capital",
+      },
+      {
+        href: "/redeem",
+        label: "Redeem",
+        shortLabel: "Redeem",
+        icon: Undo2,
+        keywords: "exit opt-out close smart invest capital",
+        accent: "redeem",
       },
       {
         href: "/unitrust",
@@ -446,6 +456,7 @@ function SidebarShell({
               {group.items.map((item) => {
                 const Icon = item.icon;
                 const active = pathActive(pathname, item.href);
+                const redeem = item.accent === "redeem";
                 return (
                   <Link
                     key={item.href}
@@ -455,14 +466,16 @@ function SidebarShell({
                     className={cn(
                       "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
                       !showLabels && "justify-center px-0",
-                      active
-                        ? "bg-primary/15 text-primary"
-                        : "text-muted hover:bg-foreground/5 hover:text-foreground",
+                      redeem
+                        ? "redeem-nav-item border border-white/85"
+                        : active
+                          ? "bg-primary/15 text-primary"
+                          : "text-muted hover:bg-foreground/5 hover:text-foreground",
                     )}
                   >
                     <Icon
                       className="h-[18px] w-[18px] shrink-0"
-                      strokeWidth={active ? 2.25 : 1.75}
+                      strokeWidth={active || redeem ? 2.25 : 1.75}
                     />
                     {showLabels && (
                       <span className="truncate">{item.label}</span>

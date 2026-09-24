@@ -9,15 +9,46 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards';
 import { InvestorService } from './investor.service';
+import { InvestorOptOutService } from './investor-opt-out.service';
 
 @Controller('investor')
 export class InvestorController {
-  constructor(private investor: InvestorService) {}
+  constructor(
+    private investor: InvestorService,
+    private optOut: InvestorOptOutService,
+  ) {}
 
   @Get('status')
   @UseGuards(JwtAuthGuard)
   status(@Request() req: { user: { id: string } }) {
     return this.investor.getStatus(req.user.id);
+  }
+
+  @Get('opt-out')
+  @UseGuards(JwtAuthGuard)
+  optOutStatus(@Request() req: { user: { id: string } }) {
+    return this.optOut.getStatus(req.user.id);
+  }
+
+  @Post('opt-out/verify-email')
+  @UseGuards(JwtAuthGuard)
+  sendOptOutVerifyEmail(@Request() req: { user: { id: string } }) {
+    return this.optOut.sendVerifyEmail(req.user.id);
+  }
+
+  @Post('opt-out')
+  @UseGuards(JwtAuthGuard)
+  requestOptOut(
+    @Request() req: { user: { id: string } },
+    @Body()
+    body: {
+      reasonCode?: string;
+      reasonNote?: string;
+      acknowledged?: boolean;
+      verificationCode?: string;
+    },
+  ) {
+    return this.optOut.requestOptOut(req.user.id, body);
   }
 
   @Get('vip/status')

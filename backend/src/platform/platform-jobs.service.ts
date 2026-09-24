@@ -10,6 +10,7 @@ import { currentWeekYear, getWeekNumber } from '../common/week.util';
 import { WalletService } from '../wallet/wallet.service';
 import { InvestorService } from '../investor/investor.service';
 import { InvestorYieldScheduleService } from '../investor/investor-yield-schedule.service';
+import { InvestorOptOutService } from '../investor/investor-opt-out.service';
 import { UnitrustService } from '../unitrust/unitrust.service';
 import { AirfarmingService } from '../airfarming/airfarming.service';
 import { AbuseHunterService } from './abuse-hunter.service';
@@ -37,6 +38,7 @@ export class PlatformJobsService implements OnModuleInit {
     private walletService: WalletService,
     private investorService: InvestorService,
     private investorYieldSchedule: InvestorYieldScheduleService,
+    private investorOptOut: InvestorOptOutService,
     private unitrustService: UnitrustService,
     private airfarmingService: AirfarmingService,
     private abuseHunter: AbuseHunterService,
@@ -319,6 +321,10 @@ export class PlatformJobsService implements OnModuleInit {
         this.logger.warn(
           'Investor daily earnings skipped — global yield pause',
         );
+      } else if (result.skipped === 'maintenance') {
+        this.logger.warn(
+          'Investor daily earnings skipped — maintenance window',
+        );
       } else {
         this.logger.log('Investor daily earnings tick — no eligible credits');
       }
@@ -328,6 +334,40 @@ export class PlatformJobsService implements OnModuleInit {
     } catch (err) {
       this.logger.error(
         `Investor earnings job failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  /** Every 5 minutes — Smart Invest opt-out day-3 reports and day-5 capital settlement. */
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async investorOptOutTickJob() {
+    try {
+      const result = await this.investorOptOut.tickDueOptOuts();
+      if (result.reports || result.settled) {
+        this.logger.log(
+          `Smart Invest opt-out tick: reports=${result.reports} settled=${result.settled}`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Investor opt-out tick failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  /** Friday 10:00 Africa/Kampala — 20% of snapshotted profits for remaining Smart Invest members. */
+  @Cron('0 10 * * 5', { timeZone: 'Africa/Kampala' })
+  async investorWeeklyMaintenanceProfitJob() {
+    try {
+      const result = await this.investorOptOut.creditWeeklyMaintenanceProfits();
+      if (result.credited > 0) {
+        this.logger.log(
+          `Maintenance weekly profit share: credited=${result.credited} week=${result.weekKey ?? ''}`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Maintenance weekly profit job failed: ${err instanceof Error ? err.message : err}`,
       );
     }
   }

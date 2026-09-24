@@ -744,6 +744,13 @@ export class AdminController {
     );
   }
 
+  @Get('investors/opt-outs')
+  listInvestorOptOuts(@Query('limit') limit?: string) {
+    return this.adminService.listInvestorOptOuts(
+      limit ? Number(limit) : 50,
+    );
+  }
+
   @Get('unitrust')
   listUnitrust(@Query('limit') limit?: string) {
     return this.unitrust.listMembers(limit ? Number(limit) : 50);

@@ -144,3 +144,33 @@ html.light .mobile-nav-dock {
 .animate-pulse-glow {
   animation: pulse-glow 3s ease-in-out infinite;
 }
+
+@keyframes redeem-nav-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 10px rgba(128, 0, 32, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(128, 0, 32, 0.65);
+  }
+}
+
+.redeem-nav-item {
+  background: #800020;
+  color: #ffffff;
+  animation: redeem-nav-pulse 2.4s ease-in-out infinite;
+}
+
+.redeem-nav-item:hover {
+  background: #7a1f2b;
+}
+
+.redeem-btn {
+  background: #800020 !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 18px rgba(92, 10, 26, 0.28);
+}
+
+.redeem-btn:hover {
+  background: #7a1f2b !important;
+}

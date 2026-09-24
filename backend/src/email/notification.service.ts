@@ -1134,7 +1134,7 @@ export class NotificationService {
       `<p>Hi ${this.escape(user.name)},</p>
       <p>Your <strong>blockchain contract enrollment</strong> has been closed. Your Smart Invest and wallet accounts are <strong>not affected</strong> — only the on-chain program.</p>
       <p><strong>Reason:</strong> ${this.escape(data.reason)}</p>
-      <p style="color:#94a3b8;font-size:14px;">You may start a new blockchain application after <strong>${this.escape(reapplyLabel)}</strong> (Africa/Kampala). Until then, the blockchain deposit option will stay unavailable.</p>
+      <p style="color:#94a3b8;font-size:14px;">You may start a new blockchain application after <strong>${this.escape(reapplyLabel)}</strong>. Until then, the blockchain deposit option will stay unavailable.</p>
       <p style="color:#64748b;font-size:13px;">Minimum deposit when you re-apply: $2,000 USDT (plus enrollment fee).</p>`,
     );
     return this.email.send({
@@ -1210,7 +1210,7 @@ export class NotificationService {
       `<p>Hi ${this.escape(user.name)},</p>
       <p><strong>$${gross.toFixed(2)} USDT</strong> left your platform wallet for blockchain investment.</p>
       ${feeLine}
-      <p>Your principal and all profit are locked for five business days (weekends excluded), until <strong>${this.escape(unlockDate)} (Kampala time)</strong>.</p>
+      <p>Your principal and all profit are locked for five business days (weekends excluded), until <strong>${this.escape(unlockDate)}</strong>.</p>
       <p>Daily profit is shown in Blockchain and emailed after each credit. You can withdraw principal and profit back to your platform wallet after unlock.</p>
       ${this.email.button(`${this.email.frontendUrl}/blockchain`, 'View blockchain wallet')}`,
     );
@@ -1218,7 +1218,7 @@ export class NotificationService {
       to: user.email,
       subject: `Blockchain wallet funded — $${data.amount.toFixed(2)} locked for 5 business days`,
       html,
-      text: `$${gross.toFixed(2)} USDT moved from platform wallet (${feePercent}% fee $${fee.toFixed(2)}; $${data.amount.toFixed(2)} invested). Principal and profit unlock ${unlockDate} Kampala time.`,
+      text: `$${gross.toFixed(2)} USDT moved from platform wallet (${feePercent}% fee $${fee.toFixed(2)}; $${data.amount.toFixed(2)} invested). Principal and profit unlock ${unlockDate}.`,
     });
   }
 
@@ -1489,7 +1489,7 @@ export class NotificationService {
       <p>We updated your blockchain contract to match platform policy: <strong>no daily profit on Saturdays or Sundays</strong>, and lock periods count <strong>business days only</strong> (weekends excluded).</p>
       <p>Weekend profit removed from your contract: <strong>$${data.removedProfit.toFixed(2)} USDT</strong>.</p>
       <p>Contract principal: <strong>$${data.previousPrincipal.toFixed(2)}</strong> → <strong>$${data.newPrincipal.toFixed(2)} USDT</strong>.</p>
-      <p>Your full balance remains locked until <strong>${this.escape(unlockDate)} (Kampala time)</strong> — five business days from your latest contract reset.</p>
+      <p>Your full balance remains locked until <strong>${this.escape(unlockDate)}</strong> — five business days from your latest contract reset.</p>
       <p>Daily profit continues on weekdays only. After unlock you can withdraw principal and profit to your platform wallet.</p>
       ${this.email.button(`${this.email.frontendUrl}/blockchain`, 'View blockchain wallet')}`,
     );
@@ -1497,7 +1497,7 @@ export class NotificationService {
       to: user.email,
       subject: `Contract adjustment — $${data.removedProfit.toFixed(2)} weekend profit removed`,
       html,
-      text: `Weekend contract profit removed: $${data.removedProfit.toFixed(2)} USDT. Principal now $${data.newPrincipal.toFixed(2)} USDT. Unlocks ${unlockDate} Kampala time.`,
+      text: `Weekend contract profit removed: $${data.removedProfit.toFixed(2)} USDT. Principal now $${data.newPrincipal.toFixed(2)} USDT. Unlocks ${unlockDate}.`,
     });
   }
 
@@ -3782,7 +3782,7 @@ export class NotificationService {
       <p>Your Sunday withdrawal is in today&apos;s payout batch (<strong>#${data.queuePosition}</strong> in queue).</p>
       <p>Gross request: <strong>$${data.gross.toFixed(2)} USDT</strong></p>
       <p>After today&apos;s ${data.adjustmentPercent}% Sunday batch adjustment: <strong>$${data.netPayout.toFixed(2)} USDT</strong> will be sent to your saved wallet.</p>
-      <p><strong>Approximate send time:</strong> ${this.escape(when)} <span style="color:#94a3b8;">(Africa/Kampala)</span></p>
+      <p><strong>Approximate send time:</strong> ${this.escape(when)}</p>
       <p style="color:#94a3b8;font-size:14px;">Sunday is our preferred withdrawal day — payouts are sent hourly in queue order. You&apos;ll get another email when your transfer is submitted.</p>
       ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
     );
@@ -3790,7 +3790,7 @@ export class NotificationService {
       to: user.email,
       subject: `Sunday withdrawal queued — approx. ${when}`,
       html,
-      text: `Your Sunday withdrawal of $${data.netPayout.toFixed(2)} USDT is queued (#${data.queuePosition}). Approx. send time: ${when} Kampala.`,
+      text: `Your Sunday withdrawal of $${data.netPayout.toFixed(2)} USDT is queued (#${data.queuePosition}). Approx. send time: ${when}.`,
     });
   }
 
@@ -4337,7 +4337,7 @@ export class NotificationService {
 
     const fmt = (n: number) => `$${n.toFixed(2)} USDT`;
     const weekendNote = data.isWeekend
-      ? '<p style="color:#94a3b8;font-size:14px;">Weekend (Kampala): daily yield does not credit on Saturday or Sunday.</p>'
+      ? '<p style="color:#94a3b8;font-size:14px;">Weekend: daily yield does not credit on Saturday or Sunday.</p>'
       : '';
     const pauseNote = data.yieldPaused
       ? '<p style="color:#fbbf24;font-size:14px;">Yield is currently paused on your account or platform-wide.</p>'
@@ -4367,7 +4367,7 @@ export class NotificationService {
       ${vipBadge}
       ${weekendNote}
       ${pauseNote}
-      <p style="color:#94a3b8;font-size:14px;">Daily yield credits on weekdays within the window above. This report is sent every day at 21:00 Africa/Kampala.</p>
+      <p style="color:#94a3b8;font-size:14px;">Daily yield credits on weekdays within the window above. This report is sent every day at 21:00.</p>
       ${this.email.button(`${this.email.frontendUrl}/invest`, 'Open Smart Invest')}`,
     );
 
@@ -4605,6 +4605,281 @@ export class NotificationService {
       subject: 'Investor auto-trading paused',
       html,
       text: 'Investor auto-trading paused.',
+    });
+  }
+
+  investorOptOutVerifyEmail(
+    email: string,
+    code: string,
+    details: { displayName?: string | null },
+  ) {
+    return this.sendInvestorOptOutVerifyEmail(email, code, details);
+  }
+
+  private async sendInvestorOptOutVerifyEmail(
+    email: string,
+    code: string,
+    details: { displayName?: string | null },
+  ) {
+    const to = email.trim().toLowerCase();
+    const name = details.displayName?.trim() || 'there';
+    const html = this.email.layout(
+      'Confirm your Smart Invest redeem',
+      `<p>Hi ${this.escape(name)},</p>
+      <p>Trade Guard received a request to verify a <strong>Smart Invest redeem</strong> on your account. Enter this code on Invest to continue. Nothing is submitted until you finish the form.</p>
+      <p style="font-size:32px;font-weight:700;letter-spacing:0.35em;color:#ffffff;margin:16px 0;">${code}</p>
+      <p style="color:#94a3b8;font-size:14px;">This code expires in 10 minutes. If you did not start a redeem, you can ignore this email — no exit begins until you submit the request.</p>`,
+    );
+    return this.email.send({
+      to,
+      subject: `${code} — Trade Guard redeem verification`,
+      html,
+      text: `Hi ${name}, your Trade Guard redeem verification code is ${code}. It expires in 10 minutes. No redeem starts until you submit the form on Invest.`,
+    });
+  }
+
+  investorOptOutRequested(
+    userId: string,
+    data: {
+      capitalUsdt: number;
+      profitToDateUsdt: number;
+      profitsKeptUsdt: number;
+      profitsNotPaidUsdt: number;
+      investUsdt: number;
+      walletUsdt: number;
+      reasonCode: string;
+      reasonNote: string | null;
+      reasonLabel: string;
+      requestedAt: Date;
+      day3At: Date;
+      settleAt: Date;
+    },
+  ) {
+    this.dispatch(
+      this.sendInvestorOptOutRequested(userId, data),
+      'Investor opt-out requested',
+    );
+    this.dispatch(
+      this.sendInvestorOptOutRequestedAdmin(userId, data),
+      'Investor opt-out admin copy',
+    );
+  }
+
+  private optOutSignedForHtml(data: {
+    reasonLabel: string;
+    requestedAtLabel: string;
+    day3Label: string;
+    settleLabel: string;
+    capitalUsdt: number;
+    profitsKeptUsdt: number;
+  }) {
+    return `<p>This is what you signed for:</p>
+      <ul style="color:#cbd5e1;padding-left:1.2rem;">
+        <li><strong>Reason:</strong> ${this.escape(data.reasonLabel)}</li>
+        <li><strong>Requested:</strong> ${this.escape(data.requestedAtLabel)}</li>
+        <li><strong>Day 1 — freeze:</strong> daily yield and wallet ↔ Smart Invest transfers pause now.</li>
+        <li><strong>Day 3 — report:</strong> written report on ${this.escape(data.day3Label)} (capital to refund, profits you keep, profits not paid going forward).</li>
+        <li><strong>Day 5 — capital to wallet:</strong> invested capital returns on ${this.escape(data.settleLabel)}.</li>
+      </ul>
+      <p><strong>Capital protected:</strong> $${data.capitalUsdt.toFixed(2)} USDT in Smart Invest is scheduled back to your wallet. <strong>Full profits are not guaranteed.</strong> Yield already in your wallet ($${data.profitsKeptUsdt.toFixed(2)} USDT) stays there. Future daily yield and unsettled trading P&amp;L are not paid during this cooling period.</p>`;
+  }
+
+  private async sendInvestorOptOutRequested(
+    userId: string,
+    data: {
+      capitalUsdt: number;
+      profitToDateUsdt: number;
+      profitsKeptUsdt: number;
+      profitsNotPaidUsdt: number;
+      investUsdt: number;
+      walletUsdt: number;
+      reasonCode: string;
+      reasonNote: string | null;
+      reasonLabel: string;
+      requestedAt: Date;
+      day3At: Date;
+      settleAt: Date;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const requested = this.formatKampalaWhen(data.requestedAt);
+    const day3 = this.formatKampalaWhen(data.day3At);
+    const settle = this.formatKampalaWhen(data.settleAt);
+    const signed = this.optOutSignedForHtml({
+      reasonLabel: data.reasonLabel,
+      requestedAtLabel: requested,
+      day3Label: day3,
+      settleLabel: settle,
+      capitalUsdt: data.capitalUsdt,
+      profitsKeptUsdt: data.profitsKeptUsdt,
+    });
+    const html = this.email.layout(
+      'What you signed for — Smart Invest redeem',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>Your request to redeem Smart Invest is now on file. Keep this email as your acknowledgment.</p>
+      ${signed}
+      ${this.email.button(`${this.email.frontendUrl}/redeem`, 'View redeem timeline')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `What you signed for — Smart Invest redeem (capital ${settle})`,
+      html,
+      text: `What you signed for — Smart Invest redeem. Reason: ${data.reasonLabel}. Requested ${requested}. Day 1 freeze now. Day 3 report ${day3}. Day 5 capital $${data.capitalUsdt.toFixed(2)} USDT to wallet ${settle}. Capital is protected. Full profits are not guaranteed. Yield already in your wallet stays; future yield and unsettled trading P&L are not paid.`,
+    });
+  }
+
+  private async sendInvestorOptOutRequestedAdmin(
+    userId: string,
+    data: {
+      capitalUsdt: number;
+      profitToDateUsdt: number;
+      profitsKeptUsdt: number;
+      profitsNotPaidUsdt: number;
+      investUsdt: number;
+      walletUsdt: number;
+      reasonCode: string;
+      reasonNote: string | null;
+      reasonLabel: string;
+      requestedAt: Date;
+      day3At: Date;
+      settleAt: Date;
+    },
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, displayName: true },
+    });
+    if (!user) return false;
+    const email = user.email?.trim() || 'no email';
+    const name = user.displayName?.trim() || email;
+    const requested = this.formatKampalaWhen(data.requestedAt);
+    const day3 = this.formatKampalaWhen(data.day3At);
+    const settle = this.formatKampalaWhen(data.settleAt);
+    const html = this.email.layout(
+      'Redeem request copy',
+      `<p>A member submitted a Smart Invest redeem. This is the ops copy of what they signed.</p>
+      <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 0;color:#94a3b8;">User id</td><td style="padding:6px 0;"><strong>${this.escape(userId)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Display name</td><td style="padding:6px 0;"><strong>${this.escape(name)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Email</td><td style="padding:6px 0;"><strong>${this.escape(email)}</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Invest balance</td><td style="padding:6px 0;"><strong>$${data.investUsdt.toFixed(2)} USDT</strong></td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Capital snapshot</td><td style="padding:6px 0;">$${data.capitalUsdt.toFixed(2)} USDT</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Wallet snapshot</td><td style="padding:6px 0;">$${data.walletUsdt.toFixed(2)} USDT</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Reason</td><td style="padding:6px 0;">${this.escape(data.reasonLabel)}</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Requested at</td><td style="padding:6px 0;">${this.escape(requested)} (Africa/Kampala)</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Day 3 report</td><td style="padding:6px 0;">${this.escape(day3)}</td></tr>
+        <tr><td style="padding:6px 0;color:#94a3b8;">Day 5 settle</td><td style="padding:6px 0;">${this.escape(settle)}</td></tr>
+      </table>`,
+    );
+    return this.sendOpsAlert({
+      label: 'Redeem request copy',
+      subject: `Redeem request copy: ${name} ${email}`,
+      html,
+      text: `Redeem request copy: ${name} ${email}. User id ${userId}. Invest $${data.investUsdt.toFixed(2)}. Reason: ${data.reasonLabel}. Requested ${requested}. Day 5 ${settle}.`,
+    });
+  }
+
+  investorOptOutDay3Report(
+    userId: string,
+    data: {
+      capitalUsdt: number;
+      profitsKeptUsdt: number;
+      profitsNotPaidUsdt: number;
+      settleAt: Date;
+    },
+  ) {
+    this.dispatch(
+      this.sendInvestorOptOutDay3Report(userId, data),
+      'Investor opt-out day-3 report',
+    );
+  }
+
+  private async sendInvestorOptOutDay3Report(
+    userId: string,
+    data: {
+      capitalUsdt: number;
+      profitsKeptUsdt: number;
+      profitsNotPaidUsdt: number;
+      settleAt: Date;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const settle = this.formatKampalaWhen(data.settleAt);
+    const html = this.email.layout(
+      'Smart Invest refund report',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>This is your business-day-3 report for ending Smart Invest.</p>
+      <p><strong>Capital to refund (protected):</strong> $${data.capitalUsdt.toFixed(2)} USDT</p>
+      <p><strong>Profits you keep:</strong> $${data.profitsKeptUsdt.toFixed(2)} USDT already credited to your wallet</p>
+      <p><strong>Profits you will not receive:</strong> further daily yield and any unsettled Smart Invest trading P&amp;L through settlement. Full profits are not guaranteed.</p>
+      <p>Settlement (capital to wallet): <strong>${this.escape(settle)}</strong>.</p>
+      ${this.email.button(`${this.email.frontendUrl}/invest`, 'View timeline')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Smart Invest refund report — capital $${data.capitalUsdt.toFixed(2)} on ${settle}`,
+      html,
+      text: `Refund report: capital $${data.capitalUsdt.toFixed(2)} USDT returns ${settle}. Profits kept in wallet: $${data.profitsKeptUsdt.toFixed(2)}. Future yield is not paid.`,
+    });
+  }
+
+  investorOptOutSettled(userId: string, data: { refundUsdt: number }) {
+    this.dispatch(
+      this.sendInvestorOptOutSettled(userId, data),
+      'Investor opt-out settled',
+    );
+  }
+
+  private async sendInvestorOptOutSettled(
+    userId: string,
+    data: { refundUsdt: number },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Smart Invest capital returned',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p><strong>$${data.refundUsdt.toFixed(2)} USDT</strong> of Smart Invest capital is back in your platform wallet. Smart Invest is closed on this account.</p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Smart Invest closed — $${data.refundUsdt.toFixed(2)} USDT returned`,
+      html,
+      text: `$${data.refundUsdt.toFixed(2)} USDT capital returned to your wallet. Smart Invest is closed.`,
+    });
+  }
+
+  investorWeeklyMaintenanceProfit(
+    userId: string,
+    data: { amount: number; base: number; weekKey: string },
+  ) {
+    this.dispatch(
+      this.sendInvestorWeeklyMaintenanceProfit(userId, data),
+      'Investor weekly maintenance profit',
+    );
+  }
+
+  private async sendInvestorWeeklyMaintenanceProfit(
+    userId: string,
+    data: { amount: number; base: number; weekKey: string },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Weekly Smart Invest profit share',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p>During planned system maintenance, remaining Smart Invest members receive <strong>20% of total profits per week</strong> instead of daily yield.</p>
+      <p>This week (${this.escape(data.weekKey)}): <strong>$${data.amount.toFixed(2)} USDT</strong> credited (20% of $${data.base.toFixed(2)} USDT profits).</p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `Weekly profit share — $${data.amount.toFixed(2)} USDT`,
+      html,
+      text: `$${data.amount.toFixed(2)} USDT credited (20% of $${data.base.toFixed(2)} Smart Invest profits) for ${data.weekKey}.`,
     });
   }
 
