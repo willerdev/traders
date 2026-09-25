@@ -721,6 +721,7 @@ export function Mt5ChartTerminal({
       {/* Chart fills remaining height on desktop */}
       <div
         ref={chartAreaRef}
+        data-mt5-chart-pane
         className={cn(
           "relative h-full min-h-0 w-full flex-1",
           !workspaceLayout &&

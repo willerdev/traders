@@ -32,7 +32,6 @@ import { usePriceAlertMonitor } from "@/hooks/use-price-alert-monitor";
 import { useMetaApiLive } from "@/hooks/use-metaapi-live";
 import { setMetaApiHasOpenTrades } from "@/lib/metaapi-live";
 import { cn } from "@/lib/utils";
-import { useIsDesktop } from "@/hooks/use-is-desktop";
 
 type RightTab = "watchlist" | "alerts" | "history";
 type MobileTab = "trade" | "history";
@@ -69,7 +68,6 @@ export default function SoloMt5Page() {
   const [connectOpen, setConnectOpen] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>("alerts");
   const [mobileTab, setMobileTab] = useState<MobileTab>("trade");
-  const isDesktop = useIsDesktop();
   const [orderModal, setOrderModal] = useState<Mt5PlaceKind | null>(null);
   const [modifyTrade, setModifyTrade] = useState<UserMt5Trade | null>(null);
   const [lotSize, setLotSize] = useState("0.01");
@@ -189,65 +187,10 @@ export default function SoloMt5Page() {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground">
-      {isDesktop ? (
-        <header className="flex shrink-0 flex-wrap items-center gap-3 px-4 py-2 md:px-5 md:py-3">
-          <h1 className="text-lg font-semibold tracking-tight text-foreground md:text-2xl">
-            Trading
-          </h1>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            {linked && !live && (
-              <button
-                type="button"
-                onClick={() => {
-                  seeLiveData();
-                  void load({ background: true });
-                  void loadRunning();
-                  void loadHistory({ fresh: false });
-                }}
-                className="inline-flex items-center gap-1.5 rounded-full bg-success px-4 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-success/90"
-              >
-                <Play className="h-3.5 w-3.5" />
-                See live data
-              </button>
-            )}
-            {linked && live && (
-              <button
-                type="button"
-                onClick={() => setPaused(true)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-muted hover:text-foreground"
-                title="Pause MetaAPI while this tab is open"
-              >
-                <Pause className="h-3.5 w-3.5" />
-                Pause
-              </button>
-            )}
-          </div>
-        </header>
-      ) : null}
-
-      {error && (
-        <p className="px-4 pb-2 text-sm text-danger md:px-5">{error}</p>
-      )}
-
-      {isDesktop ? (
-        <TradingLiveBalance
-          equity={equity}
-          balance={walletBalance}
-          currency={account?.currency ?? "USD"}
-          live={live}
-          linked={linked}
-          floating={account?.floatingProfit ?? 0}
-          dayPnl={dayPnl}
-        />
-      ) : null}
-
-      <div
-        className={cn(
-          "flex min-h-0 flex-1 flex-col",
-          isDesktop && "md:flex-row md:gap-3 md:px-5 md:pb-4 md:pt-3",
-        )}
-      >
-        {!isDesktop ? (
+      <div className="mt5-mobile-desk">
+        {error ? (
+          <p className="shrink-0 px-3 py-1.5 text-sm text-danger">{error}</p>
+        ) : null}
         <div className="flex min-h-0 flex-1 flex-col bg-[var(--mt5-bg)]">
           <div className="flex shrink-0 border-b border-border bg-[var(--mt5-surface)] text-xs font-semibold">
             <button
@@ -329,8 +272,55 @@ export default function SoloMt5Page() {
             />
           </div>
         </div>
-        ) : (
-        <>
+      </div>
+
+      <div className="mt5-desktop-desk">
+        <header className="flex shrink-0 flex-wrap items-center gap-3 px-5 py-3">
+          <h1 className="text-lg font-semibold tracking-tight text-foreground md:text-2xl">
+            Trading
+          </h1>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {linked && !live && (
+              <button
+                type="button"
+                onClick={() => {
+                  seeLiveData();
+                  void load({ background: true });
+                  void loadRunning();
+                  void loadHistory({ fresh: false });
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full bg-success px-4 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-success/90"
+              >
+                <Play className="h-3.5 w-3.5" />
+                See live data
+              </button>
+            )}
+            {linked && live && (
+              <button
+                type="button"
+                onClick={() => setPaused(true)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-muted hover:text-foreground"
+                title="Pause MetaAPI while this tab is open"
+              >
+                <Pause className="h-3.5 w-3.5" />
+                Pause
+              </button>
+            )}
+          </div>
+        </header>
+        {error ? (
+          <p className="px-5 pb-2 text-sm text-danger">{error}</p>
+        ) : null}
+        <TradingLiveBalance
+          equity={equity}
+          balance={walletBalance}
+          currency={account?.currency ?? "USD"}
+          live={live}
+          linked={linked}
+          floating={account?.floatingProfit ?? 0}
+          dayPnl={dayPnl}
+        />
+        <div className="flex min-h-0 flex-1 flex-col md:flex-row md:gap-3 md:px-5 md:pb-4 md:pt-3">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-surface">
             {loading && !data ? (
@@ -506,8 +496,7 @@ export default function SoloMt5Page() {
             </div>
           </div>
         </aside>
-        </>
-        )}
+        </div>
       </div>
 
       {orderModal && (
