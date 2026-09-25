@@ -83,6 +83,10 @@ export default function SoloMt5Page() {
   const { watchlist, addSymbol } = useChartWatchlist();
   const { live, setPaused, seeLiveData } = useMetaApiLive();
 
+  useEffect(() => {
+    seeLiveData();
+  }, [seeLiveData]);
+
   const {
     data,
     runningTrades,

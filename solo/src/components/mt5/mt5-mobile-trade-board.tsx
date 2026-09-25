@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { UserMt5AccountSummary, UserMt5Trade } from "@/lib/api";
 import {
   MT5_BUY,
@@ -8,6 +9,7 @@ import {
   fmtMt5Price,
 } from "@/components/mt5/mt5-ui";
 import { Mt5SwipeableRow } from "@/components/mt5/mt5-swipeable-row";
+import { cn } from "@/lib/utils";
 
 type Props = {
   trades: UserMt5Trade[];
@@ -28,6 +30,10 @@ function typeLabel(trade: UserMt5Trade) {
   return dir;
 }
 
+function tradeKey(trade: UserMt5Trade) {
+  return trade.positionId ?? trade.orderId ?? `${trade.symbol}-${trade.openPrice}`;
+}
+
 export function Mt5MobileTradeBoard({
   trades,
   account,
@@ -36,6 +42,7 @@ export function Mt5MobileTradeBoard({
   onClose,
 }: Props) {
   const floating = account?.floatingProfit ?? 0;
+  const [openKey, setOpenKey] = useState<string | null>(null);
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-[var(--mt5-bg)] text-[var(--mt5-text)]">
@@ -46,7 +53,7 @@ export function Mt5MobileTradeBoard({
               No running trades
             </p>
             <p className="mt-1 text-xs text-[var(--mt5-muted)]">
-              Open a market, limit, or stop order below.
+              Buy or sell below. Tap Limit for pending orders.
             </p>
           </div>
         ) : (
@@ -54,9 +61,11 @@ export function Mt5MobileTradeBoard({
             const ticket = trade.positionId ?? trade.orderId ?? "";
             const pending = trade.kind === "limit";
             const pnl = trade.profit ?? 0;
+            const key = tradeKey(trade);
+            const selected = openKey === key;
             return (
               <Mt5SwipeableRow
-                key={ticket || `${trade.symbol}-${trade.openPrice}`}
+                key={key}
                 className="border-b border-[var(--mt5-divider)]"
                 actions={
                   canTrade
@@ -79,17 +88,22 @@ export function Mt5MobileTradeBoard({
               >
                 <button
                   type="button"
-                  className="w-full px-3 py-2.5 text-left"
-                  onClick={() => onModify(trade)}
+                  className={cn(
+                    "w-full px-3 py-3 text-left",
+                    selected && "bg-[var(--mt5-row-hover)]",
+                  )}
+                  onClick={() =>
+                    setOpenKey((cur) => (cur === key ? null : key))
+                  }
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                        <span className="text-[15px] font-semibold tracking-wide">
+                        <span className="text-[16px] font-semibold tracking-wide">
                           {trade.symbol}
                         </span>
                         <span
-                          className="text-[13px] font-medium"
+                          className="text-[13px] font-semibold uppercase"
                           style={{
                             color:
                               trade.direction.toUpperCase() === "BUY"
@@ -97,7 +111,10 @@ export function Mt5MobileTradeBoard({
                                 : MT5_SELL,
                           }}
                         >
-                          {typeLabel(trade)} {trade.volume?.toFixed(2) ?? ""}
+                          {typeLabel(trade)}
+                        </span>
+                        <span className="text-[13px] tabular-nums text-[var(--mt5-muted)]">
+                          {trade.volume?.toFixed(2) ?? "—"}
                         </span>
                       </div>
                       <p className="mt-0.5 text-[11px] tabular-nums text-[var(--mt5-muted)]">
@@ -107,11 +124,11 @@ export function Mt5MobileTradeBoard({
                     </div>
                     <Mt5Pnl
                       value={pnl}
-                      className="text-[15px]"
+                      className="text-[20px] leading-none"
                       showSign
                     />
                   </div>
-                  <div className="mt-1.5 grid grid-cols-3 gap-2 text-[11px] tabular-nums text-[var(--mt5-muted)]">
+                  <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] tabular-nums text-[var(--mt5-muted)]">
                     <span>
                       Open{" "}
                       <span className="text-[var(--mt5-text)]">
@@ -132,12 +149,30 @@ export function Mt5MobileTradeBoard({
                     TP {fmtMt5Price(trade.takeProfit)}
                   </div>
                 </button>
+                {selected && canTrade ? (
+                  <div className="flex border-t border-[var(--mt5-divider)]">
+                    <button
+                      type="button"
+                      onClick={() => onModify(trade)}
+                      className="flex-1 py-2.5 text-center text-[12px] font-semibold uppercase tracking-wide text-[#4a9eff]"
+                    >
+                      Modify
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onClose(trade)}
+                      className="flex-1 border-l border-[var(--mt5-divider)] py-2.5 text-center text-[12px] font-semibold uppercase tracking-wide text-[#ff5252]"
+                    >
+                      {pending ? "Cancel" : "Close"}
+                    </button>
+                  </div>
+                ) : null}
               </Mt5SwipeableRow>
             );
           })
         )}
       </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-2 text-[11px] text-[var(--mt5-muted)]">
+      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-2.5 text-[12px] text-[var(--mt5-muted)]">
         <span>
           Bal{" "}
           <strong className="font-semibold text-[var(--mt5-text)]">
@@ -152,7 +187,7 @@ export function Mt5MobileTradeBoard({
         </span>
         <span className="ml-auto">
           Float{" "}
-          <Mt5Pnl value={floating} className="inline text-[11px]" showSign />
+          <Mt5Pnl value={floating} className="inline text-[16px]" showSign />
         </span>
       </div>
     </div>

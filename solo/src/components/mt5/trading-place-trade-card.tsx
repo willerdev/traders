@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { X } from "lucide-react";
 import { MT5_BUY, MT5_SELL } from "@/components/mt5/mt5-ui";
 import type { Mt5PlaceKind } from "@/lib/mt5-place-kind";
@@ -27,6 +28,8 @@ export function TradingPlaceTradeCard({
   onPlace,
   onNeedConnect,
 }: Props) {
+  const [showPending, setShowPending] = useState(false);
+
   function requireLinked(kind: Mt5PlaceKind) {
     if (!canTrade) return;
     if (!linked) {
@@ -109,27 +112,39 @@ export function TradingPlaceTradeCard({
           Sell
         </button>
       </div>
-      <div className={dense ? "mt-1.5 grid grid-cols-4 gap-1" : "mt-2 grid grid-cols-2 gap-2"}>
-        {(
-          [
-            ["BUY_LIMIT", dense ? "B Lim" : "Buy Limit", MT5_BUY],
-            ["SELL_LIMIT", dense ? "S Lim" : "Sell Limit", MT5_SELL],
-            ["BUY_STOP", dense ? "B Stop" : "Buy Stop", MT5_BUY],
-            ["SELL_STOP", dense ? "S Stop" : "Sell Stop", MT5_SELL],
-          ] as const
-        ).map(([kind, label, color]) => (
-          <button
-            key={kind}
-            type="button"
-            onClick={() => requireLinked(kind)}
-            className="rounded-md px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-            style={{ backgroundColor: color }}
-            disabled={!canTrade}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="mt-1.5 flex justify-center">
+        <button
+          type="button"
+          onClick={() => setShowPending((open) => !open)}
+          className="rounded-md px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted hover:bg-navy/60 hover:text-foreground"
+          aria-expanded={showPending}
+        >
+          {showPending ? "Hide pending" : "Limit"}
+        </button>
       </div>
+      {showPending ? (
+        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+          {(
+            [
+              ["BUY_LIMIT", "Buy Limit", MT5_BUY],
+              ["SELL_LIMIT", "Sell Limit", MT5_SELL],
+              ["BUY_STOP", "Buy Stop", MT5_BUY],
+              ["SELL_STOP", "Sell Stop", MT5_SELL],
+            ] as const
+          ).map(([kind, label, color]) => (
+            <button
+              key={kind}
+              type="button"
+              onClick={() => requireLinked(kind)}
+              className="rounded-md px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              style={{ backgroundColor: color }}
+              disabled={!canTrade}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {!canTrade ? (
         <p className="mt-2 text-center text-[11px] text-muted">
           You can view this book. Only the platform admin and assigned traders can place, close, or change trades.

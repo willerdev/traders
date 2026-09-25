@@ -10,9 +10,9 @@ import {
 } from "@/lib/mt5-cache";
 import { useMetaApiLive } from "@/hooks/use-metaapi-live";
 
-const RUNNING_POLL_MS = 2500;
-const QUOTES_POLL_MS = 5000;
-const TERMINAL_POLL_MS = 20000;
+const RUNNING_POLL_MS = 1200;
+const QUOTES_POLL_MS = 4000;
+const TERMINAL_POLL_MS = 8000;
 
 type Tab = "quotes" | "chart" | "trades" | "history" | "setups";
 
