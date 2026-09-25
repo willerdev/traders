@@ -7,6 +7,7 @@ type Props = {
   linked: boolean;
   lotSize: string;
   canTrade?: boolean;
+  dense?: boolean;
   onLotSizeChange: (value: string) => void;
   onAdjustLot: (delta: number) => void;
   onPlace: (kind: Mt5PlaceKind) => void;
@@ -17,6 +18,7 @@ export function TradingPlaceTradeCard({
   linked,
   lotSize,
   canTrade = false,
+  dense = false,
   onLotSizeChange,
   onAdjustLot,
   onPlace,
@@ -32,10 +34,18 @@ export function TradingPlaceTradeCard({
   }
 
   return (
-    <div className="shrink-0 rounded-2xl border border-border bg-surface p-3">
-      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
-        Place trade
-      </p>
+    <div
+      className={
+        dense
+          ? "shrink-0 bg-[var(--mt5-surface)] px-2 py-2"
+          : "shrink-0 rounded-2xl border border-border bg-surface p-3"
+      }
+    >
+      {dense ? null : (
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+          Place trade
+        </p>
+      )}
       <div className="flex items-center justify-center gap-2">
         <button
           type="button"
@@ -86,13 +96,13 @@ export function TradingPlaceTradeCard({
           Sell
         </button>
       </div>
-      <div className="mt-2 grid grid-cols-2 gap-2">
+      <div className={dense ? "mt-1.5 grid grid-cols-4 gap-1" : "mt-2 grid grid-cols-2 gap-2"}>
         {(
           [
-            ["BUY_LIMIT", "Buy Limit", MT5_BUY],
-            ["SELL_LIMIT", "Sell Limit", MT5_SELL],
-            ["BUY_STOP", "Buy Stop", MT5_BUY],
-            ["SELL_STOP", "Sell Stop", MT5_SELL],
+            ["BUY_LIMIT", dense ? "B Lim" : "Buy Limit", MT5_BUY],
+            ["SELL_LIMIT", dense ? "S Lim" : "Sell Limit", MT5_SELL],
+            ["BUY_STOP", dense ? "B Stop" : "Buy Stop", MT5_BUY],
+            ["SELL_STOP", dense ? "S Stop" : "Sell Stop", MT5_SELL],
           ] as const
         ).map(([kind, label, color]) => (
           <button

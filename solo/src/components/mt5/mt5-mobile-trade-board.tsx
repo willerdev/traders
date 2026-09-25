@@ -38,7 +38,7 @@ export function Mt5MobileTradeBoard({
   const floating = account?.floatingProfit ?? 0;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-[var(--mt5-bg)] text-[var(--mt5-text)]">
+    <div className="flex h-full min-h-0 flex-1 flex-col bg-[var(--mt5-bg)] text-[var(--mt5-text)]">
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {trades.length === 0 ? (
           <div className="flex flex-col items-center justify-center px-6 py-16 text-center">

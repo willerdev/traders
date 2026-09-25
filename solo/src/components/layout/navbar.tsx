@@ -590,8 +590,7 @@ export function MainContent({ children }: { children: React.ReactNode }) {
         isAuthenticated &&
           "pb-[calc(5.25rem+env(safe-area-inset-bottom,0px))] md:pb-0",
         isAuthenticated && "md:pl-[calc(4.5rem+1.5rem)]",
-        tradingDesk &&
-          "flex h-dvh min-h-0 flex-col overflow-hidden pb-0 md:pb-0",
+        tradingDesk && "flex h-dvh min-h-0 flex-col overflow-hidden",
       )}
     >
       {children}
