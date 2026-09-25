@@ -43,6 +43,10 @@ export default function SoloMt5Page() {
   const userId = useAuthStore((s) => s.user?.id);
   const user = useAuthStore((s) => s.user);
   const canTrade = canManageSoloTrades(user);
+  const [dailyLossLocked, setDailyLossLocked] = useState(
+    Boolean(user?.soloDailyLossLocked),
+  );
+  const canPlace = canTrade && !dailyLossLocked;
 
   useEffect(() => {
     if (!ready) return;
@@ -60,7 +64,15 @@ export default function SoloMt5Page() {
             data.user.soloTradeOperator ?? auth.user.soloTradeOperator,
           isSoloPlatformAdmin:
             data.user.isSoloPlatformAdmin ?? auth.user.isSoloPlatformAdmin,
+          soloDailyLossLocked:
+            data.user.soloDailyLossLocked ?? auth.user.soloDailyLossLocked,
         });
+      })
+      .catch(() => undefined);
+    void api.soloTraders
+      .me()
+      .then((me) => {
+        setDailyLossLocked(Boolean(me.dailyLossLocked));
       })
       .catch(() => undefined);
   }, [ready]);
@@ -212,7 +224,11 @@ export default function SoloMt5Page() {
             </button>
           </p>
         ) : null}
-        <div className="flex min-h-0 flex-1 flex-col bg-[var(--mt5-bg)]">
+        {dailyLossLocked ? (
+          <p className="shrink-0 px-3 py-1.5 text-center text-[11px] text-amber-300">
+            Daily loss limit of $200 reached. You can close or modify open trades. An admin must reset to open new ones.
+          </p>
+        ) : null}
           <div className="flex shrink-0 border-b border-border bg-[var(--mt5-surface)] text-xs font-semibold">
             <button
               type="button"
@@ -336,7 +352,7 @@ export default function SoloMt5Page() {
           <div className="shrink-0 border-t border-[var(--mt5-divider)]">
             <TradingPlaceTradeCard
               linked={linked}
-              canTrade={canTrade}
+              canTrade={canPlace}
               dense
               onDismiss={hidePlace.dismiss}
               lotSize={lotSize}
@@ -400,6 +416,11 @@ export default function SoloMt5Page() {
         </header>
         {error ? (
           <p className="px-5 pb-2 text-sm text-danger">{error}</p>
+        ) : null}
+        {dailyLossLocked ? (
+          <p className="px-5 pb-2 text-sm text-amber-300">
+            Daily loss limit of $200 reached. You can close or modify open trades. An admin must reset to open new ones.
+          </p>
         ) : null}
         {hideBalance.hidden ? (
           <button
@@ -511,7 +532,7 @@ export default function SoloMt5Page() {
         <aside className="flex min-h-0 w-full shrink-0 flex-col gap-3 overflow-hidden md:h-full md:w-[22rem]">
           <TradingPlaceTradeCard
             linked={linked}
-            canTrade={canTrade}
+            canTrade={canPlace}
             lotSize={lotSize}
             onLotSizeChange={setLotSize}
             onAdjustLot={(delta) => {

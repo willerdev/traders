@@ -21,6 +21,11 @@ import {
 } from '../common/solo-trade-operator.util';
 import { isAfterSoloMt5HistoryReset } from '../common/solo-mt5-history-since';
 import type { MetaApiDeal } from '../metaapi/metaapi.service';
+import {
+  SOLO_DAILY_LOSS_LIMIT_USDT,
+  SOLO_DAILY_LOSS_LOCKED,
+  soloTradingDayKey,
+} from '../common/solo-daily-loss.util';
 
 const PNL_REF_PREFIX = 'solo_op_pnl_';
 
@@ -69,6 +74,60 @@ export class SoloTraderService {
       data: { soloMaxRiskPercent: next },
     });
     return this.getMe(targetUserId);
+  }
+
+  async resetDailyLoss(
+    actorEmail: string | null | undefined,
+    targetUserId: string,
+  ) {
+    assertSoloPlatformAdmin(actorEmail);
+    const target = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+    if (!target) throw new NotFoundException('Trader not found');
+    await this.prisma.user.update({
+      where: { id: targetUserId },
+      data: {
+        soloDailyPnl: 0,
+        soloDailyPnlOn: soloTradingDayKey(),
+        soloDailyLossLocked: false,
+        soloDailyLossLockedAt: null,
+      },
+    });
+    return this.getMe(targetUserId);
+  }
+
+  async assertCanOpenTrades(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        email: true,
+        soloTradeOperator: true,
+        soloDailyPnl: true,
+        soloDailyPnlOn: true,
+        soloDailyLossLocked: true,
+      },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    if (isSoloAdminEmail(user.email)) return;
+    if (user.soloDailyLossLocked) {
+      throw new ForbiddenException(SOLO_DAILY_LOSS_LOCKED);
+    }
+    const today = soloTradingDayKey();
+    const daily =
+      user.soloDailyPnlOn === today ? Number(user.soloDailyPnl ?? 0) : 0;
+    if (daily <= -SOLO_DAILY_LOSS_LIMIT_USDT) {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          soloDailyPnl: daily,
+          soloDailyPnlOn: today,
+          soloDailyLossLocked: true,
+          soloDailyLossLockedAt: new Date(),
+        },
+      });
+      throw new ForbiddenException(SOLO_DAILY_LOSS_LOCKED);
+    }
   }
 
   async loadOperatorRisk(userId: string): Promise<{
@@ -228,10 +287,17 @@ export class SoloTraderService {
     soloMaxRiskPercent: unknown;
     soloRealizedPnl: unknown;
     soloTradeComment?: string | null;
+    soloDailyPnl?: unknown;
+    soloDailyPnlOn?: string | null;
+    soloDailyLossLocked?: boolean | null;
+    soloDailyLossLockedAt?: Date | null;
     platformWallet: { availableBalance: unknown } | null;
   }) {
     const realized = Number(user.soloRealizedPnl ?? 0);
     const available = Number(user.platformWallet?.availableBalance ?? 0);
+    const today = soloTradingDayKey();
+    const daily =
+      user.soloDailyPnlOn === today ? Number(user.soloDailyPnl ?? 0) : 0;
     const defaultComment = defaultSoloTraderLabel({
       displayName: user.displayName,
       email: user.email,
@@ -243,6 +309,10 @@ export class SoloTraderService {
       soloTradeOperator: user.soloTradeOperator,
       maxRiskPercent: resolveSoloMaxRiskPercent(user.soloMaxRiskPercent),
       realizedPnl: roundSoloUsdt(realized),
+      dailyPnl: roundSoloUsdt(daily),
+      dailyLossLimit: SOLO_DAILY_LOSS_LIMIT_USDT,
+      dailyLossLocked: Boolean(user.soloDailyLossLocked),
+      dailyLossLockedAt: user.soloDailyLossLockedAt?.toISOString() ?? null,
       availableToWithdraw: roundSoloUsdt(Math.max(0, available)),
       defaultComment,
       tradeComment: user.soloTradeComment?.trim() || defaultComment,
@@ -294,6 +364,13 @@ export class SoloTraderService {
     const nextRealized = roundSoloUsdt(
       Number(user.soloRealizedPnl ?? 0) + input.pnl,
     );
+    const today = soloTradingDayKey();
+    const rolled =
+      user.soloDailyLossLocked || user.soloDailyPnlOn === today
+        ? Number(user.soloDailyPnl ?? 0)
+        : 0;
+    const nextDaily = roundSoloUsdt(rolled + input.pnl);
+    const shouldLock = nextDaily <= -SOLO_DAILY_LOSS_LIMIT_USDT;
     const description =
       input.pnl >= 0
         ? `Trading profit ${input.symbol} — $${input.pnl.toFixed(2)}`
@@ -302,7 +379,17 @@ export class SoloTraderService {
     await this.prisma.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: input.userId },
-        data: { soloRealizedPnl: nextRealized },
+        data: {
+          soloRealizedPnl: nextRealized,
+          soloDailyPnl: nextDaily,
+          soloDailyPnlOn: today,
+          ...(shouldLock
+            ? {
+                soloDailyLossLocked: true,
+                soloDailyLossLockedAt: user.soloDailyLossLockedAt ?? new Date(),
+              }
+            : {}),
+        },
       });
       await tx.platformWallet.upsert({
         where: { userId: input.userId },

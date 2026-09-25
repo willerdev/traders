@@ -38,6 +38,14 @@ export class SoloTraderController {
     return this.traders.listForAdmin(req.user.email);
   }
 
+  @Patch(':userId/daily-loss-reset')
+  resetDailyLoss(
+    @Request() req: { user: { email?: string | null } },
+    @Param('userId') userId: string,
+  ) {
+    return this.traders.resetDailyLoss(req.user.email, userId);
+  }
+
   @Patch(':userId/risk')
   setRisk(
     @Request() req: { user: { email?: string | null } },

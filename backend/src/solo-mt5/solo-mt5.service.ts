@@ -940,6 +940,7 @@ export class SoloMt5Service {
 
   async placeOrder(userId: string, dto: PlaceMt5MarketOrderDto) {
     await this.assertCanManageTrades(userId);
+    await this.traders?.assertCanOpenTrades(userId);
     return this.withCloud(userId, () => this.loadPlaceOrder(userId, dto));
   }
 

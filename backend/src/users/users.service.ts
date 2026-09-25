@@ -113,6 +113,7 @@ export class UsersService {
         canManageTrades: !isSoloApp() || isSoloAdminEmail(user.email) || Boolean(user.soloTradeOperator),
         soloTradeOperator: Boolean(user.soloTradeOperator),
         soloMaxRiskPercent: resolveSoloMaxRiskPercent(user.soloMaxRiskPercent),
+        soloDailyLossLocked: Boolean(user.soloDailyLossLocked),
         isSoloPlatformAdmin: isSoloAdminEmail(user.email),
       },
       onboarding: {

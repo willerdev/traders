@@ -13,6 +13,7 @@ interface User {
   canManageTrades?: boolean;
   soloTradeOperator?: boolean;
   soloMaxRiskPercent?: number;
+  soloDailyLossLocked?: boolean;
   isSoloPlatformAdmin?: boolean;
   adminPermissions?: import("@/lib/api").AdminPermissionsView;
 }

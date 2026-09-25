@@ -38,6 +38,21 @@ export function SoloTraderRiskAdmin() {
     void load();
   }, []);
 
+  async function resetLock(userId: string) {
+    setSaving(userId);
+    setError("");
+    try {
+      const updated = await api.soloTraders.resetDailyLoss(userId);
+      setTraders((prev) =>
+        prev.map((t) => (t.userId === userId ? updated : t)),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not reset lock");
+    } finally {
+      setSaving(null);
+    }
+  }
+
   async function save(userId: string) {
     const n = Number(drafts[userId]);
     setSaving(userId);
@@ -59,8 +74,9 @@ export function SoloTraderRiskAdmin() {
       <CardHeader>
         <CardTitle>Trader risk caps</CardTitle>
         <CardDescription>
-          Max percent of live equity each operator may risk per order. Their
-          closed profit is 100% theirs to withdraw.
+          Max percent of live equity each operator may risk per order. Daily
+          loss is capped at $200 — after that they cannot open new trades until
+          you reset.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -79,11 +95,24 @@ export function SoloTraderRiskAdmin() {
                     <p className="font-semibold text-white">{t.displayName}</p>
                     <p className="text-xs text-muted">{t.email}</p>
                     <p className="mt-1 text-xs tabular-nums text-gray-300">
-                      Realized {t.realizedPnl.toFixed(2)} USDT · available{" "}
-                      {t.availableToWithdraw.toFixed(2)} USDT
+                      Realized {t.realizedPnl.toFixed(2)} USDT · today{" "}
+                      {(t.dailyPnl ?? 0).toFixed(2)} / -{t.dailyLossLimit ?? 200}{" "}
+                      USDT
+                      {t.dailyLossLocked ? " · LOCKED" : ""}
                     </p>
                   </div>
-                  <div className="flex items-end gap-2">
+                  <div className="flex flex-wrap items-end gap-2">
+                    {t.dailyLossLocked ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        disabled={saving === t.userId}
+                        onClick={() => void resetLock(t.userId)}
+                      >
+                        Reset daily lock
+                      </Button>
+                    ) : null}
                     <div>
                       <Label htmlFor={`risk-${t.userId}`}>Max risk %</Label>
                       <Input

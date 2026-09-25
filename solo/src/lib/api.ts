@@ -486,6 +486,11 @@ class ApiClient {
         method: "PATCH",
         body: JSON.stringify({ comment }),
       }),
+    resetDailyLoss: (userId: string) =>
+      this.request<SoloTraderSnapshot>(
+        `/solo/traders/${userId}/daily-loss-reset`,
+        { method: "PATCH" },
+      ),
   };
 
   chainEnrollment = {
@@ -2069,6 +2074,7 @@ export interface DashboardData {
     canManageTrades?: boolean;
     soloTradeOperator?: boolean;
     soloMaxRiskPercent?: number;
+    soloDailyLossLocked?: boolean;
     isSoloPlatformAdmin?: boolean;
   };
   onboarding?: OnboardingStatus;
@@ -2235,6 +2241,10 @@ export interface SoloTraderSnapshot {
   soloTradeOperator: boolean;
   maxRiskPercent: number;
   realizedPnl: number;
+  dailyPnl?: number;
+  dailyLossLimit?: number;
+  dailyLossLocked?: boolean;
+  dailyLossLockedAt?: string | null;
   availableToWithdraw: number;
   defaultComment?: string;
   tradeComment?: string;

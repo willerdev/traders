@@ -46,6 +46,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       soloTradeOperator: user.soloTradeOperator,
       soloMaxRiskPercent: resolveSoloMaxRiskPercent(user.soloMaxRiskPercent),
       canManageTrades,
+      soloDailyLossLocked: Boolean(user.soloDailyLossLocked),
     };
   }
 }

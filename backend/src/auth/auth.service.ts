@@ -606,6 +606,7 @@ export class AuthService {
         Boolean(user.soloTradeOperator),
       soloTradeOperator: Boolean(user.soloTradeOperator),
       soloMaxRiskPercent: resolveSoloMaxRiskPercent(user.soloMaxRiskPercent),
+      soloDailyLossLocked: Boolean(user.soloDailyLossLocked),
       isSoloPlatformAdmin: isSoloAdminEmail(user.email as string | null),
       adminPermissions: resolveAdminPermissions({
         role,
