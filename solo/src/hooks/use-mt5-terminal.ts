@@ -99,16 +99,13 @@ export function useMt5Terminal(
     runningInFlight.current = true;
     try {
       const res = await api.signals.mt5Running();
-      const running = res.trades;
-      setRunningTrades(running);
+      const open = res.trades ?? [];
+      setRunningTrades(open);
       setData((prev) => {
         if (!prev) return prev;
         const next = {
           ...prev,
-          trades: [
-            ...prev.trades.filter((t) => t.kind !== "running"),
-            ...running,
-          ],
+          trades: open,
           account: res.account ?? prev.account,
           stats: {
             ...prev.stats,
@@ -117,7 +114,7 @@ export function useMt5Terminal(
           },
         };
         if (userId) {
-          patchMt5RunningCache(userId, running, next.stats, res.account);
+          patchMt5RunningCache(userId, open, next.stats, res.account);
         }
         return next;
       });

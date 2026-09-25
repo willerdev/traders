@@ -3380,6 +3380,10 @@ export interface UserMt5HistoryItem {
   isWin: boolean | null;
   submittedAt: string;
   closedAt: string;
+  volume?: number;
+  swap?: number;
+  commission?: number;
+  comment?: string | null;
 }
 
 export interface UserMt5QuoteItem {

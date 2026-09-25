@@ -3469,6 +3469,8 @@ export interface UserMt5Trade {
   openPrice?: number;
   currentPrice?: number;
   profit?: number;
+  swap?: number;
+  initialVolume?: number;
   orderId?: string;
   positionId?: string;
   orderType?: string;
@@ -3509,6 +3511,10 @@ export interface UserMt5HistoryItem {
   isWin: boolean | null;
   submittedAt: string;
   closedAt: string;
+  volume?: number;
+  swap?: number;
+  commission?: number;
+  comment?: string | null;
 }
 
 export interface UserMt5HistoryResult {
@@ -3612,6 +3618,8 @@ export interface UserMt5AccountSummary {
   floatingProfit: number;
   totalProfit: number;
   equity: number;
+  margin?: number;
+  freeMargin?: number;
 }
 
 export type UserMt5AccountSource =

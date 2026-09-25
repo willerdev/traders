@@ -26,6 +26,7 @@ import { TradingLiveBalance } from "@/components/mt5/trading-live-balance";
 import { Mt5PlaceOrderModal } from "@/components/mt5/mt5-place-order-modal";
 import { Mt5PositionModifyModal } from "@/components/mt5/mt5-position-modify-modal";
 import { Mt5MobileTradeBoard } from "@/components/mt5/mt5-mobile-trade-board";
+import { Mt5MobileHistoryBoard } from "@/components/mt5/mt5-mobile-history-board";
 import type { Mt5PlaceKind } from "@/lib/mt5-place-kind";
 import { pickDefaultChartSymbol } from "@/lib/chart-market-status";
 import { useChartWatchlist } from "@/components/charts/use-chart-watchlist";
@@ -110,20 +111,27 @@ export default function SoloMt5Page() {
     loadRunning,
   } = useMt5Terminal(userId, ready, hasHydrated, "chart", ready);
 
-  const limitTrades = useMemo(
-    () => (data?.trades ?? []).filter((t) => t.kind === "limit"),
-    [data?.trades],
-  );
-  const displayRunningTrades = useMemo(() => {
+  const tradeKey = (t: UserMt5Trade) =>
+    t.positionId ?? t.orderId ?? `${t.symbol}-${t.openPrice ?? ""}`;
+  const limitTrades = useMemo(() => {
     const merged = new Map<string, UserMt5Trade>();
-    const keyFor = (t: UserMt5Trade) =>
-      t.positionId ?? t.orderId ?? `${t.symbol}-${t.openPrice ?? ""}`;
     for (const trade of data?.trades ?? []) {
-      if (trade.kind !== "running") continue;
-      merged.set(keyFor(trade), trade);
+      if (trade.kind === "limit") merged.set(tradeKey(trade), trade);
     }
     for (const trade of runningTrades) {
-      merged.set(keyFor(trade), trade);
+      if (trade.kind === "limit") merged.set(tradeKey(trade), trade);
+    }
+    return [...merged.values()];
+  }, [data?.trades, runningTrades]);
+  const displayRunningTrades = useMemo(() => {
+    const merged = new Map<string, UserMt5Trade>();
+    for (const trade of data?.trades ?? []) {
+      if (trade.kind !== "running") continue;
+      merged.set(tradeKey(trade), trade);
+    }
+    for (const trade of runningTrades) {
+      if (trade.kind === "limit") continue;
+      merged.set(tradeKey(trade), trade);
     }
     return [...merged.values()];
   }, [data?.trades, runningTrades]);
@@ -302,21 +310,39 @@ export default function SoloMt5Page() {
                 canTrade={canTrade}
                 onModify={setModifyTrade}
                 onClose={(trade) => void handleCloseTrade(trade)}
+                onChart={(symbol) => {
+                  setSelectedChartSymbol(symbol);
+                  setMobileTab("chart");
+                }}
+                onTrade={(symbol) => {
+                  setSelectedChartSymbol(symbol);
+                  hidePlace.restore();
+                }}
+                onNewOrder={() => hidePlace.restore()}
+                onBulk={() => {
+                  void api.signals.closeAllMt5Positions().then(() => {
+                    void load({ background: true });
+                    void loadRunning();
+                  });
+                }}
               />
             )
           ) : mobileTab === "history" ? (
-            <div className="min-h-0 flex-1 overflow-hidden p-3">
-              <TradingHistoryPanel
-                items={historyItems}
-                loading={historyLoading}
-                error={historyError}
-                dealCount={historyDealCount}
-                selectedId={reviewedHistory?.id ?? null}
-                onSelect={(item) => {
-                  setReviewedHistory(item);
-                }}
-              />
-            </div>
+            <Mt5MobileHistoryBoard
+              items={historyItems}
+              loading={historyLoading}
+              error={historyError}
+              onChart={(item) => {
+                setReviewedHistory(item);
+                setSelectedChartSymbol(item.symbol);
+                setMobileTab("chart");
+              }}
+              onTrade={(item) => {
+                setReviewedHistory(item);
+                setSelectedChartSymbol(item.symbol);
+                setMobileTab("trade");
+              }}
+            />
           ) : (
             <div className="relative min-h-0 flex-1">
               <Mt5ChartTerminal

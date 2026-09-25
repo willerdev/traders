@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { CreditCard, MoreHorizontal, Plus } from "lucide-react";
+import { useMemo, useState } from "react";
 import type { UserMt5AccountSummary, UserMt5Trade } from "@/lib/api";
-import {
-  MT5_BUY,
-  MT5_SELL,
-  Mt5Pnl,
-  fmtMt5Price,
-} from "@/components/mt5/mt5-ui";
-import { Mt5SwipeableRow } from "@/components/mt5/mt5-swipeable-row";
-import { cn } from "@/lib/utils";
+import { fmtMt5Date } from "@/components/mt5/mt5-ui";
+
+const BUY = "#3478f6";
+const SELL = "#e53935";
+const MUTED = "#8e8e93";
+const TEXT = "#1c1c1e";
+const LINE = "#d1d1d6";
+const PAGE = "#e5e5ea";
+const CARD = "#ffffff";
 
 type Props = {
   trades: UserMt5Trade[];
@@ -17,7 +19,21 @@ type Props = {
   canTrade: boolean;
   onModify: (trade: UserMt5Trade) => void;
   onClose: (trade: UserMt5Trade) => void;
+  onChart?: (symbol: string) => void;
+  onTrade?: (symbol: string) => void;
+  onNewOrder?: () => void;
+  onBulk?: () => void;
 };
+
+function tradeKey(trade: UserMt5Trade) {
+  return (
+    trade.positionId ?? trade.orderId ?? `${trade.symbol}-${trade.openPrice}`
+  );
+}
+
+function isBuy(trade: UserMt5Trade) {
+  return trade.direction.toUpperCase() === "BUY";
+}
 
 function typeLabel(trade: UserMt5Trade) {
   const dir = trade.direction.toLowerCase();
@@ -30,8 +46,85 @@ function typeLabel(trade: UserMt5Trade) {
   return dir;
 }
 
-function tradeKey(trade: UserMt5Trade) {
-  return trade.positionId ?? trade.orderId ?? `${trade.symbol}-${trade.openPrice}`;
+function fmtNum(value: number | null | undefined, digits = 2) {
+  if (value == null || Number.isNaN(value)) return "—";
+  const [int, dec] = Math.abs(value).toFixed(digits).split(".");
+  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  const sign = value < 0 ? "-" : "";
+  return dec != null ? `${sign}${grouped}.${dec}` : `${sign}${grouped}`;
+}
+
+function fmtPrice(value: number | null | undefined, symbol: string) {
+  const digits = /XAU|XAG|BTC|ETH/i.test(symbol) ? 2 : 5;
+  if (value == null || Number.isNaN(value)) return "—";
+  return value.toFixed(digits);
+}
+
+function instrumentName(symbol: string) {
+  const map: Record<string, string> = {
+    XAUUSD: "Gold vs US Dollar",
+    XAGUSD: "Silver vs US Dollar",
+    EURUSD: "Euro vs US Dollar",
+    GBPUSD: "Pound vs US Dollar",
+    USDJPY: "US Dollar vs Yen",
+    USDCHF: "US Dollar vs Swiss Franc",
+    AUDUSD: "Australian Dollar vs US Dollar",
+    USDCAD: "US Dollar vs Canadian Dollar",
+    NZDUSD: "New Zealand Dollar vs US Dollar",
+    BTCUSD: "Bitcoin vs US Dollar",
+    ETHUSD: "Ethereum vs US Dollar",
+  };
+  return map[symbol.toUpperCase()] ?? symbol;
+}
+
+function pointSize(symbol: string, price: number) {
+  if (/XAU|XAG/i.test(symbol)) return 0.01;
+  if (/JPY/i.test(symbol)) return 0.001;
+  if (/BTC|ETH/i.test(symbol)) return 1;
+  if (price >= 100) return 0.01;
+  return 0.00001;
+}
+
+function PnlText({
+  value,
+  className,
+  suffix,
+}: {
+  value: number;
+  className?: string;
+  suffix?: string;
+}) {
+  const color = value > 0 ? BUY : value < 0 ? SELL : MUTED;
+  const text = `${value > 0 ? "" : ""}${fmtNum(value, 2)}${suffix ? ` ${suffix}` : ""}`;
+  return (
+    <span className={className} style={{ color }}>
+      {text}
+    </span>
+  );
+}
+
+function SectionHead({ label }: { label: string }) {
+  return (
+    <div
+      className="flex items-center justify-between px-4 py-1.5"
+      style={{ background: PAGE, color: MUTED }}
+    >
+      <span className="text-[13px] font-semibold">{label}</span>
+      <MoreHorizontal className="h-4 w-4" />
+    </div>
+  );
+}
+
+function StatRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      className="flex items-center justify-between px-4 py-[5px] text-[15px]"
+      style={{ color: TEXT }}
+    >
+      <span>{label}</span>
+      <span className="tabular-nums">{value}</span>
+    </div>
+  );
 }
 
 export function Mt5MobileTradeBoard({
@@ -40,156 +133,420 @@ export function Mt5MobileTradeBoard({
   canTrade,
   onModify,
   onClose,
+  onChart,
+  onTrade,
+  onNewOrder,
+  onBulk,
 }: Props) {
-  const floating = account?.floatingProfit ?? 0;
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const currency = account?.currency || "USD";
+  const floating = account?.floatingProfit ?? 0;
+  const balance = account?.startingBalance ?? 0;
+  const equity = account?.equity ?? balance;
+  const margin = account?.margin ?? 0;
+  const freeMargin =
+    account?.freeMargin ??
+    (margin > 0 ? Math.max(0, equity - margin) : equity);
+  const marginLevel = margin > 0 ? (equity / margin) * 100 : 0;
+
+  const positions = useMemo(
+    () => trades.filter((t) => t.kind !== "limit"),
+    [trades],
+  );
+  const orders = useMemo(
+    () => trades.filter((t) => t.kind === "limit"),
+    [trades],
+  );
+
+  function toggle(trade: UserMt5Trade) {
+    const key = tradeKey(trade);
+    setOpenKey((cur) => (cur === key ? null : key));
+  }
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col bg-[var(--mt5-bg)] text-[var(--mt5-text)]">
+    <div
+      className="flex h-full min-h-0 flex-1 flex-col"
+      style={{ background: PAGE, color: TEXT }}
+    >
+      <div className="relative flex shrink-0 items-center px-3 py-2">
+        <button
+          type="button"
+          className="flex h-9 w-9 items-center justify-center rounded-full"
+          style={{ background: CARD, color: MUTED }}
+          aria-label="Account"
+        >
+          <CreditCard className="h-4 w-4" />
+        </button>
+        <div className="absolute inset-x-16 text-center">
+          <PnlText
+            value={floating}
+            suffix={currency}
+            className="text-[22px] font-medium leading-tight"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={onNewOrder}
+          className="ml-auto flex h-9 w-9 items-center justify-center rounded-full"
+          style={{ background: CARD, color: MUTED }}
+          aria-label="New order"
+        >
+          <Plus className="h-5 w-5" />
+        </button>
+      </div>
+
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        {trades.length === 0 ? (
-          <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-            <p className="text-sm text-[var(--mt5-muted)]">
-              No running trades
-            </p>
-            <p className="mt-1 text-xs text-[var(--mt5-muted)]">
-              Buy or sell below. Tap Limit for pending orders.
+        <div style={{ background: CARD }}>
+          <StatRow label="Balance:" value={fmtNum(balance)} />
+          <StatRow label="Equity:" value={fmtNum(equity)} />
+          <StatRow label="Margin:" value={fmtNum(margin)} />
+          <StatRow label="Free Margin:" value={fmtNum(freeMargin)} />
+          <StatRow
+            label="Margin Level (%):"
+            value={margin > 0 ? fmtNum(marginLevel) : "—"}
+          />
+        </div>
+
+        {positions.length === 0 && orders.length === 0 ? (
+          <p className="px-4 py-16 text-center text-[15px]" style={{ color: MUTED }}>
+            No positions or orders
+          </p>
+        ) : null}
+
+        {positions.length > 0 ? (
+          <>
+            <SectionHead label="Positions" />
+            {positions.map((trade) => (
+              <PositionBlock
+                key={tradeKey(trade)}
+                trade={trade}
+                selected={openKey === tradeKey(trade)}
+                canTrade={canTrade}
+                currency={currency}
+                onToggle={() => toggle(trade)}
+                onModify={() => onModify(trade)}
+                onClose={() => onClose(trade)}
+                onChart={() => onChart?.(trade.symbol)}
+                onTrade={() => onTrade?.(trade.symbol)}
+                onBulk={onBulk}
+              />
+            ))}
+          </>
+        ) : null}
+
+        {orders.length > 0 ? (
+          <>
+            <SectionHead label="Orders" />
+            {orders.map((trade) => (
+              <OrderBlock
+                key={tradeKey(trade)}
+                trade={trade}
+                selected={openKey === tradeKey(trade)}
+                canTrade={canTrade}
+                onToggle={() => toggle(trade)}
+                onModify={() => onModify(trade)}
+                onClose={() => onClose(trade)}
+                onChart={() => onChart?.(trade.symbol)}
+                onTrade={() => onTrade?.(trade.symbol)}
+              />
+            ))}
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function PositionBlock({
+  trade,
+  selected,
+  canTrade,
+  currency,
+  onToggle,
+  onModify,
+  onClose,
+  onChart,
+  onTrade,
+  onBulk,
+}: {
+  trade: UserMt5Trade;
+  selected: boolean;
+  canTrade: boolean;
+  currency: string;
+  onToggle: () => void;
+  onModify: () => void;
+  onClose: () => void;
+  onChart: () => void;
+  onTrade: () => void;
+  onBulk?: () => void;
+}) {
+  const buy = isBuy(trade);
+  const open = trade.openPrice ?? trade.entryMin;
+  const now = trade.currentPrice ?? open;
+  const pnl = trade.profit ?? 0;
+  const lot = trade.volume?.toFixed(2) ?? "—";
+  const ticket = trade.positionId ?? trade.orderId ?? "";
+  const delta = (now ?? 0) - (open ?? 0);
+  const pts = pointSize(trade.symbol, open ?? now ?? 0);
+  const points = pts > 0 ? delta / pts : 0;
+  const pct = open ? (delta / open) * 100 : 0;
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full px-4 py-2.5 text-left"
+        style={{ background: CARD, borderBottom: `1px solid ${LINE}` }}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="flex flex-wrap items-baseline gap-x-1.5">
+              <span className="text-[16px] font-semibold">{trade.symbol}</span>
+              <span
+                className="text-[15px] font-medium"
+                style={{ color: buy ? BUY : SELL }}
+              >
+                {typeLabel(trade)} {lot}
+              </span>
+            </div>
+            <p className="mt-0.5 text-[13px] tabular-nums" style={{ color: MUTED }}>
+              {fmtPrice(open, trade.symbol)} → {fmtPrice(now, trade.symbol)}
             </p>
           </div>
-        ) : (
-          trades.map((trade) => {
-            const ticket = trade.positionId ?? trade.orderId ?? "";
-            const pending = trade.kind === "limit";
-            const pnl = trade.profit ?? 0;
-            const key = tradeKey(trade);
-            const selected = openKey === key;
-            return (
-              <Mt5SwipeableRow
-                key={key}
-                className="border-b border-[var(--mt5-divider)]"
-                actions={
-                  canTrade
-                    ? [
-                        {
-                          key: "modify",
-                          label: "Modify",
-                          tone: "primary",
-                          onClick: () => onModify(trade),
-                        },
-                        {
-                          key: "close",
-                          label: pending ? "Cancel" : "Close",
-                          tone: "danger",
-                          onClick: () => onClose(trade),
-                        },
-                      ]
-                    : []
-                }
+          <PnlText value={pnl} className="text-[18px] font-medium tabular-nums" />
+        </div>
+      </button>
+
+      {selected ? (
+        <div className="px-2 pb-3 pt-2">
+          <div
+            className="overflow-hidden rounded-[14px] shadow-sm"
+            style={{ background: CARD }}
+          >
+            <button
+              type="button"
+              onClick={onToggle}
+              className="w-full px-4 py-3 text-left"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="flex flex-wrap items-baseline gap-x-1.5">
+                    <span className="text-[16px] font-semibold">
+                      {trade.symbol}
+                    </span>
+                    <span
+                      className="text-[15px] font-medium"
+                      style={{ color: buy ? BUY : SELL }}
+                    >
+                      {typeLabel(trade)} {lot}
+                    </span>
+                  </div>
+                  <p className="text-[13px]" style={{ color: MUTED }}>
+                    {instrumentName(trade.symbol)}
+                  </p>
+                </div>
+                <span className="text-[12px] tabular-nums" style={{ color: MUTED }}>
+                  #{ticket || "—"}
+                </span>
+              </div>
+              <div className="mt-2 flex items-end justify-between">
+                <p className="text-[15px] tabular-nums" style={{ color: MUTED }}>
+                  {fmtPrice(open, trade.symbol)} → {fmtPrice(now, trade.symbol)}
+                </p>
+                <PnlText
+                  value={pnl}
+                  className="text-[22px] font-medium tabular-nums"
+                />
+              </div>
+              <p
+                className="mt-1 text-[13px] tabular-nums"
+                style={{ color: points < 0 ? SELL : points > 0 ? BUY : MUTED }}
               >
+                Δ = {points >= 0 ? "" : "−"}
+                {fmtNum(Math.abs(points), 0)} ({pct >= 0 ? "" : "−"}
+                {Math.abs(pct).toFixed(2)}%){" "}
+                <span>{points < 0 ? "▾" : points > 0 ? "▴" : ""}</span>
+              </p>
+              <div
+                className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[13px]"
+                style={{ color: MUTED }}
+              >
+                <span>
+                  S/L:{" "}
+                  <span className="tabular-nums" style={{ color: TEXT }}>
+                    {fmtPrice(trade.stopLoss, trade.symbol)}
+                  </span>
+                </span>
+                <span className="text-right">
+                  Swap:{" "}
+                  <span className="tabular-nums" style={{ color: TEXT }}>
+                    {fmtNum(trade.swap ?? 0)}
+                  </span>
+                </span>
+                <span>
+                  T/P:{" "}
+                  <span className="tabular-nums" style={{ color: TEXT }}>
+                    {fmtPrice(trade.takeProfit, trade.symbol)}
+                  </span>
+                </span>
+                <span className="text-right tabular-nums">
+                  {trade.submittedAt ? fmtMt5Date(trade.submittedAt) : "—"}
+                </span>
+              </div>
+              {trade.comment ? (
+                <p className="mt-2 text-[13px]" style={{ color: MUTED }}>
+                  {trade.comment}
+                </p>
+              ) : null}
+            </button>
+            {canTrade ? (
+              <div className="border-t text-center text-[17px]" style={{ borderColor: LINE }}>
                 <button
                   type="button"
-                  className={cn(
-                    "w-full px-3 py-3 text-left",
-                    selected && "bg-[var(--mt5-row-hover)]",
-                  )}
-                  onClick={() =>
-                    setOpenKey((cur) => (cur === key ? null : key))
-                  }
+                  onClick={onClose}
+                  className="w-full py-3 font-medium"
+                  style={{ color: SELL, borderBottom: `1px solid ${LINE}` }}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                        <span className="text-[16px] font-semibold tracking-wide">
-                          {trade.symbol}
-                        </span>
-                        <span
-                          className="text-[13px] font-semibold uppercase"
-                          style={{
-                            color:
-                              trade.direction.toUpperCase() === "BUY"
-                                ? MT5_BUY
-                                : MT5_SELL,
-                          }}
-                        >
-                          {typeLabel(trade)}
-                        </span>
-                        <span className="text-[13px] tabular-nums text-[var(--mt5-muted)]">
-                          {trade.volume?.toFixed(2) ?? "—"}
-                        </span>
-                      </div>
-                      <p className="mt-0.5 text-[11px] tabular-nums text-[var(--mt5-muted)]">
-                        #{ticket || "—"}
-                        {trade.comment ? ` · ${trade.comment}` : ""}
-                      </p>
-                    </div>
-                    <Mt5Pnl
-                      value={pnl}
-                      className="text-[20px] leading-none"
-                      showSign
-                    />
-                  </div>
-                  <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] tabular-nums text-[var(--mt5-muted)]">
-                    <span>
-                      Open{" "}
-                      <span className="text-[var(--mt5-text)]">
-                        {fmtMt5Price(trade.openPrice ?? trade.entryMin)}
-                      </span>
-                    </span>
-                    <span>
-                      Now{" "}
-                      <span className="text-[var(--mt5-text)]">
-                        {fmtMt5Price(trade.currentPrice ?? trade.openPrice)}
-                      </span>
-                    </span>
-                    <span className="text-right">
-                      SL {fmtMt5Price(trade.stopLoss)}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 text-right text-[11px] tabular-nums text-[var(--mt5-muted)]">
-                    TP {fmtMt5Price(trade.takeProfit)}
-                  </div>
+                  Close position
                 </button>
-                {selected && canTrade ? (
-                  <div className="flex border-t border-[var(--mt5-divider)]">
-                    <button
-                      type="button"
-                      onClick={() => onModify(trade)}
-                      className="flex-1 py-2.5 text-center text-[12px] font-semibold uppercase tracking-wide text-[#4a9eff]"
-                    >
-                      Modify
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onClose(trade)}
-                      className="flex-1 border-l border-[var(--mt5-divider)] py-2.5 text-center text-[12px] font-semibold uppercase tracking-wide text-[#ff5252]"
-                    >
-                      {pending ? "Cancel" : "Close"}
-                    </button>
-                  </div>
-                ) : null}
-              </Mt5SwipeableRow>
-            );
-          })
-        )}
-      </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-2.5 text-[12px] text-[var(--mt5-muted)]">
-        <span>
-          Bal{" "}
-          <strong className="font-semibold text-[var(--mt5-text)]">
-            {fmtMt5Price(account?.startingBalance ?? 0)}
-          </strong>
-        </span>
-        <span>
-          Eq{" "}
-          <strong className="font-semibold text-[var(--mt5-text)]">
-            {fmtMt5Price(account?.equity ?? account?.startingBalance ?? 0)}
-          </strong>
-        </span>
-        <span className="ml-auto">
-          Float{" "}
-          <Mt5Pnl value={floating} className="inline text-[16px]" showSign />
-        </span>
-      </div>
+                <button
+                  type="button"
+                  onClick={onModify}
+                  className="w-full py-3 font-medium"
+                  style={{ color: BUY, borderBottom: `1px solid ${LINE}` }}
+                >
+                  Modify position
+                </button>
+                <button
+                  type="button"
+                  onClick={onTrade}
+                  className="w-full py-3 font-medium"
+                  style={{ color: BUY, borderBottom: `1px solid ${LINE}` }}
+                >
+                  Trade
+                </button>
+                <button
+                  type="button"
+                  onClick={onChart}
+                  className="w-full py-3 font-medium"
+                  style={{ color: BUY, borderBottom: `1px solid ${LINE}` }}
+                >
+                  Chart
+                </button>
+                <button
+                  type="button"
+                  onClick={onBulk}
+                  disabled={!onBulk}
+                  className="w-full py-3 font-medium disabled:opacity-40"
+                  style={{ color: BUY }}
+                >
+                  Bulk Operations...
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function OrderBlock({
+  trade,
+  selected,
+  canTrade,
+  onToggle,
+  onModify,
+  onClose,
+  onChart,
+  onTrade,
+}: {
+  trade: UserMt5Trade;
+  selected: boolean;
+  canTrade: boolean;
+  onToggle: () => void;
+  onModify: () => void;
+  onClose: () => void;
+  onChart: () => void;
+  onTrade: () => void;
+}) {
+  const buy = isBuy(trade);
+  const remaining = trade.volume ?? 0;
+  const initial = trade.initialVolume ?? remaining;
+  const filled = Math.max(0, initial - remaining);
+  const price = trade.openPrice ?? trade.entryMin;
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full px-4 py-2.5 text-left"
+        style={{ background: CARD, borderBottom: `1px solid ${LINE}` }}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="flex flex-wrap items-baseline gap-x-1.5">
+              <span className="text-[16px] font-semibold">{trade.symbol}</span>
+              <span
+                className="text-[15px] font-medium"
+                style={{ color: buy ? BUY : SELL }}
+              >
+                {typeLabel(trade)}
+              </span>
+            </div>
+            <p className="mt-0.5 text-[13px] tabular-nums" style={{ color: MUTED }}>
+              {remaining.toFixed(2)} / {fmtNum(filled, filled % 1 === 0 ? 0 : 2)}{" "}
+              at {fmtPrice(price, trade.symbol)}
+            </p>
+          </div>
+          <span className="text-[15px] font-medium" style={{ color: BUY }}>
+            placed
+          </span>
+        </div>
+      </button>
+      {selected && canTrade ? (
+        <div className="px-2 pb-3 pt-2">
+          <div
+            className="overflow-hidden rounded-[14px] text-center text-[17px] shadow-sm"
+            style={{ background: CARD }}
+          >
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full py-3 font-medium"
+              style={{ color: SELL, borderBottom: `1px solid ${LINE}` }}
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              onClick={onModify}
+              className="w-full py-3 font-medium"
+              style={{ color: BUY, borderBottom: `1px solid ${LINE}` }}
+            >
+              Modify
+            </button>
+            <button
+              type="button"
+              onClick={onTrade}
+              className="w-full py-3 font-medium"
+              style={{ color: BUY, borderBottom: `1px solid ${LINE}` }}
+            >
+              Trade
+            </button>
+            <button
+              type="button"
+              onClick={onChart}
+              className="w-full py-3 font-medium"
+              style={{ color: BUY }}
+            >
+              Chart
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

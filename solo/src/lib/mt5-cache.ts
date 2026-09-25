@@ -65,6 +65,7 @@ export function patchMt5RunningCache(
     userId,
     {
       ...cached.terminal,
+      trades: runningTrades,
       account: account ?? cached.terminal.account,
       stats: { ...cached.terminal.stats, ...stats },
     },
