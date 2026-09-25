@@ -9,6 +9,7 @@ import {
   Play,
   Plus,
   Star,
+  X,
 } from "lucide-react";
 import { api, type UserMt5HistoryItem, type UserMt5Trade } from "@/lib/api";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
@@ -32,9 +33,10 @@ import { usePriceAlertMonitor } from "@/hooks/use-price-alert-monitor";
 import { useMetaApiLive } from "@/hooks/use-metaapi-live";
 import { setMetaApiHasOpenTrades } from "@/lib/metaapi-live";
 import { cn } from "@/lib/utils";
+import { useDismissFlag, useForceMobileLayout } from "@/hooks/use-dismiss-flag";
 
 type RightTab = "watchlist" | "alerts" | "history";
-type MobileTab = "trade" | "history";
+type MobileTab = "trade" | "history" | "chart";
 
 export default function SoloMt5Page() {
   const { ready, hasHydrated } = useRequireAuth();
@@ -68,6 +70,11 @@ export default function SoloMt5Page() {
   const [connectOpen, setConnectOpen] = useState(false);
   const [rightTab, setRightTab] = useState<RightTab>("alerts");
   const [mobileTab, setMobileTab] = useState<MobileTab>("trade");
+  const { hideChart } = useForceMobileLayout();
+  const hidePlace = useDismissFlag("mt5-hide-place");
+  const hideBalance = useDismissFlag("mt5-hide-balance");
+  const hideConnect = useDismissFlag("mt5-hide-connect");
+  const hideError = useDismissFlag("mt5-hide-error");
   const [orderModal, setOrderModal] = useState<Mt5PlaceKind | null>(null);
   const [modifyTrade, setModifyTrade] = useState<UserMt5Trade | null>(null);
   const [lotSize, setLotSize] = useState("0.01");
@@ -188,8 +195,18 @@ export default function SoloMt5Page() {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground">
       <div className="mt5-mobile-desk">
-        {error ? (
-          <p className="shrink-0 px-3 py-1.5 text-sm text-danger">{error}</p>
+        {error && !hideError.hidden ? (
+          <p className="flex shrink-0 items-start justify-between gap-2 px-3 py-1.5 text-sm text-danger">
+            <span>{error}</span>
+            <button
+              type="button"
+              onClick={hideError.dismiss}
+              className="rounded-full p-0.5 text-danger/80"
+              aria-label="Dismiss error"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </p>
         ) : null}
         <div className="flex min-h-0 flex-1 flex-col bg-[var(--mt5-bg)]">
           <div className="flex shrink-0 border-b border-border bg-[var(--mt5-surface)] text-xs font-semibold">
@@ -224,6 +241,33 @@ export default function SoloMt5Page() {
                 <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-primary" />
               ) : null}
             </button>
+            <button
+              type="button"
+              onClick={() => setMobileTab("chart")}
+              className={cn(
+                "relative flex-1 py-2.5",
+                mobileTab === "chart" ? "text-foreground" : "text-muted",
+              )}
+            >
+              Chart
+              {mobileTab === "chart" ? (
+                <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-primary" />
+              ) : null}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMobileTab("trade");
+                hideChart();
+                hidePlace.dismiss();
+                hideBalance.dismiss();
+                hideConnect.dismiss();
+              }}
+              className="flex items-center px-3 text-[10px] font-semibold uppercase tracking-wide text-muted"
+              aria-label="Hide chart and extra cards"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
           {mobileTab === "trade" ? (
             loading && !data ? (
@@ -239,7 +283,7 @@ export default function SoloMt5Page() {
                 onClose={(trade) => void handleCloseTrade(trade)}
               />
             )
-          ) : (
+          ) : mobileTab === "history" ? (
             <div className="min-h-0 flex-1 overflow-hidden p-3">
               <TradingHistoryPanel
                 items={historyItems}
@@ -252,12 +296,45 @@ export default function SoloMt5Page() {
                 }}
               />
             </div>
+          ) : (
+            <div className="relative min-h-0 flex-1">
+              <Mt5ChartTerminal
+                quotes={quotes}
+                runningTrades={displayRunningTrades}
+                limitTrades={limitTrades}
+                setups={[]}
+                account={data?.account}
+                accountSource={data?.accountSource}
+                selectedSymbol={chartSymbol}
+                reviewedHistory={reviewedHistory}
+                onSelectSymbol={(sym) => {
+                  setReviewedHistory(null);
+                  setSelectedChartSymbol(sym);
+                  addSymbol(sym);
+                }}
+                onOpenSetup={() => undefined}
+                showOrdersPanel={false}
+                showTradeBar={false}
+                chartOnly
+                onDismiss={() => setMobileTab("trade")}
+              />
+            </div>
           )}
+          {hidePlace.hidden ? (
+            <button
+              type="button"
+              onClick={hidePlace.restore}
+              className="shrink-0 border-t border-[var(--mt5-divider)] py-2 text-center text-[11px] font-semibold text-muted"
+            >
+              Show orders
+            </button>
+          ) : (
           <div className="shrink-0 border-t border-[var(--mt5-divider)]">
             <TradingPlaceTradeCard
               linked={linked}
               canTrade={canTrade}
               dense
+              onDismiss={hidePlace.dismiss}
               lotSize={lotSize}
               onLotSizeChange={setLotSize}
               onAdjustLot={(delta) => {
@@ -271,6 +348,7 @@ export default function SoloMt5Page() {
               onNeedConnect={() => setConnectOpen(true)}
             />
           </div>
+          )}
         </div>
       </div>
 
@@ -280,6 +358,14 @@ export default function SoloMt5Page() {
             Trading
           </h1>
           <div className="ml-auto flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={hideChart}
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-muted lg:hidden"
+            >
+              <X className="h-3.5 w-3.5" />
+              Hide chart
+            </button>
             {linked && !live && (
               <button
                 type="button"
@@ -311,6 +397,15 @@ export default function SoloMt5Page() {
         {error ? (
           <p className="px-5 pb-2 text-sm text-danger">{error}</p>
         ) : null}
+        {hideBalance.hidden ? (
+          <button
+            type="button"
+            onClick={hideBalance.restore}
+            className="mx-5 mb-2 text-left text-xs font-semibold text-muted"
+          >
+            Show balance
+          </button>
+        ) : (
         <TradingLiveBalance
           equity={equity}
           balance={walletBalance}
@@ -319,7 +414,9 @@ export default function SoloMt5Page() {
           linked={linked}
           floating={account?.floatingProfit ?? 0}
           dayPnl={dayPnl}
+          onDismiss={hideBalance.dismiss}
         />
+        )}
         <div className="flex min-h-0 flex-1 flex-col md:flex-row md:gap-3 md:px-5 md:pb-4 md:pt-3">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-surface">
@@ -362,12 +459,21 @@ export default function SoloMt5Page() {
                   showOrdersPanel={linked}
                   showTradeBar={false}
                   workspaceLayout
+                  onDismiss={hideChart}
                 />
               </div>
             )}
 
-            {needsConnect && (
-              <div className="border-t border-border px-4 py-8 text-center sm:px-8">
+            {needsConnect && !hideConnect.hidden && (
+              <div className="relative border-t border-border px-4 py-8 text-center sm:px-8">
+                <button
+                  type="button"
+                  onClick={hideConnect.dismiss}
+                  className="absolute right-3 top-3 rounded-full p-1.5 text-muted hover:text-foreground"
+                  aria-label="Hide connect card"
+                >
+                  <X className="h-4 w-4" />
+                </button>
                 <h2 className="text-lg font-semibold text-foreground">
                   {canTrade
                     ? "Connect your trading account before you trade"

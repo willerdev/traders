@@ -1,6 +1,6 @@
 "use client";
 
-import { Radio } from "lucide-react";
+import { Radio, X } from "lucide-react";
 import { fmtMt5Price } from "@/components/mt5/mt5-ui";
 import { cn } from "@/lib/utils";
 
@@ -12,6 +12,7 @@ type Props = {
   linked: boolean;
   floating?: number;
   dayPnl?: number;
+  onDismiss?: () => void;
 };
 
 export function TradingLiveBalance({
@@ -22,11 +23,22 @@ export function TradingLiveBalance({
   linked,
   floating = 0,
   dayPnl = 0,
+  onDismiss,
 }: Props) {
   if (!linked) return null;
 
   return (
-    <section className="mx-3 shrink-0 md:mx-5">
+    <section className="relative mx-3 shrink-0 md:mx-5">
+      {onDismiss ? (
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="absolute right-3 top-3 z-10 rounded-full p-1.5 text-muted hover:bg-navy/60 hover:text-foreground"
+          aria-label="Hide balance card"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      ) : null}
       <div className="flex flex-col gap-4 rounded-2xl border border-border bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7 sm:py-5">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted">

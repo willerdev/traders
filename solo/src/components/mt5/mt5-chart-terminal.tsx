@@ -48,7 +48,7 @@ import {
   fmtMt5Price,
 } from "@/components/mt5/mt5-ui";
 import { cn } from "@/lib/utils";
-import { Loader2 } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { prefetchChartBarCache } from "@/lib/chart-bar-cache";
 import { loadChartData, isPlausibleQuotePrice } from "@/components/charts/chart-data.service";
 import { Mt5PlaceOrderModal } from "@/components/mt5/mt5-place-order-modal";
@@ -94,6 +94,7 @@ type Props = {
   workspaceLayout?: boolean;
   canManageTrades?: boolean;
   reviewedHistory?: UserMt5HistoryItem | null;
+  onDismiss?: () => void;
 };
 
 function toSetupSummary(setup: OpenSetupItem): SetupSummary {
@@ -137,6 +138,7 @@ export function Mt5ChartTerminal({
   workspaceLayout = false,
   canManageTrades = false,
   reviewedHistory = null,
+  onDismiss,
 }: Props) {
   const chartRef = useRef<LightweightChartHandle>(null);
   const [orderModal, setOrderModal] = useState<Mt5PlaceKind | null>(null);
@@ -544,13 +546,25 @@ export function Mt5ChartTerminal({
   return (
     <div
       className={cn(
-        "mt5-shell flex min-h-0 flex-col bg-[var(--mt5-bg)]",
+        "mt5-shell relative flex min-h-0 flex-col bg-[var(--mt5-bg)]",
         chartOnly
           ? "h-full min-h-0 flex-1 overflow-hidden pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] md:pb-0"
           : "h-full min-h-0 flex-1 overflow-hidden",
       )}
       data-mt5-chart-terminal
     >
+      {onDismiss ? (
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="absolute right-2 top-2 z-[30] flex items-center gap-1 rounded-full bg-[var(--mt5-surface)]/95 px-2.5 py-1 text-[11px] font-semibold text-[var(--mt5-text)] shadow-md lg:hidden"
+          aria-label="Hide chart"
+        >
+          <X className="h-3.5 w-3.5" />
+          Hide chart
+        </button>
+      ) : null}
+
       {!workspaceLayout && (
       <div className="flex shrink-0 items-center gap-2 border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-2 py-1.5 lg:px-3">
         <ChartSymbolPicker

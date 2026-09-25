@@ -1,5 +1,6 @@
 "use client";
 
+import { X } from "lucide-react";
 import { MT5_BUY, MT5_SELL } from "@/components/mt5/mt5-ui";
 import type { Mt5PlaceKind } from "@/lib/mt5-place-kind";
 
@@ -8,6 +9,7 @@ type Props = {
   lotSize: string;
   canTrade?: boolean;
   dense?: boolean;
+  onDismiss?: () => void;
   onLotSizeChange: (value: string) => void;
   onAdjustLot: (delta: number) => void;
   onPlace: (kind: Mt5PlaceKind) => void;
@@ -19,6 +21,7 @@ export function TradingPlaceTradeCard({
   lotSize,
   canTrade = false,
   dense = false,
+  onDismiss,
   onLotSizeChange,
   onAdjustLot,
   onPlace,
@@ -37,10 +40,20 @@ export function TradingPlaceTradeCard({
     <div
       className={
         dense
-          ? "shrink-0 bg-[var(--mt5-surface)] px-2 py-2"
-          : "shrink-0 rounded-2xl border border-border bg-surface p-3"
+          ? "relative shrink-0 bg-[var(--mt5-surface)] px-2 py-2"
+          : "relative shrink-0 rounded-2xl border border-border bg-surface p-3"
       }
     >
+      {onDismiss ? (
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="absolute right-1.5 top-1.5 z-10 rounded-full p-1 text-muted hover:bg-navy/60 hover:text-foreground"
+          aria-label="Hide order card"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
       {dense ? null : (
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
           Place trade

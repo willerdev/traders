@@ -196,6 +196,24 @@ html.light .mobile-nav-dock {
   flex-direction: column;
 }
 
+html.mt5-force-mobile .mt5-desktop-desk {
+  display: none !important;
+}
+html.mt5-force-mobile .mt5-mobile-desk {
+  position: fixed;
+  inset: 0;
+  bottom: calc(5.25rem + env(safe-area-inset-bottom, 0px));
+  z-index: 40;
+  display: flex !important;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--mt5-bg, #07111f);
+}
+html.mt5-force-mobile .mt5-desktop-desk [data-mt5-chart-pane],
+html.mt5-force-mobile .mt5-desktop-desk canvas {
+  display: none !important;
+}
+
 @media (max-width: 1023px), ((hover: none) and (pointer: coarse)) {
   .mt5-desktop-desk {
     display: none !important;
@@ -210,8 +228,8 @@ html.light .mobile-nav-dock {
     flex-direction: column;
     background: var(--mt5-bg, #07111f);
   }
-  [data-mt5-chart-pane],
-  [data-mt5-chart-terminal] canvas {
+  .mt5-desktop-desk [data-mt5-chart-pane],
+  .mt5-desktop-desk canvas {
     display: none !important;
     height: 0 !important;
     overflow: hidden !important;
