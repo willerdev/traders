@@ -746,15 +746,18 @@ class ApiClient {
       symbol: string,
       direction: "BUY" | "SELL",
       volume?: number,
-    ) => {
-      const q = new URLSearchParams({ symbol, direction });
-      if (volume != null && Number.isFinite(volume) && volume > 0) {
-        q.set("volume", String(volume));
-      }
-      return this.request<Mt5MarketOrderPreview>(
-        `/signals/mt5/order-preview?${q}`,
-      );
-    },
+    ) =>
+      this.request<Mt5MarketOrderPreview>("/signals/mt5/order-preview", {
+        method: "POST",
+        body: JSON.stringify({
+          symbol,
+          direction,
+          volume:
+            volume != null && Number.isFinite(volume) && volume > 0
+              ? volume
+              : undefined,
+        }),
+      }),
     placeMt5Order: (body: {
       symbol: string;
       direction: "BUY" | "SELL";

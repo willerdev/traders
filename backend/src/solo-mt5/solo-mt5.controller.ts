@@ -96,12 +96,25 @@ export class SoloMt5Controller {
     @Query('direction') direction: string,
     @Query('volume') volume?: string,
   ) {
+    return this.previewBody(req, { symbol, direction, volume });
+  }
+
+  @Post('mt5/order-preview')
+  @UseGuards(SoloTradingAdminGuard)
+  previewBody(
+    @Request() req: { user: { id: string } },
+    @Body()
+    body: { symbol?: string; direction?: string; volume?: string | number },
+  ) {
+    const volume = body.volume;
     const parsedVolume =
-      volume != null && volume.trim() !== '' ? Number(volume) : undefined;
+      volume != null && String(volume).trim() !== ''
+        ? Number(volume)
+        : undefined;
     return this.mt5.previewOrder(
       req.user.id,
-      symbol,
-      direction,
+      String(body.symbol ?? ''),
+      String(body.direction ?? ''),
       Number.isFinite(parsedVolume) ? parsedVolume : undefined,
     );
   }

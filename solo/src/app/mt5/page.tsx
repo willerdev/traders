@@ -229,6 +229,7 @@ export default function SoloMt5Page() {
             Daily loss limit of $200 reached. You can close or modify open trades. An admin must reset to open new ones.
           </p>
         ) : null}
+        <div className="flex min-h-0 flex-1 flex-col bg-[var(--mt5-bg)]">
           <div className="flex shrink-0 border-b border-border bg-[var(--mt5-surface)] text-xs font-semibold">
             <button
               type="button"

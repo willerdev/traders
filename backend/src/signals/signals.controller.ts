@@ -379,12 +379,29 @@ export class SignalsController {
     @Query('direction') direction: string,
     @Query('volume') volume?: string,
   ) {
-    const parsedVolume =
-      volume != null && volume.trim() !== '' ? Number(volume) : undefined;
-    return this.signalsService.previewMt5MarketOrder(
-      req.user.id,
+    return this.previewMt5MarketOrderBody(req, {
       symbol,
       direction,
+      volume,
+    });
+  }
+
+  @Post('mt5/order-preview')
+  @UseGuards(JwtAuthGuard)
+  previewMt5MarketOrderBody(
+    @Request() req: { user: { id: string } },
+    @Body()
+    body: { symbol?: string; direction?: string; volume?: string | number },
+  ) {
+    const volume = body.volume;
+    const parsedVolume =
+      volume != null && String(volume).trim() !== ''
+        ? Number(volume)
+        : undefined;
+    return this.signalsService.previewMt5MarketOrder(
+      req.user.id,
+      String(body.symbol ?? ''),
+      String(body.direction ?? ''),
       parsedVolume,
     );
   }

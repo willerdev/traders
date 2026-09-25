@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { api, type Mt5MarketOrderPreview } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
@@ -48,6 +48,8 @@ export function Mt5PlaceOrderModal({
   const user = useAuthStore((s) => s.user);
   const [comment, setComment] = useState("");
   const [openPrice, setOpenPrice] = useState("");
+  const orderVolumeRef = useRef(orderVolume);
+  orderVolumeRef.current = orderVolume;
 
   useEffect(() => {
     if (!open) return;
@@ -76,8 +78,9 @@ export function Mt5PlaceOrderModal({
       setError(null);
       const vol =
         volumeOverride ??
-        (Number.isFinite(Number(orderVolume)) && Number(orderVolume) >= 0.01
-          ? Number(orderVolume)
+        (Number.isFinite(Number(orderVolumeRef.current)) &&
+        Number(orderVolumeRef.current) >= 0.01
+          ? Number(orderVolumeRef.current)
           : undefined);
       try {
         const next = await api.signals.mt5OrderPreview(symbol, direction, vol);
@@ -116,7 +119,7 @@ export function Mt5PlaceOrderModal({
         setLoading(false);
       }
     },
-    [symbol, direction, kind, pending, orderVolume],
+    [symbol, direction, kind, pending],
   );
 
   useEffect(() => {
