@@ -305,7 +305,12 @@ function HistoryRow({
                 <p className="text-[15px] tabular-nums" style={{ color: MUTED }}>
                   {fmtPrice(open, row.symbol)} → {fmtPrice(close, row.symbol)}
                 </p>
-                <PnlText value={pnl} className="text-[22px] font-medium tabular-nums" />
+                <div className="text-right">
+                  <p className="text-[11px]" style={{ color: MUTED }}>
+                    Profit made
+                  </p>
+                  <PnlText value={pnl} className="text-[22px] font-medium tabular-nums" />
+                </div>
               </div>
               <p
                 className="mt-1 text-[13px] tabular-nums"

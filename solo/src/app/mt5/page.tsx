@@ -269,9 +269,13 @@ export default function SoloMt5Page() {
                 }}
                 onTrade={(symbol) => {
                   setSelectedChartSymbol(symbol);
+                  setMobileTab("chart");
                   hidePlace.restore();
                 }}
-                onNewOrder={() => hidePlace.restore()}
+                onNewOrder={() => {
+                  setMobileTab("chart");
+                  hidePlace.restore();
+                }}
                 onBulk={() => {
                   void api.signals.closeAllMt5Positions().then(() => {
                     void load({ background: true });
@@ -293,7 +297,8 @@ export default function SoloMt5Page() {
               onTrade={(item) => {
                 setReviewedHistory(item);
                 setSelectedChartSymbol(item.symbol);
-                setMobileTab("trade");
+                setMobileTab("chart");
+                hidePlace.restore();
               }}
             />
           ) : (
@@ -320,7 +325,8 @@ export default function SoloMt5Page() {
               />
             </div>
           )}
-          {hidePlace.hidden ? (
+          {mobileTab === "chart" ? (
+            hidePlace.hidden ? (
             <button
               type="button"
               onClick={hidePlace.restore}
@@ -348,7 +354,8 @@ export default function SoloMt5Page() {
               onNeedConnect={() => setConnectOpen(true)}
             />
           </div>
-          )}
+          )
+          ) : null}
           <nav
             className="grid shrink-0 grid-cols-3 border-t border-[var(--mt5-divider)] bg-[var(--mt5-surface)]"
             style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
