@@ -548,7 +548,7 @@ export function Mt5ChartTerminal({
       className={cn(
         "mt5-shell relative flex min-h-0 flex-col bg-[var(--mt5-bg)]",
         chartOnly
-          ? "h-full min-h-0 flex-1 overflow-hidden pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] md:pb-0"
+          ? "h-full min-h-0 flex-1 overflow-hidden"
           : "h-full min-h-0 flex-1 overflow-hidden",
       )}
       data-mt5-chart-terminal

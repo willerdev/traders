@@ -12,6 +12,7 @@ const TEXT = "var(--mt5-text)";
 const LINE = "var(--mt5-divider)";
 const PAGE = "var(--mt5-bg)";
 const CARD = "var(--mt5-surface)";
+const LIFT = "var(--mt5-lift)";
 
 type Props = {
   trades: UserMt5Trade[];
@@ -322,7 +323,7 @@ function PositionBlock({
         <div className="px-2 pb-3 pt-2">
           <div
             className="overflow-hidden rounded-[14px] shadow-sm"
-            style={{ background: CARD }}
+            style={{ background: LIFT }}
           >
             <button
               type="button"
@@ -510,7 +511,7 @@ function OrderBlock({
         <div className="px-2 pb-3 pt-2">
           <div
             className="overflow-hidden rounded-[14px] text-center text-[17px] shadow-sm"
-            style={{ background: CARD }}
+            style={{ background: LIFT }}
           >
             <button
               type="button"

@@ -12,6 +12,7 @@ const TEXT = "var(--mt5-text)";
 const LINE = "var(--mt5-divider)";
 const PAGE = "var(--mt5-bg)";
 const CARD = "var(--mt5-surface)";
+const LIFT = "var(--mt5-lift)";
 
 type HistoryTab = "positions" | "orders" | "deals";
 
@@ -277,7 +278,7 @@ function HistoryRow({
         <div className="px-2 pb-3 pt-2">
           <div
             className="overflow-hidden rounded-[14px] shadow-sm"
-            style={{ background: CARD }}
+            style={{ background: LIFT }}
           >
             <button type="button" onClick={onToggle} className="w-full px-4 py-3 text-left">
               <div className="flex items-start justify-between gap-2">

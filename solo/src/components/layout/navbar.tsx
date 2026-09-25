@@ -573,7 +573,9 @@ export function Navbar() {
         onClose={() => setMobileOpen(false)}
         pathname={pathname}
       />
-      <MobileBottomNav onOpenFullMenu={() => setMobileOpen(true)} />
+      {!hideMobileHeader && (
+        <MobileBottomNav onOpenFullMenu={() => setMobileOpen(true)} />
+      )}
     </>
   );
 }
@@ -588,6 +590,7 @@ export function MainContent({ children }: { children: React.ReactNode }) {
       className={cn(
         "app-main flex-1 transition-[padding] duration-300",
         isAuthenticated &&
+          !tradingDesk &&
           "pb-[calc(5.25rem+env(safe-area-inset-bottom,0px))] md:pb-0",
         isAuthenticated && "md:pl-[calc(4.5rem+1.5rem)]",
         tradingDesk && "flex h-dvh min-h-0 flex-col overflow-hidden",

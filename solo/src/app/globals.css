@@ -89,6 +89,7 @@ html.light .modal-panel {
   --mt5-muted: var(--color-muted);
   --mt5-bg: #07111F;
   --mt5-surface: #0D1B2A;
+  --mt5-lift: #1a3f5c;
   --mt5-divider: var(--color-border);
   --mt5-row-hover: rgba(255, 255, 255, 0.05);
 }
@@ -98,6 +99,7 @@ html.light .mt5-shell {
   --mt5-muted: #6b7280;
   --mt5-bg: #ffffff;
   --mt5-surface: #f8f9fa;
+  --mt5-lift: #e8eef5;
   --mt5-divider: rgba(0, 0, 0, 0.1);
   --mt5-row-hover: rgba(0, 0, 0, 0.03);
 }
@@ -187,6 +189,14 @@ html.light .mobile-nav-dock {
 
 /* Phones and tablets: hide charts, show the positions desk. */
 .mt5-mobile-desk {
+  --mt5-blue: #4a9eff;
+  --mt5-red: #ff5252;
+  --mt5-text: var(--color-foreground);
+  --mt5-muted: var(--color-muted);
+  --mt5-bg: #07111F;
+  --mt5-surface: #0D1B2A;
+  --mt5-lift: #1a3f5c;
+  --mt5-divider: var(--color-border);
   display: none;
 }
 .mt5-desktop-desk {
@@ -202,7 +212,7 @@ html.mt5-force-mobile .mt5-desktop-desk {
 html.mt5-force-mobile .mt5-mobile-desk {
   position: fixed;
   inset: 0;
-  bottom: calc(5.25rem + env(safe-area-inset-bottom, 0px));
+  bottom: 0;
   z-index: 40;
   display: flex !important;
   min-height: 0;
@@ -221,7 +231,7 @@ html.mt5-force-mobile .mt5-desktop-desk canvas {
   .mt5-mobile-desk {
     position: fixed;
     inset: 0;
-    bottom: calc(5.25rem + env(safe-area-inset-bottom, 0px));
+    bottom: 0;
     z-index: 40;
     display: flex !important;
     min-height: 0;

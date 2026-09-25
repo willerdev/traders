@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bell,
+  CandlestickChart,
   History,
+  Home,
+  LineChart,
   Loader2,
   Pause,
   Play,
@@ -11,6 +14,7 @@ import {
   Star,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { api, type UserMt5HistoryItem, type UserMt5Trade } from "@/lib/api";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { useAuthStore } from "@/stores/auth";
@@ -218,7 +222,16 @@ export default function SoloMt5Page() {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground">
-      <div className="mt5-mobile-desk">
+      <div className="mt5-mobile-desk mt5-shell">
+        <div className="flex shrink-0 items-center justify-end border-b border-[var(--mt5-divider)] bg-[var(--mt5-surface)] px-3 py-1.5">
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-semibold text-foreground"
+          >
+            <Home className="h-5 w-5" />
+            Home
+          </Link>
+        </div>
         {error && !hideError.hidden ? (
           <p className="flex shrink-0 items-start justify-between gap-2 px-3 py-1.5 text-sm text-danger">
             <span>{error}</span>
@@ -238,66 +251,6 @@ export default function SoloMt5Page() {
           </p>
         ) : null}
         <div className="flex min-h-0 flex-1 flex-col bg-[var(--mt5-bg)]">
-          <div className="flex shrink-0 border-b border-border bg-[var(--mt5-surface)] text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => setMobileTab("chart")}
-              className={cn(
-                "relative flex-1 py-2.5",
-                mobileTab === "chart" ? "text-foreground" : "text-muted",
-              )}
-            >
-              Chart
-              {mobileTab === "chart" ? (
-                <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-primary" />
-              ) : null}
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobileTab("trade")}
-              className={cn(
-                "relative flex-1 py-2.5",
-                mobileTab === "trade" ? "text-foreground" : "text-muted",
-              )}
-            >
-              Trade
-              {openTrades.length > 0 ? (
-                <span className="ml-1 tabular-nums text-[10px] text-muted">
-                  {openTrades.length}
-                </span>
-              ) : null}
-              {mobileTab === "trade" ? (
-                <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-primary" />
-              ) : null}
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobileTab("history")}
-              className={cn(
-                "relative flex-1 py-2.5",
-                mobileTab === "history" ? "text-foreground" : "text-muted",
-              )}
-            >
-              History
-              {mobileTab === "history" ? (
-                <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-primary" />
-              ) : null}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMobileTab("trade");
-                hideChart();
-                hidePlace.dismiss();
-                hideBalance.dismiss();
-                hideConnect.dismiss();
-              }}
-              className="flex items-center px-3 text-[10px] font-semibold uppercase tracking-wide text-muted"
-              aria-label="Hide chart and extra cards"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
           {mobileTab === "trade" ? (
             loading && !data ? (
               <div className="flex flex-1 items-center justify-center py-16">
@@ -396,6 +349,42 @@ export default function SoloMt5Page() {
             />
           </div>
           )}
+          <nav
+            className="grid shrink-0 grid-cols-3 border-t border-[var(--mt5-divider)] bg-[var(--mt5-surface)]"
+            style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+            aria-label="Trading sections"
+          >
+            {(
+              [
+                ["chart", "Chart", LineChart],
+                ["trade", "Trade", CandlestickChart],
+                ["history", "History", History],
+              ] as const
+            ).map(([id, label, Icon]) => {
+              const active = mobileTab === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setMobileTab(id)}
+                  className={cn(
+                    "flex flex-col items-center gap-1 py-3 text-[13px] font-semibold",
+                    active ? "text-foreground" : "text-muted",
+                  )}
+                >
+                  <Icon className="h-6 w-6" strokeWidth={active ? 2.4 : 2} />
+                  <span>
+                    {label}
+                    {id === "trade" && openTrades.length > 0 ? (
+                      <span className="ml-1 tabular-nums text-[11px] text-muted">
+                        {openTrades.length}
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
         </div>
       </div>
 
