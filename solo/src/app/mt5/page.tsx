@@ -241,6 +241,19 @@ export default function SoloMt5Page() {
           <div className="flex shrink-0 border-b border-border bg-[var(--mt5-surface)] text-xs font-semibold">
             <button
               type="button"
+              onClick={() => setMobileTab("chart")}
+              className={cn(
+                "relative flex-1 py-2.5",
+                mobileTab === "chart" ? "text-foreground" : "text-muted",
+              )}
+            >
+              Chart
+              {mobileTab === "chart" ? (
+                <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-primary" />
+              ) : null}
+            </button>
+            <button
+              type="button"
               onClick={() => setMobileTab("trade")}
               className={cn(
                 "relative flex-1 py-2.5",
@@ -267,19 +280,6 @@ export default function SoloMt5Page() {
             >
               History
               {mobileTab === "history" ? (
-                <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-primary" />
-              ) : null}
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobileTab("chart")}
-              className={cn(
-                "relative flex-1 py-2.5",
-                mobileTab === "chart" ? "text-foreground" : "text-muted",
-              )}
-            >
-              Chart
-              {mobileTab === "chart" ? (
                 <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full bg-primary" />
               ) : null}
             </button>

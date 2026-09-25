@@ -5,13 +5,13 @@ import { useMemo, useState } from "react";
 import type { UserMt5HistoryItem } from "@/lib/api";
 import { fmtMt5Date } from "@/components/mt5/mt5-ui";
 
-const BUY = "#3478f6";
-const SELL = "#e53935";
-const MUTED = "#8e8e93";
-const TEXT = "#1c1c1e";
-const LINE = "#d1d1d6";
-const PAGE = "#e5e5ea";
-const CARD = "#ffffff";
+const BUY = "var(--mt5-blue)";
+const SELL = "var(--mt5-red)";
+const MUTED = "var(--mt5-muted)";
+const TEXT = "var(--mt5-text)";
+const LINE = "var(--mt5-divider)";
+const PAGE = "var(--mt5-bg)";
+const CARD = "var(--mt5-surface)";
 
 type HistoryTab = "positions" | "orders" | "deals";
 
