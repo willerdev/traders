@@ -235,6 +235,12 @@ function LoginForm() {
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? "Sending code..." : "Continue"}
                 </Button>
+                <p className="text-center text-sm text-gray-400">
+                  New here?{" "}
+                  <Link href="/register" className="text-primary hover:underline">
+                    Create an account
+                  </Link>
+                </p>
               </form>
             ) : (
               <form onSubmit={handleOtp} className="space-y-4">

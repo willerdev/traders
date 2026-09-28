@@ -41,11 +41,7 @@ import {
   hasAdminHubAccess,
   resolveAdminPermissions,
 } from '../admin/admin-permissions.util';
-import {
-  isSoloAdminEmail,
-  soloAdminRole,
-  SOLO_REGISTRATION_CLOSED,
-} from '../common/solo-admin.util';
+import { isSoloAdminEmail, soloAdminRole } from '../common/solo-admin.util';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
@@ -81,10 +77,6 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto, ip?: string) {
-    if (isSoloApp()) {
-      throw new ForbiddenException(SOLO_REGISTRATION_CLOSED);
-    }
-
     const email = dto.email.trim().toLowerCase();
 
     if (!isRegistrationEmailAllowed(email)) {
@@ -107,22 +99,24 @@ export class AuthService {
     const referralCode = dto.referralCode?.trim().toUpperCase();
     let referredById: string | null = null;
 
-    if (!referralCode) {
-      throw new BadRequestException(
-        'Registration is invite-only. Ask a current member for their referral link.',
-      );
-    }
+    if (!isSoloApp()) {
+      if (!referralCode) {
+        throw new BadRequestException(
+          'Registration is invite-only. Ask a current member for their referral link.',
+        );
+      }
 
-    const referrer = await this.prisma.user.findUnique({
-      where: { referralCode },
-      select: { id: true },
-    });
-    if (!referrer) {
-      throw new BadRequestException(
-        'Invalid referral invite. Ask a current member for a fresh link.',
-      );
+      const referrer = await this.prisma.user.findUnique({
+        where: { referralCode },
+        select: { id: true },
+      });
+      if (!referrer) {
+        throw new BadRequestException(
+          'Invalid referral invite. Ask a current member for a fresh link.',
+        );
+      }
+      referredById = referrer.id;
     }
-    referredById = referrer.id;
 
     const user = await this.prisma.user.create({
       data: {
@@ -380,9 +374,6 @@ export class AuthService {
     });
 
     if (!user) {
-      if (isSoloApp()) {
-        throw new ForbiddenException(SOLO_REGISTRATION_CLOSED);
-      }
       user = await this.prisma.user.create({
         data: {
           walletAddress: address,
