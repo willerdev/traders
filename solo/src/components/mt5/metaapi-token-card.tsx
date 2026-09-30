@@ -149,7 +149,7 @@ export function MetaApiTokenCard({ compact = false, onChanged, className }: Prop
         <CardTitle>MetaAPI</CardTitle>
         <CardDescription>
           {canManage
-            ? "Sign in at app.metaapi.cloud, copy your API token, then paste the account ID from the account card (the UUID at the top). You do not enter MT5 login or password."
+            ? "Sign in at app.metaapi.cloud, copy your API token, then choose which connected account to monitor. You do not enter MT5 login or password."
             : "You see the live MetaAPI account assigned to you. Only the admin can change which account that is."}
         </CardDescription>
       </CardHeader>
