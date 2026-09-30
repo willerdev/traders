@@ -49,7 +49,7 @@ export function MetaApiTokenCard({ compact = false, onChanged, className }: Prop
       setConnected(true);
       setMasked(res.tokenMasked);
       setToken("");
-      setMsg("Token saved. Paste the MetaAPI account ID below to monitor it.");
+      setMsg("Token saved. Choose which account to monitor below.");
       onChanged?.(true);
     } catch (error) {
       setErr(error instanceof Error ? error.message : "Could not save token");

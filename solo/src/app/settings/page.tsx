@@ -229,7 +229,7 @@ export default function SettingsPage() {
               <CardTitle>Monitor a MetaAPI account</CardTitle>
               <CardDescription>
                 {canManage
-                  ? "Paste the account ID from app.metaapi.cloud. This is the default book for anyone without a specific assignment below."
+                  ? "Choose which connected MetaAPI account you monitor. That book is the default for users without a specific assignment."
                   : "You are watching the MetaAPI account assigned to you."}
               </CardDescription>
             </CardHeader>
@@ -243,7 +243,7 @@ export default function SettingsPage() {
               <CardTitle>Monitor a MetaAPI account</CardTitle>
               <CardDescription>
                 {canManage
-                  ? "Save a MetaAPI token first, then paste the Cloud account UUID here to watch that terminal."
+                  ? "Save a MetaAPI token first, then choose which connected account to monitor."
                   : "Waiting for the admin to connect MetaAPI and assign the account you should see."}
               </CardDescription>
             </CardHeader>

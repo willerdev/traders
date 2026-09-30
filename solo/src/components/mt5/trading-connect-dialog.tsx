@@ -27,8 +27,8 @@ export function TradingConnectDialog({ open, onClose, onLinked }: Props) {
               Connect trading account
             </h2>
             <p className="mt-1 text-sm text-muted">
-              Paste your MetaAPI API token and the account ID you want to
-              monitor. No MT5 login or password.
+              Choose which connected MetaAPI account to monitor. You can paste
+              a token first if it is not saved yet.
             </p>
           </div>
           <button
