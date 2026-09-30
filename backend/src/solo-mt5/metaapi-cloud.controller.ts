@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  Param,
+  Patch,
   Put,
   Request,
   UseGuards,
@@ -49,5 +51,25 @@ export class MetaApiCloudController {
     @Body() dto: LinkMetaApiAccountDto,
   ) {
     return this.mt5.linkCloudAccount(req.user.id, dto.accountId, dto.token);
+  }
+
+  @Get('viewer-assignments')
+  listViewerAssignments(
+    @Request() req: { user: { email?: string | null } },
+  ) {
+    return this.mt5.listViewerAccountAssignments(req.user.email);
+  }
+
+  @Patch('viewers/:userId/account')
+  assignViewerAccount(
+    @Request() req: { user: { email?: string | null } },
+    @Param('userId') userId: string,
+    @Body() body: { accountId?: string | null },
+  ) {
+    return this.mt5.assignViewerAccount(
+      req.user.email,
+      userId,
+      body.accountId,
+    );
   }
 }

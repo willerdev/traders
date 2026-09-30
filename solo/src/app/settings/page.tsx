@@ -18,6 +18,7 @@ import { MetaApiAccountPicker } from "@/components/mt5/metaapi-account-picker";
 import { NowpaymentsPayoutLoginCard } from "@/components/wallet/nowpayments-payout-login-card";
 import { canManageSoloTrades } from "@/lib/solo-admin";
 import { SoloTraderRiskAdmin } from "@/components/settings/solo-trader-risk-admin";
+import { SoloInvestorMetaApiAdmin } from "@/components/settings/solo-investor-metaapi-admin";
 
 export default function SettingsPage() {
   const { ready } = useRequireAuth();
@@ -228,8 +229,8 @@ export default function SettingsPage() {
               <CardTitle>Monitor a MetaAPI account</CardTitle>
               <CardDescription>
                 {canManage
-                  ? "Paste the account ID from the top of the card in app.metaapi.cloud. You do not enter MT5 login or password."
-                  : "You are watching the same MetaAPI account the admin connected."}
+                  ? "Paste the account ID from app.metaapi.cloud. This is the default book for anyone without a specific assignment below."
+                  : "You are watching the MetaAPI account assigned to you."}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -243,7 +244,7 @@ export default function SettingsPage() {
               <CardDescription>
                 {canManage
                   ? "Save a MetaAPI token first, then paste the Cloud account UUID here to watch that terminal."
-                  : "Waiting for the admin to connect MetaAPI. You will see the same live account once it is linked."}
+                  : "Waiting for the admin to connect MetaAPI and assign the account you should see."}
               </CardDescription>
             </CardHeader>
           </Card>
@@ -316,7 +317,8 @@ export default function SettingsPage() {
       </div>
 
       {user?.isSoloPlatformAdmin ? (
-        <div className="mt-5">
+        <div className="mt-5 space-y-5">
+          <SoloInvestorMetaApiAdmin />
           <SoloTraderRiskAdmin />
         </div>
       ) : null}

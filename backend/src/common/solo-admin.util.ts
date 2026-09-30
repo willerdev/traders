@@ -74,10 +74,41 @@ type PrismaUserLookup = {
       select: { id: true; email: true };
       orderBy: { createdAt: 'asc' };
     }) => Promise<{ id: string; email: string | null } | null>;
+    findUnique: (args: {
+      where: { id: string };
+      select: { metaApiAccountId: true };
+    }) => Promise<{ metaApiAccountId: string | null } | null>;
   };
 };
 
-/** On soloEmma, every viewer uses the admin's linked MetaAPI / Deriv account. */
+/** Account this Soloema user should see: their assignment, else the admin default. */
+export async function resolveSoloViewMetaApiAccountId(
+  prisma: PrismaUserLookup,
+  userId: string,
+): Promise<{
+  accountId: string | null;
+  assigned: boolean;
+  defaultAccountId: string | null;
+}> {
+  const viewer = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { metaApiAccountId: true },
+  });
+  const assigned = viewer?.metaApiAccountId?.trim() || null;
+  const shared = await resolveSoloSharedOwnerUserId(prisma, userId);
+  const owner = await prisma.user.findUnique({
+    where: { id: shared.ownerUserId },
+    select: { metaApiAccountId: true },
+  });
+  const defaultAccountId = owner?.metaApiAccountId?.trim() || null;
+  return {
+    accountId: assigned || defaultAccountId,
+    assigned: Boolean(assigned),
+    defaultAccountId,
+  };
+}
+
+/** On soloEmma, MetaAPI token and Deriv stay on the admin user; each viewer can be assigned a MetaAPI account. */
 export async function resolveSoloSharedOwnerUserId(
   prisma: PrismaUserLookup,
   fallbackUserId: string,

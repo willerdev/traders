@@ -34,6 +34,7 @@ import {
   assertSoloCanManageTrades,
   isSoloAdminEmail,
   resolveSoloSharedOwnerUserId,
+  resolveSoloViewMetaApiAccountId,
   soloAdminRole,
 } from '../common/solo-admin.util';
 import {
@@ -172,15 +173,8 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    const shared = await resolveSoloSharedOwnerUserId(this.prisma, userId);
-    let metaApiAccountId = user.metaApiAccountId;
-    if (shared.shared && shared.ownerUserId !== userId) {
-      const owner = await this.prisma.user.findUnique({
-        where: { id: shared.ownerUserId },
-        select: { metaApiAccountId: true },
-      });
-      metaApiAccountId = owner?.metaApiAccountId ?? metaApiAccountId;
-    }
+    const view = await resolveSoloViewMetaApiAccountId(this.prisma, userId);
+    const metaApiAccountId = view.accountId;
 
     return {
       user: {

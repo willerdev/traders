@@ -378,6 +378,8 @@ class ApiClient {
         connectedAt: string | null;
         tokenMasked: string | null;
         accountId: string | null;
+        assigned?: boolean;
+        defaultAccountId?: string | null;
         shared?: boolean;
         ownerEmail?: string | null;
       }>("/metaapi/status"),
@@ -426,6 +428,16 @@ class ApiClient {
           ...(token?.trim() ? { token: token.trim() } : {}),
         }),
       }),
+    viewerAssignments: () =>
+      this.request<MetaApiViewerAssignments>("/metaapi/viewer-assignments"),
+    assignViewerAccount: (userId: string, accountId: string | null) =>
+      this.request<MetaApiViewerAssignments>(
+        `/metaapi/viewers/${encodeURIComponent(userId)}/account`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ accountId }),
+        },
+      ),
   };
 
   users = {
@@ -2235,6 +2247,27 @@ export interface DisplayCurrencyInfo {
   preferredCurrency: string | null;
   derivedFromCountry: string | null;
   localCurrencyCode?: string | null;
+}
+
+export interface MetaApiViewerAssignments {
+  defaultAccountId: string | null;
+  accounts: Array<{
+    id: string;
+    login: string;
+    name: string;
+    server: string;
+    state: string;
+    connectionStatus: string;
+  }>;
+  viewers: Array<{
+    userId: string;
+    email: string | null;
+    displayName: string;
+    investorActive: boolean;
+    soloTradeOperator: boolean;
+    assignedAccountId: string | null;
+    viewingAccountId: string | null;
+  }>;
 }
 
 export interface SoloTraderSnapshot {

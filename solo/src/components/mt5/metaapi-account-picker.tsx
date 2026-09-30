@@ -139,8 +139,7 @@ export function MetaApiAccountPicker({
       </Button>
       ) : (
         <p className="text-xs text-muted">
-          Shared live account — only the admin can change which MetaAPI account
-          is monitored.
+          Shared live account — the admin chooses which MetaAPI account you see.
         </p>
       )}
 

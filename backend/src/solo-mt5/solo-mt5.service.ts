@@ -9,7 +9,12 @@ import {
 import { TradeDirection } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveJwtSecret } from '../config/jwt-secret';
-import { resolveSoloSharedOwnerUserId, assertSoloCanManageTrades } from '../common/solo-admin.util';
+import {
+  resolveSoloSharedOwnerUserId,
+  resolveSoloViewMetaApiAccountId,
+  assertSoloCanManageTrades,
+  assertSoloPlatformAdmin,
+} from '../common/solo-admin.util';
 import {
   decryptCredential,
   encryptCredential,
@@ -383,6 +388,7 @@ export class SoloMt5Service {
 
   async cloudStatus(userId: string) {
     const shared = await resolveSoloSharedOwnerUserId(this.prisma, userId);
+    const view = await resolveSoloViewMetaApiAccountId(this.prisma, userId);
     const user = await this.prisma.user.findUnique({
       where: { id: shared.ownerUserId },
       select: {
@@ -396,7 +402,9 @@ export class SoloMt5Service {
       connected,
       connectedAt: user?.metaApiTokenSavedAt?.toISOString() ?? null,
       tokenMasked: connected ? '••••••••' : null,
-      accountId: user?.metaApiAccountId ?? null,
+      accountId: view.accountId,
+      assigned: view.assigned,
+      defaultAccountId: view.defaultAccountId,
       shared: shared.shared,
       ownerEmail: shared.shared ? shared.ownerEmail : null,
     };
@@ -460,12 +468,8 @@ export class SoloMt5Service {
     const listed = await this.metaApi.runWithToken(token, () =>
       this.metaApi.listAccounts({ limit: 100 }),
     );
-    const ownerId = await this.ownerUserId(userId);
-    const user = await this.prisma.user.findUnique({
-      where: { id: ownerId },
-      select: { metaApiAccountId: true },
-    });
-    const selectedId = user?.metaApiAccountId?.trim() || null;
+    const view = await resolveSoloViewMetaApiAccountId(this.prisma, userId);
+    const selectedId = view.accountId;
     const items = listed.items.map((row) => ({
       id: row.id,
       login: row.login,
@@ -1783,12 +1787,122 @@ export class SoloMt5Service {
   }
 
   private async linkedAccountId(userId: string): Promise<string | null> {
-    const ownerId = await this.ownerUserId(userId);
-    const user = await this.prisma.user.findUnique({
-      where: { id: ownerId },
-      select: { metaApiAccountId: true },
+    const view = await resolveSoloViewMetaApiAccountId(this.prisma, userId);
+    return view.accountId;
+  }
+
+  async listViewerAccountAssignments(actorEmail?: string | null) {
+    assertSoloPlatformAdmin(actorEmail);
+    const admin = await this.prisma.user.findFirst({
+      where: {
+        email: { equals: actorEmail ?? '', mode: 'insensitive' },
+      },
+      select: { id: true },
     });
-    return user?.metaApiAccountId?.trim() || null;
+    if (!admin) throw new NotFoundException('Admin not found');
+
+    let accounts: Array<{
+      id: string;
+      login: string;
+      name: string;
+      server: string;
+      state: string;
+      connectionStatus: string;
+    }> = [];
+    try {
+      const listed = await this.listCloudAccounts(admin.id);
+      accounts = listed.items.map((row) => ({
+        id: row.id,
+        login: row.login,
+        name: row.name,
+        server: row.server,
+        state: row.state,
+        connectionStatus: row.connectionStatus,
+      }));
+    } catch {
+      accounts = [];
+    }
+
+    const view = await resolveSoloViewMetaApiAccountId(this.prisma, admin.id);
+    const defaultAccountId = view.defaultAccountId;
+
+    const users = await this.prisma.user.findMany({
+      where: { status: { notIn: ['BANNED', 'SUSPENDED'] } },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        investorActive: true,
+        soloTradeOperator: true,
+        metaApiAccountId: true,
+      },
+      orderBy: { displayName: 'asc' },
+    });
+
+    return {
+      defaultAccountId,
+      accounts,
+      viewers: users.map((u) => {
+        const assigned = u.metaApiAccountId?.trim() || null;
+        return {
+          userId: u.id,
+          email: u.email,
+          displayName: u.displayName,
+          investorActive: u.investorActive,
+          soloTradeOperator: u.soloTradeOperator,
+          assignedAccountId: assigned,
+          viewingAccountId: assigned || defaultAccountId,
+        };
+      }),
+    };
+  }
+
+  async assignViewerAccount(
+    actorEmail: string | null | undefined,
+    targetUserId: string,
+    accountIdRaw: string | null | undefined,
+  ) {
+    assertSoloPlatformAdmin(actorEmail);
+    const target = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, status: true },
+    });
+    if (!target || target.status === 'BANNED' || target.status === 'SUSPENDED') {
+      throw new NotFoundException('User not found');
+    }
+
+    const nextId =
+      accountIdRaw == null || String(accountIdRaw).trim() === ''
+        ? null
+        : String(accountIdRaw).replace(/\s+/g, '').trim();
+
+    if (nextId) {
+      const token = await this.decryptCloudToken(targetUserId);
+      if (!token) {
+        throw new BadRequestException(
+          'Connect a MetaAPI token first, then assign accounts.',
+        );
+      }
+      try {
+        await this.metaApi.runWithToken(token, () =>
+          this.metaApi.getAccount(nextId),
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Account lookup failed';
+        throw new BadRequestException(
+          /404|not found/i.test(msg)
+            ? 'That MetaAPI account ID is not on the connected token.'
+            : msg,
+        );
+      }
+    }
+
+    await this.prisma.user.update({
+      where: { id: targetUserId },
+      data: { metaApiAccountId: nextId },
+    });
+
+    return this.listViewerAccountAssignments(actorEmail);
   }
 
   private async readyAccountOrNull(userId: string): Promise<{
