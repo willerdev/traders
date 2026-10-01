@@ -29,6 +29,71 @@ function Field({
   );
 }
 
+function ReserveReleaseForm({
+  userId,
+  reserveBalance,
+  onReleased,
+}: {
+  userId: string;
+  reserveBalance: number;
+  onReleased: () => void;
+}) {
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  return (
+    <div style={{ marginTop: "0.75rem" }}>
+      <p className="muted" style={{ margin: "0 0 0.5rem" }}>
+        Move Reserve into Available so they can withdraw it. Remaining reserve{" "}
+        {fmtMoney(reserveBalance)}.
+      </p>
+      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <input
+          type="number"
+          min="0.01"
+          step="0.01"
+          max={reserveBalance}
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder="USDT"
+          style={{ width: "8rem" }}
+        />
+        <button
+          type="button"
+          className="primary"
+          disabled={busy || !amount}
+          onClick={() => {
+            setBusy(true);
+            setMessage("");
+            void api
+              .releaseUserReserve({
+                userId,
+                amount: Number(amount),
+              })
+              .then((res) => {
+                setMessage(
+                  `Released ${fmtMoney(res.amount)}. Available ${fmtMoney(res.availableBalance)}, reserve ${fmtMoney(res.reserveBalance)}.`,
+                );
+                setAmount("");
+                onReleased();
+              })
+              .catch((err: Error) => setMessage(err.message))
+              .finally(() => setBusy(false));
+          }}
+        >
+          {busy ? "Releasing…" : "Release to Available"}
+        </button>
+      </div>
+      {message ? (
+        <p className="muted" style={{ margin: "0.5rem 0 0" }}>
+          {message}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 type UserDetailModalProps = {
   userId: string | null;
   onClose: () => void;
@@ -312,6 +377,10 @@ export function UserDetailModal({
                   value={fmtMoney(detail.platformWallet?.lockedBalance ?? 0)}
                 />
                 <Field
+                  label="Reserve balance"
+                  value={fmtMoney(detail.platformWallet?.reserveBalance ?? 0)}
+                />
+                <Field
                   label="Investment balance"
                   value={fmtMoney(
                     detail.investor?.investmentBalance ??
@@ -324,6 +393,13 @@ export function UserDetailModal({
                   value={fmtDate(detail.platformWallet?.updatedAt)}
                 />
               </dl>
+              {(detail.platformWallet?.reserveBalance ?? 0) > 0 && (
+                <ReserveReleaseForm
+                  userId={userId}
+                  reserveBalance={detail.platformWallet?.reserveBalance ?? 0}
+                  onReleased={reload}
+                />
+              )}
             </section>
 
             <section className="user-detail-section">

@@ -21,6 +21,7 @@ function DashboardBody() {
   const [withdrawn, setWithdrawn] = useState(0);
   const [earned, setEarned] = useState(0);
   const [available, setAvailable] = useState(0);
+  const [reserve, setReserve] = useState(0);
   const [dailyNets, setDailyNets] = useState<Array<{ date: string; net: number }>>(
     [],
   );
@@ -78,6 +79,7 @@ function DashboardBody() {
         setWithdrawn(wallet.value.totalWithdrawn);
         setEarned(wallet.value.totalEarned);
         setAvailable(wallet.value.availableBalance);
+        setReserve(wallet.value.reserveBalance ?? 0);
       }
       if (calendar.status === "fulfilled") {
         const nets = (calendar.value.summary?.dailyNets ?? []).map((d) => ({
@@ -180,6 +182,7 @@ function DashboardBody() {
           withdrawn={withdrawn}
           earned={earned}
           available={available}
+          reserve={reserve}
           dailyNets={dailyNets}
           running={running}
           floating={floating}

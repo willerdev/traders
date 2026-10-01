@@ -469,6 +469,7 @@ Account tools:
       ok: true,
       availableBalance: Number(wallet?.availableBalance ?? 0),
       lockedBalance: Number(wallet?.lockedBalance ?? 0),
+      reserveBalance: Number(wallet?.reserveBalance ?? 0),
       investmentBalance: Number(wallet?.investorBalance ?? 0),
       investorActive: Boolean(user?.investorActive),
       vipActive,
@@ -476,8 +477,8 @@ Account tools:
       autoReinvestEarnings: Boolean(settings?.autoReinvestEarnings),
       withdrawalFeeUsdt: vipActive ? 0 : WALLET_WITHDRAWAL_FEE_USD,
       note: vipActive
-        ? 'VIP active — $0 withdraw fee; can approve withdrawals pending 30+ minutes'
-        : `VIP inactive — $${WALLET_WITHDRAWAL_FEE_USD} withdraw fee; AI cannot approve withdrawals`,
+        ? 'VIP active — $0 withdraw fee; can approve withdrawals pending 30+ minutes. Reserve is September withdrawals that were not approved — not withdrawable until released to Available.'
+        : `VIP inactive — $${WALLET_WITHDRAWAL_FEE_USD} withdraw fee; AI cannot approve withdrawals. Reserve is September withdrawals that were not approved — not withdrawable until released to Available.`,
     };
   }
 

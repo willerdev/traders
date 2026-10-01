@@ -196,6 +196,7 @@ export class AdminService {
         lockedBalance: true,
         investorBalance: true,
         unitrustBalance: true,
+        reserveBalance: true,
       },
     });
 
@@ -203,6 +204,7 @@ export class AdminService {
     const locked = Number(sums._sum.lockedBalance ?? 0);
     const investor = Number(sums._sum.investorBalance ?? 0);
     const unitrust = Number(sums._sum.unitrustBalance ?? 0);
+    const reserve = Number(sums._sum.reserveBalance ?? 0);
     const totalFundsUsdt = round2(available + locked + investor + unitrust);
 
     const contractBudgetUsdt = round2(totalFundsUsdt * 0.4);
@@ -239,6 +241,7 @@ export class AdminService {
         lockedBalanceUsdt: round2(locked),
         investorBalanceUsdt: round2(investor),
         unitrustBalanceUsdt: round2(unitrust),
+        reserveBalanceUsdt: round2(reserve),
       },
       split: {
         contractBudgetUsdt,
@@ -787,7 +790,7 @@ export class AdminService {
           kyc: { select: { status: true } },
           virtualAccount: { select: { tier: true, score: true, totalProfit: true } },
           platformWallet: {
-            select: { availableBalance: true, lockedBalance: true },
+            select: { availableBalance: true, lockedBalance: true, reserveBalance: true },
           },
           _count: { select: { signals: true, payouts: true } },
         },
@@ -807,6 +810,7 @@ export class AdminService {
           ...rest,
           walletBalance: Number(platformWallet?.availableBalance ?? 0),
           walletLocked: Number(platformWallet?.lockedBalance ?? 0),
+          walletReserve: Number(platformWallet?.reserveBalance ?? 0),
           accessExpiresAt: user.accessExpiresAt?.toISOString() ?? null,
           createdAt: user.createdAt.toISOString(),
         };
@@ -853,7 +857,7 @@ export class AdminService {
           kyc: { select: { status: true } },
           virtualAccount: { select: { tier: true, score: true, totalProfit: true } },
           platformWallet: {
-            select: { availableBalance: true, lockedBalance: true },
+            select: { availableBalance: true, lockedBalance: true, reserveBalance: true },
           },
           _count: { select: { signals: true, payouts: true } },
         },
@@ -867,6 +871,7 @@ export class AdminService {
         ...rest,
         walletBalance: Number(platformWallet?.availableBalance ?? 0),
         walletLocked: Number(platformWallet?.lockedBalance ?? 0),
+        walletReserve: Number(platformWallet?.reserveBalance ?? 0),
         accessExpiresAt: user.accessExpiresAt?.toISOString() ?? null,
         createdAt: user.createdAt.toISOString(),
         emailAssessment: assessEmail(user.email),
@@ -988,6 +993,7 @@ export class AdminService {
         availableBalance: Number(pw?.availableBalance ?? 0),
         lockedBalance: Number(pw?.lockedBalance ?? 0),
         investorBalance: Number(pw?.investorBalance ?? 0),
+        reserveBalance: Number(pw?.reserveBalance ?? 0),
         updatedAt: pw?.updatedAt?.toISOString() ?? null,
       },
       virtualAccount: va
@@ -2856,6 +2862,40 @@ export class AdminService {
       displayName: user.displayName,
       emailSent: result.emailSent,
     };
+  }
+
+  async releaseUserReserve(
+    adminId: string,
+    input: {
+      userId?: string;
+      email?: string;
+      amount: number;
+      description?: string;
+    },
+  ) {
+    const email = input.email?.trim().toLowerCase();
+    const user = input.userId
+      ? await this.prisma.user.findUnique({ where: { id: input.userId } })
+      : email
+        ? await this.prisma.user.findFirst({
+            where: { email: { equals: email, mode: 'insensitive' } },
+          })
+        : null;
+    if (!user) {
+      throw new NotFoundException('User not found — provide a valid userId or email');
+    }
+    const result = await this.walletService.releaseReserveToAvailable(
+      user.id,
+      input.amount,
+      adminId,
+      input.description,
+    );
+    await this.logAction(adminId, 'WALLET_RESERVE_RELEASE', user.id, {
+      amount: input.amount,
+      availableBalance: result.availableBalance,
+      reserveBalance: result.reserveBalance,
+    });
+    return result;
   }
 
   /**

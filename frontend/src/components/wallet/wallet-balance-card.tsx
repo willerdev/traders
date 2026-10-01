@@ -11,6 +11,7 @@ import Link from "next/link";
 
 type WalletBalanceCardProps = {
   balance: number;
+  reserveBalance?: number;
   displayCurrency?: DisplayCurrency | null;
   savedWalletCount?: number;
   onWithdraw: () => void;
@@ -21,6 +22,7 @@ type WalletBalanceCardProps = {
 
 export function WalletBalanceCard({
   balance,
+  reserveBalance = 0,
   displayCurrency,
   savedWalletCount = 0,
   onWithdraw,
@@ -51,6 +53,21 @@ export function WalletBalanceCard({
         </p>
         {usdtHint && (
           <p className="mt-1.5 text-sm text-white/55">{usdtHint}</p>
+        )}
+        {reserveBalance > 0 && (
+          <div className="mt-4 rounded-2xl bg-black/25 px-4 py-3 ring-1 ring-white/10">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/55">
+              Reserve
+            </p>
+            <p className="mt-1 text-xl font-semibold tabular-nums text-white">
+              {formatMoney(reserveBalance, displayCurrency)}
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-white/55">
+              Past withdrawals from September that were not approved. Paid into
+              Available slowly as the platform recovers. New deposits and
+              earnings stay in Available and can be withdrawn.
+            </p>
+          </div>
         )}
       </div>
 

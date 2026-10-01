@@ -99,6 +99,7 @@ export function EnginePanel({ onMessage }: Props) {
             <span>Investor {fmtUsdt(data?.breakdown?.investorBalanceUsdt ?? 0)}</span>
             <span>Unitrust {fmtUsdt(data?.breakdown?.unitrustBalanceUsdt ?? 0)}</span>
             <span>Locked {fmtUsdt(data?.breakdown?.lockedBalanceUsdt ?? 0)}</span>
+            <span>User reserve {fmtUsdt(data?.breakdown?.reserveBalanceUsdt ?? 0)}</span>
           </div>
         </div>
       </section>

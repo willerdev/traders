@@ -127,6 +127,8 @@ enum WalletTxType {
   DEPOSIT
   PAYOUT
   ADJUSTMENT
+  RESERVE_HOLD
+  RESERVE_RELEASE
   PROFIT_SHARE
   REFERRAL_REWARD
   INVESTOR_FEE
@@ -1247,6 +1249,8 @@ model PlatformWallet {
   lockedBalance    Decimal  @default(0) @db.Decimal(12, 2)
   investorBalance  Decimal  @default(0) @db.Decimal(12, 2)
   unitrustBalance  Decimal  @default(0) @db.Decimal(12, 2)
+  /// September unapproved withdrawals held for slow payout. Not withdrawable.
+  reserveBalance   Decimal  @default(0) @db.Decimal(12, 2)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

@@ -1061,6 +1061,53 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  listReserveWallets: () =>
+    request<{
+      items: Array<{
+        userId: string;
+        email: string | null;
+        displayName: string;
+        availableBalance: number;
+        reserveBalance: number;
+      }>;
+      totalReserveUsdt: number;
+    }>("/admin/wallet/reserve"),
+  seedWithdrawalReserves: () =>
+    request<{
+      users: number;
+      seeded: number;
+      skipped: number;
+      totalReserveUsdt: number;
+      totalMovedFromAvailableUsdt: number;
+    }>("/admin/wallet/reserve/seed", { method: "POST" }),
+  releaseUserReserve: (data: {
+    userId?: string;
+    email?: string;
+    amount: number;
+    description?: string;
+  }) =>
+    request<{
+      userId: string;
+      amount: number;
+      availableBalance: number;
+      reserveBalance: number;
+      email: string | null;
+      displayName: string;
+      emailSent: boolean;
+    }>("/admin/wallet/reserve/release", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  releaseReservePercent: (percent: number) =>
+    request<{
+      percent: number;
+      users: number;
+      totalReleasedUsdt: number;
+    }>("/admin/wallet/reserve/release-percent", {
+      method: "POST",
+      body: JSON.stringify({ percent }),
+    }),
+
   accountTransfers: (params?: { limit?: number; offset?: number; status?: string }) => {
     const q = new URLSearchParams();
     if (params?.limit != null) q.set("limit", String(params.limit));
@@ -1399,6 +1446,7 @@ export type AdminUserDetail = {
     availableBalance: number;
     lockedBalance: number;
     investorBalance?: number;
+    reserveBalance?: number;
     updatedAt: string | null;
   } | null;
   investorActive?: boolean;
@@ -2003,6 +2051,7 @@ export type EngineSnapshot = {
     lockedBalanceUsdt: number;
     investorBalanceUsdt: number;
     unitrustBalanceUsdt: number;
+    reserveBalanceUsdt?: number;
   };
   split: {
     contractBudgetUsdt: number;

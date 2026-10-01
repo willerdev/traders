@@ -461,6 +461,10 @@ export default function App() {
   const [creditWalletAmount, setCreditWalletAmount] = useState("");
   const [creditWalletNote, setCreditWalletNote] = useState("");
   const [creditWalletLoading, setCreditWalletLoading] = useState(false);
+  const [reserveEmail, setReserveEmail] = useState("");
+  const [reserveAmount, setReserveAmount] = useState("");
+  const [reservePercent, setReservePercent] = useState("10");
+  const [reserveLoading, setReserveLoading] = useState(false);
   const [instantWithdrawUsers, setInstantWithdrawUsers] = useState<
     InstantWithdrawRow[]
   >([]);
@@ -3652,6 +3656,145 @@ export default function App() {
                 </div>
               </div>
             )}
+
+            <div className="kyc-card" style={{ marginBottom: "1rem" }}>
+              <h3 style={{ margin: "0 0 0.5rem" }}>Reserve wallets</h3>
+              <p className="muted" style={{ margin: "0 0 0.75rem" }}>
+                Past September withdrawals that were **not approved or paid** sit
+                in Reserve (not withdrawable). Approved/paid amounts stay out of
+                Reserve. Release into Available as the platform recovers. New
+                deposits stay in the normal wallet. Seed once: safe to run twice
+                (skips users who already have Reserve).
+              </p>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "0.75rem",
+                  alignItems: "end",
+                }}
+              >
+                <button
+                  type="button"
+                  disabled={reserveLoading}
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        "Seed Reserve from September withdrawals that were not approved or paid? Rejected refunds still in Available move into Reserve. Safe to run twice (skips users who already have Reserve).",
+                      )
+                    ) {
+                      return;
+                    }
+                    setReserveLoading(true);
+                    setMessage("");
+                    void api
+                      .seedWithdrawalReserves()
+                      .then((res) => {
+                        setMessage(
+                          `Reserve seeded for ${res.seeded} users (${res.skipped} skipped). Reserve $${res.totalReserveUsdt.toFixed(2)}; moved from Available $${res.totalMovedFromAvailableUsdt.toFixed(2)}.`,
+                        );
+                      })
+                      .catch((err: Error) => setMessage(err.message))
+                      .finally(() => setReserveLoading(false));
+                  }}
+                >
+                  {reserveLoading ? "Working…" : "Seed from withdrawals"}
+                </button>
+                <label>
+                  <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                    User email
+                  </span>
+                  <input
+                    type="email"
+                    value={reserveEmail}
+                    onChange={(e) => setReserveEmail(e.target.value)}
+                    placeholder="member@example.com"
+                    style={{ minWidth: "14rem" }}
+                  />
+                </label>
+                <label>
+                  <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                    Release USDT
+                  </span>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={reserveAmount}
+                    onChange={(e) => setReserveAmount(e.target.value)}
+                    style={{ width: "7rem" }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={
+                    reserveLoading ||
+                    !reserveEmail.trim() ||
+                    !reserveAmount
+                  }
+                  onClick={() => {
+                    setReserveLoading(true);
+                    setMessage("");
+                    void api
+                      .releaseUserReserve({
+                        email: reserveEmail.trim(),
+                        amount: Number(reserveAmount),
+                      })
+                      .then((res) => {
+                        setMessage(
+                          `Released ${fmtMoney(res.amount)} to ${res.displayName}. Available ${fmtMoney(res.availableBalance)}, reserve ${fmtMoney(res.reserveBalance)}.`,
+                        );
+                        setReserveAmount("");
+                      })
+                      .catch((err: Error) => setMessage(err.message))
+                      .finally(() => setReserveLoading(false));
+                  }}
+                >
+                  Release to Available
+                </button>
+                <label>
+                  <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                    All users %
+                  </span>
+                  <input
+                    type="number"
+                    min="0.01"
+                    max="100"
+                    step="0.01"
+                    value={reservePercent}
+                    onChange={(e) => setReservePercent(e.target.value)}
+                    style={{ width: "5rem" }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={reserveLoading || !reservePercent}
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        `Release ${reservePercent}% of every Reserve wallet into Available?`,
+                      )
+                    ) {
+                      return;
+                    }
+                    setReserveLoading(true);
+                    setMessage("");
+                    void api
+                      .releaseReservePercent(Number(reservePercent))
+                      .then((res) => {
+                        setMessage(
+                          `Released ${res.percent}% for ${res.users} users — $${res.totalReleasedUsdt.toFixed(2)} USDT.`,
+                        );
+                      })
+                      .catch((err: Error) => setMessage(err.message))
+                      .finally(() => setReserveLoading(false));
+                  }}
+                >
+                  Release % to all
+                </button>
+              </div>
+            </div>
 
             <div className="kyc-card" style={{ marginBottom: "1rem" }}>
               <h3 style={{ margin: "0 0 0.5rem" }}>Instant withdraw whitelist</h3>

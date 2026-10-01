@@ -2093,6 +2093,9 @@ export interface DisplayCurrencyInfo {
 export interface WalletSummary {
   availableBalance: number;
   lockedBalance: number;
+  investorBalance?: number;
+  unitrustBalance?: number;
+  reserveBalance?: number;
   pendingWalletDeposits?: number;
   pendingWalletDepositAmount?: number;
   subscriptionPaid: number;

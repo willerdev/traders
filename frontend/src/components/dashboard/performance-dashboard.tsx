@@ -192,6 +192,7 @@ export function PerformanceDashboard({
   withdrawn,
   earned,
   available,
+  reserve = 0,
   dailyNets,
   running,
   floating,
@@ -205,6 +206,7 @@ export function PerformanceDashboard({
   withdrawn: number;
   earned: number;
   available: number;
+  reserve?: number;
   dailyNets: DayPoint[];
   running: UserMt5Trade[];
   floating: number;
@@ -285,6 +287,14 @@ export function PerformanceDashboard({
                   {formatCurrency(available)}
                 </span>
               </li>
+              {reserve > 0 ? (
+                <li className="flex items-center gap-2">
+                  <span className="text-muted">Reserve</span>
+                  <span className="ml-auto font-semibold tabular-nums text-foreground">
+                    {formatCurrency(reserve)}
+                  </span>
+                </li>
+              ) : null}
             </ul>
           </div>
         </div>

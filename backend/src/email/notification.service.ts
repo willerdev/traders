@@ -3559,6 +3559,18 @@ export class NotificationService {
     return this.sendWalletAdminCredit(userId, data);
   }
 
+  notifyReserveRelease(
+    userId: string,
+    data: {
+      amount: number;
+      availableBalance: number;
+      reserveBalance: number;
+      note?: string;
+    },
+  ) {
+    return this.sendReserveRelease(userId, data);
+  }
+
   referralSettlementPaid(
     userId: string,
     data: {
@@ -3607,6 +3619,34 @@ export class NotificationService {
       subject: `Admin deposited $${data.amount.toFixed(2)} USDT to your wallet`,
       html,
       text: `An admin deposited $${data.amount.toFixed(2)} USDT. Balance: $${data.balance.toFixed(2)} USDT. Invested funds earn yield only after 24 hours.`,
+    });
+  }
+
+  private async sendReserveRelease(
+    userId: string,
+    data: {
+      amount: number;
+      availableBalance: number;
+      reserveBalance: number;
+      note?: string;
+    },
+  ) {
+    const user = await this.userContact(userId);
+    if (!user) return false;
+    const html = this.email.layout(
+      'Reserve funds moved to your wallet',
+      `<p>Hi ${this.escape(user.name)},</p>
+      <p><strong>$${data.amount.toFixed(2)} USDT</strong> was moved from your Reserve wallet into your Available wallet. You can withdraw Available funds as usual.</p>
+      <p>Available: <strong>$${data.availableBalance.toFixed(2)} USDT</strong></p>
+      <p>Reserve remaining: <strong>$${data.reserveBalance.toFixed(2)} USDT</strong></p>
+      <p style="color:#94a3b8;font-size:14px;">Reserve holds September withdrawals that were not approved. It is paid slowly into Available as the platform recovers. New deposits and earnings go to Available.</p>
+      ${this.email.button(`${this.email.frontendUrl}/wallet`, 'View wallet')}`,
+    );
+    return this.email.send({
+      to: user.email,
+      subject: `$${data.amount.toFixed(2)} USDT released from Reserve to your wallet`,
+      html,
+      text: `$${data.amount.toFixed(2)} USDT moved from Reserve to Available. Available: $${data.availableBalance.toFixed(2)}. Reserve remaining: $${data.reserveBalance.toFixed(2)}.`,
     });
   }
 

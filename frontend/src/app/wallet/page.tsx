@@ -23,6 +23,10 @@ function walletTxTypeLabel(type: string) {
       return "Transfer out";
     case "TRANSFER_IN":
       return "Transfer in";
+    case "RESERVE_HOLD":
+      return "Reserve hold";
+    case "RESERVE_RELEASE":
+      return "Reserve release";
     default:
       return type.replaceAll("_", " ").toLowerCase();
   }
@@ -151,6 +155,7 @@ export default function WalletPage() {
         <div className="space-y-4">
           <WalletBalanceCard
             balance={summary.availableBalance}
+            reserveBalance={summary.reserveBalance ?? 0}
             displayCurrency={summary.displayCurrency}
             savedWalletCount={walletCount}
             onWithdraw={() => setWithdrawOpen(true)}

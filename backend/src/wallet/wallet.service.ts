@@ -59,6 +59,10 @@ import {
   maxMaintenanceWithdrawUsdt,
   WITHDRAW_MAINTENANCE,
 } from './withdraw-maintenance';
+import {
+  roundReserveUsdt,
+  SEPTEMBER_UNAPPROVED_PAYOUT_WHERE,
+} from './withdrawal-reserve.util';
 import { randomInt } from 'crypto';
 import * as bcrypt from 'bcrypt';
 
@@ -110,6 +114,22 @@ export class WalletService {
         `Allocated wallet overlay skipped: ${err instanceof Error ? err.message : err}`,
       );
       return ledgerAvailable;
+    }
+  }
+
+  private async assertSpendableForWithdraw(
+    userId: string,
+    ledgerAvailable: number,
+    grossAmount: number,
+  ) {
+    const live = await this.spendableAvailable(userId, ledgerAvailable);
+    if (live + 1e-9 < grossAmount) {
+      throw new BadRequestException('Insufficient available balance');
+    }
+    if (isSoloApp() && ledgerAvailable + 1e-9 < grossAmount) {
+      throw new BadRequestException(
+        'That amount includes live trading profit. Close the trade first, then withdraw the settled balance.',
+      );
     }
   }
 
@@ -406,6 +426,253 @@ export class WalletService {
     });
   }
 
+  private roundUsdt(n: number) {
+    return roundReserveUsdt(n);
+  }
+
+  async listReserveWallets() {
+    const rows = await this.prisma.platformWallet.findMany({
+      where: { reserveBalance: { gt: 0 } },
+      orderBy: { reserveBalance: 'desc' },
+      select: {
+        userId: true,
+        availableBalance: true,
+        reserveBalance: true,
+        user: { select: { email: true, displayName: true } },
+      },
+    });
+    return {
+      items: rows.map((row) => ({
+        userId: row.userId,
+        email: row.user.email,
+        displayName: row.user.displayName,
+        availableBalance: Number(row.availableBalance),
+        reserveBalance: Number(row.reserveBalance),
+      })),
+      totalReserveUsdt: this.roundUsdt(
+        rows.reduce((sum, row) => sum + Number(row.reserveBalance), 0),
+      ),
+    };
+  }
+
+  /**
+   * Trade Guard: September 2026 withdrawals that were never approved or paid.
+   * PENDING amounts already left Available — they only land in Reserve.
+   * REJECTED amounts were refunded to Available — those move into Reserve.
+   */
+  async seedWithdrawalReserves() {
+    if (isSoloApp()) {
+      throw new BadRequestException('Reserve wallets are Trade Guard only');
+    }
+
+    const payouts = await this.prisma.payout.findMany({
+      where: SEPTEMBER_UNAPPROVED_PAYOUT_WHERE,
+      select: {
+        userId: true,
+        status: true,
+        virtualProfit: true,
+      },
+    });
+
+    const byUser = new Map<
+      string,
+      { pending: number; rejected: number }
+    >();
+    for (const payout of payouts) {
+      const gross = this.roundUsdt(Number(payout.virtualProfit));
+      if (gross <= 0) continue;
+      const row = byUser.get(payout.userId) ?? { pending: 0, rejected: 0 };
+      if (payout.status === 'REJECTED') row.rejected += gross;
+      else row.pending += gross;
+      byUser.set(payout.userId, row);
+    }
+
+    const results: Array<{
+      userId: string;
+      withdrawn: number;
+      movedFromAvailable: number;
+      reserveBalance: number;
+      availableBalance: number;
+      skipped: boolean;
+    }> = [];
+
+    for (const [userId, sums] of byUser) {
+      const pending = this.roundUsdt(sums.pending);
+      const rejected = this.roundUsdt(sums.rejected);
+      const withdrawn = this.roundUsdt(pending + rejected);
+      if (withdrawn <= 0) continue;
+
+      const wallet = await this.getOrCreateWallet(userId);
+      const already = Number(wallet.reserveBalance ?? 0);
+      if (already > 0) {
+        results.push({
+          userId,
+          withdrawn,
+          movedFromAvailable: 0,
+          reserveBalance: already,
+          availableBalance: Number(wallet.availableBalance),
+          skipped: true,
+        });
+        continue;
+      }
+
+      const available = Number(wallet.availableBalance);
+      const movedFromAvailable = this.roundUsdt(Math.min(available, rejected));
+      const nextAvailable = this.roundUsdt(available - movedFromAvailable);
+      const nextReserve = withdrawn;
+
+      await this.prisma.$transaction([
+        this.prisma.platformWallet.update({
+          where: { userId },
+          data: {
+            availableBalance: nextAvailable,
+            reserveBalance: nextReserve,
+          },
+        }),
+        this.prisma.walletTransaction.create({
+          data: {
+            userId,
+            amount: -movedFromAvailable,
+            type: 'RESERVE_HOLD',
+            description: `Reserve wallet — $${withdrawn.toFixed(2)} USDT from September withdrawals that were not approved. $${movedFromAvailable.toFixed(2)} moved from Available.`,
+            balanceAfter: nextAvailable,
+          },
+        }),
+      ]);
+
+      results.push({
+        userId,
+        withdrawn,
+        movedFromAvailable,
+        reserveBalance: nextReserve,
+        availableBalance: nextAvailable,
+        skipped: false,
+      });
+    }
+
+    const seeded = results.filter((r) => !r.skipped);
+    return {
+      users: results.length,
+      seeded: seeded.length,
+      skipped: results.length - seeded.length,
+      totalReserveUsdt: this.roundUsdt(
+        seeded.reduce((sum, r) => sum + r.reserveBalance, 0),
+      ),
+      totalMovedFromAvailableUsdt: this.roundUsdt(
+        seeded.reduce((sum, r) => sum + r.movedFromAvailable, 0),
+      ),
+      items: results,
+    };
+  }
+
+  async releaseReserveToAvailable(
+    userId: string,
+    amount: number,
+    adminId: string,
+    description?: string,
+  ) {
+    if (isSoloApp()) {
+      throw new BadRequestException('Reserve wallets are Trade Guard only');
+    }
+    const gross = this.roundUsdt(amount);
+    if (!Number.isFinite(gross) || gross <= 0) {
+      throw new BadRequestException('Amount must be positive');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const wallet = await this.getOrCreateWallet(userId);
+    const reserve = Number(wallet.reserveBalance ?? 0);
+    if (gross > reserve + 1e-9) {
+      throw new BadRequestException(
+        `Reserve only has $${reserve.toFixed(2)} USDT`,
+      );
+    }
+
+    const nextReserve = this.roundUsdt(reserve - gross);
+    const nextAvailable = this.roundUsdt(Number(wallet.availableBalance) + gross);
+    const note =
+      description?.trim() ||
+      `Reserve release — $${gross.toFixed(2)} USDT moved to your wallet`;
+
+    await this.prisma.$transaction([
+      this.prisma.platformWallet.update({
+        where: { userId },
+        data: {
+          availableBalance: nextAvailable,
+          reserveBalance: nextReserve,
+        },
+      }),
+      this.prisma.walletTransaction.create({
+        data: {
+          userId,
+          amount: gross,
+          type: 'RESERVE_RELEASE',
+          description: note,
+          referenceId: `admin_${adminId}`,
+          balanceAfter: nextAvailable,
+        },
+      }),
+    ]);
+
+    const emailSent = await this.notifications.notifyReserveRelease(userId, {
+      amount: gross,
+      availableBalance: nextAvailable,
+      reserveBalance: nextReserve,
+      note,
+    });
+
+    return {
+      userId,
+      email: user.email,
+      displayName: user.displayName,
+      amount: gross,
+      availableBalance: nextAvailable,
+      reserveBalance: nextReserve,
+      description: note,
+      emailSent,
+    };
+  }
+
+  async releaseReservePercent(percent: number, adminId: string) {
+    if (isSoloApp()) {
+      throw new BadRequestException('Reserve wallets are Trade Guard only');
+    }
+    const pct = Number(percent);
+    if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
+      throw new BadRequestException('Percent must be between 0 and 100');
+    }
+
+    const wallets = await this.prisma.platformWallet.findMany({
+      where: { reserveBalance: { gt: 0 } },
+      select: { userId: true, reserveBalance: true },
+    });
+
+    const items = [];
+    for (const row of wallets) {
+      const amount = this.roundUsdt((Number(row.reserveBalance) * pct) / 100);
+      if (amount < 0.01) continue;
+      items.push(
+        await this.releaseReserveToAvailable(
+          row.userId,
+          amount,
+          adminId,
+          `Reserve release — ${pct}% ($${amount.toFixed(2)} USDT) moved to your wallet`,
+        ),
+      );
+    }
+
+    return {
+      percent: pct,
+      users: items.length,
+      totalReleasedUsdt: this.roundUsdt(
+        items.reduce((sum, item) => sum + item.amount, 0),
+      ),
+      items,
+    };
+  }
+
   async getPlatformConfig() {
     return this.prisma.platformConfig.findUnique({ where: { id: 'default' } });
   }
@@ -571,14 +838,23 @@ export class WalletService {
       offSchedulePenaltyPercent,
     });
 
+    const ledgerAvailable = Number(wallet.availableBalance);
+    const liveAvailable = await this.spendableAvailable(
+      userId,
+      ledgerAvailable,
+    );
+    const withdrawable = Math.round(
+      Math.min(liveAvailable, ledgerAvailable) * 100,
+    ) / 100;
+
     return {
-      availableBalance: await this.spendableAvailable(
-        userId,
-        Number(wallet.availableBalance),
-      ),
+      availableBalance: isSoloApp() ? liveAvailable : ledgerAvailable,
       lockedBalance: Number(wallet.lockedBalance),
       investorBalance: Number(wallet.investorBalance ?? 0),
       unitrustBalance: Number(wallet.unitrustBalance ?? 0),
+      reserveBalance: isSoloApp()
+        ? 0
+        : Number(wallet.reserveBalance ?? 0),
       pendingWalletDeposits: pendingDeposits.length,
       pendingWalletDepositAmount: pendingDeposits.reduce(
         (sum, p) => sum + Number(p.amount),
@@ -597,8 +873,8 @@ export class WalletService {
       withdrawalNextPreferredWindowAt: scheduleQuote.nextPreferredWindowAt,
       withdrawalPreferredWindowLabel: scheduleQuote.preferredWindowLabel,
       maxWithdrawUsdt: maintenance
-        ? maxMaintenanceWithdrawUsdt(Number(wallet.availableBalance))
-        : Number(wallet.availableBalance),
+        ? maxMaintenanceWithdrawUsdt(ledgerAvailable)
+        : withdrawable,
       withdrawMaintenance:
         maintenance
           ? {
@@ -641,10 +917,7 @@ export class WalletService {
       tradingProfit: {
         realizedPnl: Number(vipUser?.soloRealizedPnl ?? 0),
         maxRiskPercent: resolveSoloMaxRiskPercent(vipUser?.soloMaxRiskPercent),
-        availableToWithdraw: await this.spendableAvailable(
-          userId,
-          Number(wallet.availableBalance),
-        ),
+        availableToWithdraw: withdrawable,
       },
     };
   }
@@ -1458,14 +1731,11 @@ export class WalletService {
     );
 
     const platformWallet = await this.getOrCreateWallet(userId);
-    if (
-      (await this.spendableAvailable(
-        userId,
-        Number(platformWallet.availableBalance),
-      )) < grossAmount
-    ) {
-      throw new BadRequestException('Insufficient available balance');
-    }
+    await this.assertSpendableForWithdraw(
+      userId,
+      Number(platformWallet.availableBalance),
+      grossAmount,
+    );
 
     const recent = await this.prisma.withdrawOtp.findFirst({
       where: { userId, usedAt: null, expiresAt: { gt: new Date() } },
@@ -1874,14 +2144,11 @@ export class WalletService {
     );
 
     const platformWallet = await this.getOrCreateWallet(userId);
-    if (
-      (await this.spendableAvailable(
-        userId,
-        Number(platformWallet.availableBalance),
-      )) < grossAmount
-    ) {
-      throw new BadRequestException('Insufficient available balance');
-    }
+    await this.assertSpendableForWithdraw(
+      userId,
+      Number(platformWallet.availableBalance),
+      grossAmount,
+    );
     if (!isSoloApp() && isWithdrawMaintenanceActive()) {
       const maxUsdt = maxMaintenanceWithdrawUsdt(
         Number(platformWallet.availableBalance),
