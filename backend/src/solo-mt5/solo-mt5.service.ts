@@ -1485,7 +1485,7 @@ export class SoloMt5Service {
       items,
       count: items.length,
       dealCount: deals.length,
-      dayPnl: items.reduce((sum, row) => sum + (row.pnl ?? 0), 0),
+      dayPnl: this.sumDealDayPnl(deals),
       refreshedAt: new Date().toISOString(),
     };
   }
