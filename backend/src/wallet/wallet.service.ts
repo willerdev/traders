@@ -565,6 +565,75 @@ export class WalletService {
     };
   }
 
+  /**
+   * Trade Guard: move all Available (wallet, not Smart Invest / Unitrust)
+   * into Reserve. Existing Reserve is kept and increased.
+   */
+  async sweepAvailableToReserve() {
+    if (isSoloApp()) {
+      throw new BadRequestException('Reserve wallets are Trade Guard only');
+    }
+
+    const wallets = await this.prisma.platformWallet.findMany({
+      where: { availableBalance: { gt: 0 } },
+      select: {
+        userId: true,
+        availableBalance: true,
+        reserveBalance: true,
+      },
+    });
+
+    const items: Array<{
+      userId: string;
+      movedFromAvailable: number;
+      reserveBalance: number;
+      availableBalance: number;
+    }> = [];
+
+    for (const row of wallets) {
+      const moved = this.roundUsdt(Number(row.availableBalance));
+      if (moved <= 0) continue;
+      const nextReserve = this.roundUsdt(Number(row.reserveBalance ?? 0) + moved);
+
+      await this.prisma.$transaction([
+        this.prisma.platformWallet.update({
+          where: { userId: row.userId },
+          data: {
+            availableBalance: 0,
+            reserveBalance: nextReserve,
+          },
+        }),
+        this.prisma.walletTransaction.create({
+          data: {
+            userId: row.userId,
+            amount: -moved,
+            type: 'RESERVE_HOLD',
+            description: `Reserve wallet — $${moved.toFixed(2)} USDT moved from Available (wallet funds not in investment).`,
+            balanceAfter: 0,
+          },
+        }),
+      ]);
+
+      items.push({
+        userId: row.userId,
+        movedFromAvailable: moved,
+        reserveBalance: nextReserve,
+        availableBalance: 0,
+      });
+    }
+
+    return {
+      users: items.length,
+      totalMovedFromAvailableUsdt: this.roundUsdt(
+        items.reduce((sum, item) => sum + item.movedFromAvailable, 0),
+      ),
+      totalReserveUsdt: this.roundUsdt(
+        items.reduce((sum, item) => sum + item.reserveBalance, 0),
+      ),
+      items,
+    };
+  }
+
   async releaseReserveToAvailable(
     userId: string,
     amount: number,

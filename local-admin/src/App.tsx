@@ -3660,11 +3660,10 @@ export default function App() {
             <div className="kyc-card" style={{ marginBottom: "1rem" }}>
               <h3 style={{ margin: "0 0 0.5rem" }}>Reserve wallets</h3>
               <p className="muted" style={{ margin: "0 0 0.75rem" }}>
-                Past September withdrawals that were **not approved or paid** sit
-                in Reserve (not withdrawable). Approved/paid amounts stay out of
-                Reserve. Release into Available as the platform recovers. New
-                deposits stay in the normal wallet. Seed once: safe to run twice
-                (skips users who already have Reserve).
+                Past September withdrawals that were not approved, plus all
+                Available wallet funds (not Smart Invest), sit in Reserve and
+                cannot be withdrawn. Release into Available as the platform
+                recovers. New deposits stay in Available.
               </p>
               <div
                 style={{
@@ -3699,6 +3698,32 @@ export default function App() {
                   }}
                 >
                   {reserveLoading ? "Working…" : "Seed from withdrawals"}
+                </button>
+                <button
+                  type="button"
+                  disabled={reserveLoading}
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        "Move ALL Available wallet balances (not Smart Invest) into Reserve? This cannot be undone except by releasing Reserve later.",
+                      )
+                    ) {
+                      return;
+                    }
+                    setReserveLoading(true);
+                    setMessage("");
+                    void api
+                      .sweepAvailableToReserve()
+                      .then((res) => {
+                        setMessage(
+                          `Moved $${res.totalMovedFromAvailableUsdt.toFixed(2)} Available into Reserve for ${res.users} users.`,
+                        );
+                      })
+                      .catch((err: Error) => setMessage(err.message))
+                      .finally(() => setReserveLoading(false));
+                  }}
+                >
+                  Move Available to Reserve
                 </button>
                 <label>
                   <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>

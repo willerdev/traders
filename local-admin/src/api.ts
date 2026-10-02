@@ -1080,6 +1080,12 @@ export const api = {
       totalReserveUsdt: number;
       totalMovedFromAvailableUsdt: number;
     }>("/admin/wallet/reserve/seed", { method: "POST" }),
+  sweepAvailableToReserve: () =>
+    request<{
+      users: number;
+      totalMovedFromAvailableUsdt: number;
+      totalReserveUsdt: number;
+    }>("/admin/wallet/reserve/sweep-available", { method: "POST" }),
   releaseUserReserve: (data: {
     userId?: string;
     email?: string;

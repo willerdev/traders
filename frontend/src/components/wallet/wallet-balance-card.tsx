@@ -63,9 +63,10 @@ export function WalletBalanceCard({
               {formatMoney(reserveBalance, displayCurrency)}
             </p>
             <p className="mt-1 text-xs leading-relaxed text-white/55">
-              Past withdrawals from September that were not approved. Paid into
-              Available slowly as the platform recovers. New deposits and
-              earnings stay in Available and can be withdrawn.
+              Past withdrawals from September that were not approved, plus
+              wallet funds that were not in investment. Paid into Available
+              slowly as the platform recovers. New deposits stay in Available
+              and can be withdrawn.
             </p>
           </div>
         )}

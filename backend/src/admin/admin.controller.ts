@@ -1026,6 +1026,11 @@ export class AdminController {
     return this.wallet.seedWithdrawalReserves();
   }
 
+  @Post('wallet/reserve/sweep-available')
+  sweepAvailableToReserve() {
+    return this.wallet.sweepAvailableToReserve();
+  }
+
   @Post('wallet/reserve/release')
   releaseReserve(
     @Request() req: { user: { id: string } },
