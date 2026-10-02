@@ -649,7 +649,16 @@ export class WalletService {
       select: { userId: true, reserveBalance: true },
     });
 
-    const items = [];
+    const items: Array<{
+      userId: string;
+      amount: number;
+      availableBalance: number;
+      reserveBalance: number;
+      email: string | null;
+      displayName: string;
+      description: string;
+      emailSent: boolean;
+    }> = [];
     for (const row of wallets) {
       const amount = this.roundUsdt((Number(row.reserveBalance) * pct) / 100);
       if (amount < 0.01) continue;
