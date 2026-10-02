@@ -111,7 +111,7 @@ export default function WalletPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-lg px-4 py-6 sm:px-6 sm:py-10">
+    <div className="mx-auto w-full max-w-xl px-4 py-6 sm:px-6 sm:py-10">
       <div className="mb-6 flex flex-col gap-4">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight text-white">Wallet</h1>
