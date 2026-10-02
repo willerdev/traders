@@ -37,86 +37,89 @@ export function WalletBalanceCard({
       : "USDT";
 
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[#1a4dff] via-[#1d4ed8] to-[#0b1b3a] p-6 shadow-xl shadow-primary/15 sm:p-8">
-      <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-white/10 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-24 -left-10 h-48 w-48 rounded-full bg-black/30 blur-3xl" />
-
-      <div className="relative">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-white/60">
+    <div className="flex flex-col gap-4">
+      <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[#1a4dff] via-[#1d4ed8] to-[#0b1b3a] p-5 shadow-xl shadow-primary/15 sm:p-6">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-white/10 blur-3xl" />
+        <p className="relative text-xs font-medium uppercase tracking-[0.18em] text-white/60">
           Available
           <span className="ml-2 rounded-full bg-white/15 px-2 py-0.5 text-[10px] tracking-normal text-white/80">
             {badge}
           </span>
         </p>
-        <p className="mt-3 text-4xl font-bold tracking-tight text-white sm:text-5xl">
+        <p className="relative mt-3 break-words text-4xl font-bold tracking-tight text-white sm:text-5xl">
           {formatMoney(balance, displayCurrency)}
         </p>
-        {usdtHint && (
-          <p className="mt-1.5 text-sm text-white/55">{usdtHint}</p>
-        )}
-        {reserveBalance > 0 && (
-          <div className="mt-4 rounded-2xl bg-black/25 px-4 py-3 ring-1 ring-white/10">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/55">
-              Reserve
-            </p>
-            <p className="mt-1 text-xl font-semibold tabular-nums text-white">
-              {formatMoney(reserveBalance, displayCurrency)}
-            </p>
-            <p className="mt-1 text-xs leading-relaxed text-white/55">
-              Past withdrawals from September that were not approved, plus
-              wallet funds that were not in investment. Paid into Available
-              slowly as the platform recovers. New deposits stay in Available
-              and can be withdrawn.
-            </p>
-          </div>
-        )}
-      </div>
+        {usdtHint ? (
+          <p className="relative mt-1.5 text-sm text-white/55">{usdtHint}</p>
+        ) : null}
+        <p className="relative mt-3 text-sm leading-relaxed text-white/60">
+          New deposits and earnings land here. This is the amount you can
+          withdraw.
+        </p>
+      </section>
 
-      <div className="relative mt-8 grid grid-cols-3 gap-2 sm:gap-3">
+      {reserveBalance > 0 ? (
+        <section className="rounded-3xl border border-white/10 bg-[#0b1528] p-5 sm:p-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/50">
+            Reserve
+          </p>
+          <p className="mt-3 break-words text-3xl font-bold tabular-nums tracking-tight text-white">
+            {formatMoney(reserveBalance, displayCurrency)}
+          </p>
+          <p className="mt-3 text-sm leading-relaxed text-white/55">
+            Wallet funds that are not in investment, including September
+            withdrawals that were not approved. This is paid into Available
+            slowly as the platform recovers. Reserve cannot be withdrawn until
+            it is released.
+          </p>
+        </section>
+      ) : null}
+
+      <section className="flex flex-col gap-3">
         <button
           type="button"
           onClick={onDeposit}
-          className="flex items-center justify-center gap-1.5 rounded-2xl bg-white py-3.5 text-sm font-semibold text-[#12307a] shadow-lg transition hover:bg-white/90"
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-white py-4 text-sm font-semibold text-[#12307a] shadow-lg transition hover:bg-white/90"
         >
-          <ArrowDownLeft className="h-4 w-4" />
+          <ArrowDownLeft className="h-4 w-4 shrink-0" />
           Deposit
         </button>
         <button
           type="button"
           onClick={onWithdraw}
-          className="flex items-center justify-center gap-1.5 rounded-2xl bg-[#0b1528]/55 py-3.5 text-sm font-semibold text-white ring-1 ring-white/20 backdrop-blur-sm transition hover:bg-[#0b1528]/80"
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#132347] py-4 text-sm font-semibold text-white ring-1 ring-white/15 transition hover:bg-[#1a2f5a]"
         >
-          <ArrowUpRight className="h-4 w-4" />
+          <ArrowUpRight className="h-4 w-4 shrink-0" />
           Withdraw
         </button>
         <button
           type="button"
           onClick={onTransfer}
-          className="flex items-center justify-center gap-1.5 rounded-2xl bg-[#0b1528]/55 py-3.5 text-sm font-semibold text-white ring-1 ring-white/20 backdrop-blur-sm transition hover:bg-[#0b1528]/80"
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#132347] py-4 text-sm font-semibold text-white ring-1 ring-white/15 transition hover:bg-[#1a2f5a]"
         >
-          <ArrowLeftRight className="h-4 w-4" />
+          <ArrowLeftRight className="h-4 w-4 shrink-0" />
           Transfer
         </button>
-      </div>
+      </section>
 
-      <div className="relative mt-3 flex gap-2">
+      <section className="flex flex-col gap-3">
         <button
           type="button"
           onClick={onManageWallets}
-          className="flex flex-1 items-center justify-center gap-2 rounded-2xl py-2.5 text-sm text-white/80 transition hover:bg-white/10 hover:text-white"
+          className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] py-3.5 text-sm text-white/85 transition hover:bg-white/[0.08] hover:text-white"
         >
-          <WalletCards className="h-4 w-4" />
+          <WalletCards className="h-4 w-4 shrink-0" />
           {savedWalletCount > 0
             ? `Saved wallets (${savedWalletCount})`
             : "Add a withdrawal wallet"}
         </button>
         <Link
           href="/wallet/auto-withdraw"
-          className="flex items-center justify-center rounded-2xl px-3 py-2.5 text-xs text-white/70 hover:bg-white/10 hover:text-white"
+          className="flex w-full items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] py-3.5 text-sm text-white/85 transition hover:bg-white/[0.08] hover:text-white"
         >
           Auto-withdraw
         </Link>
-      </div>
+      </section>
     </div>
   );
 }

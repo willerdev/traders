@@ -111,15 +111,15 @@ export default function WalletPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-xl px-4 py-6 sm:px-6 sm:py-10">
-      <div className="mb-6 flex items-center justify-between gap-3">
-        <div>
+    <div className="mx-auto w-full max-w-lg px-4 py-6 sm:px-6 sm:py-10">
+      <div className="mb-6 flex flex-col gap-4">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight text-white">Wallet</h1>
-          <p className="mt-1 text-sm text-gray-400">
+          <p className="mt-1 text-sm leading-relaxed text-gray-400">
             Deposit, transfer, and request withdrawals (admin approved)
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex items-center gap-1">
           <CurrencySwitcher
             displayCurrency={summary?.displayCurrency}
             onChanged={refresh}
@@ -152,7 +152,7 @@ export default function WalletPage() {
       )}
 
       {summary && (
-        <div className="space-y-4">
+        <div className="space-y-5">
           <WalletBalanceCard
             balance={summary.availableBalance}
             reserveBalance={summary.reserveBalance ?? 0}
@@ -189,11 +189,13 @@ export default function WalletPage() {
                 txs.map((tx) => (
                   <div
                     key={tx.id}
-                    className="flex items-center justify-between gap-3 rounded-lg border border-white/5 px-3 py-2.5"
+                    className="flex flex-col gap-2 rounded-xl border border-white/5 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm text-white">{tx.description}</p>
-                      <p className="text-[10px] text-gray-500">
+                      <p className="whitespace-normal break-words text-sm text-white">
+                        {tx.description}
+                      </p>
+                      <p className="mt-1 text-[10px] text-gray-500">
                         {walletTxTypeLabel(tx.type)} ·{" "}
                         {new Date(tx.createdAt).toLocaleString()}
                       </p>
@@ -201,8 +203,8 @@ export default function WalletPage() {
                     <span
                       className={
                         tx.amount >= 0
-                          ? "text-sm font-bold text-success"
-                          : "text-sm font-bold text-danger"
+                          ? "text-sm font-bold tabular-nums text-success"
+                          : "text-sm font-bold tabular-nums text-danger"
                       }
                     >
                       {tx.amount >= 0 ? "+" : ""}
