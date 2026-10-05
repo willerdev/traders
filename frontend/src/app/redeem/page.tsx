@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { InvestorOptOutPanel } from "@/components/investor/investor-opt-out-panel";
+import { YieldPauseBanner } from "@/components/investor/yield-pause-banner";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { api } from "@/lib/api";
 
@@ -64,6 +65,7 @@ export default function RedeemPage() {
           </div>
         </motion.div>
 
+        <YieldPauseBanner />
         <InvestorOptOutPanel enrolled={enrolled} onChanged={refreshEnrolled} />
       </div>
     </div>

@@ -306,7 +306,7 @@ export function InvestorOptOutPanel({
 
   return (
     <div className="space-y-4">
-      {data?.maintenance.active && (
+      {data?.maintenance.active && data.maintenance.weeklyProfitPercent > 0 && (
         <div className="rounded-2xl border border-amber-400/35 bg-amber-500/10 p-4 text-sm text-amber-50">
           <p className="font-semibold text-amber-100">Planned system maintenance</p>
           <p className="mt-1.5 leading-relaxed text-amber-100/90">

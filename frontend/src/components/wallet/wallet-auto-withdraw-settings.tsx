@@ -112,7 +112,7 @@ export function WalletAutoWithdrawSettings({
       <div>
         <p className="text-sm text-gray-300">
           Send earnings to your saved TRC20 wallet automatically each day at
-          09:00 Kampala time.
+          09:00.
         </p>
         {!isEligible && (
           <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">

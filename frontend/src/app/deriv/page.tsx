@@ -172,7 +172,7 @@ export default function DerivPage() {
                         : "Wallet"}{" "}
                     {acc.login}
                   </CardTitle>
-                  <CardDescription>{acc.accountType ?? acc.kind}</CardDescription>
+                  <CardDescription>{acc.currency}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <p className="text-xl font-semibold text-white">

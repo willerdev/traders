@@ -46,6 +46,12 @@ export class WalletController {
     );
   }
 
+  @Get('binance-web3')
+  @UseGuards(JwtAuthGuard)
+  binanceWeb3() {
+    return this.wallet.getBinanceWeb3Status();
+  }
+
   @Get('deposit/minimum')
   @UseGuards(JwtAuthGuard)
   depositMinimum(@Query('network') network?: string) {

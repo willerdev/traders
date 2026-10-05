@@ -65,12 +65,12 @@ export function WalletWithdrawForm({
       </div>
       <div>
         <label className="mb-1 block text-xs text-gray-400">
-          TRC20 address (optional if saved in settings)
+          BEP20 address (optional if saved in settings)
         </label>
         <Input
           value={walletAddress}
           onChange={(e) => setWalletAddress(e.target.value)}
-          placeholder="T..."
+          placeholder="0x..."
         />
       </div>
       {error && <p className="text-sm text-danger">{error}</p>}

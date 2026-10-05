@@ -1028,7 +1028,11 @@ export class MetaApiService {
       broker: typeof body.broker === 'string' ? body.broker : undefined,
       server: typeof body.server === 'string' ? body.server : undefined,
       login: body.login != null ? Number(body.login) : undefined,
-      accountType: typeof body.type === 'string' ? body.type : undefined,
+      accountType: typeof body.type === 'string' &&
+      body.type !== 'demo' &&
+      body.type !== 'real'
+        ? body.type
+        : undefined,
     };
   }
 

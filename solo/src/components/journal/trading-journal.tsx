@@ -11,7 +11,7 @@ import { DailyIncomeJournal } from "@/components/wallet/daily-income-journal";
 import { DerivCryptoWallets } from "@/components/deriv/deriv-crypto-wallets";
 import { fmtMt5Price, Mt5Pnl } from "@/components/mt5/mt5-ui";
 import { cn, formatCurrency } from "@/lib/utils";
-import { Loader2 } from "lucide-react";
+import { isAfterSoloMt5HistoryReset } from "@/lib/solo-mt5-history-since";
 
 type SourceFilter = "all" | "mt5" | "deriv" | "wallet";
 
@@ -60,12 +60,17 @@ export function TradingJournal() {
   const load = useCallback(async () => {
     setLoading(true);
     const [mt5Res, walletRes, derivStatus] = await Promise.allSettled([
-      api.signals.mt5History(false, 90),
+      api.signals.mt5History(false, 1),
       api.wallet.transactions(80, 0),
       api.deriv.status(),
     ]);
-    if (mt5Res.status === "fulfilled") setMt5(mt5Res.value.items);
-    else setMt5([]);
+    if (mt5Res.status === "fulfilled") {
+      setMt5(
+        mt5Res.value.items.filter((row) =>
+          isAfterSoloMt5HistoryReset(row.closedAt),
+        ),
+      );
+    } else setMt5([]);
     if (walletRes.status === "fulfilled") setWalletTxs(walletRes.value.items);
     else setWalletTxs([]);
     const connected =
@@ -89,7 +94,7 @@ export function TradingJournal() {
   }, [load]);
 
   const mt5Today = useMemo(
-    () => mt5.filter((row) => isLocalToday(row.closedAt)),
+    () => mt5.filter((row) => isAfterSoloMt5HistoryReset(row.closedAt)),
     [mt5],
   );
   const mt5Wins = mt5Today.filter((r) => (r.pnl ?? 0) > 0).length;
@@ -172,13 +177,13 @@ export function TradingJournal() {
               Open trading
             </Link>
           </div>
-          {mt5.length === 0 ? (
+          {mt5Today.length === 0 ? (
             <p className="text-sm text-muted">
-              No MetaAPI history yet. Connect the Trading account first.
+              No closed trades since the history reset.
             </p>
           ) : (
             <ul className="max-h-[22rem] space-y-1.5 overflow-y-auto">
-              {mt5.slice(0, 40).map((row) => (
+              {mt5Today.slice(0, 40).map((row) => (
                 <li
                   key={row.id}
                   className="flex items-center justify-between gap-3 rounded-xl bg-white/[0.03] px-3 py-2 text-sm"

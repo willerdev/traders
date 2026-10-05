@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { api, type DepositorPlanPreview, type WalletSummary } from "@/lib/api";
-import { WalletDepositPanel } from "@/components/wallet/wallet-deposit-panel";
 import { formatCurrency } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 
@@ -48,24 +47,17 @@ export function DepositorPanel() {
     );
   }
 
-  const minDeposit = summary?.minDepositUsdt ?? 50;
-
   return (
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Deposit & earn</CardTitle>
+          <CardTitle className="text-base">Wallet plans</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-gray-400">
-            Deposit USDT and earn at the platform daily rate (
-            {summary?.platformDailyYieldPercent ?? 0.5}% per day) over a 5-day
-            plan. Pick your risk % to see max loss/gain per day at 1:2 RR.
+            Deposits are closed. Plans use existing wallet balance. Withdrawals
+            are paid from USDT already in the Binance Web3 wallet (BEP20).
           </p>
-          <WalletDepositPanel
-            minDeposit={minDeposit}
-            onComplete={() => void refresh()}
-          />
         </CardContent>
       </Card>
 

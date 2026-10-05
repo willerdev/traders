@@ -232,7 +232,7 @@ export default function Mt5CopyPage() {
             <h1 className="text-2xl font-bold text-white">
               {isCopyOwner ? "Your MT5 Copy Account" : "MT5 Copy Pool"}
             </h1>
-            <Mt5AccountModeBadge mode="real" detail="MT5 Copy" />
+            <Mt5AccountModeBadge detail="MT5 Copy" />
           </div>
           <p className="mt-1 max-w-2xl text-sm text-gray-400">
             {isCopyOwner
@@ -268,7 +268,7 @@ export default function Mt5CopyPage() {
             <div>
               <div className="flex items-center gap-2">
                 <p className="text-xs text-gray-500">Balance</p>
-                <Mt5AccountModeBadge mode="real" detail="MT5 Copy" className="scale-90" />
+                <Mt5AccountModeBadge detail="MT5 Copy" className="scale-90" />
               </div>
               <p className="text-lg font-semibold text-white">
                 {formatCurrency(balance)} {currency}

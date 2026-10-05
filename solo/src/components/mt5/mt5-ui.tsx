@@ -315,30 +315,22 @@ export function Mt5Empty({
 }
 
 export function Mt5AccountModeBadge({
-  mode,
   detail,
   className,
 }: {
-  mode: Mt5AccountMode;
+  mode?: Mt5AccountMode;
   detail?: string | null;
   className?: string;
 }) {
+  if (!detail) return null;
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-        mode === "real"
-          ? "bg-emerald-500/15 text-emerald-400"
-          : "bg-amber-500/15 text-amber-300",
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-white/10 text-white/80",
         className,
       )}
     >
-      {mode === "real" ? "Real" : "Demo"}
-      {detail ? (
-        <span className="font-normal normal-case tracking-normal text-white/70">
-          · {detail}
-        </span>
-      ) : null}
+      <span className="font-normal normal-case tracking-normal">{detail}</span>
     </span>
   );
 }

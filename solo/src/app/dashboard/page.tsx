@@ -43,82 +43,89 @@ export default function DashboardPage() {
     if (!token) return;
 
     let cancelled = false;
-    setLoading(true);
-    const now = new Date();
+    const load = (initial: boolean) => {
+      if (initial) setLoading(true);
+      const now = new Date();
 
-    Promise.allSettled([
-      api.wallet.summary(),
-      api.wallet.dailyCalendar(now.getUTCFullYear(), now.getUTCMonth() + 1),
-      api.signals.mt5Running(),
-      api.signals.mt5History(false, 1),
-      api.metaApi.status(),
-      api.deriv.status(),
-      api.soloTraders.me(),
-    ]).then((results) => {
-      if (cancelled) return;
-      const [wallet, calendar, runningRes, history, meta, deriv, trader] =
-        results;
-      const readyState: ApiReadiness = {
-        platform: wallet.status === "fulfilled",
-        metaApi: false,
-        metaApiAccount: false,
-        deriv: false,
-      };
+      Promise.allSettled([
+        api.wallet.summary(),
+        api.wallet.dailyCalendar(now.getUTCFullYear(), now.getUTCMonth() + 1),
+        api.signals.mt5Running(),
+        api.signals.mt5History(false, 1),
+        api.metaApi.status(),
+        api.deriv.status(),
+        api.soloTraders.me(),
+      ]).then((results) => {
+        if (cancelled) return;
+        const [wallet, calendar, runningRes, history, meta, deriv, trader] =
+          results;
+        const readyState: ApiReadiness = {
+          platform: wallet.status === "fulfilled",
+          metaApi: false,
+          metaApiAccount: false,
+          deriv: false,
+        };
 
-      if (wallet.status === "fulfilled") {
-        setDeposited(wallet.value.totalDeposited);
-        setWithdrawn(wallet.value.totalWithdrawn);
-        setEarned(wallet.value.totalEarned);
-        setAvailable(wallet.value.availableBalance);
-        if (wallet.value.tradingProfit && wallet.value.soloTradeOperator) {
-          setTradingProfit(wallet.value.tradingProfit);
+        if (wallet.status === "fulfilled") {
+          setDeposited(wallet.value.totalDeposited);
+          setWithdrawn(wallet.value.totalWithdrawn);
+          setEarned(wallet.value.totalEarned);
+          setAvailable(wallet.value.availableBalance);
+          if (wallet.value.tradingProfit && wallet.value.soloTradeOperator) {
+            setTradingProfit(wallet.value.tradingProfit);
+          }
         }
-      }
-      if (trader.status === "fulfilled" && trader.value.soloTradeOperator) {
-        setTradingProfit({
-          realizedPnl: trader.value.realizedPnl,
-          maxRiskPercent: trader.value.maxRiskPercent,
-          availableToWithdraw: trader.value.availableToWithdraw,
-        });
-      }
-      if (calendar.status === "fulfilled") {
-        const nets = (calendar.value.summary?.dailyNets ?? []).map((d) => ({
-          date: d.date,
-          net: d.net,
-        }));
-        if (nets.length === 0) {
-          const days = Object.values(calendar.value.days).sort((a, b) =>
-            a.date.localeCompare(b.date),
+        if (trader.status === "fulfilled" && trader.value.soloTradeOperator) {
+          setTradingProfit({
+            realizedPnl: trader.value.realizedPnl,
+            maxRiskPercent: trader.value.maxRiskPercent,
+            availableToWithdraw: trader.value.availableToWithdraw,
+          });
+        }
+        if (calendar.status === "fulfilled") {
+          const nets = (calendar.value.summary?.dailyNets ?? []).map((d) => ({
+            date: d.date,
+            net: d.net,
+          }));
+          if (nets.length === 0) {
+            const days = Object.values(calendar.value.days).sort((a, b) =>
+              a.date.localeCompare(b.date),
+            );
+            setDailyNets(days.map((d) => ({ date: d.date, net: d.net })));
+          } else {
+            setDailyNets(nets);
+          }
+        }
+        if (runningRes.status === "fulfilled") {
+          setRunning(
+            runningRes.value.trades.filter((t) => t.kind === "running"),
           );
-          setDailyNets(days.map((d) => ({ date: d.date, net: d.net })));
-        } else {
-          setDailyNets(nets);
+          setFloating(runningRes.value.stats.floatingProfit);
         }
-      }
-      if (runningRes.status === "fulfilled") {
-        setRunning(
-          runningRes.value.trades.filter((t) => t.kind === "running"),
-        );
-        setFloating(runningRes.value.stats.floatingProfit);
-      }
-      if (history.status === "fulfilled") {
-        setDayPnl(history.value.dayPnl ?? 0);
-      }
-      if (meta.status === "fulfilled") {
-        readyState.metaApi = meta.value.connected;
-        readyState.metaApiAccount = Boolean(meta.value.accountId);
-      }
-      if (deriv.status === "fulfilled") {
-        readyState.deriv = deriv.value.connected;
-      }
-      setApiReady(readyState);
-      const failed = results.every((r) => r.status === "rejected");
-      setError(failed ? "Could not load dashboard" : "");
-      setLoading(false);
-    });
+        if (history.status === "fulfilled") {
+          setDayPnl(history.value.dayPnl ?? 0);
+        }
+        if (meta.status === "fulfilled") {
+          readyState.metaApi = meta.value.connected;
+          readyState.metaApiAccount = Boolean(meta.value.accountId);
+        }
+        if (deriv.status === "fulfilled") {
+          readyState.deriv = deriv.value.connected;
+        }
+        setApiReady(readyState);
+        const failed = results.every((r) => r.status === "rejected");
+        if (initial || failed) {
+          setError(failed ? "Could not load dashboard" : "");
+        }
+        setLoading(false);
+      });
+    };
 
+    load(true);
+    const poll = window.setInterval(() => load(false), 8000);
     return () => {
       cancelled = true;
+      window.clearInterval(poll);
     };
   }, [ready]);
 

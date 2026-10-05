@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { api, type SavedWithdrawalWallet, type WithdrawalWalletNetwork } from "@/lib/api";
 import { Loader2, Trash2, X } from "lucide-react";
 
-const NETWORKS: WithdrawalWalletNetwork[] = ["TRC20", "ERC20", "BEP20"];
+const NETWORKS: WithdrawalWalletNetwork[] = ["BEP20"];
 
 function maskAddress(address: string) {
   if (address.length <= 12) return address;
@@ -26,13 +26,13 @@ export function WalletAddWithdrawalWalletModal({
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
-  /** Limit selectable networks (auto-withdraw uses TRC20 only). */
+  /** Limit selectable networks (auto-withdraw uses BEP20 only). */
   networks?: readonly WithdrawalWalletNetwork[];
 }) {
   const networkOptions = networks?.length ? networks : NETWORKS;
   const [label, setLabel] = useState("");
   const [network, setNetwork] = useState<WithdrawalWalletNetwork>(
-    networkOptions[0] ?? "TRC20",
+    networkOptions[0] ?? "BEP20",
   );
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
@@ -42,7 +42,7 @@ export function WalletAddWithdrawalWalletModal({
   useEffect(() => {
     if (!open) {
       setLabel("");
-      setNetwork(networks?.[0] ?? "TRC20");
+      setNetwork(networks?.[0] ?? "BEP20");
       setAddress("");
       setError("");
     }
@@ -122,7 +122,7 @@ export function WalletAddWithdrawalWalletModal({
               </select>
             )}
             <p className="mt-1 text-xs text-gray-500">
-              USDT on TRC20, BEP20, or ERC20.
+              USDT on BEP20 (BSC) only.
             </p>
           </div>
           <div>
@@ -174,10 +174,8 @@ export function WalletSavedWithdrawalWallets({
       setWallets(
         items.filter((w) =>
           trc20Only
-            ? w.network === "TRC20"
-            : w.network === "TRC20" ||
-              w.network === "ERC20" ||
-              w.network === "BEP20",
+            ? w.network === "BEP20"
+            : w.network === "BEP20" || w.network.startsWith("MOMO"),
         ),
       );
     } catch (e) {

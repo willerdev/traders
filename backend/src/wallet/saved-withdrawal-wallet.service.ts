@@ -74,6 +74,7 @@ export class SavedWithdrawalWalletService {
     }
 
     validateWithdrawalWalletAddress(network, address);
+    this.assertSoloCryptoNetwork(network);
 
     const count = await this.prisma.savedWithdrawalWallet.count({
       where: { userId },
@@ -151,6 +152,7 @@ export class SavedWithdrawalWalletService {
     }
 
     validateWithdrawalWalletAddress(network, address);
+    this.assertSoloCryptoNetwork(network);
 
     const count = await this.prisma.savedWithdrawalWallet.count({
       where: { userId },
@@ -305,6 +307,7 @@ export class SavedWithdrawalWalletService {
         'Withdrawals support USDT on TRC20, BEP20, or ERC20',
       );
     }
+    this.assertSoloCryptoNetwork(wallet.network);
     return wallet;
   }
 
@@ -327,5 +330,15 @@ export class SavedWithdrawalWalletService {
       }),
     ]);
     return { ok: true, message: 'Withdrawal wallet removed' };
+  }
+
+  private assertSoloCryptoNetwork(network: string) {
+    if (!isSoloApp()) return;
+    if (isMomoWithdrawalNetwork(network)) return;
+    if (network !== 'BEP20') {
+      throw new BadRequestException(
+        'Crypto withdrawals are BEP20 (BSC) USDT only. TRC20 and ERC20 are not used.',
+      );
+    }
   }
 }

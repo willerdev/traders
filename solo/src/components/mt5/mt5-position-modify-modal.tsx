@@ -34,19 +34,22 @@ export function Mt5PositionModifyModal({
     "partial" | "close" | "be" | "cancel" | null
   >(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const openVolume = trade?.volume ?? 0;
   const isPending = trade?.kind === "limit";
   const isBuy = trade?.direction.toUpperCase() === "BUY";
+  const focusedId = trade ? tradeId(trade) : "";
 
   useEffect(() => {
-    if (!open || !trade) return;
+    if (!open || !focusedId) return;
     setPercent(50);
     setError(null);
+    setNotice(null);
     setBusy(null);
     const half = Math.round(openVolume * 50) / 100;
     setVolumeText(half > 0 ? half.toFixed(2) : "");
-  }, [open, trade, openVolume]);
+  }, [open, focusedId]);
 
   const closeVolume = useMemo(() => {
     const typed = Number(volumeText);
@@ -64,13 +67,29 @@ export function Mt5PositionModifyModal({
     setVolumeText(((openVolume * next) / 100).toFixed(2));
   }
 
-  async function run(kind: typeof busy, fn: () => Promise<unknown>) {
+  async function run(
+    kind: typeof busy,
+    fn: () => Promise<unknown>,
+    keepOpen = false,
+  ) {
     if (!id || !canManage) return;
     setBusy(kind);
     setError(null);
+    setNotice(null);
     try {
-      await fn();
+      const result = await fn();
       onChanged?.();
+      if (keepOpen) {
+        const message =
+          result &&
+          typeof result === "object" &&
+          "message" in result &&
+          typeof (result as { message?: unknown }).message === "string"
+            ? (result as { message: string }).message
+            : "Done";
+        setNotice(message);
+        return;
+      }
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Request failed");
@@ -85,7 +104,9 @@ export function Mt5PositionModifyModal({
         type="button"
         className="absolute inset-0"
         aria-label="Close"
-        onClick={onClose}
+        onClick={() => {
+          if (!busy) onClose();
+        }}
       />
       <div className="relative z-[1] w-full max-w-md rounded-2xl border border-white/10 bg-[#151b2b] p-5 shadow-2xl">
         <div className="mb-4 flex items-start justify-between gap-3">
@@ -187,6 +208,11 @@ export function Mt5PositionModifyModal({
             {error}
           </p>
         )}
+        {notice && !error && (
+          <p className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+            {notice}
+          </p>
+        )}
 
         {!canManage && (
           <p className="mb-3 text-xs text-amber-300">
@@ -222,15 +248,18 @@ export function Mt5PositionModifyModal({
                   closeVolume <= 0
                 }
                 onClick={() =>
-                  void run("partial", async () => {
-                    if (closeVolume >= openVolume - 1e-8) {
-                      await api.signals.closeMt5Position(id);
-                      return;
-                    }
-                    await api.signals.partialCloseMt5Position(id, {
-                      volume: closeVolume,
-                    });
-                  })
+                  void run(
+                    "partial",
+                    async () => {
+                      if (closeVolume >= openVolume - 1e-8) {
+                        return api.signals.closeMt5Position(id);
+                      }
+                      return api.signals.partialCloseMt5Position(id, {
+                        volume: closeVolume,
+                      });
+                    },
+                    true,
+                  )
                 }
               >
                 {busy === "partial" ? (
@@ -246,7 +275,11 @@ export function Mt5PositionModifyModal({
                   variant="secondary"
                   disabled={!canManage || busy != null || !id}
                   onClick={() =>
-                    void run("be", () => api.signals.setMt5PositionBreakeven(id))
+                    void run(
+                      "be",
+                      () => api.signals.setMt5PositionBreakeven(id),
+                      true,
+                    )
                   }
                 >
                   {busy === "be" ? (

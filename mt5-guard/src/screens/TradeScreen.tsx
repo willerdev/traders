@@ -11,10 +11,7 @@ import {
 } from "react-native";
 import { useAuth } from "../stores/auth";
 import { useMt5Terminal } from "../hooks/use-mt5-terminal";
-import {
-  mt5AccountModeDetail,
-  mt5AccountModeFromSource,
-} from "../lib/mt5-account-mode";
+import { mt5AccountModeDetail } from "../lib/mt5-account-mode";
 import { fmtPrice } from "../lib/format";
 import { useTheme } from "../stores/theme";
 import { Mt5AccountSummary } from "../components/Mt5AccountSummary";
@@ -41,11 +38,6 @@ export function TradeScreen() {
 
   const account = terminal?.account ?? running?.account;
   const accountSource = terminal?.accountSource ?? running?.accountSource;
-  const mode = mt5AccountModeFromSource(
-    accountSource,
-    terminal?.investor?.investmentBalance ??
-      terminal?.investor?.investmentDeposited,
-  );
   const modeDetail = mt5AccountModeDetail(accountSource);
 
   const trades = running?.trades ?? terminal?.trades ?? [];
@@ -90,10 +82,9 @@ export function TradeScreen() {
     <Screen>
       <Mt5ScreenTitle
         title="Trade"
-        mode={mode}
         modeDetail={modeDetail}
         syncing={refreshing}
-        showBadge
+        showBadge={Boolean(modeDetail)}
       />
 
       <FlatList

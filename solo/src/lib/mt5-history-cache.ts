@@ -1,6 +1,6 @@
 import type { UserMt5HistoryItem } from "@/lib/api";
 
-const PREFIX = "solo-mt5-history";
+const PREFIX = "solo-mt5-history-v3";
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type Mt5HistoryCache = {

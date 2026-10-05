@@ -88,7 +88,7 @@ export function UnitrustHub() {
         </h2>
         <p className="mt-2 text-sm text-gray-400">
           {status?.dailyYieldPercent ?? 5}% daily yield credited to your wallet
-          at 16:00 Africa/Kampala. New deposits earn after 24 hours. Withdrawals
+          at 16:00 on weekdays. New deposits earn after 24 hours. Withdrawals
           once per calendar month.
         </p>
         <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -145,7 +145,7 @@ export function UnitrustHub() {
           <h3 className="font-medium text-white">Monthly withdrawal</h3>
           <p className="text-xs text-gray-500">
             {status.canWithdrawThisMonth
-              ? "You can withdraw once this month (Kampala calendar)."
+              ? "You can withdraw once this month."
               : `Already withdrew this month. Next window: ${
                   status.nextWithdrawAt
                     ? new Date(status.nextWithdrawAt).toLocaleDateString()

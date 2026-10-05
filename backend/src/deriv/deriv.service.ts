@@ -422,7 +422,11 @@ export class DerivService {
       out.push({
         login,
         kind: 'deriv',
-        accountType: row.type ?? 'wallet',
+        accountType: ['demo', 'real'].includes(
+          String(row.type ?? '').toLowerCase(),
+        )
+          ? 'wallet'
+          : row.type ?? 'wallet',
         currency,
         balance: Number(balances[currency]?.balance ?? 0),
       });
@@ -436,7 +440,7 @@ export class DerivService {
       .map((row) => ({
         login: String(row.account_id),
         kind: 'options' as const,
-        accountType: row.account_type ?? 'options',
+        accountType: 'options',
         currency: row.currency ?? 'USD',
         balance: Number(row.balance ?? 0),
       }));

@@ -44,7 +44,7 @@ export function TradingHistoryPanel({
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center justify-between">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-          Today
+          Today (from this hour)
         </p>
         {loading && (
           <Loader2 className="h-3.5 w-3.5 animate-spin text-muted" />
@@ -57,7 +57,7 @@ export function TradingHistoryPanel({
       )}
       {items.length === 0 && !loading ? (
         <p className="px-1 py-8 text-center text-xs text-muted">
-          No closed trades today.
+          No closed trades since the history reset.
         </p>
       ) : (
         <ul className="mt-2 min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain pr-0.5">

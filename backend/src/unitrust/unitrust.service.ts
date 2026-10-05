@@ -139,7 +139,7 @@ export class UnitrustService {
       nextWithdrawAt: redeemThisMonth
         ? this.nextKampalaMonthStart().toISOString()
         : null,
-      withdrawWindowLabel: 'Once per calendar month (Africa/Kampala)',
+      withdrawWindowLabel: 'Once per calendar month',
       creditTimeLabel: investorYieldDeliveryWindowLabel(),
       recentCredits: recentCredits.map((c) => ({
         amount: Number(c.amount),
@@ -258,7 +258,7 @@ export class UnitrustService {
     if (existingRedeem) {
       const next = this.nextKampalaMonthStart();
       throw new BadRequestException(
-        `Unitrust allows one withdrawal per month. Next window opens ${next.toISOString().slice(0, 10)} (Africa/Kampala).`,
+        `Unitrust allows one withdrawal per month. Next window opens ${next.toISOString().slice(0, 10)}.`,
       );
     }
 

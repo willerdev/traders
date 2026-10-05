@@ -8,9 +8,14 @@ function backendOrigin(): string {
   return raw.replace(/\/$/, "").replace(/\/api\/v1$/i, "");
 }
 
-function originHost(url: string): string {
+function originHostPort(url: string): string {
   try {
-    return new URL(url).hostname.toLowerCase();
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    const port =
+      parsed.port ||
+      (parsed.protocol === "https:" ? "443" : parsed.protocol === "http:" ? "80" : "");
+    return port ? `${host}:${port}` : host;
   } catch {
     return "";
   }
@@ -25,10 +30,13 @@ async function proxyRequest(req: NextRequest, path: string[]) {
   )
     .split(",")[0]
     .trim()
-    .toLowerCase()
-    .replace(/:\d+$/, "");
+    .toLowerCase();
 
-  if (originHost(origin) && originHost(origin) === incomingHost) {
+  const incoming = incomingHost.includes(":")
+    ? incomingHost
+    : `${incomingHost}:${req.nextUrl.port || (req.nextUrl.protocol === "https:" ? "443" : "80")}`;
+
+  if (originHostPort(origin) && originHostPort(origin) === incoming) {
     return NextResponse.json(
       {
         message:

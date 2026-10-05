@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { api, type WalletSummary } from "@/lib/api";
 import { WalletBalanceCard } from "@/components/wallet/wallet-balance-card";
-import { WalletDepositModal } from "@/components/wallet/wallet-deposit-modal";
 import { WalletWithdrawModal } from "@/components/wallet/wallet-withdraw-modal";
 import { WalletSavedWalletsModal } from "@/components/wallet/wallet-saved-withdrawal-wallets";
 import { WalletPendingWithdrawals } from "@/components/wallet/wallet-pending-withdrawals";
@@ -24,11 +23,10 @@ export default function WalletPage() {
   const [walletCount, setWalletCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [walletsOpen, setWalletsOpen] = useState(false);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (opts?: { silent?: boolean }) => {
     const authToken = syncApiAuthToken();
     if (!authToken) {
       setError("Session not ready — log out and sign in again.");
@@ -37,7 +35,7 @@ export default function WalletPage() {
       return;
     }
 
-    setLoading(true);
+    if (!opts?.silent) setLoading(true);
     setError(null);
     try {
       const [s, wallets] = await Promise.all([
@@ -54,10 +52,12 @@ export default function WalletPage() {
         ).length,
       );
     } catch (err) {
-      setSummary(null);
-      setError(
-        err instanceof Error ? err.message : "Could not load wallet balance",
-      );
+      if (!opts?.silent) {
+        setSummary(null);
+        setError(
+          err instanceof Error ? err.message : "Could not load wallet balance",
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -77,10 +77,12 @@ export default function WalletPage() {
       if (document.visibilityState === "visible") onResume();
     };
     document.addEventListener("visibilitychange", onVis);
+    const poll = window.setInterval(() => void refresh({ silent: true }), 8000);
     return () => {
       window.removeEventListener("pageshow", onResume);
       window.removeEventListener("focus", onResume);
       document.removeEventListener("visibilitychange", onVis);
+      window.clearInterval(poll);
     };
   }, [ready, token, refresh]);
 
@@ -99,7 +101,7 @@ export default function WalletPage() {
       <div className="mb-6 flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-white">Wallet</h1>
-          <p className="mt-1 text-sm text-gray-400">Deposit and withdraw USDT</p>
+          <p className="mt-1 text-sm text-gray-400">Withdraw USDT to BEP20</p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <CurrencySwitcher
@@ -143,7 +145,6 @@ export default function WalletPage() {
               if (!isSoloWalletWithdrawEnabled(summary)) return;
               setWithdrawOpen(true);
             }}
-            onDeposit={() => setDepositOpen(true)}
             onManageWallets={() => setWalletsOpen(true)}
             withdrawDisabled={!isSoloWalletWithdrawEnabled(summary)}
             withdrawDisabledLabel={SOLO_WALLET_WITHDRAW_PAUSED_LABEL}
@@ -157,7 +158,7 @@ export default function WalletPage() {
                 {(summary.tradingProfit?.realizedPnl ?? 0).toFixed(2)} USDT
               </p>
               <p className="text-xs text-muted">
-                Closed P&amp;L from your trades only. Available to withdraw{" "}
+                Closed P&amp;L from your trades only. Settled amount you can withdraw{" "}
                 {(
                   summary.tradingProfit?.availableToWithdraw ??
                   summary.availableBalance
@@ -170,16 +171,12 @@ export default function WalletPage() {
         </div>
       )}
 
-      <WalletDepositModal
-        open={depositOpen}
-        onClose={() => setDepositOpen(false)}
-        minPlanDeposit={summary?.minDepositUsdt ?? 50}
-        onComplete={() => void refresh()}
-      />
       <WalletWithdrawModal
         open={withdrawOpen}
         onClose={() => setWithdrawOpen(false)}
-        availableBalance={summary?.availableBalance ?? 0}
+        availableBalance={
+          summary?.maxWithdrawUsdt ?? summary?.availableBalance ?? 0
+        }
         feeUsdt={summary?.withdrawalFeeUsdt ?? 0}
         onComplete={() => void refresh()}
       />

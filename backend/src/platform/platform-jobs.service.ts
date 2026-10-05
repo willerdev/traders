@@ -427,7 +427,11 @@ export class PlatformJobsService implements OnModuleInit {
         return;
       }
       const result = await this.chainEnrollment.creditDailyVaultProfits();
-      if (result.credited > 0) {
+      if ('skipped' in result && result.skipped === 'maintenance') {
+        this.logger.warn(
+          'Blockchain wallet daily profits skipped — maintenance pause',
+        );
+      } else if (result.credited > 0) {
         this.logger.log(
           `Blockchain wallet daily profits credited: ${result.credited}/${result.checked}`,
         );

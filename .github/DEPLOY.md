@@ -48,21 +48,28 @@ Env:
 
 Account-level NOWPayments IPN can only point at one URL. Solo invoices already send a per-payment callback to `API_PUBLIC_URL`. If IPN is global-only in the dashboard, use a second NOWPayments store or an IPN router. Same API keys are OK if callbacks reach solo-api.
 
-### 3. Render `solo-web`
+### 3. Soloema web (separate repo)
+
+The investor UI is **not** deployed from this monorepo. Use **[willerdev/soloema-web](https://github.com/willerdev/soloema-web)** (frontend only).
 
 | Setting | Value |
 |---------|--------|
-| Name | `solo-web` |
-| Root | `solo` |
-| Build / start | same pattern as traders-web (`npm install && npm run build` / `npm start`) |
+| Repo | `willerdev/soloema-web` |
+| Name | `soloema-web` |
+| Root | *(repo root)* |
+| Build / start | `npm install && npm run build` / `npm start` |
 
-Env:
+Env on **soloema-web**:
 
-- `API_URL` = `https://<solo-api>.onrender.com`
-- `NEXT_PUBLIC_API_URL` = `https://<solo-api>.onrender.com/api/v1`
-- Copy contract/MoMo `NEXT_PUBLIC_*` from traders-web if using the same chain
+- `API_URL` = existing **solo-api** origin, no `/api/v1`
+- `NEXT_PUBLIC_API_URL` = same + `/api/v1`
+- Copy contract/MoMo `NEXT_PUBLIC_*` from the old solo-web if using the same chain
+
+On **solo-api**, add the new site origin to `FRONTEND_URL` (comma-separated) and/or `SOLO_FRONTEND_URL`. Set `PUBLIC_APP_URL` to the new origin if this is the live Soloema site. Keep `APP_VARIANT=solo`, same DB, same JWT.
 
 Custom domain is optional; ship `*.onrender.com` first.
+
+The `solo/` folder in this monorepo is a snapshot only.
 
 ### 4. GitHub secrets
 

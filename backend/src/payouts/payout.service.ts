@@ -35,6 +35,7 @@ import {
 import { WalletService } from '../wallet/wallet.service';
 import { FlutterwavePaymentsService } from '../flutterwave/flutterwave-payments.service';
 import { momoNetworkFromSavedWallet } from '../flutterwave/flutterwave.constants';
+import { BinanceWeb3WalletService } from '../binance-web3/binance-web3-wallet.service';
 import { isInvestorVipActive, VIP_AI_WITHDRAW_MIN_AGE_MS } from '../investor/investor-vip.util';
 import {
   INSTANT_WITHDRAW_SAFETY_HOLD_ENABLED,
@@ -61,6 +62,7 @@ export class PayoutService {
     @Inject(forwardRef(() => WalletService))
     private walletService: WalletService,
     private flutterwavePayments: FlutterwavePaymentsService,
+    private binanceWeb3: BinanceWeb3WalletService,
   ) {}
 
   private ipnUrl() {
@@ -413,7 +415,7 @@ export class PayoutService {
         await this.prisma.payout.update({
           where: { id: payout.id },
           data: {
-            notes: `${payout.notes ?? ''} — NOWPayments send failed: ${message}`.slice(
+            notes: `${payout.notes ?? ''} — Binance Web3 send failed: ${message}`.slice(
               0,
               1800,
             ),
@@ -573,11 +575,49 @@ export class PayoutService {
       };
     }
 
+    if (isSoloApp()) {
+      try {
+        const sent = await this.binanceWeb3.sendUsdt(destination, amount);
+        const updated = await this.prisma.payout.update({
+          where: { id: payout.id },
+          data: {
+            gatewayPayoutId: sent.hash,
+            status: 'PAID',
+            processedAt: new Date(),
+            notes:
+              `${payout.notes ?? ''} — Binance Web3 ${sent.hash} (${adminId})`.trim(),
+          },
+        });
+
+        this.notifications.payoutApproved(payout.userId, {
+          amount,
+          walletAddress: destination,
+          weekNumber: payout.weekNumber,
+          year: payout.year,
+        });
+
+        return {
+          payout: updated,
+          verificationRequired: false,
+          creditedToWallet: false,
+          gatewayPayoutId: sent.hash,
+          message: `USDT sent from Binance Web3 on BEP20. Tx ${sent.hash}`,
+        };
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : 'Binance Web3 payout failed';
+        this.logger.error(
+          `Binance Web3 payout failed for ${payout.id}: ${message}`,
+        );
+        throw new BadRequestException(
+          `Could not send from Binance Web3 wallet: ${message}`,
+        );
+      }
+    }
+
     if (!(await this.nowPayments.ensureConfigured())) {
       throw new BadRequestException(
-        isSoloApp()
-          ? 'NOWPayments is not configured — pick Render env keys or save an API key in Settings'
-          : 'NOWPayments is not configured — set NOWPAYMENTS_API_KEY before approving wallet withdrawals',
+        'NOWPayments is not configured — set NOWPAYMENTS_API_KEY before approving wallet withdrawals',
       );
     }
 

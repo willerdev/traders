@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { InvestHub } from "@/components/investor/invest-hub";
+import { YieldPauseBanner } from "@/components/investor/yield-pause-banner";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 
 export default function InvestPage() {
@@ -35,6 +36,7 @@ export default function InvestPage() {
         </a>
         .
       </p>
+      <YieldPauseBanner />
       <InvestHub />
     </div>
   );

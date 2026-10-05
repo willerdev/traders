@@ -33,7 +33,7 @@ const PATTERNS: Array<{ kind: BrokerErrorKind; test: RegExp }> = [
   },
   {
     kind: 'invalid_stops',
-    test: /invalid_stops|invalid s\/l|invalid stop|stops? level/i,
+    test: /invalid_stops|invalid s\/l|invalid stop|stops? level|TRADE_RETCODE_INVALID_STOPS|TRADE_RETCODE_INVALID_TRADE_PARAMETERS/i,
   },
   {
     kind: 'invalid_price',
@@ -59,7 +59,7 @@ const FRIENDLY: Record<Exclude<BrokerErrorKind, 'unknown'>, string> = {
   no_money:
     'The trading account does not have enough free margin for this order right now. Our team has been notified — please try again later.',
   invalid_stops:
-    'The broker rejected your stop loss / take profit levels — they may be too close to the current price. Adjust them slightly and try again.',
+    'The broker rejected those stop levels — they are too close to the current price (minimum stop / freeze distance). Move them farther from price and try again.',
   invalid_price:
     'The price moved while placing your order. Please review your entry and try again.',
   trade_disabled:

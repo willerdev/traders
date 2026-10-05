@@ -5,6 +5,10 @@ export const INVESTOR_MAINTENANCE_DAYS = 14;
 export const INVESTOR_WEEKLY_PROFIT_FRACTION = 0.2;
 export const WITHDRAW_40_BY_SATURDAY_LABEL = 'Saturday 26 September 2026';
 
+/** Start of Monday 28 September 2026 in Africa/Kampala (UTC+3, no DST). */
+export const YIELD_PAUSE_RESUME_AT = new Date('2026-09-27T21:00:00.000Z');
+export const YIELD_PAUSE_RESUME_LABEL = 'Monday 28 September 2026';
+
 export const OPT_OUT_REASON_CODES = [
   'LIQUIDITY',
   'TIMING',

@@ -302,7 +302,7 @@ export function PerformanceDashboard({
                 </li>
               ))}
               <li className="flex items-center gap-2 border-t border-white/10 pt-2">
-                <span className="text-muted">Available</span>
+                <span className="text-muted">Live remaining</span>
                 <span className="ml-auto font-semibold tabular-nums text-foreground">
                   {formatCurrency(available)}
                 </span>

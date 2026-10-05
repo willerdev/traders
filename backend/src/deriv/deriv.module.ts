@@ -6,5 +6,6 @@ import { SoloTradingAdminGuard } from '../auth/guards/solo-trading-admin.guard';
 @Module({
   controllers: [DerivController],
   providers: [DerivService, SoloTradingAdminGuard],
+  exports: [DerivService],
 })
 export class DerivModule {}

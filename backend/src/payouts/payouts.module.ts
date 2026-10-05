@@ -8,6 +8,7 @@ import { ProfitShareModule } from '../profit-share/profit-share.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { FlutterwaveModule } from '../flutterwave/flutterwave.module';
 import { ReferralsModule } from '../referrals/referrals.module';
+import { BinanceWeb3Module } from '../binance-web3/binance-web3.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { ReferralsModule } from '../referrals/referrals.module';
     forwardRef(() => WalletModule),
     FlutterwaveModule,
     ReferralsModule,
+    BinanceWeb3Module,
   ],
   controllers: [PayoutsController],
   providers: [

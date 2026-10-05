@@ -45,6 +45,7 @@ import {
   isSoloWalletWithdrawEnabledForUser,
 } from '../common/solo-wallet-withdraw';
 import { SoloMt5Service } from '../solo-mt5/solo-mt5.service';
+import { BinanceWeb3WalletService } from '../binance-web3/binance-web3-wallet.service';
 import { assertSoloCanManageTrades } from '../common/solo-admin.util';
 import {
   isInvestorVvipActive,
@@ -55,8 +56,12 @@ import {
 } from '../investor/instant-withdraw-safety.util';
 import { PayoutService } from '../payouts/payout.service';
 import {
+  isWithdrawDayGateActive,
+  isWithdrawDayOpen,
   isWithdrawMaintenanceActive,
   maxMaintenanceWithdrawUsdt,
+  nextWithdrawDayAt,
+  WITHDRAW_DAYS,
   WITHDRAW_MAINTENANCE,
 } from './withdraw-maintenance';
 import {
@@ -93,6 +98,7 @@ export class WalletService {
     private binanceC2c: BinanceC2cService,
     @Inject(forwardRef(() => PayoutService))
     private payouts: PayoutService,
+    private binanceWeb3: BinanceWeb3WalletService,
     @Optional()
     @Inject(forwardRef(() => SoloMt5Service))
     private soloMt5?: SoloMt5Service,
@@ -962,6 +968,15 @@ export class WalletService {
               message: WITHDRAW_MAINTENANCE.userMessage,
             }
           : null,
+      withdrawDays:
+        !isSoloApp() && isWithdrawDayGateActive()
+          ? {
+              label: WITHDRAW_DAYS.label,
+              openToday: isWithdrawDayOpen(),
+              nextOpenAt: nextWithdrawDayAt().toISOString(),
+              message: WITHDRAW_DAYS.userMessage,
+            }
+          : null,
       vipActive,
       vvipActive,
       activeLoanWithdraw: await this.getActiveLoanWithdrawGate(userId),
@@ -1146,6 +1161,11 @@ export class WalletService {
   }
 
   async getDepositMinimum(network: string) {
+    if (isSoloApp()) {
+      throw new BadRequestException(
+        'Deposits are closed. Withdrawals are paid from USDT already in the Binance Web3 wallet.',
+      );
+    }
     if (!(await this.nowPayments.ensureConfigured())) {
       return {
         minUsdt: DEPOSIT_MIN_FALLBACK_USDT,
@@ -1184,6 +1204,12 @@ export class WalletService {
   ) {
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new BadRequestException('Deposit amount must be greater than zero');
+    }
+
+    if (isSoloApp()) {
+      throw new BadRequestException(
+        'Deposits are closed. Withdrawals are paid from USDT already in the Binance Web3 wallet.',
+      );
     }
 
     const { minUsdt } = await this.getDepositMinimum(network);
@@ -1277,6 +1303,12 @@ export class WalletService {
     riskPercent?: number,
   ) {
     const minFlw = this.flutterwavePayments.getPublicConfig().minDepositUsd;
+
+    if (isSoloApp()) {
+      throw new BadRequestException(
+        'Deposits are closed. Withdrawals are paid from USDT already in the Binance Web3 wallet.',
+      );
+    }
 
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new BadRequestException('Deposit amount must be greater than zero');
@@ -1765,6 +1797,11 @@ export class WalletService {
     throw new BadRequestException(SOLO_WALLET_WITHDRAW_PAUSED_LABEL);
   }
 
+  private assertWithdrawDayOpen() {
+    if (isSoloApp() || isWithdrawDayOpen()) return;
+    throw new BadRequestException(WITHDRAW_DAYS.userMessage);
+  }
+
   async requestWithdrawOtp(
     userId: string,
     amount: number,
@@ -1773,6 +1810,7 @@ export class WalletService {
     await this.compliance.requireKycForPayout(userId);
 
     await this.assertSoloWithdrawAllowed(userId);
+    this.assertWithdrawDayOpen();
 
     if (!savedWalletId?.trim()) {
       throw new BadRequestException(
@@ -2182,6 +2220,7 @@ export class WalletService {
     opts?: { actor?: 'user' | 'auto_withdraw' },
   ) {
     await this.assertSoloWithdrawAllowed(userId);
+    this.assertWithdrawDayOpen();
     await this.assertLoanWithdrawAllowed(userId, grossAmount);
     const vipUser = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -2244,23 +2283,12 @@ export class WalletService {
     const walletLabel = savedWallet.label;
 
     if (isSoloApp() && !isMomo) {
-      const payoutStatus = await this.nowPayments.getPayoutConfigStatus();
-      if (!payoutStatus.payoutConfigured) {
-        const missing = [
-          !payoutStatus.apiKeySet ? 'API key' : null,
-          !payoutStatus.payoutEmailSet ? 'payout username' : null,
-          !payoutStatus.payoutPasswordSet ? 'payout password' : null,
-        ].filter(Boolean);
-        const where =
-          payoutStatus.source === 'settings'
-            ? 'Save them in Settings and keep the source on Settings.'
-            : 'Set them on solo-api Render env, or switch the source to Settings after saving credentials.';
+      if (savedWallet.network !== 'BEP20') {
         throw new BadRequestException(
-          `Withdrawal not sent — missing NOWPayments ${missing.join(
-            ' and ',
-          )}. ${where}`,
+          'Crypto withdrawals must use a BEP20 (BSC) USDT address. TRC20 and ERC20 are not used.',
         );
       }
+      await this.binanceWeb3.assertCanSend(netPayout, destination);
     }
 
     const newBalance = Number(platformWallet.availableBalance) - grossAmount;
@@ -2578,6 +2606,15 @@ export class WalletService {
     return this.nowPayments.getPayoutConfigStatus();
   }
 
+  async getBinanceWeb3Status() {
+    if (!isSoloApp()) {
+      throw new ForbiddenException(
+        'Binance Web3 payouts are only available on soloEmma.',
+      );
+    }
+    return this.binanceWeb3.getStatus();
+  }
+
   async saveNowpaymentsPayoutLogin(
     userId: string,
     email: string,
@@ -2763,9 +2800,11 @@ export class WalletService {
         if (!saved) {
           throw new NotFoundException('Saved withdrawal wallet not found');
         }
-        if (saved.network !== 'TRC20') {
+        if (saved.network !== (isSoloApp() ? 'BEP20' : 'TRC20')) {
           throw new BadRequestException(
-            'Daily auto-withdraw requires a verified TRC20 USDT wallet',
+            isSoloApp()
+              ? 'Daily auto-withdraw requires a verified BEP20 USDT wallet'
+              : 'Daily auto-withdraw requires a verified TRC20 USDT wallet',
           );
         }
         data.autoWithdrawWalletId = saved.id;
@@ -2794,7 +2833,9 @@ export class WalletService {
     if (enabling || (data.autoWithdrawEnabled !== false && user.autoWithdrawEnabled)) {
       if (!walletId) {
         throw new BadRequestException(
-          'Select a saved TRC20 withdrawal wallet before enabling auto-withdraw',
+          isSoloApp()
+            ? 'Select a saved BEP20 withdrawal wallet before enabling auto-withdraw'
+            : 'Select a saved TRC20 withdrawal wallet before enabling auto-withdraw',
         );
       }
     }
@@ -2828,6 +2869,9 @@ export class WalletService {
   /** Daily cron — process opted-in new depositors (TRC20 external payout). */
   async processDailyAutoWithdrawals() {
     const now = new Date();
+    if (!isSoloApp() && !isWithdrawDayOpen(now)) {
+      return { processed: 0, skipped: 0, errors: 0, checked: 0 };
+    }
     const todayUtc = now.toISOString().slice(0, 10);
     const users = await this.prisma.user.findMany({
       where: {
@@ -2877,7 +2921,7 @@ export class WalletService {
         const saved = await this.prisma.savedWithdrawalWallet.findFirst({
           where: { id: user.autoWithdrawWalletId!, userId: user.id },
         });
-        if (!saved || saved.network !== 'TRC20') {
+        if (!saved || saved.network !== (isSoloApp() ? 'BEP20' : 'TRC20')) {
           skipped++;
           continue;
         }

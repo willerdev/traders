@@ -71,7 +71,7 @@ export default function AutoWithdrawPage() {
             </h1>
             <p className="max-w-3xl text-sm text-muted">
               Schedule automatic sends from your platform wallet to a saved TRC20
-              address every day at 09:00 Kampala time.
+              address every day at 09:00.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">

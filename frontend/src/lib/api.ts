@@ -2120,6 +2120,12 @@ export interface WalletSummary {
     cancelDisabled?: boolean;
     message: string;
   } | null;
+  withdrawDays?: {
+    label: string;
+    openToday: boolean;
+    nextOpenAt: string;
+    message: string;
+  } | null;
   vipActive?: boolean;
   autoWithdrawEligible?: boolean;
   activePlan: {
@@ -2855,6 +2861,7 @@ export interface ChainContractEnrollment {
   showNullDashboard: boolean;
   canDeposit: boolean;
   canCancelRestart?: boolean;
+  yieldMaintenance?: boolean;
   terms: {
     minDepositUsd: number;
     midTierMaxUsd: number;

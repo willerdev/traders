@@ -5,7 +5,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { WalletAutoWithdrawSettings } from "@/components/wallet/wallet-auto-withdraw-settings";
-import { NowpaymentsPayoutLoginCard } from "@/components/wallet/nowpayments-payout-login-card";
+import { BinanceWeb3StatusCard } from "@/components/wallet/binance-web3-status-card";
 import { api, type WalletSummary } from "@/lib/api";
 import {
   SOLO_WALLET_WITHDRAW_PAUSED_LABEL,
@@ -65,9 +65,8 @@ export default function AutoWithdrawPage() {
               Daily auto-withdraw
             </h1>
             <p className="mt-1.5 text-sm leading-relaxed text-muted">
-              Send available USDT to a saved TRC20 wallet every day at 09:00
-              Kampala time. This is the soloEmma platform wallet. Deriv
-              cashout addresses are saved under Journal or Deriv.
+              Send available USDT to a saved BEP20 wallet every day at 09:00
+              Kampala time. Payouts use USDT already in the Binance Web3 wallet.
             </p>
             {!isSoloWalletWithdrawEnabled(summary) ? (
               <p className="mt-2 text-sm font-medium text-amber-300">
@@ -84,10 +83,12 @@ export default function AutoWithdrawPage() {
         </div>
       ) : (
         <>
-        <NowpaymentsPayoutLoginCard />
+        <BinanceWeb3StatusCard />
         <WalletAutoWithdrawSettings
           eligible={eligible}
-          availableBalance={summary?.availableBalance}
+          availableBalance={
+            summary?.maxWithdrawUsdt ?? summary?.availableBalance
+          }
           onUpdated={() => void refresh()}
         />
         </>

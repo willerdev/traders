@@ -381,7 +381,7 @@ export function DerivPanel({ onMessage }: Props) {
                       rows={3}
                       value={draft.notes}
                       onChange={(e) => setField("notes", e.target.value)}
-                      placeholder="Account labels, scopes, which environment (demo/real)…"
+                      placeholder="Account labels, scopes…"
                     />
                   </label>
                 </div>

@@ -67,12 +67,21 @@ export class ChainEnrollmentService {
     private readonly notifications: NotificationService,
   ) {}
 
+  async isChainYieldPaused() {
+    const config = await this.prisma.platformConfig.findUnique({
+      where: { id: 'default' },
+      select: { chainYieldPaused: true },
+    });
+    return Boolean(config?.chainYieldPaused);
+  }
+
   async getEnrollment(userId: string) {
     await this.ensureTable();
-    const row = await this.prisma.chainContractEnrollment.findUnique({
-      where: { userId },
-    });
-    return this.toDto(
+    const [row, yieldMaintenance] = await Promise.all([
+      this.prisma.chainContractEnrollment.findUnique({ where: { userId } }),
+      this.isChainYieldPaused(),
+    ]);
+    const dto = this.toDto(
       row ?? {
         id: null,
         userId,
@@ -93,6 +102,7 @@ export class ChainEnrollmentService {
         withdrawFeePercent: CHAIN_CONTRACT_WITHDRAW_FEE_PERCENT,
       },
     );
+    return { ...dto, yieldMaintenance };
   }
 
   async acceptTerms(userId: string) {
@@ -536,6 +546,9 @@ export class ChainEnrollmentService {
     if (isKampalaWeekend()) {
       return { credited: 0, checked: 0, skipped: 'weekend' as const };
     }
+    if (await this.isChainYieldPaused()) {
+      return { credited: 0, checked: 0, skipped: 'maintenance' as const };
+    }
     const creditDate = this.kampalaToday();
     const positions = await this.prisma.chainVaultPosition.findMany({
       where: { principalBalance: { gt: 0 } },
@@ -741,7 +754,7 @@ export class ChainEnrollmentService {
         timeStyle: 'short',
       });
       throw new BadRequestException(
-        `Blockchain enrollment is closed — you may re-apply after ${label} (Africa/Kampala)`,
+        `Blockchain enrollment is closed — you may re-apply after ${label}`,
       );
     }
   }

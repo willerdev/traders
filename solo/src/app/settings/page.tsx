@@ -15,7 +15,7 @@ import { api } from "@/lib/api";
 import { validateDisplayName } from "@/lib/display-name";
 import { MetaApiTokenCard } from "@/components/mt5/metaapi-token-card";
 import { MetaApiAccountPicker } from "@/components/mt5/metaapi-account-picker";
-import { NowpaymentsPayoutLoginCard } from "@/components/wallet/nowpayments-payout-login-card";
+import { BinanceWeb3StatusCard } from "@/components/wallet/binance-web3-status-card";
 import { canManageSoloTrades } from "@/lib/solo-admin";
 import { SoloTraderRiskAdmin } from "@/components/settings/solo-trader-risk-admin";
 import { SoloInvestorMetaApiAdmin } from "@/components/settings/solo-investor-metaapi-admin";
@@ -142,7 +142,7 @@ export default function SettingsPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-white">Settings</h1>
         <p className="mt-1 text-sm text-gray-400">
-          Account, MetaAPI, Deriv, and NOWPayments (Render env or Settings)
+          Account, MetaAPI, Deriv, and Binance Web3
         </p>
       </div>
 
@@ -250,7 +250,7 @@ export default function SettingsPage() {
           </Card>
         )}
 
-        <NowpaymentsPayoutLoginCard />
+        <BinanceWeb3StatusCard />
 
         <Card className="min-w-0 h-full">
           <CardHeader>

@@ -2,7 +2,7 @@
 
 import { formatCurrency } from "@/lib/utils";
 
-export const WALLET_WITHDRAWAL_FEE_USD = 3;
+export const WALLET_WITHDRAWAL_FEE_USD = 0;
 
 export type WithdrawalScheduleInfo = {
   scheduleEnabled?: boolean;

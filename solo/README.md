@@ -1,10 +1,10 @@
-# Trade Guard Solo
+# Trade Guard Solo (snapshot)
 
-Investor-only product: login, wallet, Smart Invest, blockchain contract, settings.
+Investor-only UI lives in a **separate repo**: [willerdev/soloema-web](https://github.com/willerdev/soloema-web).
 
-Not thetradeguard.com. Uses its own Nest process (`APP_VARIANT=solo`) and its own database.
+This `solo/` folder is a snapshot in the traders monorepo. Deploy the frontend from **soloema-web**. The API stays here: `APP_VARIANT=solo` → **solo-api**.
 
-## Local
+## Local (monorepo)
 
 API (port **4001**):
 
@@ -20,8 +20,6 @@ cd solo
 NEXT_PUBLIC_API_URL=http://localhost:4001/api/v1 npm run dev
 ```
 
-The Next proxy (`API_URL`) defaults to `http://localhost:4001`.
-
 ## Deploy
 
-See `.github/DEPLOY.md` (Neon + Render `solo-api` / `solo-web`).
+See `.github/DEPLOY.md` and the soloema-web README.

@@ -164,6 +164,42 @@ export default function WalletPage() {
             onManageWallets={() => setWalletsOpen(true)}
           />
           <WalletPendingWithdrawals onCancelled={() => void refresh()} />
+          {summary.withdrawDays && (
+            <div
+              className={
+                summary.withdrawDays.openToday
+                  ? "rounded-xl border border-emerald-400/35 bg-emerald-500/10 p-3.5 text-sm text-emerald-50"
+                  : "rounded-xl border border-amber-400/35 bg-amber-500/10 p-3.5 text-sm text-amber-50"
+              }
+            >
+              <p className="font-semibold">
+                {summary.withdrawDays.openToday
+                  ? "Withdrawals are open today"
+                  : `Withdrawals open ${summary.withdrawDays.label}`}
+              </p>
+              <p className="mt-1 leading-relaxed opacity-85">
+                Withdrawals are temporarily available on{" "}
+                <strong>{summary.withdrawDays.label}</strong> only.
+                {!summary.withdrawDays.openToday && (
+                  <>
+                    {" "}
+                    Next withdrawal day:{" "}
+                    <strong>
+                      {new Date(
+                        summary.withdrawDays.nextOpenAt,
+                      ).toLocaleDateString(undefined, {
+                        timeZone: "Africa/Kampala",
+                        weekday: "long",
+                        day: "numeric",
+                        month: "long",
+                      })}
+                    </strong>
+                    .
+                  </>
+                )}
+              </p>
+            </div>
+          )}
           <WalletWithdrawFeeNotice
             feeUsdt={summary.withdrawalFeeUsdt ?? 3}
             maxWithdrawUsdt={summary.maxWithdrawUsdt}

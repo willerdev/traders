@@ -22,7 +22,7 @@ import {
 } from "@/components/wallet/wallet-saved-withdrawal-wallets";
 
 function isCryptoNetwork(network?: string) {
-  return network === "TRC20" || network === "ERC20" || network === "BEP20";
+  return network === "BEP20";
 }
 
 export function WalletWithdrawModal({
@@ -215,8 +215,7 @@ export function WalletWithdrawModal({
                     <p className="text-sm text-gray-400">Loading saved wallets…</p>
                   ) : wallets.length === 0 ? (
                     <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-                      Add a USDT address (TRC20, BEP20, or ERC20) before
-                      withdrawing.
+                      Add a BEP20 (BSC) USDT address before withdrawing.
                     </div>
                   ) : (
                     <select
