@@ -8,25 +8,22 @@ on:
 jobs:
   trigger-render:
     runs-on: ubuntu-latest
+    env:
+      RENDER_DEPLOY_HOOK_API: ${{ secrets.RENDER_DEPLOY_HOOK_API }}
+      RENDER_DEPLOY_HOOK_WEB: ${{ secrets.RENDER_DEPLOY_HOOK_WEB }}
+      RENDER_DEPLOY_HOOK_SOLO_API: ${{ secrets.RENDER_DEPLOY_HOOK_SOLO_API }}
+      RENDER_DEPLOY_HOOK_SOLO_WEB: ${{ secrets.RENDER_DEPLOY_HOOK_SOLO_WEB }}
     steps:
       - name: Deploy traders-api (backend)
         run: curl -fsS -X POST "$RENDER_DEPLOY_HOOK_API"
-        env:
-          RENDER_DEPLOY_HOOK_API: ${{ secrets.RENDER_DEPLOY_HOOK_API }}
 
       - name: Deploy traders-web (frontend)
         run: curl -fsS -X POST "$RENDER_DEPLOY_HOOK_WEB"
-        env:
-          RENDER_DEPLOY_HOOK_WEB: ${{ secrets.RENDER_DEPLOY_HOOK_WEB }}
 
       - name: Deploy solo-api
-        if: ${{ secrets.RENDER_DEPLOY_HOOK_SOLO_API != '' }}
+        if: ${{ env.RENDER_DEPLOY_HOOK_SOLO_API != '' }}
         run: curl -fsS -X POST "$RENDER_DEPLOY_HOOK_SOLO_API"
-        env:
-          RENDER_DEPLOY_HOOK_SOLO_API: ${{ secrets.RENDER_DEPLOY_HOOK_SOLO_API }}
 
       - name: Deploy solo-web
-        if: ${{ secrets.RENDER_DEPLOY_HOOK_SOLO_WEB != '' }}
+        if: ${{ env.RENDER_DEPLOY_HOOK_SOLO_WEB != '' }}
         run: curl -fsS -X POST "$RENDER_DEPLOY_HOOK_SOLO_WEB"
-        env:
-          RENDER_DEPLOY_HOOK_SOLO_WEB: ${{ secrets.RENDER_DEPLOY_HOOK_SOLO_WEB }}
