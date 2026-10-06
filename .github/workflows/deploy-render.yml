@@ -15,9 +15,11 @@ jobs:
       RENDER_DEPLOY_HOOK_SOLO_WEB: ${{ secrets.RENDER_DEPLOY_HOOK_SOLO_WEB }}
     steps:
       - name: Deploy traders-api (backend)
+        if: ${{ env.RENDER_DEPLOY_HOOK_API != '' }}
         run: curl -fsS -X POST "$RENDER_DEPLOY_HOOK_API"
 
       - name: Deploy traders-web (frontend)
+        if: ${{ env.RENDER_DEPLOY_HOOK_WEB != '' }}
         run: curl -fsS -X POST "$RENDER_DEPLOY_HOOK_WEB"
 
       - name: Deploy solo-api
