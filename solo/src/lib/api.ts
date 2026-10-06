@@ -1448,6 +1448,15 @@ class ApiClient {
       }),
     binanceWeb3: () =>
       this.request<BinanceWeb3Status>("/wallet/binance-web3"),
+    saveBinanceWeb3Key: (privateKey: string) =>
+      this.request<BinanceWeb3Status>("/wallet/binance-web3", {
+        method: "PUT",
+        body: JSON.stringify({ privateKey }),
+      }),
+    disconnectBinanceWeb3: () =>
+      this.request<BinanceWeb3Status>("/wallet/binance-web3", {
+        method: "DELETE",
+      }),
     nowpaymentsPayoutLogin: () =>
       this.request<NowpaymentsPayoutStatus>("/wallet/nowpayments-payout"),
     saveNowpaymentsPayoutLogin: (data: {
@@ -2362,6 +2371,8 @@ export interface BinanceWeb3Status {
   asset: string;
   address: string | null;
   usdtBalance: number;
+  bnbBalance?: number;
+  savedAt?: string | null;
   message: string;
 }
 

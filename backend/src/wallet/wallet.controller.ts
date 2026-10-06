@@ -17,6 +17,7 @@ import { SoloTradingAdminGuard } from '../auth/guards/solo-trading-admin.guard';
 import { WalletService } from './wallet.service';
 import { SavedWithdrawalWalletService } from './saved-withdrawal-wallet.service';
 import { PayoutService } from '../payouts/payout.service';
+import { SaveBinanceWeb3KeyDto } from '../binance-web3/binance-web3.dto';
 
 @Controller('wallet')
 export class WalletController {
@@ -48,8 +49,23 @@ export class WalletController {
 
   @Get('binance-web3')
   @UseGuards(JwtAuthGuard)
-  binanceWeb3() {
-    return this.wallet.getBinanceWeb3Status();
+  binanceWeb3(@Request() req: { user: { id: string } }) {
+    return this.wallet.getBinanceWeb3Status(req.user.id);
+  }
+
+  @Put('binance-web3')
+  @UseGuards(JwtAuthGuard, AuthRateLimitGuard)
+  saveBinanceWeb3(
+    @Request() req: { user: { id: string } },
+    @Body() dto: SaveBinanceWeb3KeyDto,
+  ) {
+    return this.wallet.saveBinanceWeb3Key(req.user.id, dto.privateKey);
+  }
+
+  @Delete('binance-web3')
+  @UseGuards(JwtAuthGuard)
+  disconnectBinanceWeb3(@Request() req: { user: { id: string } }) {
+    return this.wallet.disconnectBinanceWeb3(req.user.id);
   }
 
   @Get('deposit/minimum')

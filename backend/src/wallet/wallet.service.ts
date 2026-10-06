@@ -2288,7 +2288,7 @@ export class WalletService {
           'Crypto withdrawals must use a BEP20 (BSC) USDT address. TRC20 and ERC20 are not used.',
         );
       }
-      await this.binanceWeb3.assertCanSend(netPayout, destination);
+      await this.binanceWeb3.assertCanSend(userId, netPayout, destination);
     }
 
     const newBalance = Number(platformWallet.availableBalance) - grossAmount;
@@ -2606,13 +2606,27 @@ export class WalletService {
     return this.nowPayments.getPayoutConfigStatus();
   }
 
-  async getBinanceWeb3Status() {
+  private assertSoloBinanceWeb3() {
     if (!isSoloApp()) {
       throw new ForbiddenException(
         'Binance Web3 payouts are only available on soloEmma.',
       );
     }
-    return this.binanceWeb3.getStatus();
+  }
+
+  async getBinanceWeb3Status(userId: string) {
+    this.assertSoloBinanceWeb3();
+    return this.binanceWeb3.getStatus(userId);
+  }
+
+  async saveBinanceWeb3Key(userId: string, privateKey: string) {
+    this.assertSoloBinanceWeb3();
+    return this.binanceWeb3.saveKey(userId, privateKey);
+  }
+
+  async disconnectBinanceWeb3(userId: string) {
+    this.assertSoloBinanceWeb3();
+    return this.binanceWeb3.disconnect(userId);
   }
 
   async saveNowpaymentsPayoutLogin(

@@ -577,7 +577,11 @@ export class PayoutService {
 
     if (isSoloApp()) {
       try {
-        const sent = await this.binanceWeb3.sendUsdt(destination, amount);
+        const sent = await this.binanceWeb3.sendUsdt(
+          payout.userId,
+          destination,
+          amount,
+        );
         const updated = await this.prisma.payout.update({
           where: { id: payout.id },
           data: {
