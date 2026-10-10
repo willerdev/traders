@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   Injectable,
   Logger,
   ServiceUnavailableException,
@@ -14,6 +15,7 @@ import {
   parseUnits,
 } from 'ethers';
 import { isSoloApp } from '../common/app-variant';
+import { isSoloAdminEmail } from '../common/solo-admin.util';
 import {
   decryptCredential,
   encryptCredential,
@@ -193,6 +195,56 @@ export class BinanceWeb3WalletService {
         message: 'Connected, but the BSC balance could not be read right now.',
       };
     }
+  }
+
+  /** Platform admin only: every connected wallet (address and balances — never the key). */
+  async listConnectedWallets(actorEmail?: string | null) {
+    if (!isSoloApp() || !isSoloAdminEmail(actorEmail)) {
+      throw new ForbiddenException('Only the platform admin can view this.');
+    }
+    const users = await this.prisma.user.findMany({
+      where: { binanceWeb3Address: { not: null } },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        binanceWeb3Address: true,
+        binanceWeb3SavedAt: true,
+      },
+      orderBy: { binanceWeb3SavedAt: 'desc' },
+    });
+    const wallets = await Promise.all(
+      users.map(async (u) => {
+        const address = u.binanceWeb3Address!;
+        let balances: { usdtBalance: number | null; bnbBalance: number | null } = {
+          usdtBalance: null,
+          bnbBalance: null,
+        };
+        try {
+          balances = await this.balancesOf(address);
+        } catch (err) {
+          this.logger.warn(
+            `Admin wallet balance read failed for ${u.id}: ${err instanceof Error ? err.message : err}`,
+          );
+        }
+        return {
+          userId: u.id,
+          email: u.email,
+          displayName: u.displayName,
+          address,
+          connectedAt: u.binanceWeb3SavedAt?.toISOString() ?? null,
+          ...balances,
+        };
+      }),
+    );
+    return {
+      count: wallets.length,
+      totalUsdt:
+        Math.round(
+          wallets.reduce((s, w) => s + (w.usdtBalance ?? 0), 0) * 100,
+        ) / 100,
+      wallets,
+    };
   }
 
   async assertCanSend(userId: string, amountUsdt: number, destination: string) {

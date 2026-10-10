@@ -19,6 +19,7 @@ import { BinanceWeb3StatusCard } from "@/components/wallet/binance-web3-status-c
 import { canManageSoloTrades } from "@/lib/solo-admin";
 import { SoloTraderRiskAdmin } from "@/components/settings/solo-trader-risk-admin";
 import { SoloInvestorMetaApiAdmin } from "@/components/settings/solo-investor-metaapi-admin";
+import { SoloBinanceWeb3Admin } from "@/components/settings/solo-binance-web3-admin";
 
 export default function SettingsPage() {
   const { ready } = useRequireAuth();
@@ -319,6 +320,7 @@ export default function SettingsPage() {
       {user?.isSoloPlatformAdmin ? (
         <div className="mt-5 space-y-5">
           <SoloInvestorMetaApiAdmin />
+          <SoloBinanceWeb3Admin />
           <SoloTraderRiskAdmin />
         </div>
       ) : null}

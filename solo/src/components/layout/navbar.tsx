@@ -28,6 +28,7 @@ import {
   LineChart,
   CandlestickChart,
   BookOpen,
+  Coins,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth";
@@ -77,6 +78,13 @@ const NAV_GROUPS: NavGroup[] = [
         shortLabel: "Wallet",
         icon: Wallet,
         keywords: "deposit withdraw",
+      },
+      {
+        href: "/binance",
+        label: "Binance wallet",
+        shortLabel: "Binance",
+        icon: Coins,
+        keywords: "binance web3 bep20 bsc usdt deposit withdraw send",
       },
       {
         href: "/wallet/auto-withdraw",

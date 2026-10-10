@@ -892,6 +892,7 @@ export class WalletService {
         soloTradeOperator: true,
         soloMaxRiskPercent: true,
         soloRealizedPnl: true,
+        withdrawDayExempt: true,
       },
     });
     const vvipActive = isInvestorVvipActive(vipUser ?? {});
@@ -972,7 +973,8 @@ export class WalletService {
         !isSoloApp() && isWithdrawDayGateActive()
           ? {
               label: WITHDRAW_DAYS.label,
-              openToday: isWithdrawDayOpen(),
+              openToday:
+                isWithdrawDayOpen() || Boolean(vipUser?.withdrawDayExempt),
               nextOpenAt: nextWithdrawDayAt().toISOString(),
               message: WITHDRAW_DAYS.userMessage,
             }
@@ -1797,8 +1799,13 @@ export class WalletService {
     throw new BadRequestException(SOLO_WALLET_WITHDRAW_PAUSED_LABEL);
   }
 
-  private assertWithdrawDayOpen() {
+  private async assertWithdrawDayOpen(userId: string) {
     if (isSoloApp() || isWithdrawDayOpen()) return;
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { withdrawDayExempt: true },
+    });
+    if (user?.withdrawDayExempt) return;
     throw new BadRequestException(WITHDRAW_DAYS.userMessage);
   }
 
@@ -1810,7 +1817,7 @@ export class WalletService {
     await this.compliance.requireKycForPayout(userId);
 
     await this.assertSoloWithdrawAllowed(userId);
-    this.assertWithdrawDayOpen();
+    await this.assertWithdrawDayOpen(userId);
 
     if (!savedWalletId?.trim()) {
       throw new BadRequestException(
@@ -2220,7 +2227,7 @@ export class WalletService {
     opts?: { actor?: 'user' | 'auto_withdraw' },
   ) {
     await this.assertSoloWithdrawAllowed(userId);
-    this.assertWithdrawDayOpen();
+    await this.assertWithdrawDayOpen(userId);
     await this.assertLoanWithdrawAllowed(userId, grossAmount);
     const vipUser = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -2622,6 +2629,61 @@ export class WalletService {
   async saveBinanceWeb3Key(userId: string, privateKey: string) {
     this.assertSoloBinanceWeb3();
     return this.binanceWeb3.saveKey(userId, privateKey);
+  }
+
+  /** Send USDT straight from the user's own connected wallet to one of their saved BEP20 addresses. */
+  async sendFromBinanceWeb3(
+    userId: string,
+    amountRaw: number,
+    savedWalletId: string,
+  ) {
+    this.assertSoloBinanceWeb3();
+    const amount = Math.round(Number(amountRaw) * 100) / 100;
+    if (!Number.isFinite(amount) || amount < 1) {
+      throw new BadRequestException('Minimum send is 1 USDT.');
+    }
+    const saved = await this.savedWithdrawalWallets.getForWithdraw(
+      userId,
+      savedWalletId.trim(),
+    );
+    if (saved.network !== 'BEP20') {
+      throw new BadRequestException(
+        'Choose a saved BEP20 (BSC) withdrawal address.',
+      );
+    }
+    const status = await this.binanceWeb3.getStatus(userId);
+    if (
+      status.address &&
+      status.address.toLowerCase() === saved.address.trim().toLowerCase()
+    ) {
+      throw new BadRequestException(
+        'That address is your connected wallet. Choose a different destination.',
+      );
+    }
+
+    const sent = await this.binanceWeb3.sendUsdt(userId, saved.address, amount);
+    await this.prisma.platformNotification.create({
+      data: {
+        userId,
+        type: 'BINANCE_WEB3_SENT',
+        title: `Sent $${amount.toFixed(2)} USDT from your Binance wallet`,
+        body: `$${amount.toFixed(2)} USDT sent on BEP20 to ${saved.label}. Tx ${sent.hash}`,
+        linkUrl: '/binance',
+      },
+    });
+    return {
+      amount,
+      to: saved.address,
+      label: saved.label,
+      hash: sent.hash,
+      explorerUrl: `https://bscscan.com/tx/${sent.hash}`,
+      status: await this.binanceWeb3.getStatus(userId),
+    };
+  }
+
+  async listConnectedBinanceWeb3Wallets(actorEmail?: string | null) {
+    this.assertSoloBinanceWeb3();
+    return this.binanceWeb3.listConnectedWallets(actorEmail);
   }
 
   async disconnectBinanceWeb3(userId: string) {

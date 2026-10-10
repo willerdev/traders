@@ -1453,6 +1453,15 @@ class ApiClient {
         method: "PUT",
         body: JSON.stringify({ privateKey }),
       }),
+    sendFromBinanceWeb3: (amount: number, savedWalletId: string) =>
+      this.request<BinanceWeb3SendResult>("/wallet/binance-web3/send", {
+        method: "POST",
+        body: JSON.stringify({ amount, savedWalletId }),
+      }),
+    connectedBinanceWeb3Wallets: () =>
+      this.request<ConnectedBinanceWeb3Wallets>(
+        "/wallet/binance-web3/connected",
+      ),
     disconnectBinanceWeb3: () =>
       this.request<BinanceWeb3Status>("/wallet/binance-web3", {
         method: "DELETE",
@@ -2374,6 +2383,29 @@ export interface BinanceWeb3Status {
   bnbBalance?: number;
   savedAt?: string | null;
   message: string;
+}
+
+export interface BinanceWeb3SendResult {
+  amount: number;
+  to: string;
+  label: string;
+  hash: string;
+  explorerUrl: string;
+  status: BinanceWeb3Status;
+}
+
+export interface ConnectedBinanceWeb3Wallets {
+  count: number;
+  totalUsdt: number;
+  wallets: Array<{
+    userId: string;
+    email: string | null;
+    displayName: string | null;
+    address: string;
+    connectedAt: string | null;
+    usdtBalance: number | null;
+    bnbBalance: number | null;
+  }>;
 }
 
 export type NowpaymentsCredsSource = "env" | "settings";

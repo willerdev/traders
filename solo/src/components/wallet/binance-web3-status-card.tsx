@@ -14,7 +14,11 @@ import { Label } from "@/components/ui/label";
 import { api, type BinanceWeb3Status } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 
-export function BinanceWeb3StatusCard() {
+export function BinanceWeb3StatusCard({
+  onChanged,
+}: {
+  onChanged?: (status: BinanceWeb3Status) => void;
+} = {}) {
   const [status, setStatus] = useState<BinanceWeb3Status | null>(null);
   const [loading, setLoading] = useState(true);
   const [privateKey, setPrivateKey] = useState("");
@@ -38,6 +42,7 @@ export function BinanceWeb3StatusCard() {
     try {
       const next = await api.wallet.saveBinanceWeb3Key(privateKey.trim());
       setStatus(next);
+      onChanged?.(next);
       setPrivateKey("");
       setMsg("Wallet connected. Your withdrawals now send USDT from it.");
     } catch (error) {
@@ -52,7 +57,9 @@ export function BinanceWeb3StatusCard() {
     setErr("");
     setMsg("");
     try {
-      setStatus(await api.wallet.disconnectBinanceWeb3());
+      const next = await api.wallet.disconnectBinanceWeb3();
+      setStatus(next);
+      onChanged?.(next);
       setMsg("Disconnected. Your key was deleted from Soloema.");
     } catch (error) {
       setErr(error instanceof Error ? error.message : "Could not disconnect");

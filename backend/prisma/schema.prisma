@@ -337,6 +337,8 @@ model User {
   instantWithdrawGrantedById     String?
   /// When true with instantWithdraw: admin-marked verified — skip KYC for withdrawals.
   instantWithdrawKycExempt       Boolean    @default(false)
+  /// Admin override: may withdraw on any day while the Wed/Sat withdraw-day gate is active.
+  withdrawDayExempt              Boolean    @default(false)
   /// Set on first confirmed platform wallet deposit — unlocks daily auto-withdraw opt-in.
   autoWithdrawEligible           Boolean    @default(false)
   autoWithdrawEligibleAt         DateTime?
