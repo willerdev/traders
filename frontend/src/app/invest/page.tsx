@@ -14,7 +14,12 @@ export default function InvestPage() {
     <div className="mx-auto max-w-lg space-y-4 px-4 py-4 sm:max-w-xl sm:px-6 sm:py-6 xl:max-w-7xl xl:px-8 xl:py-8">
       <div className="xl:flex xl:items-end xl:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white xl:text-3xl">Smart Invest</h1>
+          <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-emerald-300">
+            Tradeguard · Grow
+          </p>
+          <h1 className="mt-1 text-3xl font-black tracking-tight text-white xl:text-4xl">
+            Smart Invest
+          </h1>
           <p className="mt-1 text-sm text-gray-400">
             Capital, daily yield projections, and returns history. New
             investment allocations earn yield only after 24 hours. To fully

@@ -15,7 +15,8 @@ import { CurrencySwitcher } from "@/components/currency-switcher";
 import { formatCurrency } from "@/lib/utils";
 import { AuthLoadingScreen, useRequireAuth } from "@/hooks/use-require-auth";
 import { syncApiAuthToken, useAuthStore } from "@/stores/auth";
-import { Loader2, RefreshCw } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Loader2, RefreshCw } from "lucide-react";
+import { MaintenanceBanner } from "@/components/maintenance-banner";
 
 function walletTxTypeLabel(type: string) {
   switch (type) {
@@ -111,12 +112,18 @@ export default function WalletPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-xl px-4 py-6 sm:px-6 sm:py-10">
-      <div className="mb-6 flex flex-col gap-4">
+    <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6 sm:py-10 xl:max-w-3xl">
+      <div className="mb-6 flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold tracking-tight text-white">Wallet</h1>
+          <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-300">
+            Tradeguard · Money
+          </p>
+          <h1 className="mt-1 text-3xl font-black tracking-tight text-white">
+            Wallet
+          </h1>
           <p className="mt-1 text-sm leading-relaxed text-gray-400">
-            Deposit, transfer, and request withdrawals (admin approved)
+            Deposit, transfer, and request withdrawals — every withdrawal is
+            reviewed before it is sent.
           </p>
         </div>
         <div className="flex items-center gap-1">
@@ -164,42 +171,10 @@ export default function WalletPage() {
             onManageWallets={() => setWalletsOpen(true)}
           />
           <WalletPendingWithdrawals onCancelled={() => void refresh()} />
-          {summary.withdrawDays && (
-            <div
-              className={
-                summary.withdrawDays.openToday
-                  ? "rounded-xl border border-emerald-400/35 bg-emerald-500/10 p-3.5 text-sm text-emerald-50"
-                  : "rounded-xl border border-amber-400/35 bg-amber-500/10 p-3.5 text-sm text-amber-50"
-              }
-            >
-              <p className="font-semibold">
-                {summary.withdrawDays.openToday
-                  ? "Withdrawals are open today"
-                  : `Withdrawals open ${summary.withdrawDays.label}`}
-              </p>
-              <p className="mt-1 leading-relaxed opacity-85">
-                Withdrawals are temporarily available on{" "}
-                <strong>{summary.withdrawDays.label}</strong> only.
-                {!summary.withdrawDays.openToday && (
-                  <>
-                    {" "}
-                    Next withdrawal day:{" "}
-                    <strong>
-                      {new Date(
-                        summary.withdrawDays.nextOpenAt,
-                      ).toLocaleDateString(undefined, {
-                        timeZone: "Africa/Kampala",
-                        weekday: "long",
-                        day: "numeric",
-                        month: "long",
-                      })}
-                    </strong>
-                    .
-                  </>
-                )}
-              </p>
-            </div>
-          )}
+          <MaintenanceBanner
+            maintenance={summary.withdrawMaintenance}
+            withdrawDays={summary.withdrawDays}
+          />
           <WalletWithdrawFeeNotice
             feeUsdt={summary.withdrawalFeeUsdt ?? 3}
             maxWithdrawUsdt={summary.maxWithdrawUsdt}
@@ -225,13 +200,26 @@ export default function WalletPage() {
                 txs.map((tx) => (
                   <div
                     key={tx.id}
-                    className="flex flex-col gap-2 rounded-xl border border-white/5 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+                    className="flex items-start gap-3 rounded-2xl border border-white/5 bg-white/[0.02] px-3.5 py-3 transition hover:border-cyan-300/20 hover:bg-white/[0.04] sm:items-center"
                   >
-                    <div className="min-w-0">
+                    <span
+                      className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full sm:mt-0 ${
+                        tx.amount >= 0
+                          ? "bg-emerald-400/15 text-emerald-300"
+                          : "bg-rose-400/15 text-rose-300"
+                      }`}
+                    >
+                      {tx.amount >= 0 ? (
+                        <ArrowDownLeft className="h-4 w-4" />
+                      ) : (
+                        <ArrowUpRight className="h-4 w-4" />
+                      )}
+                    </span>
+                    <div className="min-w-0 flex-1">
                       <p className="whitespace-normal break-words text-sm text-white">
                         {tx.description}
                       </p>
-                      <p className="mt-1 text-[10px] text-gray-500">
+                      <p className="mt-1 text-[10px] uppercase tracking-wide text-gray-500">
                         {walletTxTypeLabel(tx.type)} ·{" "}
                         {new Date(tx.createdAt).toLocaleString()}
                       </p>

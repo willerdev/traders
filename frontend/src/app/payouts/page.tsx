@@ -17,6 +17,7 @@ import {
 import { formatCurrency } from "@/lib/utils";
 import { Wallet, Info, ShieldAlert, Loader2 } from "lucide-react";
 import { PayoutRequestForm } from "@/components/payments/payout-request-form";
+import { PayoutProgressSteps } from "@/components/maintenance-banner";
 
 function payoutTitle(payout: PayoutRecord) {
   if (payout.source === "DEPOSITOR") {
@@ -111,9 +112,14 @@ export default function PayoutsPage() {
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 xl:max-w-6xl xl:px-8">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white">Payouts</h1>
+          <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-300">
+            Tradeguard · Money out
+          </p>
+          <h1 className="mt-1 text-3xl font-black tracking-tight text-white">
+            Payouts
+          </h1>
           <p className="mt-1 text-gray-400">
-            Payout history — TP rewards, wallet withdrawals, and other payouts.
+            Track every payout — submitted, in review, approved, and paid.
           </p>
         </div>
 
@@ -173,6 +179,7 @@ export default function PayoutsPage() {
                     </div>
                     <Badge variant="gold">Pending</Badge>
                   </div>
+                  <PayoutProgressSteps stage={1} />
                   <Button
                     type="button"
                     variant="secondary"

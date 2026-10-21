@@ -106,7 +106,7 @@ export function WalletWithdrawFeeNotice({
   if (maintenance) {
     return (
       <div
-        className={`space-y-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm leading-relaxed text-amber-50 ${className}`}
+        className={`space-y-3 rounded-2xl border border-cyan-300/25 bg-gradient-to-br from-cyan-500/12 to-emerald-500/8 px-4 py-3 text-sm leading-relaxed text-cyan-50 ${className}`}
       >
         <p>{maintenance.message}</p>
         {maxWithdrawUsdt != null ? (

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { api, PendingWalletWithdrawal } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { Clock, Loader2, XCircle } from "lucide-react";
+import { PayoutProgressSteps } from "@/components/maintenance-banner";
 
 type Props = {
   onCancelled?: () => void;
@@ -116,6 +117,10 @@ export function WalletPendingWithdrawals({ onCancelled }: Props) {
               </div>
               <Badge variant="gold">Pending</Badge>
             </div>
+            <PayoutProgressSteps stage={1} />
+            <p className="mt-2 text-xs text-gray-500">
+              In manual review — you will get an email when it is approved and sent.
+            </p>
             <Button
               type="button"
               variant="secondary"

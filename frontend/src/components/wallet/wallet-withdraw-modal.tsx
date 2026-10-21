@@ -5,7 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, type MomoP2pWithdrawal, type SavedWithdrawalWallet } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
-import { CheckCircle2, Loader2, X } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronRight,
+  Clock3,
+  Loader2,
+  Lock,
+  ShieldCheck,
+  X,
+} from "lucide-react";
 import {
   WalletWithdrawFeeNotice,
   WALLET_WITHDRAWAL_FEE_USD,
@@ -50,7 +59,17 @@ export function WalletWithdrawModal({
   schedule?: WithdrawalScheduleInfo | null;
   onComplete?: () => void;
 }) {
-  const [step, setStep] = useState<"form" | "otp" | "p2p">("form");
+  const maintenanceMode = Boolean(maintenance);
+  const [step, setStep] = useState<"notice" | "form" | "confirm" | "otp" | "p2p">(
+    "form",
+  );
+  const [noticeAck, setNoticeAck] = useState(false);
+  const [noticeSecondsLeft, setNoticeSecondsLeft] = useState(10);
+  const [checks, setChecks] = useState([false, false, false]);
+  const [destConfirm, setDestConfirm] = useState("");
+  const [typeWord, setTypeWord] = useState("");
+  const [typeAmount, setTypeAmount] = useState("");
+  const [reviewSecondsLeft, setReviewSecondsLeft] = useState(20);
   const [amount, setAmount] = useState("");
   const [wallets, setWallets] = useState<SavedWithdrawalWallet[]>([]);
   const [selectedWalletId, setSelectedWalletId] = useState("");
@@ -103,10 +122,46 @@ export function WalletWithdrawModal({
       setP2p(null);
       setP2pPhase("initiated");
       setTimerSec(0);
+      setNoticeAck(false);
+      setNoticeSecondsLeft(10);
+      setChecks([false, false, false]);
+      setDestConfirm("");
+      setTypeWord("");
+      setTypeAmount("");
+      setReviewSecondsLeft(20);
       return;
     }
+    setStep(maintenance ? "notice" : "form");
+    setNoticeSecondsLeft(maintenance ? 10 : 0);
     void loadWallets();
+    // maintenance is stable for the lifetime of the open modal
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, loadWallets]);
+
+  // Maintenance notice: force a short read before continuing.
+  useEffect(() => {
+    if (!open || step !== "notice" || noticeSecondsLeft <= 0) return;
+    const id = window.setTimeout(
+      () => setNoticeSecondsLeft((s) => Math.max(0, s - 1)),
+      1000,
+    );
+    return () => window.clearTimeout(id);
+  }, [open, step, noticeSecondsLeft]);
+
+  // Final review: button unlocks only after the review timer.
+  useEffect(() => {
+    if (!open || step !== "confirm") return;
+    setReviewSecondsLeft(20);
+    const id = window.setInterval(
+      () => setReviewSecondsLeft((s) => Math.max(0, s - 1)),
+      1000,
+    );
+    const stop = window.setTimeout(() => window.clearInterval(id), 21000);
+    return () => {
+      window.clearInterval(id);
+      window.clearTimeout(stop);
+    };
+  }, [open, step]);
 
   const selectedWallet = wallets.find((w) => w.id === selectedWalletId);
   const isMomo = isMomoNetwork(selectedWallet?.network);
@@ -275,6 +330,26 @@ export function WalletWithdrawModal({
     gross >= minWithdraw &&
     gross <= withdrawCap;
 
+  const destMatches =
+    !maintenanceMode ||
+    (Boolean(selectedWallet) &&
+      destConfirm.trim() === (selectedWallet?.address ?? "").trim());
+  const allChecked = checks.every(Boolean);
+  const canContinueForm = canRequestOtp && (!maintenanceMode || (allChecked && destMatches));
+  const expectedAmountText = Number.isFinite(gross) && gross > 0 ? gross.toFixed(2) : "";
+  const canSendOtp =
+    canRequestOtp &&
+    reviewSecondsLeft <= 0 &&
+    typeWord.trim().toUpperCase() === "WITHDRAW" &&
+    typeAmount.trim() === expectedAmountText;
+
+  const stepIndex = maintenanceMode
+    ? { notice: 0, form: 1, confirm: 2, otp: 3, p2p: 4 }[step]
+    : { notice: 0, form: 0, confirm: 1, otp: 1, p2p: 2 }[step];
+  const stepLabels = maintenanceMode
+    ? ["Notice", "Details", "Confirm", "Email code"]
+    : ["Details", "Email code"];
+
   return (
     <>
       <div
@@ -282,18 +357,55 @@ export function WalletWithdrawModal({
         onClick={onClose}
       >
         <div
-          className="modal-panel w-full max-w-md rounded-t-2xl border border-white/10 shadow-2xl sm:rounded-2xl"
+          className="modal-panel max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-2xl border border-white/10 shadow-2xl sm:rounded-2xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-            <h2 className="text-lg font-semibold text-white">Send / Withdraw</h2>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg p-1.5 text-gray-400 hover:bg-white/5 hover:text-white"
-            >
-              <X className="h-5 w-5" />
-            </button>
+          <div className="relative overflow-hidden border-b border-white/10 bg-gradient-to-r from-cyan-500/15 via-transparent to-emerald-500/10 px-5 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-300">
+                  {maintenanceMode ? "Maintenance withdrawal" : "Wallet"}
+                </p>
+                <h2 className="mt-0.5 text-lg font-bold text-white">
+                  Send / Withdraw
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-white/10 hover:text-white"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {!success && step !== "p2p" && (
+              <ol className="mt-3 flex items-center gap-1.5">
+                {stepLabels.map((label, i) => (
+                  <li key={label} className="flex flex-1 items-center gap-1.5 last:flex-none">
+                    <span
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold ${
+                        i <= stepIndex
+                          ? "bg-cyan-400 text-[#06202b]"
+                          : "bg-white/10 text-gray-500"
+                      }`}
+                    >
+                      {i + 1}
+                    </span>
+                    <span
+                      className={`hidden text-[10px] font-medium min-[420px]:block ${
+                        i <= stepIndex ? "text-cyan-100" : "text-gray-500"
+                      }`}
+                    >
+                      {label}
+                    </span>
+                    {i < stepLabels.length - 1 && (
+                      <span className={`h-px flex-1 ${i < stepIndex ? "bg-cyan-400/70" : "bg-white/10"}`} />
+                    )}
+                  </li>
+                ))}
+              </ol>
+            )}
           </div>
 
           <div className="space-y-4 p-5">
@@ -419,6 +531,136 @@ export function WalletWithdrawModal({
                   </Button>
                 </div>
               </>
+            ) : step === "notice" ? (
+              <>
+                <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4">
+                  <p className="flex items-center gap-2 font-semibold text-amber-100">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    Please read — maintenance withdrawals
+                  </p>
+                  <ul className="mt-2.5 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-amber-50/85">
+                    <li>
+                      Withdrawals are temporarily limited
+                      {maintenance?.maxFraction != null
+                        ? ` to ${Math.round(maintenance.maxFraction * 100)}% of your available balance`
+                        : ""}
+                      .
+                    </li>
+                    <li>Every request is manually reviewed — processing takes longer than usual.</li>
+                    <li>Cancelling a pending withdrawal is temporarily disabled.</li>
+                    {maintenance?.feesWaived && <li>Withdrawal fees are waived during maintenance.</li>}
+                  </ul>
+                </div>
+                <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={noticeAck}
+                    onChange={(e) => setNoticeAck(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-cyan-400"
+                  />
+                  I understand withdrawals are limited during maintenance and may take longer to process.
+                </label>
+                {error && <p className="text-sm text-danger">{error}</p>}
+                <Button
+                  className="w-full"
+                  disabled={!noticeAck || noticeSecondsLeft > 0}
+                  onClick={() => setStep("form")}
+                >
+                  {noticeSecondsLeft > 0 ? (
+                    <>
+                      <Clock3 className="mr-2 h-4 w-4" />
+                      Please read… {noticeSecondsLeft}s
+                    </>
+                  ) : (
+                    <>
+                      Continue
+                      <ChevronRight className="ml-1 h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+                <Button variant="ghost" className="w-full" onClick={onClose}>
+                  Not now
+                </Button>
+              </>
+            ) : step === "confirm" ? (
+              <>
+                <div className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm">
+                  <p className="flex items-center gap-2 font-semibold text-white">
+                    <ShieldCheck className="h-4 w-4 text-emerald-300" />
+                    Review carefully
+                  </p>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-gray-500">You send</span>
+                    <strong className="text-white">{formatCurrency(gross)}</strong>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-gray-500">You receive</span>
+                    <strong className="text-emerald-300">
+                      {net != null ? formatCurrency(net) : "—"}
+                    </strong>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-gray-500">To</span>
+                    <span className="min-w-0 text-right">
+                      <span className="block text-gray-200">{selectedWallet?.label}</span>
+                      <span className="block truncate font-mono text-[11px] text-gray-500">
+                        {selectedWallet?.address}
+                      </span>
+                    </span>
+                  </div>
+                  <p className="border-t border-white/5 pt-2 text-xs leading-relaxed text-amber-200/90">
+                    This cannot be cancelled once submitted during maintenance.
+                  </p>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-gray-400">
+                    Type the amount exactly (e.g. {expectedAmountText || "100.00"})
+                  </label>
+                  <Input
+                    inputMode="decimal"
+                    placeholder={expectedAmountText || "0.00"}
+                    value={typeAmount}
+                    onChange={(e) => setTypeAmount(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-gray-400">
+                    Type WITHDRAW to confirm
+                  </label>
+                  <Input
+                    autoComplete="off"
+                    placeholder="WITHDRAW"
+                    value={typeWord}
+                    onChange={(e) => setTypeWord(e.target.value)}
+                  />
+                </div>
+                {error && <p className="text-sm text-danger">{error}</p>}
+                <Button
+                  className="w-full"
+                  onClick={() => void requestOtp()}
+                  disabled={!canSendOtp}
+                >
+                  {loading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Lock className="mr-2 h-4 w-4" />
+                  )}
+                  {reviewSecondsLeft > 0
+                    ? `Review your details… ${reviewSecondsLeft}s`
+                    : "Send email code"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full"
+                  disabled={loading}
+                  onClick={() => {
+                    setStep("form");
+                    setError("");
+                  }}
+                >
+                  Back — edit details
+                </Button>
+              </>
             ) : (
               <>
                 <p className="text-sm text-gray-400">
@@ -495,7 +737,56 @@ export function WalletWithdrawModal({
                       {selectedWallet.address}
                     </p>
                   )}
+                  {maintenanceMode && selectedWallet && (
+                    <div className="mt-3">
+                      <label className="mb-1 block text-xs text-amber-200/90">
+                        Re-type your destination exactly to confirm it is yours
+                      </label>
+                      <Input
+                        autoComplete="off"
+                        placeholder={isMomo ? "Re-type MoMo number" : "Paste your TRC20 address again"}
+                        value={destConfirm}
+                        onChange={(e) => setDestConfirm(e.target.value)}
+                      />
+                      {destConfirm.trim() && !destMatches && (
+                        <p className="mt-1 text-xs text-danger">
+                          Does not match the selected destination above.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
+                {maintenanceMode && (
+                  <fieldset className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.03] p-3.5">
+                    <legend className="px-1 text-xs font-semibold text-gray-300">
+                      Confirm all three
+                    </legend>
+                    {[
+                      isMomo
+                        ? "This MoMo number is mine and can receive money."
+                        : "This is my own wallet address on the correct network (TRC20).",
+                      "I understand this withdrawal is manually reviewed during maintenance.",
+                      "I understand it cannot be cancelled once submitted.",
+                    ].map((label, i) => (
+                      <label
+                        key={label}
+                        className="flex cursor-pointer items-start gap-2.5 text-sm text-gray-300"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checks[i]}
+                          onChange={(e) =>
+                            setChecks((prev) =>
+                              prev.map((v, j) => (j === i ? e.target.checked : v)),
+                            )
+                          }
+                          className="mt-0.5 h-4 w-4 shrink-0 accent-cyan-400"
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </fieldset>
+                )}
                 {isMomo && (
                   <div className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm text-sky-50">
                     {quoteLoading ? (
@@ -517,8 +808,10 @@ export function WalletWithdrawModal({
                 {error && <p className="text-sm text-danger">{error}</p>}
                 <Button
                   className="w-full"
-                  onClick={() => void requestOtp()}
-                  disabled={!canRequestOtp}
+                  onClick={() =>
+                    maintenanceMode ? setStep("confirm") : void requestOtp()
+                  }
+                  disabled={!canContinueForm}
                 >
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   {net != null
@@ -527,6 +820,11 @@ export function WalletWithdrawModal({
                       ? `Continue — ${formatCurrency(gross)}`
                       : "Continue"}
                 </Button>
+                {maintenanceMode && !canContinueForm && canRequestOtp && (
+                  <p className="-mt-2 text-center text-xs text-gray-500">
+                    Complete the checklist and re-type your destination to continue.
+                  </p>
+                )}
               </>
             )}
           </div>
