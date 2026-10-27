@@ -122,8 +122,9 @@ export default function WalletPage() {
             Wallet
           </h1>
           <p className="mt-1 text-sm leading-relaxed text-gray-400">
-            Deposit, transfer, and request withdrawals — every withdrawal is
-            reviewed before it is sent.
+            {summary?.withdrawDays && !summary.withdrawDays.openToday
+              ? summary.withdrawDays.message
+              : "Deposit, transfer, and request withdrawals — every withdrawal is reviewed before it is sent."}
           </p>
         </div>
         <div className="flex items-center gap-1">
@@ -165,10 +166,17 @@ export default function WalletPage() {
             reserveBalance={summary.reserveBalance ?? 0}
             displayCurrency={summary.displayCurrency}
             savedWalletCount={walletCount}
-            onWithdraw={() => setWithdrawOpen(true)}
+            onWithdraw={() => {
+              if (summary.withdrawDays && !summary.withdrawDays.openToday) return;
+              setWithdrawOpen(true);
+            }}
             onDeposit={() => setDepositOpen(true)}
             onTransfer={() => setTransferOpen(true)}
             onManageWallets={() => setWalletsOpen(true)}
+            withdrawClosed={Boolean(
+              summary.withdrawDays && !summary.withdrawDays.openToday,
+            )}
+            withdrawClosedMessage={summary.withdrawDays?.message}
           />
           <WalletPendingWithdrawals onCancelled={() => void refresh()} />
           <MaintenanceBanner

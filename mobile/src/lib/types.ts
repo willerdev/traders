@@ -104,6 +104,12 @@ export interface WalletSummary {
   withdrawalInPreferredWindow?: boolean;
   withdrawalNextPreferredWindowAt?: string;
   withdrawalPreferredWindowLabel?: string;
+  withdrawDays?: {
+    label: string;
+    openToday: boolean;
+    nextOpenAt: string;
+    message: string;
+  } | null;
   vipActive?: boolean;
   activePlan: {
     id: string;

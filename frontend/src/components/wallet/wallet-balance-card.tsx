@@ -18,6 +18,8 @@ type WalletBalanceCardProps = {
   onDeposit: () => void;
   onTransfer: () => void;
   onManageWallets: () => void;
+  withdrawClosed?: boolean;
+  withdrawClosedMessage?: string | null;
 };
 
 export function WalletBalanceCard({
@@ -29,6 +31,8 @@ export function WalletBalanceCard({
   onDeposit,
   onTransfer,
   onManageWallets,
+  withdrawClosed = false,
+  withdrawClosedMessage,
 }: WalletBalanceCardProps) {
   const usdtHint = formatUsdtHint(balance, displayCurrency);
   const badge =
@@ -70,7 +74,8 @@ export function WalletBalanceCard({
           <button
             type="button"
             onClick={onWithdraw}
-            className="flex items-center justify-center gap-2 rounded-2xl bg-[#04121f]/60 py-3.5 text-sm font-bold text-white ring-1 ring-white/25 backdrop-blur-sm transition hover:bg-[#04121f]/85 active:scale-[0.98]"
+            disabled={withdrawClosed}
+            className="flex items-center justify-center gap-2 rounded-2xl bg-[#04121f]/60 py-3.5 text-sm font-bold text-white ring-1 ring-white/25 backdrop-blur-sm transition hover:bg-[#04121f]/85 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <ArrowUpRight className="h-4 w-4 shrink-0" />
             Withdraw
@@ -100,6 +105,11 @@ export function WalletBalanceCard({
             Auto-withdraw settings →
           </Link>
         </div>
+        {withdrawClosed && withdrawClosedMessage ? (
+          <p className="relative mt-3 text-sm leading-relaxed text-white/75">
+            {withdrawClosedMessage}
+          </p>
+        ) : null}
       </section>
 
       {reserveBalance > 0 ? (
