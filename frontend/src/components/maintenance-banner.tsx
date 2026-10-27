@@ -89,6 +89,12 @@ export function MaintenanceBanner({
             </p>
           )}
 
+          {withdrawDays && !withdrawDays.openToday && withdrawDays.message && (
+            <p className="mt-1.5 text-sm leading-relaxed text-cyan-50/80">
+              {withdrawDays.message}
+            </p>
+          )}
+
           {withdrawDays && (
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-cyan-50/75">
               <span className="inline-flex items-center gap-1.5">
@@ -105,7 +111,6 @@ export function MaintenanceBanner({
                       {new Date(withdrawDays.nextOpenAt).toLocaleDateString(
                         undefined,
                         {
-                          timeZone: "Africa/Kampala",
                           weekday: "long",
                           day: "numeric",
                           month: "long",

@@ -139,7 +139,18 @@ export function WithdrawScreen() {
       };
     }, [api, isMomo, net]),
   );
+  const withdrawClosed = Boolean(
+    summary?.withdrawDays && !summary.withdrawDays.openToday,
+  );
+
   async function goConfirmPin() {
+    if (withdrawClosed) {
+      setError(
+        summary?.withdrawDays?.message ??
+          "Withdrawals will be available on Thursday.",
+      );
+      return;
+    }
     if (!Number.isFinite(value) || value <= 0) {
       setError("Enter a valid amount");
       return;
@@ -311,7 +322,9 @@ export function WithdrawScreen() {
       <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={styles.content}>
         <Text style={[styles.stepTitle, { color: theme.text }]}>Withdraw</Text>
         <Text style={{ color: theme.muted, marginBottom: 14, fontSize: 13, lineHeight: 18 }}>
-          Choose a saved wallet address, enter amount, then confirm with your app PIN.
+          {summary?.withdrawDays && !summary.withdrawDays.openToday
+            ? summary.withdrawDays.message
+            : "Choose a saved wallet address, enter amount, then confirm with your app PIN."}
         </Text>
 
         <SectionCard>
@@ -433,9 +446,15 @@ export function WithdrawScreen() {
         ) : null}
 
         <PrimaryButton
-          label={busy ? "…" : "Continue — confirm PIN"}
+          label={
+            busy
+              ? "…"
+              : withdrawClosed
+                ? "Withdrawals open Thursday"
+                : "Continue — confirm PIN"
+          }
           onPress={() => void goConfirmPin()}
-          disabled={busy || !selectedId}
+          disabled={busy || !selectedId || withdrawClosed}
           size="sm"
         />
         <Pressable

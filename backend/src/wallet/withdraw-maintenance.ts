@@ -3,10 +3,10 @@ import { kampalaDayOfWeek } from '../common/kampala-weekend.util';
 /** Temporary Trade Guard withdrawal days (Africa/Kampala weekday, 0 = Sunday). */
 export const WITHDRAW_DAYS = {
   enabled: true,
-  weekdays: [3, 6] as readonly number[],
-  label: 'Wednesday and Saturday',
+  weekdays: [4] as readonly number[],
+  label: 'Thursday',
   userMessage:
-    'Withdrawals are temporarily open on Wednesdays and Saturdays only. Please come back on the next withdrawal day.',
+    'Withdrawals will be available on Thursday so everyone can withdraw their investment and wait for it to reflect.',
 } as const;
 
 export function isWithdrawDayGateActive(): boolean {
@@ -37,7 +37,7 @@ export function nextWithdrawDayAt(now: Date = new Date()): Date {
 
 /** Temporary Trade Guard withdrawal limits during platform maintenance. */
 export const WITHDRAW_MAINTENANCE = {
-  enabled: true,
+  enabled: false,
   maxFraction: 0.4,
   feesWaived: true,
   cancelDisabled: true,

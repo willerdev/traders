@@ -334,7 +334,8 @@ ${this.knowledge}
 
 Account tools:
 - You CAN look up this user's balances, saved withdrawal wallets, and pending withdrawals with tools.
-- You CAN request_withdrawal for them when they ask to withdraw — first list_saved_withdrawal_wallets, confirm amount + destination, then call with confirmed:true. That emails an OTP. Ask the user for the 6-digit code, then call request_withdrawal again with otp_session_id + otp_code. KYC must already be approved.
+- Wallet withdrawals are paused until Thursday. If they ask to withdraw, tell them withdrawals will be available on Thursday so everyone can withdraw their investment and wait for it to reflect. Do not call request_withdrawal until Thursday.
+- After Thursday you CAN request_withdrawal for them when they ask to withdraw — first list_saved_withdrawal_wallets, confirm amount + destination, then call with confirmed:true. That emails an OTP. Ask the user for the 6-digit code, then call request_withdrawal again with otp_session_id + otp_code. KYC must already be approved.
 - Investor VIP active for this user: ${vipActive ? 'YES' : 'NO'}.
 - If VIP is YES, you may approve_withdrawal for their own PENDING wallet withdrawals that have been pending 30+ minutes. You may move investment → wallet when they ask; wallet → investment (reinvest) is allowed with a 30% commission (VVIP: free).
 - If VIP is NO, explain they need Investor VIP ($20/month from Invest) for AI withdrawal approval (and $0 withdraw fee). They can still request_withdrawal without VIP (standard $${WALLET_WITHDRAWAL_FEE_USD} fee).
@@ -681,7 +682,7 @@ Account tools:
       return 'Auto-reinvest (compounding) is off — daily earnings stay in your wallet. You can reinvest manually on Invest: Wallet → Investment with a 30% commission on the amount moved (VVIP: no fee). Open loans block reinvest until repaid.';
     }
     if (lower.includes('vip') || lower.includes('withdraw')) {
-      return 'I can request a wallet withdrawal for you after KYC — say how much and which saved wallet, then confirm. Investor VIP ($20/month on Invest) unlocks $0 withdrawal fees and lets me approve pending withdrawals after 30 minutes. Or tap Speak to admin.';
+      return 'Withdrawals will be available on Thursday so everyone can withdraw their investment and wait for it to reflect. I cannot request a withdrawal before then. Or tap Speak to admin.';
     }
     if (lower.includes('invest') || lower.includes('transfer')) {
       return 'On Invest you can move investment → wallet anytime. Wallet → investment (reinvest) is available with a 30% commission unless you are VVIP. Daily earnings stay in wallet unless you reinvest manually.';

@@ -973,8 +973,7 @@ export class WalletService {
         !isSoloApp() && isWithdrawDayGateActive()
           ? {
               label: WITHDRAW_DAYS.label,
-              openToday:
-                isWithdrawDayOpen() || Boolean(vipUser?.withdrawDayExempt),
+              openToday: isWithdrawDayOpen(),
               nextOpenAt: nextWithdrawDayAt().toISOString(),
               message: WITHDRAW_DAYS.userMessage,
             }
@@ -1799,13 +1798,8 @@ export class WalletService {
     throw new BadRequestException(SOLO_WALLET_WITHDRAW_PAUSED_LABEL);
   }
 
-  private async assertWithdrawDayOpen(userId: string) {
+  private async assertWithdrawDayOpen(_userId: string) {
     if (isSoloApp() || isWithdrawDayOpen()) return;
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { withdrawDayExempt: true },
-    });
-    if (user?.withdrawDayExempt) return;
     throw new BadRequestException(WITHDRAW_DAYS.userMessage);
   }
 
