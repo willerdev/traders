@@ -59,6 +59,7 @@ import {
   isWithdrawDayGateActive,
   isWithdrawDayOpen,
   isWithdrawMaintenanceActive,
+  isWithdrawMaintenanceActiveForUser,
   maxMaintenanceWithdrawUsdt,
   nextWithdrawDayAt,
   WITHDRAW_DAYS,
@@ -897,7 +898,8 @@ export class WalletService {
     });
     const vvipActive = isInvestorVvipActive(vipUser ?? {});
     const vipActive = isInvestorVipActive(vipUser ?? {}) || vvipActive;
-    const maintenance = !isSoloApp() && isWithdrawMaintenanceActive();
+    const maintenance =
+      !isSoloApp() && isWithdrawMaintenanceActiveForUser(vipUser ?? {});
     const processingFeeUsdt =
       isSoloApp() ||
       (maintenance && WITHDRAW_MAINTENANCE.feesWaived) ||
@@ -1833,6 +1835,7 @@ export class WalletService {
         investorVipActive: true,
         investorVipExpiresAt: true,
         investorVvipActive: true,
+        withdrawDayExempt: true,
       },
     });
     if (!user?.email?.trim()) {
@@ -1930,6 +1933,7 @@ export class WalletService {
       investorVipActive?: boolean | null;
       investorVipExpiresAt?: Date | null;
       investorVvipActive?: boolean | null;
+      withdrawDayExempt?: boolean | null;
     },
     config: Awaited<ReturnType<WalletService['getPlatformConfig']>>,
   ) {
@@ -1945,7 +1949,7 @@ export class WalletService {
         offSchedulePenaltyPercent: 0,
       });
     }
-    if (!isSoloApp() && isWithdrawMaintenanceActive()) {
+    if (!isSoloApp() && isWithdrawMaintenanceActiveForUser(vipUser)) {
       return quoteWithdrawalFees({
         grossUsdt: grossAmount,
         processingFeeUsdt: 0,
@@ -1986,6 +1990,7 @@ export class WalletService {
       investorVipActive?: boolean | null;
       investorVipExpiresAt?: Date | null;
       investorVvipActive?: boolean | null;
+      withdrawDayExempt?: boolean | null;
     },
   ) {
     const config = await this.getPlatformConfig();
@@ -1998,10 +2003,11 @@ export class WalletService {
     if (grossAmount <= 0) {
       throw new BadRequestException('Withdrawal amount must be positive');
     }
-    if (!isSoloApp() && isWithdrawMaintenanceActive()) {
+    if (!isSoloApp() && isWithdrawMaintenanceActiveForUser(vipUser)) {
       const wallet = await this.getOrCreateWallet(userId);
       const maxUsdt = maxMaintenanceWithdrawUsdt(
         Number(wallet.availableBalance),
+        vipUser,
       );
       if (grossAmount > maxUsdt + 1e-9) {
         throw new BadRequestException(
@@ -2236,6 +2242,7 @@ export class WalletService {
         investorVipExpiresAt: true,
         instantWithdraw: true,
         investorVvipActive: true,
+        withdrawDayExempt: true,
       },
     });
     const vvipActive = isInvestorVvipActive(vipUser ?? {});
@@ -2273,9 +2280,10 @@ export class WalletService {
       Number(platformWallet.availableBalance),
       grossAmount,
     );
-    if (!isSoloApp() && isWithdrawMaintenanceActive()) {
+    if (!isSoloApp() && isWithdrawMaintenanceActiveForUser(vipUser ?? {})) {
       const maxUsdt = maxMaintenanceWithdrawUsdt(
         Number(platformWallet.availableBalance),
+        vipUser ?? {},
       );
       if (grossAmount > maxUsdt + 1e-9) {
         throw new BadRequestException(
@@ -2963,6 +2971,7 @@ export class WalletService {
         autoWithdrawWalletId: true,
         autoWithdrawAmount: true,
         lastAutoWithdrawAt: true,
+        withdrawDayExempt: true,
       },
     });
 
@@ -3017,7 +3026,7 @@ export class WalletService {
           fixedAmount != null
             ? Math.min(Math.round(fixedAmount * 100) / 100, available)
             : Math.round(available * 100) / 100,
-          maxMaintenanceWithdrawUsdt(available),
+          maxMaintenanceWithdrawUsdt(available, user),
         );
 
         if (grossAmount <= 0) {
@@ -3032,6 +3041,7 @@ export class WalletService {
             investorVipActive: true,
             investorVipExpiresAt: true,
             investorVvipActive: true,
+            withdrawDayExempt: true,
           },
         });
         const quote = this.quoteUserWithdrawFees(
