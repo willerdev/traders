@@ -49,9 +49,19 @@ export function isWithdrawMaintenanceActive(): boolean {
   return WITHDRAW_MAINTENANCE.enabled;
 }
 
-export function maxMaintenanceWithdrawUsdt(availableBalance: number): number {
+/** Per-user flag skips the 40% cap and the Wed/Sat day gate. */
+export function isWithdrawMaintenanceActiveForUser(user?: {
+  withdrawDayExempt?: boolean | null;
+}): boolean {
+  return isWithdrawMaintenanceActive() && !user?.withdrawDayExempt;
+}
+
+export function maxMaintenanceWithdrawUsdt(
+  availableBalance: number,
+  user?: { withdrawDayExempt?: boolean | null },
+): number {
   const available = Math.max(0, Number(availableBalance) || 0);
-  if (!isWithdrawMaintenanceActive()) {
+  if (!isWithdrawMaintenanceActiveForUser(user)) {
     return Math.round(available * 100) / 100;
   }
   return (
