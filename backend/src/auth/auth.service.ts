@@ -77,6 +77,10 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto, ip?: string) {
+    throw new BadRequestException(
+      'Registrations are temporarily closed while we review suspicious activity.',
+    );
+
     const email = dto.email.trim().toLowerCase();
 
     if (!isRegistrationEmailAllowed(email)) {

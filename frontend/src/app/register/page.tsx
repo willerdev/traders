@@ -103,7 +103,7 @@ export default function RegisterPage() {
     );
   }
 
-  if (!referralCode) {
+  if (true) {
     return (
       <div className="flex min-h-[80vh] items-center justify-center px-4">
         <motion.div
@@ -117,29 +117,29 @@ export default function RegisterPage() {
                 <Lock className="h-5 w-5" />
               </div>
               <Badge variant="secondary" className="mx-auto mb-3 w-fit">
-                Closed community
+                Temporarily closed
               </Badge>
-              <CardTitle className="text-2xl">Invite only</CardTitle>
+              <CardTitle className="text-2xl">Registrations paused</CardTitle>
               <CardDescription className="text-base text-gray-400">
-                Registrations are done through referrals only. This is a closed
-                community — ask a current member for their invite link to join.
+                New accounts are temporarily closed while we review suspicious
+                activity. Existing members can still sign in.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-4 text-sm text-gray-400">
                 <Users className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                 <p>
-                  Members can share a personal referral link from Settings. Open
-                  that link to create your account.
+                  Invite links will not create a new account until registrations
+                  reopen. If you already have an account, sign in as usual.
                 </p>
               </div>
               <Link href="/login" className="block">
                 <Button className="w-full" variant="secondary">
-                  Already invited? Sign in
+                  Sign in
                 </Button>
               </Link>
               <p className="text-center text-xs text-gray-600">
-                Direct public registration is disabled.
+                New registrations are disabled.
               </p>
             </CardContent>
           </Card>
